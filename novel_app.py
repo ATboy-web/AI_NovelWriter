@@ -38,12 +38,6 @@ try:
 except ImportError:
     DOCX_SUPPORT = False
 
-try:
-    import chardet
-    CHARDET_SUPPORT = True
-except ImportError:
-    CHARDET_SUPPORT = False
-
 # 小说工具集
 from novel_toolkit import (ElementLibrary, BridgeLibrary, DescriptionLibrary,
                            DialogueEngine, StoryFlowEngine, StyleTransferEngine, AdaptEngine,

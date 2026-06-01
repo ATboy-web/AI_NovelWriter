@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "AI小说创作工坊",
+    "slug": "ai-novel-writer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ainovelwriter.app"
+    },
+    "android": {
+      "package": "com.ainovelwriter.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#1e1e2e"
+      }
+    },
+    "web": {
+      "favicon": "./assets/icon.png"
+    }
+  }
+}

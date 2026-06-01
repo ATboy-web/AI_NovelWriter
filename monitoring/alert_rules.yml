@@ -1,0 +1,104 @@
+# Prometheus告警规则
+
+groups:
+  - name: ai-novel-alerts
+    rules:
+      # 服务可用性告警
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "服务 {{ $labels.job }} 不可用"
+          description: "服务 {{ $labels.job }} 已经停止响应超过1分钟"
+
+      # 高CPU使用率告警
+      - alert: HighCPUUsage
+        expr: process_cpu_seconds_total > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "服务 {{ $labels.job }} CPU使用率过高"
+          description: "服务 {{ $labels.job }} CPU使用率超过80%已持续5分钟"
+
+      # 高内存使用率告警
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes / process_virtual_memory_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "服务 {{ $labels.job }} 内存使用率过高"
+          description: "服务 {{ $labels.job }} 内存使用率超过80%已持续5分钟"
+
+      # API响应时间告警
+      - alert: HighAPIResponseTime
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job)) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "服务 {{ $labels.job }} API响应时间过长"
+          description: "服务 {{ $labels.job }} 95%的API响应时间超过5秒"
+
+      # 数据库连接数告警
+      - alert: HighDatabaseConnections
+        expr: pg_stat_activity_count > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据库连接数过高"
+          description: "PostgreSQL数据库连接数超过80"
+
+      # Redis内存使用告警
+      - alert: HighRedisMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis内存使用率过高"
+          description: "Redis内存使用率超过80%"
+
+      # 磁盘空间告警
+      - alert: LowDiskSpace
+        expr: node_filesystem_avail_bytes / node_filesystem_size_bytes < 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "磁盘空间不足"
+          description: "磁盘可用空间低于10%"
+
+      # 请求错误率告警
+      - alert: HighErrorRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "服务 {{ $labels.job }} 错误率过高"
+          description: "服务 {{ $labels.job }} 错误率超过10%"
+
+      # AI模型加载失败告警
+      - alert: AIModelLoadFailure
+        expr: ai_model_load_errors_total > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AI模型加载失败"
+          description: "AI模型加载出现错误，请检查模型文件"
+
+      # 小说生成失败告警
+      - alert: NovelGenerationFailure
+        expr: novel_generation_errors_total > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "小说生成失败"
+          description: "小说生成过程中出现错误"

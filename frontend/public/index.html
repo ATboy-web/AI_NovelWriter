@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI自动写小说系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            padding: 40px 0;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            padding: 40px;
+            margin-top: 20px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding-bottom: 30px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.4);
+        }
+
+        .result-area {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            min-height: 200px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', Courier, monospace;
+            line-height: 1.8;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            font-size: 2rem;
+            margin-bottom: 5px;
+        }
+
+        .stat-card p {
+            opacity: 0.9;
+        }
+
+        .novel-types {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .novel-type-card {
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .novel-type-card:hover {
+            border-color: #667eea;
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .novel-type-card.selected {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .novel-type-card h4 {
+            margin-bottom: 8px;
+        }
+
+        .novel-type-card p {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .error-message.active {
+            display: block;
+        }
+
+        footer {
+            text-align: center;
+            color: white;
+            padding: 30px 0;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            header h1 {
+                font-size: 2rem;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AI自动写小说系统</h1>
+            <p>使用人工智能技术，自动生成各种类型的小说内容</p>
+        </header>
+
+        <div class="main-content">
+            <!-- 系统状态 -->
+            <div class="section">
+                <h2>系统状态</h2>
+                <div class="stats">
+                    <div class="stat-card">
+                        <h3 id="ai-status">检查中...</h3>
+                        <p>AI服务状态</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3 id="novel-status">检查中...</h3>
+                        <p>小说服务状态</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3 id="model-count">0</h3>
+                        <p>可用模型数</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3 id="novel-types-count">5</h3>
+                        <p>支持小说类型</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 小说类型选择 -->
+            <div class="section">
+                <h2>选择小说类型</h2>
+                <div class="novel-types">
+                    <div class="novel-type-card selected" data-type="scifi">
+                        <h4>科幻小说</h4>
+                        <p>未来科技、太空探索、人工智能</p>
+                    </div>
+                    <div class="novel-type-card" data-type="mystery">
+                        <h4>悬疑推理</h4>
+                        <p>犯罪谜题、逻辑推理、悬疑氛围</p>
+                    </div>
+                    <div class="novel-type-card" data-type="romance">
+                        <h4>言情小说</h4>
+                        <p>爱情故事、情感纠葛、人物成长</p>
+                    </div>
+                    <div class="novel-type-card" data-type="fantasy">
+                        <h4>奇幻小说</h4>
+                        <p>魔法系统、异世界、史诗冒险</p>
+                    </div>
+                    <div class="novel-type-card" data-type="urban">
+                        <h4>都市小说</h4>
+                        <p>现实生活、职场故事、社会现象</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 小说生成表单 -->
+            <div class="section">
+                <h2>生成小说</h2>
+                <form id="novel-form">
+                    <div class="form-group">
+                        <label for="title">小说标题</label>
+                        <input type="text" id="title" class="form-control" placeholder="请输入小说标题" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="synopsis">小说简介</label>
+                        <textarea id="synopsis" class="form-control" rows="4" placeholder="请描述小说的基本设定和故事背景" required></textarea>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="chapter-count">章节数量</label>
+                            <select id="chapter-count" class="form-control">
+                                <option value="3">3章（短篇）</option>
+                                <option value="5">5章（中篇）</option>
+                                <option value="10" selected>10章（标准）</option>
+                                <option value="20">20章（长篇）</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="model-type">AI模型</label>
+                            <select id="model-type" class="form-control">
+                                <option value="local">本地模型（免费）</option>
+                                <option value="openai">OpenAI GPT-4（付费）</option>
+                                <option value="claude">Claude（付费）</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn" id="generate-btn">
+                        开始生成小说
+                    </button>
+                </form>
+                
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>正在生成小说，请稍候...</p>
+                </div>
+                
+                <div class="error-message" id="error-message"></div>
+            </div>
+
+            <!-- 生成结果 -->
+            <div class="section">
+                <h2>生成结果</h2>
+                <div class="result-area" id="result-area">
+                    等待生成小说...
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <button class="btn btn-secondary" id="copy-btn" style="display: none;">
+                        复制内容
+                    </button>
+                    <button class="btn btn-secondary" id="download-btn" style="display: none; margin-left: 10px;">
+                        下载小说
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>AI自动写小说系统 &copy; 2026 | 使用人工智能技术创作</p>
+        </footer>
+    </div>
+
+    <script>
+        // 全局变量
+        let selectedNovelType = 'scifi';
+        let generatedContent = '';
+
+        // API基础URL
+        const API_BASE_URL = window.location.origin;
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initNovelTypes();
+            checkSystemStatus();
+            bindEvents();
+        });
+
+        // 初始化小说类型选择
+        function initNovelTypes() {
+            const cards = document.querySelectorAll('.novel-type-card');
+            cards.forEach(card => {
+                card.addEventListener('click', function() {
+                    // 移除所有选中状态
+                    cards.forEach(c => c.classList.remove('selected'));
+                    // 添加当前选中状态
+                    this.classList.add('selected');
+                    // 更新选中的小说类型
+                    selectedNovelType = this.dataset.type;
+                });
+            });
+        }
+
+        // 检查系统状态
+        async function checkSystemStatus() {
+            try {
+                // 检查AI服务状态
+                const aiResponse = await fetch(`${API_BASE_URL}/api/ai/health`);
+                const aiData = await aiResponse.json();
+                document.getElementById('ai-status').textContent = aiData.status === 'healthy' ? '正常' : '异常';
+                
+                // 检查小说服务状态
+                const novelResponse = await fetch(`${API_BASE_URL}/api/novel/health`);
+                const novelData = await novelResponse.json();
+                document.getElementById('novel-status').textContent = novelData.status === 'healthy' ? '正常' : '异常';
+                
+                // 获取模型数量
+                const modelsResponse = await fetch(`${API_BASE_URL}/api/ai/models`);
+                const modelsData = await modelsResponse.json();
+                if (modelsData.success) {
+                    document.getElementById('model-count').textContent = modelsData.count || 0;
+                }
+                
+            } catch (error) {
+                console.error('检查系统状态失败:', error);
+                document.getElementById('ai-status').textContent = '离线';
+                document.getElementById('novel-status').textContent = '离线';
+            }
+        }
+
+        // 绑定事件
+        function bindEvents() {
+            // 表单提交事件
+            document.getElementById('novel-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                generateNovel();
+            });
+            
+            // 复制按钮事件
+            document.getElementById('copy-btn').addEventListener('click', copyContent);
+            
+            // 下载按钮事件
+            document.getElementById('download-btn').addEventListener('click', downloadNovel);
+        }
+
+        // 生成小说
+        async function generateNovel() {
+            const title = document.getElementById('title').value;
+            const synopsis = document.getElementById('synopsis').value;
+            const chapterCount = parseInt(document.getElementById('chapter-count').value);
+            const modelType = document.getElementById('model-type').value;
+            
+            if (!title || !synopsis) {
+                showError('请填写完整的小说信息');
+                return;
+            }
+            
+            // 显示加载状态
+            showLoading(true);
+            hideError();
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/novel/generate/novel`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        title: title,
+                        synopsis: synopsis,
+                        novel_type: selectedNovelType,
+                        chapter_count: chapterCount,
+                        ai_service_url: `${API_BASE_URL}/api/ai`
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayResult(data);
+                } else {
+                    showError(data.error || '生成失败，请重试');
+                }
+                
+            } catch (error) {
+                console.error('生成小说失败:', error);
+                showError('网络错误，请检查服务是否正常运行');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 显示生成结果
+        function displayResult(data) {
+            generatedContent = formatNovelContent(data);
+            document.getElementById('result-area').textContent = generatedContent;
+            
+            // 显示操作按钮
+            document.getElementById('copy-btn').style.display = 'inline-block';
+            document.getElementById('download-btn').style.display = 'inline-block';
+        }
+
+        // 格式化小说内容
+        function formatNovelContent(data) {
+            let content = `《${data.title}》\n`;
+            content += `类型：${getNovelTypeName(data.novel_type)}\n`;
+            content += `章节数：${data.statistics.total_chapters}\n`;
+            content += `总字数：${data.statistics.total_words}\n`;
+            content += `\n${'='.repeat(50)}\n\n`;
+            
+            // 添加章节内容
+            data.chapters.forEach(chapter => {
+                content += `${chapter.title}\n\n`;
+                content += `${chapter.content}\n\n`;
+                content += `${'─'.repeat(30)}\n\n`;
+            });
+            
+            // 添加人物信息
+            if (data.characters && data.characters.length > 0) {
+                content += `\n人物介绍\n`;
+                content += `${'='.repeat(30)}\n\n`;
+                
+                data.characters.forEach(character => {
+                    if (character.basic_info) {
+                        content += `${character.basic_info.name || '未知'}\n`;
+                        content += `年龄：${character.basic_info.age || '未知'}\n`;
+                        content += `职业：${character.basic_info.occupation || '未知'}\n`;
+                        content += `性格：${(character.personality || []).join('、')}\n`;
+                        content += `\n`;
+                    }
+                });
+            }
+            
+            return content;
+        }
+
+        // 获取小说类型名称
+        function getNovelTypeName(type) {
+            const names = {
+                'scifi': '科幻小说',
+                'mystery': '悬疑推理',
+                'romance': '言情小说',
+                'fantasy': '奇幻小说',
+                'urban': '都市小说'
+            };
+            return names[type] || type;
+        }
+
+        // 复制内容
+        function copyContent() {
+            navigator.clipboard.writeText(generatedContent).then(() => {
+                alert('内容已复制到剪贴板');
+            }).catch(err => {
+                console.error('复制失败:', err);
+                alert('复制失败，请手动复制');
+            });
+        }
+
+        // 下载小说
+        function downloadNovel() {
+            const title = document.getElementById('title').value || 'AI生成小说';
+            const blob = new Blob([generatedContent], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${title}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // 显示/隐藏加载状态
+        function showLoading(show) {
+            const loading = document.getElementById('loading');
+            const btn = document.getElementById('generate-btn');
+            
+            if (show) {
+                loading.classList.add('active');
+                btn.disabled = true;
+                btn.textContent = '生成中...';
+            } else {
+                loading.classList.remove('active');
+                btn.disabled = false;
+                btn.textContent = '开始生成小说';
+            }
+        }
+
+        // 显示错误信息
+        function showError(message) {
+            const errorElement = document.getElementById('error-message');
+            errorElement.textContent = message;
+            errorElement.classList.add('active');
+        }
+
+        // 隐藏错误信息
+        function hideError() {
+            const errorElement = document.getElementById('error-message');
+            errorElement.classList.remove('active');
+        }
+    </script>
+</body>
+</html>

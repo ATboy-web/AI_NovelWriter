@@ -1,294 +1,170 @@
-# AI自动写小说系统
+# AI小说创作工坊
 
-一个完整的AI小说生成产品，支持多种小说类型、本地模型和云端API集成。
+**免费开源的AI辅助小说创作软件**
 
-## 系统架构
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/Version-2.0.0-blue.svg)](https://github.com/ATboy-web/AI_NovelWriter/releases)
 
-采用微服务架构，分为5个核心服务：
+一个完整的AI小说创作工具，支持桌面端和移动端，帮助创作者高效完成小说创作。
 
-1. **前端服务** (Node.js + Express)
-   - 用户界面（Web/移动端）
-   - API路由和负载均衡
-   - 静态资源服务
+## ✨ 功能特性
 
-2. **用户认证服务** (Python + FastAPI)
-   - 用户注册/登录
-   - JWT令牌管理
-   - 权限控制
+### 🤖 AI智能创作
+- **AI自动写小说** - 支持Ollama本地模型、OpenAI、DeepSeek、Claude等
+- **长上下文记忆** - 自动维护世界观、角色、故事摘要
+- **智能体创作** - 自动生成世界观→角色→大纲→章节→审校
 
-3. **小说生成服务** (Python + FastAPI)
-   - 多类型小说生成（科幻、悬疑、言情等）
-   - 章节管理和编辑
-   - 内容质量评估
+### ✍️ AI辅助写作
+- **AI续写** - Tab键触发，智能续写20-50字
+- **AI扩写** - 将选中文本扩展为详细内容
+- **AI简写** - 精简压缩文本
+- **AI润色** - 优化语言表达
+- **AI改写** - 用不同方式重新表达
+- **AI对话生成** - 根据上下文生成角色对话
 
-4. **AI模型服务** (Python + FastAPI)
-   - 本地模型集成（llama.cpp）
-   - 云端API调用（GPT/Claude）
-   - 模型负载均衡
+### 📚 创作工具集
+- **小说元素库** - 16类预设元素，组合生成背景设定
+- **角色桥段库** - 14种经典桥段模板
+- **事物描写库** - 10类描写生成
+- **情景对话推演** - 角色互动对话生成
+- **故事流推演** - 正向/反向/中间/分支推演
+- **风格转换** - 7种风格切换
+- **智能改编** - 片段改编、匹配率显示
 
-5. **支付服务** (Python + FastAPI)
-   - 用户订阅管理
-   - 付费功能控制
-   - 支付集成
+### 📖 阅读管理
+- **多格式支持** - TXT、EPUB、PDF、DOCX、Markdown
+- **书签功能** - 添加、删除、跳转
+- **阅读主题** - 浅色/深色/护眼模式
+- **搜索功能** - 书籍内关键词搜索
 
-## 技术栈
+### 📱 多平台支持
+- **桌面版** - Python + tkinter (Windows/Mac/Linux)
+- **移动版** - React Native (Android)
 
-### 后端
-- **Python 3.13** + FastAPI
-- **Node.js 22** + Express
-- **PostgreSQL** - 主数据库
-- **Redis** - 缓存和会话存储
-- **Docker** - 容器化部署
+## 🚀 快速开始
 
-### AI模型
-- **本地模型**: llama.cpp + Qwen3.6
-- **云端API**: OpenAI GPT-4, Claude API
-- **模型管理**: 自定义模型路由和负载均衡
+### 桌面版
 
-### 前端
-- **React/Vue.js** - 现代前端框架
-- **TypeScript** - 类型安全
-- **Tailwind CSS** - 样式框架
-
-## 项目结构
-
-```
-ai-novel-writer/
-├── frontend/                    # 前端服务
-│   ├── src/
-│   │   ├── components/         # UI组件
-│   │   ├── pages/              # 页面组件
-│   │   ├── services/           # API调用服务
-│   │   ├── store/              # 状态管理
-│   │   └── utils/              # 工具函数
-│   ├── public/                 # 静态资源
-│   ├── package.json
-│   └── Dockerfile
-├── backend/                     # 后端服务
-│   ├── auth-service/           # 用户认证服务
-│   │   ├── app/
-│   │   │   ├── api/            # API路由
-│   │   │   ├── core/           # 核心配置
-│   │   │   ├── models/         # 数据模型
-│   │   │   └── services/       # 业务逻辑
-│   │   ├── requirements.txt
-│   │   └── Dockerfile
-│   ├── novel-service/          # 小说生成服务
-│   │   ├── app/
-│   │   │   ├── api/            # API路由
-│   │   │   ├── generators/     # 小说生成器
-│   │   │   ├── models/         # 数据模型
-│   │   │   └── services/       # 业务逻辑
-│   │   ├── requirements.txt
-│   │   └── Dockerfile
-│   ├── ai-service/             # AI模型服务
-│   │   ├── app/
-│   │   │   ├── api/            # API路由
-│   │   │   ├── models/         # 模型管理
-│   │   │   ├── inference/      # 推理引擎
-│   │   │   └── services/       # 业务逻辑
-│   │   ├── requirements.txt
-│   │   └── Dockerfile
-│   └── payment-service/        # 支付服务
-│       ├── app/
-│       │   ├── api/            # API路由
-│       │   ├── models/         # 数据模型
-│       │   └── services/       # 业务逻辑
-│       ├── requirements.txt
-│       └── Dockerfile
-├── shared/                      # 共享库
-│   ├── python/                 # Python共享模块
-│   │   ├── config/             # 配置管理
-│   │   ├── utils/              # 工具函数
-│   │   └── exceptions/         # 自定义异常
-│   └── types/                  # 类型定义
-├── models/                      # AI模型存储
-│   ├── local/                  # 本地模型
-│   └── configs/                # 模型配置
-├── docs/                        # 项目文档
-├── scripts/                     # 部署脚本
-├── docker-compose.yml          # Docker编排
-└── README.md
-```
-
-## 核心功能模块
-
-### 1. 小说生成引擎
-- **类型支持**: 科幻、悬疑、言情、奇幻、都市等
-- **生成模式**: 
-  - 全自动生成（大纲→章节→全文）
-  - 半自动生成（用户干预关键情节）
-  - 模板生成（基于预设模板）
-- **质量控制**: 
-  - 情节连贯性检查
-  - 人物一致性维护
-  - 逻辑合理性验证
-
-### 2. 用户系统
-- **角色管理**: 
-  - 普通用户（免费额度）
-  - VIP用户（付费功能）
-  - 管理员（系统管理）
-- **权限控制**: 
-  - 功能权限（生成、编辑、导出）
-  - 数据权限（个人作品、共享模板）
-
-### 3. 付费系统
-- **订阅模式**: 
-  - 免费版（基础功能）
-  - 基础版（更多生成次数）
-  - 专业版（高级功能）
-- **支付集成**: 
-  - 支付宝/微信支付
-  - 订阅管理
-  - 发票系统
-
-### 4. 内容管理
-- **作品管理**: 
-  - 创建、编辑、删除
-  - 版本控制
-  - 协作编辑
-- **导出功能**: 
-  - 多格式导出（TXT、PDF、EPUB）
-  - 打印排版
-  - 分享链接
-
-## 开发路线图
-
-### 阶段1: MVP原型 (4-6周)
-- [x] 基础架构搭建
-- [ ] 简单小说生成（单类型）
-- [ ] 基础用户系统
-- [ ] 命令行界面
-
-### 阶段2: 功能扩展 (6-8周)
-- [ ] 多类型小说支持
-- [ ] Web界面开发
-- [ ] 本地模型集成
-- [ ] 基础付费功能
-
-### 阶段3: 产品完善 (8-10周)
-- [ ] 完整用户系统
-- [ ] 高级生成功能
-- [ ] 支付系统集成
-- [ ] 性能优化
-
-### 阶段4: 生产部署 (4-6周)
-- [ ] Docker容器化
-- [ ] CI/CD流水线
-- [ ] 监控和日志
-- [ ] 安全加固
-
-## 快速开始
-
-### 环境要求
-- Python 3.13+
-- Node.js 22+
-- PostgreSQL 15+
-- Redis 7+
-- Docker (可选)
-
-### 安装步骤
-
-1. **克隆项目**
 ```bash
-git clone <repository-url>
-cd ai-novel-writer
+# 克隆项目
+git clone https://github.com/ATboy-web/AI_NovelWriter.git
+cd AI_NovelWriter
+
+# 安装依赖
+pip install httpx
+
+# 运行
+python novel_app.py
 ```
 
-2. **安装依赖**
-```bash
-# Python依赖
-cd backend
-pip install -r requirements.txt
+### Android版
 
-# Node.js依赖
-cd ../frontend
-npm install
+从 [Releases](https://github.com/ATboy-web/AI_NovelWriter/releases) 下载APK安装。
+
+## 🔧 配置AI模型
+
+### Ollama本地模型（推荐）
+
+1. 安装 [Ollama](https://ollama.ai)
+2. 下载模型：`ollama pull qwen2.5:14b`
+3. 在设置中选择Ollama，点击"检测Ollama"
+
+### 云端API
+
+在设置中配置：
+- **OpenAI**: 需要API密钥
+- **DeepSeek**: 需要API密钥  
+- **Claude**: 需要API密钥
+
+## 📸 界面预览
+
+### 桌面版
+- 深色主题界面
+- 左侧：小说信息、智能体步骤、大纲
+- 右侧：章节内容、日志、审校、笔记、创作工具
+
+### 移动版
+- Material Design风格
+- 底部导航：首页、书架、写作、工具、我的
+- 全屏写作模式
+
+## 🛠️ 技术栈
+
+| 组件 | 技术 |
+|------|------|
+| 桌面版 | Python 3.11+ / tkinter |
+| 移动版 | React Native / Expo |
+| AI模型 | Ollama / OpenAI API / DeepSeek API |
+| 数据存储 | 本地JSON文件 |
+| 打包工具 | PyInstaller (桌面) / Gradle (Android) |
+
+## 📁 项目结构
+
+```
+AI_NovelWriter/
+├── novel_app.py          # 桌面版主程序
+├── novel_toolkit.py      # 创作工具集
+├── installer/            # 打包配置
+├── mobile-app/           # 移动版源码
+│   ├── App.tsx           # 主入口
+│   └── src/
+│       ├── screens/      # 页面组件
+│       ├── services/     # API服务
+│       └── styles/       # 主题样式
+└── backend/              # 后端服务（可选）
 ```
 
-3. **配置环境**
-```bash
-# 复制配置文件
-cp .env.example .env
+## 🤝 贡献指南
 
-# 编辑配置
-vim .env
-```
+欢迎贡献代码！请遵循以下步骤：
 
-4. **启动服务**
-```bash
-# 开发模式
-docker-compose up -d
-
-# 或手动启动
-cd backend && python -m uvicorn app.main:app --reload
-cd ../frontend && npm run dev
-```
-
-## 配置说明
-
-### 环境变量
-```env
-# 数据库配置
-DATABASE_URL=postgresql://user:password@localhost:5432/ai_novel
-REDIS_URL=redis://localhost:6379/0
-
-# AI模型配置
-LOCAL_MODEL_PATH=./models/local
-OPENAI_API_KEY=your_openai_key
-CLAUDE_API_KEY=your_claude_key
-
-# 支付配置
-ALIPAY_APP_ID=your_alipay_appid
-WECHAT_PAY_APPID=your_wechat_appid
-
-# 安全配置
-SECRET_KEY=your_secret_key
-JWT_ALGORITHM=HS256
-```
-
-## 部署指南
-
-### Docker部署
-```bash
-# 构建镜像
-docker-compose build
-
-# 启动服务
-docker-compose up -d
-
-# 查看日志
-docker-compose logs -f
-```
-
-### 生产部署
-```bash
-# 使用Nginx反向代理
-# 配置SSL证书
-# 设置监控告警
-```
-
-## 贡献指南
-
-1. Fork项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
+1. Fork本项目
+2. 创建功能分支 (`git checkout -b feature/xxx`)
+3. 提交更改 (`git commit -m 'Add xxx feature'`)
+4. 推送到分支 (`git push origin feature/xxx`)
 5. 创建Pull Request
 
-## 许可证
+## 📄 开源许可证
 
-本项目采用MIT许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
+本项目采用 **MIT许可证** 开源，完全免费使用。
 
-## 联系方式
+```
+MIT License
 
-- 项目维护者: [Your Name]
-- 邮箱: [your-email@example.com]
-- 项目链接: [GitHub Repository]
+Copyright (c) 2024 AI_NovelWriter
 
-## 致谢
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-- 感谢所有贡献者
-- 感谢开源社区的支持
-- 特别感谢AI模型开发者
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## 🔗 相关链接
+
+- [GitHub仓库](https://github.com/ATboy-web/AI_NovelWriter)
+- [Releases下载](https://github.com/ATboy-web/AI_NovelWriter/releases)
+- [问题反馈](https://github.com/ATboy-web/AI_NovelWriter/issues)
+
+## 💡 致谢
+
+感谢以下开源项目：
+- [Ollama](https://ollama.ai) - 本地AI模型运行框架
+- [React Native](https://reactnative.dev) - 跨平台移动应用框架
+- [Expo](https://expo.dev) - React Native开发工具
+
+---
+
+**⭐ 如果这个项目对你有帮助，请给个Star支持一下！**

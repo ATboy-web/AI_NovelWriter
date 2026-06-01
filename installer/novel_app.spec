@@ -10,6 +10,7 @@ a = Analysis(
     datas=[],
     hiddenimports=[
         'novel_toolkit',
+        'character_system',
         'tkinter',
         'tkinter.ttk',
         'tkinter.messagebox',

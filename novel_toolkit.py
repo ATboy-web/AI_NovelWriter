@@ -473,9 +473,60 @@ class WebSearchAdaptEngine:
         ],
     }
     
-    def __init__(self, ai_client):
+    def __init__(self, ai_client, novel_dir: Optional[Path] = None):
         self.ai = ai_client
         self.current_category = "热梗改编"
+        self.novel_dir = novel_dir
+        self.custom_dir = novel_dir / "websearch_custom" if novel_dir else None
+        if self.custom_dir: self.custom_dir.mkdir(exist_ok=True)
+        self._load_custom_memes()
+    
+    def _custom_file(self) -> Path:
+        return (self.custom_dir or Path.home() / ".ai_novel_writer") / "custom_hot_memes.json"
+    
+    def _load_custom_memes(self):
+        """加载用户自定义热点"""
+        f = self._custom_file()
+        if f.exists():
+            try:
+                with open(f, 'r', encoding='utf-8') as fp:
+                    custom = json.load(fp)
+                for cat, items in custom.items():
+                    if cat in self.HOT_MEMES:
+                        self.HOT_MEMES[cat].extend(items)
+                    else:
+                        self.HOT_MEMES[cat] = items
+            except: pass
+    
+    def add_custom_meme(self, category: str, name: str, desc: str, adapt_template: str):
+        """用户自行添加热点内容"""
+        item = {"name": name, "desc": desc, "adapt": adapt_template, "custom": True}
+        if category not in self.HOT_MEMES:
+            self.HOT_MEMES[category] = []
+        self.HOT_MEMES[category].append(item)
+        # 持久化
+        f = self._custom_file()
+        f.parent.mkdir(exist_ok=True)
+        custom = {}
+        if f.exists():
+            try: 
+                with open(f, 'r', encoding='utf-8') as fp: custom = json.load(fp)
+            except: pass
+        if category not in custom: custom[category] = []
+        custom[category].append(item)
+        with open(f, 'w', encoding='utf-8') as fp: json.dump(custom, fp, indent=2, ensure_ascii=False)
+        return item
+    
+    def delete_custom_meme(self, category: str, index: int):
+        """删除自定义热点"""
+        items = self.HOT_MEMES.get(category, [])
+        custom_items = [i for i in items if i.get("custom")]
+        if 0 <= index < len(custom_items):
+            items.remove(custom_items[index])
+            f = self._custom_file()
+            if f.exists():
+                with open(f, 'w', encoding='utf-8') as fp:
+                    json.dump({category: [i for i in items if i.get("custom")]}, fp, indent=2, ensure_ascii=False)
     
     def get_categories(self) -> List[str]:
         return list(self.HOT_MEMES.keys())

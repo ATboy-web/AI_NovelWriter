@@ -2989,21 +2989,38 @@ class NovelWriterApp:
         tk.Label(char_frame, text="角色面板", font=('微软雅黑', 10, 'bold'),
                 bg=C['bg_medium'], fg=C['accent_light']).pack(anchor=tk.W, pady=(0, 3))
         
+        # 角色选择下拉框
+        char_select_frame = tk.Frame(char_frame, bg=C['bg_medium'])
+        char_select_frame.pack(fill=tk.X, pady=2)
+        self.char_select_var = tk.StringVar(value="无角色")
+        self.char_select_combo = ttk.Combobox(char_select_frame, textvariable=self.char_select_var, 
+                                              state="readonly", width=15)
+        self.char_select_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.char_select_combo.bind('<<ComboboxSelected>>', self._on_char_select)
+        
+        # 角色信息显示
         self.char_summary = tk.Label(char_frame, text="未创建角色", font=('微软雅黑', 8),
                                     bg=C['bg_medium'], fg=C['text_secondary'], justify=tk.LEFT, anchor=tk.W)
-        self.char_summary.pack(fill=tk.X)
+        self.char_summary.pack(fill=tk.X, pady=3)
         
+        # 角色操作按钮
         char_btn_frame = tk.Frame(char_frame, bg=C['bg_medium'])
         char_btn_frame.pack(fill=tk.X, pady=3)
-        tk.Button(char_btn_frame, text="创建角色", font=('微软雅黑', 8),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=5,
-                 command=self._create_character).pack(side=tk.LEFT, padx=2)
-        tk.Button(char_btn_frame, text="装备武器", font=('微软雅黑', 8),
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=5,
-                 command=self._equip_weapon).pack(side=tk.LEFT, padx=2)
-        tk.Button(char_btn_frame, text="学习技能", font=('微软雅黑', 8),
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=5,
-                 command=self._learn_skill).pack(side=tk.LEFT, padx=2)
+        tk.Button(char_btn_frame, text="新建", font=('微软雅黑', 8),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=4,
+                 command=self._create_character_dialog).pack(side=tk.LEFT, padx=1)
+        tk.Button(char_btn_frame, text="AI创建", font=('微软雅黑', 8),
+                 bg=C['success'], fg='white', relief=tk.FLAT, padx=4,
+                 command=self._ai_create_character).pack(side=tk.LEFT, padx=1)
+        tk.Button(char_btn_frame, text="武器", font=('微软雅黑', 8),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=4,
+                 command=self._equip_weapon).pack(side=tk.LEFT, padx=1)
+        tk.Button(char_btn_frame, text="技能", font=('微软雅黑', 8),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=4,
+                 command=self._learn_skill).pack(side=tk.LEFT, padx=1)
+        tk.Button(char_btn_frame, text="详情", font=('微软雅黑', 8),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=4,
+                 command=self._show_char_detail).pack(side=tk.RIGHT, padx=1)
         
         # 左侧 - 大纲列表
         outline_frame = tk.Frame(left_panel, bg=C['bg_medium'], padx=10, pady=5)
@@ -4324,49 +4341,245 @@ class NovelWriterApp:
         """初始化角色系统"""
         if self.current_novel_dir:
             self.character_system = CharacterSystem(self.current_novel_dir)
-            if not self.character_system.load():
-                self.character_system.create_character("主角")
+            self.character_system.load()
             self._update_char_display()
-            
             self.format_converter = FormatConverter(self.current_novel_dir)
             self.image_manager = ImageManager(self.current_novel_dir)
     
     def _update_char_display(self):
         """更新角色面板显示"""
-        if self.character_system and self.character_system.character:
+        if not self.character_system:
+            self.char_summary.config(text="未创建角色")
+            self.char_select_combo['values'] = []
+            return
+        
+        names = self.character_system.get_character_names()
+        self.char_select_combo['values'] = names
+        
+        if self.character_system.character:
             char = self.character_system.character
+            self.char_select_var.set(char.name)
             summary = f"【{char.title}】Lv.{char.level}\n"
             summary += f"HP:{char.hp}/{char.max_hp} MP:{char.mp}/{char.max_mp}\n"
             summary += f"EXP:{char.exp}/{char.exp_to_next}\n"
-            weapon_name = char.weapon.get('name', '无') if char.weapon else '无'
-            summary += f"武器:{weapon_name} | 技能:{len(char.skills)}个"
+            w = char.weapon.get('name', '无') if char.weapon else '无'
+            summary += f"武器:{w} | 技能:{len(char.skills)}个"
             self.char_summary.config(text=summary)
         else:
+            self.char_select_var.set("无角色")
             self.char_summary.config(text="未创建角色")
     
-    def _create_character(self):
-        """创建角色"""
-        name = tk.simpledialog.askstring("创建角色", "请输入角色名称:", initialvalue="主角")
-        if name:
+    def _on_char_select(self, event=None):
+        """切换活跃角色"""
+        name = self.char_select_var.get()
+        if self.character_system and name:
+            self.character_system.set_active(name)
+            self._update_char_display()
+            self._log(f"切换到角色: {name}")
+    
+    def _create_character_dialog(self):
+        """创建角色对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("创建角色")
+        dialog.geometry("400x350")
+        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        C = UIStyle.COLORS
+        
+        fields = {}
+        for label, key, default in [("角色名称:", "name", "主角"), ("性格特点:", "personality", ""), 
+                                    ("外貌描述:", "appearance", ""), ("背景故事:", "backstory", "")]:
+            tk.Label(dialog, text=label, font=('微软雅黑', 10),
+                    bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=20, pady=(10, 2))
+            entry = tk.Entry(dialog, width=40, font=('微软雅黑', 10))
+            entry.insert(0, default)
+            entry.pack(padx=20)
+            fields[key] = entry
+        
+        def create():
+            name = fields["name"].get().strip()
+            if not name:
+                messagebox.showwarning("提示", "请输入角色名称")
+                return
             if not self.character_system:
                 self.character_system = CharacterSystem(self.current_novel_dir)
-            self.character_system.create_character(name)
+            
+            if name in self.character_system.get_character_names():
+                messagebox.showwarning("提示", "角色名已存在")
+                return
+            
+            self.character_system.create_character(
+                name=name,
+                backstory=fields["backstory"].get().strip(),
+                personality=fields["personality"].get().strip(),
+                appearance=fields["appearance"].get().strip(),
+            )
             self._update_char_display()
             self._log(f"角色「{name}」创建成功")
+            dialog.destroy()
+        
+        tk.Button(dialog, text="创建", font=('微软雅黑', 11),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=20, pady=5,
+                 command=create).pack(pady=15)
+    
+    def _ai_create_character(self):
+        """AI自动创建角色"""
+        if not self.ai_client.is_configured():
+            messagebox.showwarning("提示", "请先配置AI")
+            return
+        
+        # 获取小说上下文
+        context = ""
+        if self.memory:
+            settings = self.memory.get_settings()
+            if settings:
+                context = json.dumps(settings, ensure_ascii=False)[:300]
+        
+        def run():
+            try:
+                if not self.character_system:
+                    self.character_system = CharacterSystem(self.current_novel_dir)
+                
+                result = self.character_system.ai_create_character(self.ai_client, context)
+                
+                if result["success"]:
+                    char = result["character"]
+                    self.root.after(0, lambda: self._update_char_display())
+                    self._log(f"AI创建角色「{char.name}」成功")
+                    
+                    # 如果有武器/技能建议，显示给用户
+                    suggestions = f"角色「{char.name}」创建成功！\n\n"
+                    if result.get("weapon_suggestion"):
+                        suggestions += f"建议武器: {result['weapon_suggestion']}\n"
+                    if result.get("skill_suggestions"):
+                        suggestions += f"建议技能: {', '.join(result['skill_suggestions'])}\n"
+                    self.root.after(0, lambda: messagebox.showinfo("AI创建成功", suggestions))
+                else:
+                    self.root.after(0, lambda: messagebox.showerror("创建失败", result.get("error", "未知错误")))
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+        
+        self._log("AI正在创建角色...")
+        threading.Thread(target=run, daemon=True).start()
+    
+    def _show_char_detail(self):
+        """显示角色详情"""
+        if not self.character_system or not self.character_system.character:
+            messagebox.showinfo("提示", "请先创建角色")
+            return
+        
+        char = self.character_system.character
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"角色详情 - {char.name}")
+        dialog.geometry("500x600")
+        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        C = UIStyle.COLORS
+        
+        # 使用Notebook组织信息
+        notebook = ttk.Notebook(dialog)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # 属性页
+        attr_frame = tk.Frame(notebook, bg=C['bg_dark'])
+        notebook.add(attr_frame, text=" 属性 ")
+        
+        attr_text = tk.Text(attr_frame, wrap=tk.WORD, font=('微软雅黑', 10),
+                           bg=C['bg_card'], fg=C['text_primary'], relief=tk.FLAT, padx=15, pady=15)
+        attr_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        attr_text.insert("1.0", char.get_summary())
+        attr_text.config(state=tk.DISABLED)
+        
+        # 武器/技能页
+        equip_frame = tk.Frame(notebook, bg=C['bg_dark'])
+        notebook.add(equip_frame, text=" 装备/技能 ")
+        
+        equip_text = tk.Text(equip_frame, wrap=tk.WORD, font=('微软雅黑', 10),
+                            bg=C['bg_card'], fg=C['text_primary'], relief=tk.FLAT, padx=15, pady=15)
+        equip_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        equip_info = "═══ 装备 ═══\n"
+        equip_info += f"武器: {char.weapon.get('name', '无') if char.weapon else '无'}\n"
+        equip_info += f"防具: {char.armor.get('name', '无') if char.armor else '无'}\n"
+        equip_info += f"饰品: {char.accessory.get('name', '无') if char.accessory else '无'}\n\n"
+        equip_info += "═══ 技能 ═══\n"
+        for skill in char.skills:
+            equip_info += f"• {skill.get('name', '')} ({skill.get('type', '')}) - {skill.get('desc', '')}\n"
+        if not char.skills:
+            equip_info += "暂无技能\n"
+        
+        equip_text.insert("1.0", equip_info)
+        equip_text.config(state=tk.DISABLED)
+        
+        # 统计页
+        stats_frame = tk.Frame(notebook, bg=C['bg_dark'])
+        notebook.add(stats_frame, text=" 统计 ")
+        
+        stats_text = tk.Text(stats_frame, wrap=tk.WORD, font=('微软雅黑', 10),
+                            bg=C['bg_card'], fg=C['text_primary'], relief=tk.FLAT, padx=15, pady=15)
+        stats_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        stats_text.insert("1.0", self.character_system.get_stats_display())
+        stats_text.config(state=tk.DISABLED)
+        
+        # 操作按钮
+        btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        btn_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        tk.Button(btn_frame, text="重命名", font=('微软雅黑', 9),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=8,
+                 command=lambda: self._rename_character(dialog)).pack(side=tk.LEFT, padx=3)
+        tk.Button(btn_frame, text="删除角色", font=('微软雅黑', 9),
+                 bg=C['error'], fg='white', relief=tk.FLAT, padx=8,
+                 command=lambda: self._delete_character(dialog)).pack(side=tk.LEFT, padx=3)
+        tk.Button(btn_frame, text="休息恢复", font=('微软雅黑', 9),
+                 bg=C['success'], fg='white', relief=tk.FLAT, padx=8,
+                 command=lambda: self._rest_character()).pack(side=tk.RIGHT, padx=3)
+    
+    def _rename_character(self, dialog):
+        """重命名角色"""
+        if not self.character_system or not self.character_system.character:
+            return
+        old_name = self.character_system.character.name
+        new_name = tk.simpledialog.askstring("重命名", "输入新名称:", initialvalue=old_name)
+        if new_name and new_name != old_name:
+            if self.character_system.rename_character(old_name, new_name):
+                self._update_char_display()
+                self._log(f"角色已重命名: {old_name} → {new_name}")
+                dialog.destroy()
+            else:
+                messagebox.showwarning("提示", "名称已存在或无效")
+    
+    def _delete_character(self, dialog):
+        """删除角色"""
+        if not self.character_system or not self.character_system.character:
+            return
+        name = self.character_system.character.name
+        if messagebox.askyesno("确认", f"确定删除角色「{name}」？"):
+            self.character_system.delete_character(name)
+            self._update_char_display()
+            self._log(f"已删除角色: {name}")
+            dialog.destroy()
+    
+    def _rest_character(self):
+        """角色休息恢复"""
+        if self.character_system and self.character_system.character:
+            self.character_system.character.rest()
+            self.character_system.save_character()
+            self._update_char_display()
+            self._log(f"{self.character_system.character.name} 休息恢复，HP/MP已满")
     
     def _equip_weapon(self):
         """装备武器"""
-        if not self.character_system:
+        if not self.character_system or not self.character_system.character:
             messagebox.showinfo("提示", "请先创建角色")
             return
         
         dialog = tk.Toplevel(self.root)
         dialog.title("选择武器")
-        dialog.geometry("400x350")
+        dialog.geometry("500x450")
         dialog.configure(bg=UIStyle.COLORS['bg_dark'])
         C = UIStyle.COLORS
         
-        tk.Label(dialog, text="选择武器类型:", font=('微软雅黑', 10, 'bold'),
+        tk.Label(dialog, text="选择武器:", font=('微软雅黑', 10, 'bold'),
                 bg=C['bg_dark'], fg=C['text_primary']).pack(pady=(10, 5))
         
         cat_var = tk.StringVar()
@@ -4376,15 +4589,17 @@ class NovelWriterApp:
         cat_combo.set(cats[0] if cats else "")
         
         weapon_listbox = tk.Listbox(dialog, bg=C['bg_card'], fg=C['text_primary'],
-                                   font=('微软雅黑', 9), selectbackground=C['accent'])
+                                   font=('微软雅黑', 9), selectbackground=C['accent'], height=10)
         weapon_listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         def update_list(*args):
             weapon_listbox.delete(0, tk.END)
             weapons = self.character_system.get_weapons(cat_var.get())
             for w in weapons:
-                quality = w.get('quality', '')
-                weapon_listbox.insert(tk.END, f"[{quality}] {w.get('name', '')} - {w.get('desc', '')}")
+                q = w.get('quality', '')
+                custom = " [自定义]" if w.get('custom') else ""
+                attrs = ", ".join(f"{k}:{v}" for k, v in w.get('attributes', {}).items())
+                weapon_listbox.insert(tk.END, f"[{q}]{custom} {w.get('name', '')} - {attrs}")
         
         cat_combo.bind('<<ComboboxSelected>>', update_list)
         update_list()
@@ -4396,27 +4611,71 @@ class NovelWriterApp:
                 if sel[0] < len(weapons):
                     weapon = weapons[sel[0]]
                     self.character_system.character.equip_weapon(weapon)
-                    self.character_system.save()
+                    self.character_system.save_character()
                     self._update_char_display()
                     self._log(f"装备武器: {weapon.get('name', '')}")
                     dialog.destroy()
         
-        tk.Button(dialog, text="装备", font=('微软雅黑', 10),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, command=equip).pack(pady=10)
+        def add_custom():
+            """添加自定义武器"""
+            sub = tk.Toplevel(dialog)
+            sub.title("自定义武器")
+            sub.geometry("350x300")
+            sub.configure(bg=C['bg_dark'])
+            
+            fields = {}
+            for label, default in [("名称:", ""), ("品质:", "凡品"), ("描述:", ""), ("力量加成:", "10"), 
+                                   ("敏捷加成:", "0"), ("体质加成:", "0"), ("智力加成:", "0")]:
+                tk.Label(sub, text=label, bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=20, pady=(5,0))
+                e = tk.Entry(sub, width=30)
+                e.insert(0, default)
+                e.pack(padx=20)
+                fields[label] = e
+            
+            def save_custom():
+                name = fields["名称:"].get().strip()
+                if not name:
+                    return
+                attrs = {}
+                for attr_name, field_key in [("力量", "力量加成:"), ("敏捷", "敏捷加成:"), 
+                                              ("体质", "体质加成:"), ("智力", "智力加成:")]:
+                    try:
+                        val = int(fields[field_key].get())
+                        if val > 0:
+                            attrs[attr_name] = val
+                    except:
+                        pass
+                
+                self.character_system.add_custom_weapon(
+                    name=name, category=cat_var.get(), quality=fields["品质:"].get(),
+                    desc=fields["描述:"].get(), attributes=attrs
+                )
+                update_list()
+                self._log(f"添加自定义武器: {name}")
+                sub.destroy()
+            
+            tk.Button(sub, text="保存", bg=C['accent'], fg='white', command=save_custom).pack(pady=10)
+        
+        btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        btn_frame.pack(fill=tk.X, padx=10, pady=5)
+        tk.Button(btn_frame, text="装备", font=('微软雅黑', 10),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, command=equip).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="+ 自定义武器", font=('微软雅黑', 9),
+                 bg=C['success'], fg='white', relief=tk.FLAT, command=add_custom).pack(side=tk.RIGHT, padx=5)
     
     def _learn_skill(self):
         """学习技能"""
-        if not self.character_system:
+        if not self.character_system or not self.character_system.character:
             messagebox.showinfo("提示", "请先创建角色")
             return
         
         dialog = tk.Toplevel(self.root)
         dialog.title("学习技能")
-        dialog.geometry("400x350")
+        dialog.geometry("500x450")
         dialog.configure(bg=UIStyle.COLORS['bg_dark'])
         C = UIStyle.COLORS
         
-        tk.Label(dialog, text="选择技能类型:", font=('微软雅黑', 10, 'bold'),
+        tk.Label(dialog, text="选择技能:", font=('微软雅黑', 10, 'bold'),
                 bg=C['bg_dark'], fg=C['text_primary']).pack(pady=(10, 5))
         
         cat_var = tk.StringVar()
@@ -4426,14 +4685,15 @@ class NovelWriterApp:
         cat_combo.set(cats[0] if cats else "")
         
         skill_listbox = tk.Listbox(dialog, bg=C['bg_card'], fg=C['text_primary'],
-                                  font=('微软雅黑', 9), selectbackground=C['accent'])
+                                  font=('微软雅黑', 9), selectbackground=C['accent'], height=10)
         skill_listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         def update_list(*args):
             skill_listbox.delete(0, tk.END)
             skills = self.character_system.get_skills(cat_var.get())
             for s in skills:
-                skill_listbox.insert(tk.END, f"{s.get('name', '')} - {s.get('desc', '')} (MP:{s.get('mp_cost', 0)})")
+                custom = " [自定义]" if s.get('custom') else ""
+                skill_listbox.insert(tk.END, f"{s.get('name', '')}{custom} - {s.get('desc', '')} (MP:{s.get('mp_cost', 0)})")
         
         cat_combo.bind('<<ComboboxSelected>>', update_list)
         update_list()
@@ -4445,15 +4705,48 @@ class NovelWriterApp:
                 if sel[0] < len(skills):
                     skill = skills[sel[0]]
                     if self.character_system.character.learn_skill(skill):
-                        self.character_system.save()
+                        self.character_system.save_character()
                         self._update_char_display()
                         self._log(f"学会技能: {skill.get('name', '')}")
                     else:
-                        messagebox.showinfo("提示", "已经学会该技能了")
+                        messagebox.showinfo("提示", "已学会该技能")
                     dialog.destroy()
         
-        tk.Button(dialog, text="学习", font=('微软雅黑', 10),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, command=learn).pack(pady=10)
+        def add_custom():
+            sub = tk.Toplevel(dialog)
+            sub.title("自定义技能")
+            sub.geometry("350x250")
+            sub.configure(bg=C['bg_dark'])
+            
+            fields = {}
+            for label, default in [("名称:", ""), ("类型:", cat_var.get() or "攻击"), ("描述:", ""), ("MP消耗:", "10")]:
+                tk.Label(sub, text=label, bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=20, pady=(5,0))
+                e = tk.Entry(sub, width=30)
+                e.insert(0, default)
+                e.pack(padx=20)
+                fields[label] = e
+            
+            def save_custom():
+                name = fields["名称:"].get().strip()
+                if not name:
+                    return
+                mp = int(fields["MP消耗:"].get() or 0)
+                self.character_system.add_custom_skill(
+                    name=name, skill_type=fields["类型:"].get(),
+                    desc=fields["描述:"].get(), mp_cost=mp
+                )
+                update_list()
+                self._log(f"添加自定义技能: {name}")
+                sub.destroy()
+            
+            tk.Button(sub, text="保存", bg=C['accent'], fg='white', command=save_custom).pack(pady=10)
+        
+        btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        btn_frame.pack(fill=tk.X, padx=10, pady=5)
+        tk.Button(btn_frame, text="学习", font=('微软雅黑', 10),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, command=learn).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="+ 自定义技能", font=('微软雅黑', 9),
+                 bg=C['success'], fg='white', relief=tk.FLAT, command=add_custom).pack(side=tk.RIGHT, padx=5)
     
     def _refresh_notes(self):
         """刷新笔记列表"""

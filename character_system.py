@@ -1,5 +1,5 @@
 """
-角色成长系统 - 管理主角的等级、属性、武器、法宝、技能、数值
+角色成长系统 v2.0 - 多角色管理、自定义武器/技能、AI创建角色
 """
 
 import json
@@ -11,9 +11,8 @@ from datetime import datetime
 
 
 class CharacterProfile:
-    """角色档案 - 包含完整的成长数据"""
+    """角色档案"""
     
-    # 默认属性模板
     DEFAULT_ATTRIBUTES = {
         "力量": {"value": 10, "max": 999, "desc": "物理攻击力"},
         "敏捷": {"value": 10, "max": 999, "desc": "速度与闪避"},
@@ -24,7 +23,6 @@ class CharacterProfile:
         "幸运": {"value": 10, "max": 999, "desc": "暴击与掉落"},
     }
     
-    # 品质等级
     QUALITY_LEVELS = {
         "凡品": {"color": "#94a3b8", "multiplier": 1.0},
         "灵品": {"color": "#3b82f6", "multiplier": 1.5},
@@ -37,15 +35,12 @@ class CharacterProfile:
     def __init__(self, name: str = "无名", data: Dict = None):
         self.name = name
         self.created_at = datetime.now().isoformat()
-        
         if data:
             self._load_from_dict(data)
         else:
             self._init_default()
     
     def _init_default(self):
-        """初始化默认角色"""
-        # 基础信息
         self.title = "无名小卒"
         self.level = 1
         self.exp = 0
@@ -54,39 +49,23 @@ class CharacterProfile:
         self.max_hp = 100
         self.mp = 50
         self.max_mp = 50
-        
-        # 属性
         self.attributes = {k: v["value"] for k, v in self.DEFAULT_ATTRIBUTES.items()}
-        
-        # 武器/法宝
         self.weapon = None
         self.armor = None
         self.accessory = None
-        
-        # 技能列表
         self.skills = []
-        
-        # 背包
         self.inventory = []
-        
-        # 成就
         self.achievements = []
-        
-        # 战斗统计
+        self.backstory = ""  # 角色背景故事
+        self.personality = ""  # 性格特点
+        self.appearance = ""  # 外貌描述
         self.stats = {
-            "总战斗次数": 0,
-            "胜利次数": 0,
-            "失败次数": 0,
-            "总伤害": 0,
-            "总治疗": 0,
-            "击杀数": 0,
-            "最高等级": 1,
-            "创作字数": 0,
-            "生成章节数": 0,
+            "总战斗次数": 0, "胜利次数": 0, "失败次数": 0,
+            "总伤害": 0, "总治疗": 0, "击杀数": 0,
+            "最高等级": 1, "创作字数": 0, "生成章节数": 0,
         }
     
     def _load_from_dict(self, data: Dict):
-        """从字典加载"""
         self.name = data.get("name", "无名")
         self.title = data.get("title", "无名小卒")
         self.level = data.get("level", 1)
@@ -103,302 +82,402 @@ class CharacterProfile:
         self.skills = data.get("skills", [])
         self.inventory = data.get("inventory", [])
         self.achievements = data.get("achievements", [])
+        self.backstory = data.get("backstory", "")
+        self.personality = data.get("personality", "")
+        self.appearance = data.get("appearance", "")
         self.stats = data.get("stats", {})
         self.created_at = data.get("created_at", datetime.now().isoformat())
     
     def to_dict(self) -> Dict:
-        """转为字典"""
         return {
-            "name": self.name,
-            "title": self.title,
-            "level": self.level,
-            "exp": self.exp,
-            "exp_to_next": self.exp_to_next,
-            "hp": self.hp,
-            "max_hp": self.max_hp,
-            "mp": self.mp,
-            "max_mp": self.max_mp,
+            "name": self.name, "title": self.title, "level": self.level,
+            "exp": self.exp, "exp_to_next": self.exp_to_next,
+            "hp": self.hp, "max_hp": self.max_hp, "mp": self.mp, "max_mp": self.max_mp,
             "attributes": self.attributes,
-            "weapon": self.weapon,
-            "armor": self.armor,
-            "accessory": self.accessory,
-            "skills": self.skills,
-            "inventory": self.inventory,
-            "achievements": self.achievements,
-            "stats": self.stats,
-            "created_at": self.created_at,
+            "weapon": self.weapon, "armor": self.armor, "accessory": self.accessory,
+            "skills": self.skills, "inventory": self.inventory, "achievements": self.achievements,
+            "backstory": self.backstory, "personality": self.personality, "appearance": self.appearance,
+            "stats": self.stats, "created_at": self.created_at,
         }
     
-    # ===== 等级和经验 =====
-    
     def add_exp(self, amount: int) -> Dict:
-        """增加经验值，返回升级信息"""
         self.exp += amount
         leveled_up = False
         levels_gained = 0
-        
         while self.exp >= self.exp_to_next:
             self.exp -= self.exp_to_next
             self.level += 1
             levels_gained += 1
             leveled_up = True
-            
-            # 升级奖励
             self._on_level_up()
-        
-        return {
-            "leveled_up": leveled_up,
-            "levels_gained": levels_gained,
-            "current_level": self.level,
-            "current_exp": self.exp,
-            "exp_to_next": self.exp_to_next,
-        }
+        return {"leveled_up": leveled_up, "levels_gained": levels_gained,
+                "current_level": self.level, "current_exp": self.exp, "exp_to_next": self.exp_to_next}
     
     def _on_level_up(self):
-        """升级时的属性提升"""
-        # 经验需求增长
         self.exp_to_next = int(self.exp_to_next * 1.5)
-        
-        # 属性提升
         for attr in self.attributes:
-            gain = random.randint(1, 3)
-            self.attributes[attr] = min(self.attributes[attr] + gain, 
+            self.attributes[attr] = min(self.attributes[attr] + random.randint(1, 3),
                                        self.DEFAULT_ATTRIBUTES[attr]["max"])
-        
-        # HP/MP提升
-        hp_gain = random.randint(20, 50)
-        mp_gain = random.randint(10, 30)
-        self.max_hp += hp_gain
-        self.max_mp += mp_gain
-        self.hp = self.max_hp  # 升级回满
+        self.max_hp += random.randint(20, 50)
+        self.max_mp += random.randint(10, 30)
+        self.hp = self.max_hp
         self.mp = self.max_mp
-        
-        # 更新称号
         self._update_title()
-        
-        # 更新统计
         self.stats["最高等级"] = max(self.stats.get("最高等级", 1), self.level)
     
     def _update_title(self):
-        """根据等级更新称号"""
-        titles = {
-            1: "无名小卒", 5: "初出茅庐", 10: "小有名气",
-            20: "崭露头角", 30: "名声大噪", 50: "一方霸主",
-            70: "威震四方", 80: "天下无敌", 90: "超凡入圣",
-            100: "万古不朽",
-        }
+        titles = {1: "无名小卒", 5: "初出茅庐", 10: "小有名气", 20: "崭露头角",
+                  30: "名声大噪", 50: "一方霸主", 70: "威震四方", 80: "天下无敌",
+                  90: "超凡入圣", 100: "万古不朽"}
         for level_req in sorted(titles.keys(), reverse=True):
             if self.level >= level_req:
                 self.title = titles[level_req]
                 break
     
-    # ===== 武器/法宝系统 =====
-    
     def equip_weapon(self, weapon: Dict) -> Optional[Dict]:
-        """装备武器，返回被替换的武器"""
         old = self.weapon
         self.weapon = weapon
-        self._recalculate_stats()
         return old
     
     def equip_armor(self, armor: Dict) -> Optional[Dict]:
-        """装备防具"""
         old = self.armor
         self.armor = armor
-        self._recalculate_stats()
         return old
     
     def equip_accessory(self, accessory: Dict) -> Optional[Dict]:
-        """装备饰品"""
         old = self.accessory
         self.accessory = accessory
-        self._recalculate_stats()
         return old
     
-    def _recalculate_stats(self):
-        """重新计算装备加成后的属性"""
-        # 基础属性（不含装备）
-        base_attrs = {k: v for k, v in self.attributes.items()}
-        
-        # 应用装备加成
-        for equip in [self.weapon, self.armor, self.accessory]:
-            if equip and "attributes" in equip:
-                for attr, bonus in equip["attributes"].items():
-                    if attr in self.attributes:
-                        self.attributes[attr] = base_attrs.get(attr, 0) + bonus
-    
-    # ===== 技能系统 =====
-    
     def learn_skill(self, skill: Dict) -> bool:
-        """学习技能"""
-        # 检查是否已学会
         for s in self.skills:
             if s.get("name") == skill.get("name"):
                 return False
-        
         self.skills.append(skill)
         return True
     
     def forget_skill(self, skill_name: str) -> bool:
-        """遗忘技能"""
         for i, s in enumerate(self.skills):
             if s.get("name") == skill_name:
                 self.skills.pop(i)
                 return True
         return False
     
-    def get_skills_by_type(self, skill_type: str) -> List[Dict]:
-        """按类型获取技能"""
-        return [s for s in self.skills if s.get("type") == skill_type]
-    
-    # ===== 背包系统 =====
-    
     def add_item(self, item: Dict):
-        """添加物品到背包"""
-        # 检查是否已存在（可堆叠）
         for inv_item in self.inventory:
             if inv_item.get("name") == item.get("name") and inv_item.get("stackable", False):
                 inv_item["count"] = inv_item.get("count", 1) + item.get("count", 1)
                 return
-        
         self.inventory.append(item)
     
-    def remove_item(self, item_name: str, count: int = 1) -> bool:
-        """移除物品"""
-        for i, item in enumerate(self.inventory):
-            if item.get("name") == item_name:
-                if item.get("count", 1) > count:
-                    item["count"] = item.get("count", 1) - count
-                else:
-                    self.inventory.pop(i)
-                return True
-        return False
-    
-    # ===== 战斗系统 =====
-    
     def take_damage(self, damage: int) -> Dict:
-        """受到伤害"""
-        # 计算防御减免
         defense = self.attributes.get("体质", 0)
         actual_damage = max(1, damage - defense // 2)
-        
         self.hp = max(0, self.hp - actual_damage)
-        
-        return {
-            "damage": actual_damage,
-            "remaining_hp": self.hp,
-            "is_dead": self.hp <= 0,
-        }
+        return {"damage": actual_damage, "remaining_hp": self.hp, "is_dead": self.hp <= 0}
     
     def heal(self, amount: int) -> Dict:
-        """治疗"""
         old_hp = self.hp
         self.hp = min(self.max_hp, self.hp + amount)
-        healed = self.hp - old_hp
-        
-        return {
-            "healed": healed,
-            "current_hp": self.hp,
-        }
-    
-    def use_mp(self, amount: int) -> bool:
-        """使用法力"""
-        if self.mp >= amount:
-            self.mp -= amount
-            return True
-        return False
+        return {"healed": self.hp - old_hp, "current_hp": self.hp}
     
     def rest(self):
-        """休息恢复"""
         self.hp = self.max_hp
         self.mp = self.max_mp
     
-    # ===== 统计 =====
-    
-    def record_battle(self, won: bool, damage_dealt: int = 0, damage_taken: int = 0, kills: int = 0):
-        """记录战斗结果"""
+    def record_battle(self, won: bool, damage_dealt: int = 0, kills: int = 0):
         self.stats["总战斗次数"] = self.stats.get("总战斗次数", 0) + 1
         if won:
             self.stats["胜利次数"] = self.stats.get("胜利次数", 0) + 1
         else:
             self.stats["失败次数"] = self.stats.get("失败次数", 0) + 1
         self.stats["总伤害"] = self.stats.get("总伤害", 0) + damage_dealt
-        self.stats["总治疗"] = self.stats.get("总治疗", 0) + 0
         self.stats["击杀数"] = self.stats.get("击杀数", 0) + kills
     
     def record_creation(self, word_count: int = 0, chapters: int = 0):
-        """记录创作统计"""
         self.stats["创作字数"] = self.stats.get("创作字数", 0) + word_count
         self.stats["生成章节数"] = self.stats.get("生成章节数", 0) + chapters
-        
-        # 创作获得经验
         exp_gain = word_count // 10 + chapters * 50
         if exp_gain > 0:
             self.add_exp(exp_gain)
     
-    # ===== 成就系统 =====
-    
     def unlock_achievement(self, name: str, desc: str = ""):
-        """解锁成就"""
         for a in self.achievements:
             if a.get("name") == name:
                 return False
-        
-        self.achievements.append({
-            "name": name,
-            "desc": desc,
-            "unlocked_at": datetime.now().isoformat(),
-        })
+        self.achievements.append({"name": name, "desc": desc, "unlocked_at": datetime.now().isoformat()})
         return True
     
-    # ===== 显示 =====
-    
     def get_summary(self) -> str:
-        """获取角色摘要"""
         lines = [
             f"═══ {self.name} ═══",
-            f"称号: {self.title}",
-            f"等级: {self.level} (经验: {self.exp}/{self.exp_to_next})",
-            f"生命: {self.hp}/{self.max_hp}  法力: {self.mp}/{self.max_mp}",
-            "",
-            "─── 属性 ───",
+            f"称号: {self.title} | 等级: {self.level}",
+            f"经验: {self.exp}/{self.exp_to_next}",
+            f"生命: {self.hp}/{self.max_hp} | 法力: {self.mp}/{self.max_mp}",
         ]
-        
-        for attr, value in self.attributes.items():
-            desc = self.DEFAULT_ATTRIBUTES[attr]["desc"]
-            bar = "█" * (value // 10) + "░" * (10 - value // 10)
-            lines.append(f"{attr}: {bar} {value} ({desc})")
-        
+        if self.personality:
+            lines.append(f"性格: {self.personality}")
+        if self.backstory:
+            lines.append(f"背景: {self.backstory[:50]}...")
         lines.append("")
-        lines.append("─── 装备 ───")
-        lines.append(f"武器: {self.weapon.get('name', '无') if self.weapon else '无'}")
-        lines.append(f"防具: {self.armor.get('name', '无') if self.armor else '无'}")
-        lines.append(f"饰品: {self.accessory.get('name', '无') if self.accessory else '无'}")
-        
-        if self.skills:
-            lines.append("")
-            lines.append("─── 技能 ───")
-            for skill in self.skills:
-                lines.append(f"• {skill.get('name', '')}: {skill.get('desc', '')}")
-        
+        lines.append("─── 属性 ───")
+        for attr, value in self.attributes.items():
+            lines.append(f"  {attr}: {value}")
+        lines.append("")
+        w = self.weapon.get('name', '无') if self.weapon else '无'
+        a = self.armor.get('name', '无') if self.armor else '无'
+        lines.append(f"武器: {w} | 防具: {a}")
+        lines.append(f"技能: {len(self.skills)}个")
         return "\n".join(lines)
 
 
 class CharacterSystem:
-    """角色系统管理器"""
+    """角色系统管理器 - 支持多角色"""
     
     def __init__(self, novel_dir: Path = None):
         self.novel_dir = novel_dir
-        self.save_file = novel_dir / "character_profile.json" if novel_dir else None
-        self.character: Optional[CharacterProfile] = None
+        self.save_dir = novel_dir / "characters" if novel_dir else None
+        if self.save_dir:
+            self.save_dir.mkdir(exist_ok=True)
         
-        # 内置武器库
+        self.characters: Dict[str, CharacterProfile] = {}
+        self.active_name: Optional[str] = None
+        
+        # 内置库
         self.weapon_library = self._init_weapon_library()
-        # 内置技能库
         self.skill_library = self._init_skill_library()
+        
+        # 自定义库文件
+        self.custom_file = novel_dir / "custom_equipment.json" if novel_dir else None
+        self.custom_weapons: List[Dict] = []
+        self.custom_skills: List[Dict] = []
+        self._load_custom()
+        
+        # 加载已有角色
+        self._load_all()
+    
+    # ===== 多角色管理 =====
+    
+    def _load_all(self):
+        """加载所有角色"""
+        if not self.save_dir:
+            return
+        for f in self.save_dir.glob("*.json"):
+            try:
+                with open(f, 'r', encoding='utf-8') as fp:
+                    data = json.load(fp)
+                name = data.get("name", f.stem)
+                self.characters[name] = CharacterProfile(data=data)
+            except:
+                pass
+        
+        # 兼容旧版单文件
+        old_file = self.novel_dir / "character_profile.json" if self.novel_dir else None
+        if old_file and old_file.exists():
+            try:
+                with open(old_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                name = data.get("name", "主角")
+                if name not in self.characters:
+                    self.characters[name] = CharacterProfile(data=data)
+                    self.save_character(name)
+                old_file.unlink()  # 删除旧文件
+            except:
+                pass
+        
+        # 设置活跃角色
+        if self.characters and not self.active_name:
+            self.active_name = list(self.characters.keys())[0]
+    
+    @property
+    def character(self) -> Optional[CharacterProfile]:
+        if self.active_name and self.active_name in self.characters:
+            return self.characters[self.active_name]
+        return None
+    
+    def get_character_names(self) -> List[str]:
+        return list(self.characters.keys())
+    
+    def set_active(self, name: str) -> bool:
+        if name in self.characters:
+            self.active_name = name
+            return True
+        return False
+    
+    def create_character(self, name: str, backstory: str = "", personality: str = "", 
+                        appearance: str = "") -> CharacterProfile:
+        char = CharacterProfile(name)
+        char.backstory = backstory
+        char.personality = personality
+        char.appearance = appearance
+        self.characters[name] = char
+        self.active_name = name
+        self.save_character(name)
+        return char
+    
+    def delete_character(self, name: str) -> bool:
+        if name in self.characters:
+            del self.characters[name]
+            if self.save_dir:
+                f = self.save_dir / f"{name}.json"
+                if f.exists():
+                    f.unlink()
+            if self.active_name == name:
+                self.active_name = list(self.characters.keys())[0] if self.characters else None
+            return True
+        return False
+    
+    def rename_character(self, old_name: str, new_name: str) -> bool:
+        if old_name in self.characters and new_name not in self.characters:
+            char = self.characters.pop(old_name)
+            char.name = new_name
+            self.characters[new_name] = char
+            if self.save_dir:
+                old_file = self.save_dir / f"{old_name}.json"
+                if old_file.exists():
+                    old_file.unlink()
+            if self.active_name == old_name:
+                self.active_name = new_name
+            self.save_character(new_name)
+            return True
+        return False
+    
+    def save_character(self, name: str = None):
+        name = name or self.active_name
+        if name and name in self.characters and self.save_dir:
+            f = self.save_dir / f"{name}.json"
+            with open(f, 'w', encoding='utf-8') as fp:
+                json.dump(self.characters[name].to_dict(), fp, indent=2, ensure_ascii=False)
+    
+    def save_all(self):
+        for name in self.characters:
+            self.save_character(name)
+    
+    def load(self) -> bool:
+        """兼容旧接口"""
+        self._load_all()
+        return bool(self.characters)
+    
+    # ===== AI创建角色 =====
+    
+    def ai_create_character(self, ai_client, novel_context: str = "", 
+                           role: str = "主角") -> Dict:
+        """通过AI自动创建角色"""
+        system = """你是专业的游戏角色设计师。请根据提供的信息创建一个详细的角色档案。
+输出JSON格式：
+{
+    "name": "角色名",
+    "title": "称号",
+    "personality": "性格特点",
+    "appearance": "外貌描述",
+    "backstory": "背景故事（50-100字）",
+    "attributes": {"力量": 数值, "敏捷": 数值, "体质": 数值, "智力": 数值, "精神": 数值, "魅力": 数值, "幸运": 数值},
+    "weapon_suggestion": "建议武器名",
+    "skill_suggestions": ["技能1", "技能2"]
+}
+属性范围1-50，主角偏强(20-40)，配角偏弱(10-25)。"""
+        
+        prompt = f"角色类型: {role}\n"
+        if novel_context:
+            prompt += f"小说背景: {novel_context[:500]}\n"
+        prompt += "\n请创建一个有趣的角色。"
+        
+        try:
+            response = ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=1000)
+            
+            # 解析JSON
+            json_start = response.find("{")
+            json_end = response.rfind("}") + 1
+            if json_start >= 0 and json_end > json_start:
+                data = json.loads(response[json_start:json_end])
+                
+                # 创建角色
+                char = self.create_character(
+                    name=data.get("name", "未命名"),
+                    backstory=data.get("backstory", ""),
+                    personality=data.get("personality", ""),
+                    appearance=data.get("appearance", ""),
+                )
+                char.title = data.get("title", char.title)
+                
+                # 设置属性
+                if "attributes" in data:
+                    for attr, val in data["attributes"].items():
+                        if attr in char.attributes:
+                            char.attributes[attr] = max(1, min(999, int(val)))
+                
+                # 设置初始HP/MP
+                char.max_hp = char.attributes.get("体质", 10) * 10
+                char.hp = char.max_hp
+                char.max_mp = char.attributes.get("精神", 10) * 5
+                char.mp = char.max_mp
+                
+                self.save_character()
+                
+                return {
+                    "success": True,
+                    "character": char,
+                    "weapon_suggestion": data.get("weapon_suggestion", ""),
+                    "skill_suggestions": data.get("skill_suggestions", []),
+                }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        
+        return {"success": False, "error": "AI返回格式错误"}
+    
+    # ===== 自定义武器/技能 =====
+    
+    def _load_custom(self):
+        if self.custom_file and self.custom_file.exists():
+            try:
+                with open(self.custom_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                self.custom_weapons = data.get("weapons", [])
+                self.custom_skills = data.get("skills", [])
+            except:
+                pass
+    
+    def _save_custom(self):
+        if self.custom_file:
+            with open(self.custom_file, 'w', encoding='utf-8') as f:
+                json.dump({"weapons": self.custom_weapons, "skills": self.custom_skills}, 
+                         f, indent=2, ensure_ascii=False)
+    
+    def add_custom_weapon(self, name: str, category: str, quality: str, 
+                         desc: str, attributes: Dict) -> Dict:
+        """添加自定义武器"""
+        weapon = {"name": name, "quality": quality, "desc": desc, 
+                 "attributes": attributes, "category": category, "custom": True}
+        self.custom_weapons.append(weapon)
+        self._save_custom()
+        return weapon
+    
+    def add_custom_skill(self, name: str, skill_type: str, desc: str, 
+                        mp_cost: int = 0, **kwargs) -> Dict:
+        """添加自定义技能"""
+        skill = {"name": name, "type": skill_type, "desc": desc, 
+                "mp_cost": mp_cost, "custom": True, **kwargs}
+        self.custom_skills.append(skill)
+        self._save_custom()
+        return skill
+    
+    def delete_custom_weapon(self, index: int) -> bool:
+        if 0 <= index < len(self.custom_weapons):
+            self.custom_weapons.pop(index)
+            self._save_custom()
+            return True
+        return False
+    
+    def delete_custom_skill(self, index: int) -> bool:
+        if 0 <= index < len(self.custom_skills):
+            self.custom_skills.pop(index)
+            self._save_custom()
+            return True
+        return False
+    
+    # ===== 武器/技能库 =====
     
     def _init_weapon_library(self) -> Dict[str, List[Dict]]:
-        """初始化武器库"""
         return {
             "剑": [
                 {"name": "铁剑", "quality": "凡品", "desc": "普通铁剑", "attributes": {"力量": 5}},
@@ -411,14 +490,17 @@ class CharacterSystem:
                 {"name": "朴刀", "quality": "凡品", "desc": "朴素战刀", "attributes": {"力量": 6}},
                 {"name": "雁翎刀", "quality": "灵品", "desc": "轻灵锋利", "attributes": {"力量": 12, "敏捷": 8}},
                 {"name": "屠龙刀", "quality": "宝品", "desc": "屠龙宝刀", "attributes": {"力量": 35, "体质": 15}},
+                {"name": "天魔刀", "quality": "仙品", "desc": "魔族至宝", "attributes": {"力量": 60, "精神": -10, "幸运": 20}},
             ],
             "枪": [
                 {"name": "长枪", "quality": "凡品", "desc": "普通长枪", "attributes": {"力量": 7, "敏捷": 3}},
                 {"name": "龙胆亮银枪", "quality": "宝品", "desc": "赵云之枪", "attributes": {"力量": 25, "敏捷": 20, "幸运": 10}},
+                {"name": "霸王枪", "quality": "仙品", "desc": "西楚霸王", "attributes": {"力量": 55, "体质": 25}},
             ],
             "弓": [
                 {"name": "猎弓", "quality": "凡品", "desc": "猎人之弓", "attributes": {"敏捷": 8, "幸运": 3}},
                 {"name": "落日弓", "quality": "宝品", "desc": "射日神弓", "attributes": {"敏捷": 30, "力量": 15, "幸运": 20}},
+                {"name": "后羿弓", "quality": "神品", "desc": "射日神器", "attributes": {"敏捷": 80, "力量": 40, "幸运": 50}},
             ],
             "法杖": [
                 {"name": "木杖", "quality": "凡品", "desc": "普通法杖", "attributes": {"智力": 5}},
@@ -431,133 +513,142 @@ class CharacterSystem:
                 {"name": "玲珑塔", "quality": "仙品", "desc": "镇压万物", "attributes": {"体质": 40, "智力": 30, "精神": 25}},
                 {"name": "混沌珠", "quality": "超神", "desc": "混沌之力", "attributes": {"力量": 80, "智力": 80, "体质": 80, "精神": 80}},
             ],
+            "暗器": [
+                {"name": "飞镖", "quality": "凡品", "desc": "暗器入门", "attributes": {"敏捷": 6, "幸运": 5}},
+                {"name": "暴雨梨花针", "quality": "宝品", "desc": "暗器之王", "attributes": {"敏捷": 35, "幸运": 25}},
+            ],
+            "琴": [
+                {"name": "焦尾琴", "quality": "灵品", "desc": "音律之宝", "attributes": {"智力": 15, "魅力": 20}},
+                {"name": "伏羲琴", "quality": "神品", "desc": "上古神器", "attributes": {"智力": 60, "魅力": 50, "精神": 40}},
+            ],
         }
     
     def _init_skill_library(self) -> Dict[str, List[Dict]]:
-        """初始化技能库"""
         return {
             "攻击": [
                 {"name": "斩击", "type": "攻击", "desc": "基础斩击", "mp_cost": 0, "damage": 10},
                 {"name": "烈焰斩", "type": "攻击", "desc": "附带火焰伤害", "mp_cost": 15, "damage": 30},
                 {"name": "雷霆万钧", "type": "攻击", "desc": "雷电攻击", "mp_cost": 30, "damage": 60},
                 {"name": "天地一刀", "type": "攻击", "desc": "最强斩击", "mp_cost": 80, "damage": 200},
+                {"name": "万剑归宗", "type": "攻击", "desc": "剑气化万千", "mp_cost": 60, "damage": 150},
+                {"name": "灭世之炎", "type": "攻击", "desc": "焚尽万物", "mp_cost": 100, "damage": 300},
             ],
             "防御": [
                 {"name": "铁壁", "type": "防御", "desc": "提升防御", "mp_cost": 10, "defense_bonus": 20},
                 {"name": "金刚不坏", "type": "防御", "desc": "免疫伤害", "mp_cost": 50, "defense_bonus": 100},
+                {"name": "太极护体", "type": "防御", "desc": "以柔克刚", "mp_cost": 30, "defense_bonus": 50},
             ],
             "治疗": [
                 {"name": "治愈术", "type": "治疗", "desc": "恢复生命", "mp_cost": 20, "heal": 50},
                 {"name": "回春术", "type": "治疗", "desc": "持续恢复", "mp_cost": 40, "heal": 100},
+                {"name": "圣光洗礼", "type": "治疗", "desc": "群体治疗", "mp_cost": 80, "heal": 200},
             ],
             "辅助": [
                 {"name": "疾风步", "type": "辅助", "desc": "提升速度", "mp_cost": 15, "effect": "speed_up"},
                 {"name": "洞察", "type": "辅助", "desc": "提升暴击", "mp_cost": 10, "effect": "crit_up"},
+                {"name": "战意昂扬", "type": "辅助", "desc": "提升攻击", "mp_cost": 20, "effect": "atk_up"},
+                {"name": "灵力涌动", "type": "辅助", "desc": "恢复法力", "mp_cost": 0, "effect": "mp_regen"},
             ],
             "特殊": [
                 {"name": "时间暂停", "type": "特殊", "desc": "暂停时间", "mp_cost": 100, "effect": "time_stop"},
                 {"name": "复活", "type": "特殊", "desc": "复活一次", "mp_cost": 200, "effect": "revive"},
+                {"name": "空间跳跃", "type": "特殊", "desc": "瞬移", "mp_cost": 60, "effect": "teleport"},
+                {"name": "命运改写", "type": "特殊", "desc": "改变因果", "mp_cost": 150, "effect": "rewrite"},
+            ],
+            "禁术": [
+                {"name": "焚血术", "type": "禁术", "desc": "燃烧生命换取力量", "mp_cost": 0, "damage": 500, "self_damage": 100},
+                {"name": "同归于尽", "type": "禁术", "desc": "与敌人玉石俱焚", "mp_cost": 0, "damage": 9999, "self_damage": 9999},
             ],
         }
     
-    # ===== 存档管理 =====
-    
-    def save(self):
-        """保存角色数据"""
-        if self.character and self.save_file:
-            with open(self.save_file, 'w', encoding='utf-8') as f:
-                json.dump(self.character.to_dict(), f, indent=2, ensure_ascii=False)
-    
-    def load(self) -> bool:
-        """加载角色数据"""
-        if self.save_file and self.save_file.exists():
-            with open(self.save_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            self.character = CharacterProfile(data=data)
-            return True
-        return False
-    
-    def create_character(self, name: str) -> CharacterProfile:
-        """创建新角色"""
-        self.character = CharacterProfile(name)
-        self.save()
-        return self.character
-    
-    # ===== 武器/技能获取 =====
-    
     def get_weapon_categories(self) -> List[str]:
-        return list(self.weapon_library.keys())
+        cats = list(self.weapon_library.keys())
+        # 添加自定义武器的类别
+        for w in self.custom_weapons:
+            cat = w.get("category", "自定义")
+            if cat not in cats:
+                cats.append(cat)
+        return cats
     
     def get_weapons(self, category: str) -> List[Dict]:
-        return self.weapon_library.get(category, [])
+        weapons = self.weapon_library.get(category, [])
+        # 添加自定义武器
+        for w in self.custom_weapons:
+            if w.get("category") == category:
+                weapons.append(w)
+        return weapons
+    
+    def get_all_weapons(self) -> List[Dict]:
+        all_w = []
+        for weapons in self.weapon_library.values():
+            all_w.extend(weapons)
+        all_w.extend(self.custom_weapons)
+        return all_w
     
     def get_skill_categories(self) -> List[str]:
-        return list(self.skill_library.keys())
+        cats = list(self.skill_library.keys())
+        for s in self.custom_skills:
+            cat = s.get("type", "自定义")
+            if cat not in cats:
+                cats.append(cat)
+        return cats
     
     def get_skills(self, category: str) -> List[Dict]:
-        return self.skill_library.get(category, [])
+        skills = self.skill_library.get(category, [])
+        for s in self.custom_skills:
+            if s.get("type") == category:
+                skills.append(s)
+        return skills
+    
+    def get_all_skills(self) -> List[Dict]:
+        all_s = []
+        for skills in self.skill_library.values():
+            all_s.extend(skills)
+        all_s.extend(self.custom_skills)
+        return all_s
     
     def random_weapon(self, quality: str = None) -> Dict:
-        """随机获取武器"""
-        all_weapons = []
-        for weapons in self.weapon_library.values():
-            all_weapons.extend(weapons)
-        
+        all_w = self.get_all_weapons()
         if quality:
-            filtered = [w for w in all_weapons if w.get("quality") == quality]
-            if filtered:
-                return random.choice(filtered)
-        
-        return random.choice(all_weapons) if all_weapons else {}
+            filtered = [w for w in all_w if w.get("quality") == quality]
+            return random.choice(filtered) if filtered else random.choice(all_w) if all_w else {}
+        return random.choice(all_w) if all_w else {}
     
     def random_skill(self, category: str = None) -> Dict:
-        """随机获取技能"""
         if category:
-            skills = self.skill_library.get(category, [])
+            skills = self.get_skills(category)
             return random.choice(skills) if skills else {}
-        
-        all_skills = []
-        for skills in self.skill_library.values():
-            all_skills.extend(skills)
-        return random.choice(all_skills) if all_skills else {}
+        all_s = self.get_all_skills()
+        return random.choice(all_s) if all_s else {}
     
     # ===== 战斗模拟 =====
     
     def simulate_battle(self, enemy: Dict) -> Dict:
-        """模拟战斗"""
         if not self.character:
             return {"error": "未创建角色"}
         
         enemy_hp = enemy.get("hp", 100)
         enemy_atk = enemy.get("attack", 10)
         enemy_def = enemy.get("defense", 5)
-        
         round_count = 0
         battle_log = []
         
         while self.character.hp > 0 and enemy_hp > 0 and round_count < 20:
             round_count += 1
-            
-            # 玩家攻击
             player_atk = self.character.attributes.get("力量", 10)
             damage = max(1, player_atk - enemy_def)
-            
-            # 暴击判定
             luck = self.character.attributes.get("幸运", 10)
             crit = random.randint(1, 100) <= luck
             if crit:
                 damage *= 2
-            
             enemy_hp -= damage
-            battle_log.append(f"第{round_count}回合: {self.character.name}攻击{enemy.get('name', '敌人')}，造成{damage}伤害{'（暴击！）' if crit else ''}")
+            battle_log.append(f"第{round_count}回合: {self.character.name}造成{damage}伤害{'（暴击！）' if crit else ''}")
             
-            # 敌人攻击
             if enemy_hp > 0:
                 player_def = self.character.attributes.get("体质", 10)
                 enemy_damage = max(1, enemy_atk - player_def // 2)
                 result = self.character.take_damage(enemy_damage)
-                battle_log.append(f"  {enemy.get('name', '敌人')}反击，造成{enemy_damage}伤害")
-                
+                battle_log.append(f"  {enemy.get('name', '敌人')}反击{enemy_damage}伤害")
                 if result["is_dead"]:
                     break
         
@@ -567,51 +658,34 @@ class CharacterSystem:
         if won:
             exp_gain = enemy.get("exp_reward", 50)
             level_result = self.character.add_exp(exp_gain)
-            battle_log.append(f"胜利！获得{exp_gain}经验")
+            battle_log.append(f"胜利！+{exp_gain}经验")
             if level_result["leveled_up"]:
-                battle_log.append(f"升级！达到{level_result['current_level']}级！")
+                battle_log.append(f"★ 升级！→ Lv.{level_result['current_level']}")
         
-        self.save()
-        
-        return {
-            "won": won,
-            "rounds": round_count,
-            "remaining_hp": self.character.hp,
-            "log": battle_log,
-        }
+        self.save_character()
+        return {"won": won, "rounds": round_count, "remaining_hp": self.character.hp, "log": battle_log}
     
     # ===== 显示 =====
     
     def get_character_summary(self) -> str:
-        if self.character:
-            return self.character.get_summary()
-        return "未创建角色"
+        return self.character.get_summary() if self.character else "未创建角色"
     
     def get_stats_display(self) -> str:
-        """获取统计数据"""
         if not self.character:
             return "未创建角色"
-        
         stats = self.character.stats
+        win_rate = stats.get('胜利次数', 0) / max(stats.get('总战斗次数', 1), 1) * 100
         lines = [
-            "═══ 战斗统计 ═══",
-            f"总战斗次数: {stats.get('总战斗次数', 0)}",
-            f"胜利/失败: {stats.get('胜利次数', 0)}/{stats.get('失败次数', 0)}",
-            f"胜率: {stats.get('胜利次数', 0) / max(stats.get('总战斗次数', 1), 1) * 100:.1f}%",
-            f"总伤害: {stats.get('总伤害', 0):,}",
-            f"击杀数: {stats.get('击杀数', 0)}",
+            f"═══ {self.character.name} 战斗统计 ═══",
+            f"战斗: {stats.get('总战斗次数', 0)}次 | 胜率: {win_rate:.1f}%",
+            f"总伤害: {stats.get('总伤害', 0):,} | 击杀: {stats.get('击杀数', 0)}",
             "",
             "═══ 创作统计 ═══",
-            f"创作字数: {stats.get('创作字数', 0):,}",
-            f"生成章节数: {stats.get('生成章节数', 0)}",
-            "",
-            "═══ 成就 ═══",
+            f"字数: {stats.get('创作字数', 0):,} | 章节: {stats.get('生成章节数', 0)}",
         ]
-        
-        for a in self.character.achievements:
-            lines.append(f"🏆 {a.get('name', '')}: {a.get('desc', '')}")
-        
-        if not self.character.achievements:
-            lines.append("暂无成就")
-        
+        if self.character.achievements:
+            lines.append("")
+            lines.append("═══ 成就 ═══")
+            for a in self.character.achievements:
+                lines.append(f"🏆 {a.get('name', '')}")
         return "\n".join(lines)

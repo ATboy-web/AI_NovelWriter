@@ -5,11 +5,11 @@ __pycache__/
 *.pyo
 
 # Build outputs
-dist/
+installer/dist/
+installer/build/
 build/
 *.egg-info/
 .gradle/
-*.apk
 *.aab
 
 # IDE

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#7c3aed"/>
+  <text x="256" y="280" font-family="Arial" font-size="200" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="middle">AI</text>
+  <text x="256" y="400" font-family="Arial" font-size="60" fill="white" text-anchor="middle" dominant-baseline="middle">小说工坊</text>
+</svg>

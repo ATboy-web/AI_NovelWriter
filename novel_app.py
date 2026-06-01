@@ -3452,10 +3452,6 @@ class NovelWriterApp:
         channel_var = tk.StringVar(value="male")
         channel_frame = ttk.Frame(dialog)
         channel_frame.pack(fill=tk.X, padx=20, pady=5)
-        ttk.Radiobutton(channel_frame, text="男生频道", variable=channel_var, value="male",
-                       command=lambda: update_genre_list("male")).pack(side=tk.LEFT, padx=10)
-        ttk.Radiobutton(channel_frame, text="女生频道", variable=channel_var, value="female",
-                       command=lambda: update_genre_list("female")).pack(side=tk.LEFT, padx=10)
         
         # 男女频标签体系
         MALE_GENRES = [
@@ -3484,6 +3480,18 @@ class NovelWriterApp:
             "游戏竞技-电子竞技", "游戏竞技-全息网游", "游戏竞技-电竞爱情",
             "短篇-短篇言情", "短篇-微小说", "短篇-轻小说",
         ]
+        
+        # 先创建genre_var和genre_combo，供update_genre_list使用
+        genre_var = tk.StringVar(value=MALE_GENRES[0])
+        ttk.Label(dialog, text="小说类型:").pack(anchor=tk.W, padx=20, pady=(10,5))
+        genre_combo = ttk.Combobox(dialog, textvariable=genre_var, values=MALE_GENRES, state="readonly", width=47)
+        genre_combo.pack(padx=20, pady=5)
+        
+        # 频道选择（放在类型之后，确保genre_combo已创建）
+        ttk.Radiobutton(channel_frame, text="男生频道", variable=channel_var, value="male",
+                       command=lambda: update_genre_list("male")).pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(channel_frame, text="女生频道", variable=channel_var, value="female",
+                       command=lambda: update_genre_list("female")).pack(side=tk.LEFT, padx=10)
         
         # 标签面板
         tag_frame = ttk.LabelFrame(dialog, text="附加标签（可多选）", padding=5)

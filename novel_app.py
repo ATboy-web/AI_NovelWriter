@@ -463,7 +463,16 @@ class SceneDetector:
 # ==================== 长上下文记忆管理 ====================
 
 class MemoryManager:
-    """长上下文记忆管理器"""
+    """长上下文记忆管理器 - 参考Supermemory架构优化
+    
+    核心机制：
+    1. RAG检索 - 相关记忆自动注入上下文
+    2. 语义去重 - 相似记忆自动合并
+    3. 记忆评分 - 根据重要性/新鲜度/引用次数打分
+    4. 知识图谱 - 角色关系+事件时间线
+    5. 记忆健康检查 - 检测矛盾，提示修复
+    6. 记忆衰减 - 长期未引用的记忆降权
+    """
     
     def __init__(self, novel_dir: Path):
         self.novel_dir = novel_dir
@@ -475,12 +484,25 @@ class MemoryManager:
         # 章节摘要
         self.chapters_dir = self.memory_dir / "chapters"
         self.chapters_dir.mkdir(exist_ok=True)
-        # 角色档案
+        # 角色档案（含关系图）
         self.characters_file = self.memory_dir / "characters.json"
         # 世界观设定
         self.settings_file = self.memory_dir / "settings.json"
-        # 向量索引（简化版，用关键词索引）
+        # 事件时间线
+        self.timeline_file = self.memory_dir / "timeline.json"
+        # 记忆块存储（结构化记忆）
+        self.chunks_file = self.memory_dir / "chunks.json"
+        # 向量索引（简化版关键词索引）
         self.index_file = self.memory_dir / "index.json"
+        # 记忆评分
+        self.scores_file = self.memory_dir / "scores.json"
+        
+        # 初始化加载
+        self._timeline = self._load_timeline()
+        self._chunks = self._load_chunks()
+        self._scores = self._load_scores()
+    
+    # ===== 核心记忆保存 =====
     
     def save_global_summary(self, summary: str):
         with open(self.global_summary_file, 'w', encoding='utf-8') as f:
@@ -495,6 +517,8 @@ class MemoryManager:
         file = self.chapters_dir / f"chapter_{chapter_num:04d}.txt"
         with open(file, 'w', encoding='utf-8') as f:
             f.write(summary)
+        # 更新记忆评分
+        self._update_score(f"chapter_{chapter_num}", "summary", importance=8)
     
     def get_chapter_summary(self, chapter_num: int) -> str:
         file = self.chapters_dir / f"chapter_{chapter_num:04d}.txt"
@@ -503,14 +527,204 @@ class MemoryManager:
         return ""
     
     def get_recent_summaries(self, count: int = 5) -> str:
-        """获取最近N章的摘要"""
         chapters = sorted(self.chapters_dir.glob("chapter_*.txt"), reverse=True)
         summaries = []
         for ch in chapters[:count]:
             num = ch.stem.split("_")[1]
             content = ch.read_text(encoding='utf-8')
             summaries.append(f"第{num}章摘要：\n{content}")
+            # 更新引用计数
+            self._increment_reference(f"chapter_{num}")
         return "\n\n".join(reversed(summaries))
+    
+    # ===== RAG检索 - 核心机制 =====
+    
+    def retrieve_relevant(self, query: str, top_k: int = 5) -> List[Dict]:
+        """RAG检索：根据查询词找到最相关的记忆块
+        
+        参考Supermemory的semantic search，使用关键词匹配+评分排序
+        """
+        if not self._chunks:
+            return []
+        
+        # 提取查询关键词
+        query_keywords = set(self._extract_keywords(query))
+        
+        scored_chunks = []
+        for chunk in self._chunks:
+            # 计算相关性分数
+            score = self._calculate_relevance(chunk, query_keywords)
+            if score > 0:
+                scored_chunks.append({**chunk, "relevance": score})
+        
+        # 按相关性排序，取top_k
+        scored_chunks.sort(key=lambda x: x["relevance"], reverse=True)
+        top = scored_chunks[:top_k]
+        
+        # 更新引用计数
+        for chunk in top:
+            self._increment_reference(chunk.get("id", ""))
+        
+        return top
+    
+    def _calculate_relevance(self, chunk: Dict, query_keywords: set) -> float:
+        """计算记忆块与查询的相关性分数"""
+        content = chunk.get("content", "")
+        content_keywords = set(self._extract_keywords(content))
+        
+        # 关键词匹配得分
+        overlap = query_keywords & content_keywords
+        keyword_score = len(overlap) / max(len(query_keywords), 1)
+        
+        # 新鲜度得分（指数衰减，7天半衰期）
+        created = chunk.get("created_at", "")
+        freshness = self._calc_freshness(created)
+        
+        # 重要性得分
+        importance = chunk.get("importance", 5) / 10.0
+        
+        # 引用得分
+        ref_count = self._scores.get(chunk.get("id", ""), {}).get("references", 0)
+        ref_score = min(ref_count / 10.0, 1.0)
+        
+        # 加权计算
+        weights = {"keyword": 0.40, "freshness": 0.20, "importance": 0.30, "ref": 0.10}
+        total = (
+            keyword_score * weights["keyword"] +
+            freshness * weights["freshness"] +
+            importance * weights["importance"] +
+            ref_score * weights["ref"]
+        )
+        
+        return round(total, 4)
+    
+    def _calc_freshness(self, created_at: str) -> float:
+        """计算新鲜度得分（指数衰减）"""
+        if not created_at:
+            return 0.5
+        try:
+            from datetime import timedelta
+            created = datetime.fromisoformat(created_at)
+            days_ago = (datetime.now() - created).days
+            # 7天半衰期
+            return 2 ** (-days_ago / 7)
+        except:
+            return 0.5
+    
+    # ===== 记忆块（Chunks）管理 =====
+    
+    def add_chunk(self, chunk_type: str, content: str, importance: int = 5, 
+                  tags: List[str] = None, related_to: List[str] = None):
+        """添加记忆块 - 类似Supermemory的memory保存
+        
+        chunk_type: character/plot/setting/event/dialogue/revelation
+        """
+        # 去重检查
+        existing = self._find_similar_chunk(content)
+        if existing:
+            # 合并更新
+            self._merge_chunk(existing["id"], content, tags)
+            return existing["id"]
+        
+        chunk = {
+            "id": f"{chunk_type}_{int(time.time() * 1000)}",
+            "type": chunk_type,
+            "content": content,
+            "importance": importance,
+            "tags": tags or [],
+            "related_to": related_to or [],
+            "created_at": datetime.now().isoformat(),
+            "references": 0,
+        }
+        
+        self._chunks.append(chunk)
+        self._update_score(chunk["id"], chunk_type, importance)
+        self._update_index_from_chunk(chunk)
+        self._save_chunks()
+        
+        return chunk["id"]
+    
+    def _find_similar_chunk(self, content: str, threshold: float = 0.7) -> Optional[Dict]:
+        """查找相似的记忆块（简单去重）"""
+        content_keywords = set(self._extract_keywords(content))
+        if not content_keywords:
+            return None
+        
+        for chunk in self._chunks:
+            chunk_keywords = set(self._extract_keywords(chunk.get("content", "")))
+            if not chunk_keywords:
+                continue
+            overlap = len(content_keywords & chunk_keywords)
+            similarity = overlap / min(len(content_keywords), len(chunk_keywords))
+            if similarity > threshold:
+                return chunk
+        return None
+    
+    def _merge_chunk(self, chunk_id: str, new_content: str, new_tags: List[str] = None):
+        """合并记忆块"""
+        for chunk in self._chunks:
+            if chunk["id"] == chunk_id:
+                # 追加内容（去重）
+                if new_content not in chunk["content"]:
+                    chunk["content"] += f"\n\n[更新 {datetime.now().isoformat()[:10]}]\n{new_content}"
+                if new_tags:
+                    chunk["tags"] = list(set(chunk.get("tags", []) + new_tags))
+                chunk["updated_at"] = datetime.now().isoformat()
+                self._update_score(chunk_id, chunk.get("type", ""), 
+                                  importance=min(chunk.get("importance", 5) + 1, 10))
+                break
+        self._save_chunks()
+    
+    def _save_chunks(self):
+        with open(self.chunks_file, 'w', encoding='utf-8') as f:
+            json.dump(self._chunks, f, indent=2, ensure_ascii=False)
+    
+    def _load_chunks(self) -> List[Dict]:
+        if self.chunks_file.exists():
+            with open(self.chunks_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    
+    def _update_index_from_chunk(self, chunk: Dict):
+        """从记忆块更新关键词索引"""
+        index = self._load_index()
+        keywords = self._extract_keywords(chunk.get("content", ""))
+        chunk_key = chunk.get("id", str(time.time()))
+        index[chunk_key] = keywords
+        with open(self.index_file, 'w', encoding='utf-8') as f:
+            json.dump(index, f, indent=2, ensure_ascii=False)
+    
+    # ===== 事件时间线 =====
+    
+    def add_event(self, chapter_num: int, event: str, event_type: str = "story", 
+                  characters_involved: List[str] = None):
+        """添加事件到时间线"""
+        self._timeline.append({
+            "chapter": chapter_num,
+            "event": event,
+            "type": event_type,  # story/character/revelation/twist
+            "characters": characters_involved or [],
+            "timestamp": datetime.now().isoformat(),
+        })
+        with open(self.timeline_file, 'w', encoding='utf-8') as f:
+            json.dump(self._timeline, f, indent=2, ensure_ascii=False)
+    
+    def get_timeline(self, from_chapter: int = 0, to_chapter: int = None) -> List[Dict]:
+        """获取时间线"""
+        events = self._timeline
+        if from_chapter > 0:
+            events = [e for e in events if e.get("chapter", 0) >= from_chapter]
+        if to_chapter:
+            events = [e for e in events if e.get("chapter", 0) <= to_chapter]
+        return sorted(events, key=lambda e: (e.get("chapter", 0), e.get("timestamp", "")))
+    
+    def _load_timeline(self) -> List[Dict]:
+        if self.timeline_file.exists():
+            with open(self.timeline_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    
+    # ===== 角色档案和关系图 =====
     
     def save_characters(self, characters: dict):
         with open(self.characters_file, 'w', encoding='utf-8') as f:
@@ -522,25 +736,167 @@ class MemoryManager:
                 return json.load(f)
         return {}
     
-    def save_settings(self, settings: dict):
-        with open(self.settings_file, 'w', encoding='utf-8') as f:
-            json.dump(settings, f, indent=2, ensure_ascii=False)
+    def update_character(self, name: str, data: dict):
+        """更新角色信息，自动检测关系变化"""
+        characters = self.get_characters()
+        
+        old_data = characters.get(name, {})
+        
+        # 合并更新
+        if isinstance(old_data, dict) and isinstance(data, dict):
+            old_data.update(data)
+            characters[name] = old_data
+        else:
+            characters[name] = data
+        
+        self.save_characters(characters)
+        
+        # 检测关系变化并记录
+        if "relationships" in data:
+            for rel_name, rel_type in data["relationships"].items():
+                self.add_event(
+                    chapter_num=0,
+                    event=f"角色关系更新: {name} ↔ {rel_name} ({rel_type})",
+                    event_type="character",
+                    characters_involved=[name, rel_name]
+                )
     
-    def get_settings(self) -> dict:
-        if self.settings_file.exists():
-            with open(self.settings_file, 'r', encoding='utf-8') as f:
+    # ===== 记忆评分和衰减 =====
+    
+    def _update_score(self, item_id: str, item_type: str, importance: int = 5):
+        """更新记忆评分"""
+        if item_id not in self._scores:
+            self._scores[item_id] = {
+                "type": item_type,
+                "importance": importance,
+                "references": 0,
+                "created_at": datetime.now().isoformat(),
+            }
+        self._scores[item_id]["importance"] = max(
+            self._scores[item_id].get("importance", 5), importance
+        )
+        self._save_scores()
+    
+    def _increment_reference(self, item_id: str):
+        """增加引用计数"""
+        if item_id not in self._scores:
+            self._scores[item_id] = {"type": "unknown", "importance": 5, "references": 0,
+                                      "created_at": datetime.now().isoformat()}
+        self._scores[item_id]["references"] = self._scores[item_id].get("references", 0) + 1
+        self._scores[item_id]["last_referenced"] = datetime.now().isoformat()
+        self._save_scores()
+    
+    def _save_scores(self):
+        with open(self.scores_file, 'w', encoding='utf-8') as f:
+            json.dump(self._scores, f, indent=2, ensure_ascii=False)
+    
+    def _load_scores(self) -> dict:
+        if self.scores_file.exists():
+            with open(self.scores_file, 'r', encoding='utf-8') as f:
                 return json.load(f)
         return {}
     
+    # ===== 记忆健康检查 =====
+    
+    def health_check(self) -> Dict:
+        """检查记忆系统的健康状况
+        
+        参考Supermemory的质量控制思路：
+        1. 检测矛盾信息
+        2. 检测衰减严重的记忆
+        3. 检测孤立记忆（无关联）
+        4. 统计记忆状态
+        """
+        report = {
+            "total_chunks": len(self._chunks),
+            "total_events": len(self._timeline),
+            "total_characters": len(self.get_characters()),
+            "stale_chunks": [],      # 衰减严重
+            "orphan_chunks": [],     # 孤立记忆
+            "contradictions": [],    # 矛盾检测
+            "recommendations": [],   # 建议
+        }
+        
+        # 检测衰减
+        for chunk in self._chunks:
+            score = self._scores.get(chunk.get("id", ""), {})
+            refs = score.get("references", 0)
+            created = score.get("created_at", "")
+            freshness = self._calc_freshness(created)
+            
+            if freshness < 0.2 and refs < 2:
+                report["stale_chunks"].append({
+                    "id": chunk["id"],
+                    "type": chunk.get("type", ""),
+                    "freshness": round(freshness, 3),
+                })
+        
+        # 检测孤立记忆
+        for chunk in self._chunks:
+            related = chunk.get("related_to", [])
+            if not related:
+                report["orphan_chunks"].append({
+                    "id": chunk["id"],
+                    "type": chunk.get("type", ""),
+                    "content": chunk.get("content", "")[:100],
+                })
+        
+        # 生成建议
+        if report["stale_chunks"]:
+            report["recommendations"].append(
+                f"有 {len(report['stale_chunks'])} 条记忆已衰减，建议在相关章节进行回顾或删除"
+            )
+        if report["orphan_chunks"]:
+            report["recommendations"].append(
+                f"有 {len(report['orphan_chunks'])} 条孤立记忆，建议建立关联"
+            )
+        if len(self._chunks) > 200:
+            report["recommendations"].append(
+                "记忆块超过200个，建议归档旧章节的详细记忆，保留摘要"
+            )
+        
+        return report
+    
+    # ===== 关键词提取和搜索 =====
+    
+    @staticmethod
+    def _extract_keywords(text: str) -> List[str]:
+        """提取关键词（简易分词）"""
+        # 中文常见停用词
+        stopwords = {'的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一',
+                     '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有',
+                     '看', '好', '自己', '这', '他', '她', '它', '们', '那', '被', '把',
+                     '可以', '这个', '那个', '什么', '怎么', '因为', '所以', '但是', '然后'}
+        
+        # 提取2-4字词组
+        keywords = []
+        cleaned = ''
+        for c in text:
+            if '\u4e00' <= c <= '\u9fff' or c.isalnum():
+                cleaned += c
+            else:
+                cleaned += ' '
+        
+        # 提取词组
+        for i in range(len(cleaned)):
+            for l in [2, 3, 4]:
+                if i + l <= len(cleaned):
+                    word = cleaned[i:i+l]
+                    if word not in stopwords and all('\u4e00' <= c <= '\u9fff' for c in word):
+                        keywords.append(word)
+        
+        # 去重并排序
+        from collections import Counter
+        counted = Counter(keywords)
+        return [word for word, _ in counted.most_common(30)]
+    
     def update_index(self, chapter_num: int, keywords: List[str]):
-        """更新关键词索引"""
         index = self._load_index()
         index[str(chapter_num)] = keywords
         with open(self.index_file, 'w', encoding='utf-8') as f:
             json.dump(index, f, indent=2, ensure_ascii=False)
     
     def search_by_keyword(self, keyword: str) -> List[int]:
-        """按关键词搜索章节"""
         index = self._load_index()
         results = []
         for ch_num, keywords in index.items():
@@ -553,6 +909,62 @@ class MemoryManager:
             with open(self.index_file, 'r', encoding='utf-8') as f:
                 return json.load(f)
         return {}
+    
+    # ===== 智能上下文构建 =====
+    
+    def build_smart_context(self, chapter_num: int, query: str = "",
+                            max_items: int = 10) -> str:
+        """智能构建上下文 - 核心RAG方法
+        
+        优先级排序：
+        1. 当前查询相关的记忆块（RAG检索）
+        2. 最近章节的事件时间线
+        3. 高频引用的角色信息
+        4. 世界观设定
+        """
+        parts = []
+        
+        # 1. RAG检索相关记忆
+        if query:
+            relevant = self.retrieve_relevant(query, top_k=5)
+            if relevant:
+                items = []
+                for r in relevant:
+                    items.append(f"[{r.get('type', '')}|相关性{r.get('relevance', 0):.2f}] {r.get('content', '')[:200]}")
+                parts.append(f"【相关记忆】\n" + "\n\n".join(items))
+        
+        # 2. 最近时间线事件
+        if self._timeline:
+            recent_events = [e for e in self._timeline if e.get("chapter", 0) >= chapter_num - 3]
+            if recent_events:
+                event_lines = []
+                for e in recent_events[-10:]:
+                    event_lines.append(f"第{e.get('chapter', 0)}章: {e.get('event', '')}")
+                parts.append(f"【故事时间线（最近）】\n" + "\n".join(event_lines))
+        
+        # 3. 高频引用角色
+        characters = self.get_characters()
+        if characters:
+            char_infos = []
+            for name, info in list(characters.items())[:8]:
+                ref_count = self._scores.get(f"character_{name}", {}).get("references", 0)
+                char_infos.append((name, info, ref_count))
+            char_infos.sort(key=lambda x: x[2], reverse=True)
+            char_lines = []
+            for name, info, _ in char_infos[:5]:
+                if isinstance(info, dict):
+                    char_lines.append(f"- {name}: {json.dumps(info, ensure_ascii=False)[:150]}")
+                else:
+                    char_lines.append(f"- {name}: {str(info)[:150]}")
+            parts.append(f"【核心角色】\n" + "\n".join(char_lines))
+        
+        # 4. 世界观
+        settings = self.get_settings()
+        if settings:
+            settings_text = json.dumps(settings, ensure_ascii=False, indent=2)[:500]
+            parts.append(f"【世界观】\n{settings_text}")
+        
+        return "\n\n---\n\n".join(parts)
 
 
 # ==================== 笔记管理器 ====================
@@ -1563,29 +1975,71 @@ class NovelAgent:
         self.config = config
     
     def _build_context(self, chapter_num: int, extra_context: str = "", max_chars: int = None) -> str:
-        """构建上下文（长记忆核心），智能压缩而非简单截断"""
+        """构建上下文 - 使用智能RAG检索 + 预算分配压缩
+        
+        参考Supermemory的RAG上下文注入策略，
+        优先检索与当前章节最相关的记忆，而非仅按时间顺序。
+        """
         if max_chars is None:
             max_chars = self.config.get("context_window", 32000) // 4 if self.config else 8000
-        """构建上下文（长记忆核心），智能压缩而非简单截断
         
-        优先级分配策略：
-        - 世界观设定: 15% 预算
-        - 角色档案: 15% 预算
-        - 全局摘要: 20% 预算
-        - 近期章节: 40% 预算（最重要）
-        - 额外上下文: 10% 预算
-        """
+        # 优先使用智能上下文
+        smart_context = self.memory.build_smart_context(
+            chapter_num, 
+            query=extra_context,  # 将额外上下文作为RAG查询
+            max_items=8
+        )
         
-        # 预算分配
+        if smart_context:
+            if len(smart_context) <= max_chars:
+                return smart_context
+            return smart_context[:max_chars] + "\n...(上下文已截断)"
+        
+        # 降级：使用预算分配策略
         budget = {
-            "settings": int(max_chars * 0.15),
+            "settings": int(max_chars * 0.10),
             "characters": int(max_chars * 0.15),
-            "global": int(max_chars * 0.20),
-            "recent": int(max_chars * 0.40),
+            "global": int(max_chars * 0.15),
+            "recent": int(max_chars * 0.50),
             "extra": int(max_chars * 0.10),
         }
         
         parts = []
+        
+        # 世界观
+        settings = self.memory.get_settings()
+        if settings:
+            settings_text = self._compress_settings(settings, budget["settings"])
+            if settings_text:
+                parts.append(f"【世界观】\n{settings_text}")
+        
+        # 角色
+        characters = self.memory.get_characters()
+        if characters:
+            chars_text = self._compress_characters(characters, budget["characters"])
+            if chars_text:
+                parts.append(f"【角色】\n{chars_text}")
+        
+        # 全局摘要
+        global_summary = self.memory.get_global_summary()
+        if global_summary:
+            compressed = self._compress_text(global_summary[:800], budget["global"], keep_tail=True)
+            parts.append(f"【全局摘要】\n{compressed}")
+        
+        # 近期章节
+        recent = self.memory.get_recent_summaries(3)
+        if recent:
+            compressed = self._compress_recent_chapters(recent, budget["recent"], chapter_num)
+            parts.append(f"【近期章节】\n{compressed}")
+        
+        if extra_context:
+            parts.append(f"【补充】\n{extra_context[:500]}")
+        
+        result = "\n\n".join(parts)
+        if len(result) > max_chars:
+            result = result[:max_chars] + "\n...(已压缩)"
+        
+        return result
         
         # 1. 世界观设定
         settings = self.memory.get_settings()

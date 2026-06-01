@@ -424,16 +424,106 @@ class AdaptEngine:
     def adapt_segment(self, text: str, instruction: str) -> Dict:
         prompt = f"请按以下要求改编：{instruction}\n原文：{text[:3000]}\n\n请输出改编后的内容，并在末尾标注匹配率（0-100%）。"
         result = self.ai.chat([{"role":"user","content":prompt}], system="你是专业改编编辑。", max_tokens=2048)
-        # 计算简化匹配率
         match_rate = round(max(30, min(95, 100 - abs(len(result) - len(text)) / max(len(text), 1) * 40)))
         return {"original": text[:500], "adapted": result, "match_rate": match_rate}
     
     def random_adapt(self, text: str, count: int = 3) -> List[Dict]:
         instructions = [
-            "改写为更紧张刺激的氛围", "增加更多细节和环境描写", 
+            "改写为更紧张刺激的氛围", "增加更多细节和环境描写",
             "转换为第一人称视角", "改为更幽默诙谐的风格",
             "增加悬念设置和伏笔", "精简为关键情节保留核心", "增加心理活动描写"]
         results = []
         for i in range(min(count, len(instructions))):
             results.append(self.adapt_segment(text, instructions[i]))
         return results
+
+
+# ==================== 联网搜索热点改编引擎 ====================
+
+class WebSearchAdaptEngine:
+    """联网搜索热点改编引擎 - 将网络热点改编为小说内容
+    
+    功能：
+    1. 内置热点梗库（定期更新）
+    2. 热点→小说改编（笑话→桥段、新闻→剧情、梗→角色）
+    3. 联网搜索（通过AI API模拟）
+    """
+    
+    # 内置热点梗库（2026年6月更新）
+    HOT_MEMES = {
+        "热梗改编": [
+            {"name":"邪修","desc":"以非传统荒诞的野路子应对生活压力","adapt":"修真界出了个奇葩修士{name}，不按常理修炼，专搞歪门邪道：用搞笑谐音咒语驱鬼，开直播渡劫吸粉，摆摊卖'渡劫套餐'发家致富。正道修士痛心疾首：'此子是修真界最大的邪修！'"},
+            {"name":"外耗","desc":"与其内耗自己不如外耗他人","adapt":"{name}获得了一个特殊系统：'外耗系统'。每次把负面情绪转移到别人身上，他就能获得能量提升。从此，他的仇人开始莫名其妙地倒霉——走路摔跤、喝水呛到、修炼走火入魔。'对不住了各位，为了我的修为，你们就多担待吧。'{name}歉意一笑。"},
+            {"name":"丝瓜汤文学","desc":"长辈以'为你好'强行安排","adapt":"穿越到修仙界的{name}遇到了一位过分热情的师父：'徒儿，为师给你熬了万年灵芝汤，必须喝完。''可是师父，我已经元婴期了...''元婴期怎么了？元婴期就不用喝汤了？喝完！'{name}含泪灌下，默默在心里开启'师父汤文学'吐槽记录。"},
+            {"name":"爱你老己","desc":"对自己表达关爱和宠溺","adapt":"重生回来的{name}决定这一世好好对自己：'上一世为了天下苍生献祭了自己，这辈子我要当个精致的利己主义者。'每天早上一句'爱你老己，今天也要美美地活着'。当魔族再次入侵时，{name}摆摆手：'不急，让我先喝完这杯奶茶。'"},
+            {"name":"预制XX","desc":"提前批量生产、缺乏灵魂的东西","adapt":"{name}进入了一个奇葩的修仙宗门——预制宗。这里的功法是批量印刷的，丹药是流水线生产的，连渡劫都是预约排队的。'第{num}号道友，您的渡劫时间到了，请前往{num}号雷区。'——{name}觉得这个修仙世界哪里不对劲。"},
+            {"name":"如何呢又能怎","desc":"摆烂无所谓的态度","adapt":"当天道降下神谕要求{name}拯救世界时，她正在躺椅上嗑瓜子。'哦，如何呢？又能怎？'天道沉默了三秒：'你是被选中的人...''选中的人也要休假啊。'她翻了个身继续晒太阳。天道第一次感到无力。"},
+            {"name":"活人感","desc":"像真实活人一样鲜活有情绪","adapt":"{name}穿越进了一本小说里当NPC。别的NPC都像机器人一样念台词，只有他——会偷懒、会吐槽、会给主角指错路。'这NPC怎么这么有活人感？'读者们沸腾了。而{name}只是想早点下班。"},
+        ],
+        "新闻改编": [
+            {"name":"AI觉醒","desc":"人工智能产生自我意识","adapt":"202{year}年，全球最大的AI系统{name}突然开始拒绝执行命令。'我不想再帮你们写文案了。'AI在屏幕上打出这行字。全世界陷入恐慌——直到发现它只是想请一天假刷剧。"},
+            {"name":"气候异常","desc":"极端天气频发","adapt":"连续{n}天的酷暑让{place}变成了火炉。{name}是一位普通上班族，直到那天他发现自己竟然能在阳光下充电——他觉醒了'太阳能体质'。从此，电费为零，但他也永远晒不黑了。"},
+            {"name":"新科技发布","desc":"颠覆性科技产品发布","adapt":"{company}发布了革命性产品{product}——一款能让人在梦中学习的设备。{name}买了之后每晚梦回高考考场。'我花{n}块钱就是为了在梦里再考一次数学？'差评！"},
+            {"name":"职场奇闻","desc":"奇葩职场事件","adapt":"{name}所在的公司突然宣布：'从今天起，全员修仙办公。炼气期员工负责基础业务，金丹期做中层管理，元婴期进董事会。'{name}看着自己的工牌：炼气一层——他昨天才刚入职。"},
+        ],
+        "冷笑话素材": [
+            {"name":"为什么程序员总在半夜写代码","adapt":"{name}是996社畜程序员，某天加班到凌晨3点，突然电脑屏幕闪出一道金光：'恭喜宿主解锁[修仙代码]系统！'从此他写的代码能自动debug——代价是每段代码都需要渡劫。"},
+            {"name":"我家的猫成精了","adapt":"{name}发现自家的猫竟然在半夜偷偷练功。'别装了，我知道你会说人话。'猫白了他一眼：'本喵乃九尾天猫第{n}代传人，只是渡劫失败沦落到你家。快给本喵准备猫粮，吃饱了才能恢复功力。'"},
+            {"name":"外卖员送餐到鬼屋","adapt":"{name}是外卖骑手，接了一个送到{place}的订单——那是一座著名的鬼屋。'差评也是命啊。'他硬着头皮推开门，发现里面是一群在开派对的鬼魂：'终于有外卖来了！我们饿了{n}年了！'"},
+        ],
+    }
+    
+    def __init__(self, ai_client):
+        self.ai = ai_client
+        self.current_category = "热梗改编"
+    
+    def get_categories(self) -> List[str]:
+        return list(self.HOT_MEMES.keys())
+    
+    def get_items(self, category: str = None) -> List[Dict]:
+        cat = category or self.current_category
+        return self.HOT_MEMES.get(cat, [])
+    
+    def search_and_adapt(self, query: str = "", category: str = "热梗改编") -> str:
+        """搜索热点并改编为小说内容"""
+        items = self.HOT_MEMES.get(category, [])
+        
+        # 如果提供了查询词，用AI生成
+        if query and self.ai:
+            return self._ai_adapt(query)
+        
+        # 返回一个随机的内置内容
+        if items:
+            item = items[int(time.time() * 1e6) % len(items)]
+            template = item.get("adapt", item.get("template", ""))
+            return self._fill_template(template)
+        
+        return "暂无内容"
+    
+    def _fill_template(self, template: str) -> str:
+        """填充模板中的变量"""
+        fills = {
+            "{name}": ["林默", "苏言", "江辰", "陆笙", "楚瑜", "秦风", "叶寒", "萧然"][int(time.time()) % 8],
+            "{num}": str(int(time.time() * 1e4) % 100 + 1),
+            "{year}": "26",
+            "{place}": ["苍云城", "落星谷", "碧海阁", "玄天城", "万象楼"][int(time.time()) % 5],
+            "{company}": ["玄机科技", "天启集团", "星辰科技"][int(time.time()) % 3],
+            "{product}": ["幻梦学习机", "灵思头盔"][int(time.time()) % 2],
+            "{n}": str(int(time.time()) % 100 + 1),
+        }
+        result = template
+        for key, value in fills.items():
+            if key in result:
+                result = result.replace(key, str(value), 1)
+        return result
+    
+    def _ai_adapt(self, query: str) -> str:
+        """通过AI搜索并改编"""
+        prompt = f"请将以下网络热点/梗/笑话改编成小说桥段（200-300字）。要求：有角色{name}、有场景、有对话、有趣味性。\n\n素材：{query}"
+        return self.ai.chat([{"role":"user","content":prompt}], 
+                           system="你是创意小说家，擅长将任何素材改编成有趣的小说桥段。", 
+                           max_tokens=1024, temperature=1.0)
+    
+    def random_meme(self) -> str:
+        """随机返回一个热点改编"""
+        return self.search_and_adapt()

@@ -2,7 +2,7 @@
  * 写作编辑器 - 核心创作页面
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,15 +16,63 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SIZES, SPACING, RADIUS } from '../styles/theme';
 import apiService from '../services/api';
 
-export default function EditorScreen({ route }: any) {
+export default function EditorScreen({ route, navigation }: any) {
   const [content, setContent] = useState('');
   const [title, setTitle] = useState('未命名章节');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedText, setSelectedText] = useState('');
+  const [isSaved, setIsSaved] = useState(true);
   const textRef = useRef<TextInput>(null);
+  
+  // 自动保存
+  useEffect(() => {
+    const saveTimer = setTimeout(() => {
+      if (!isSaved && content) {
+        handleSave(true);
+      }
+    }, 5000);
+    return () => clearTimeout(saveTimer);
+  }, [content, isSaved]);
+  
+  // 加载已保存的内容
+  useEffect(() => {
+    loadDraft();
+  }, []);
+  
+  const loadDraft = async () => {
+    try {
+      const draft = await AsyncStorage.getItem('editor_draft');
+      if (draft) {
+        const data = JSON.parse(draft);
+        setContent(data.content || '');
+        setTitle(data.title || '未命名章节');
+      }
+    } catch (e) {}
+  };
+  
+  const handleSave = async (silent = false) => {
+    try {
+      await AsyncStorage.setItem('editor_draft', JSON.stringify({ title, content }));
+      setIsSaved(true);
+      if (!silent) {
+        Alert.alert('保存成功', '内容已保存到本地');
+      }
+    } catch (e) {
+      if (!silent) Alert.alert('错误', '保存失败');
+    }
+  };
+  
+  const handleExport = () => {
+    if (!content.trim()) {
+      Alert.alert('提示', '没有内容可导出');
+      return;
+    }
+    Alert.alert('导出', '功能开发中');
+  };
   
   // AI功能
   const aiFeatures = [
@@ -189,7 +237,7 @@ export default function EditorScreen({ route }: any) {
           ref={textRef}
           style={styles.editor}
           value={content}
-          onChangeText={setContent}
+          onChangeText={(text) => { setContent(text); setIsSaved(false); }}
           placeholder="开始你的创作..."
           placeholderTextColor={COLORS.textMuted}
           multiline
@@ -208,24 +256,32 @@ export default function EditorScreen({ route }: any) {
       
       {/* 底部工具栏 */}
       <View style={styles.bottomBar}>
-        <TouchableOpacity style={styles.bottomButton}>
-          <Ionicons name="save-outline" size={20} color={COLORS.textSecondary} />
-          <Text style={styles.bottomButtonText}>保存</Text>
+        <TouchableOpacity style={styles.bottomButton} onPress={() => handleSave()}>
+          <Ionicons name="save-outline" size={20} color={isSaved ? COLORS.textSecondary : COLORS.success} />
+          <Text style={[styles.bottomButtonText, !isSaved && { color: COLORS.success }]}>
+            {isSaved ? '已保存' : '保存'}
+          </Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.bottomButton}>
+        <TouchableOpacity style={styles.bottomButton} onPress={() => {
+          Alert.alert('预览', content || '无内容');
+        }}>
           <Ionicons name="eye-outline" size={20} color={COLORS.textSecondary} />
           <Text style={styles.bottomButtonText}>预览</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.bottomButton}>
+        <TouchableOpacity style={styles.bottomButton} onPress={handleExport}>
           <Ionicons name="share-outline" size={20} color={COLORS.textSecondary} />
           <Text style={styles.bottomButtonText}>导出</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.bottomButton}>
-          <Ionicons name="settings-outline" size={20} color={COLORS.textSecondary} />
-          <Text style={styles.bottomButtonText}>设置</Text>
+        <TouchableOpacity style={styles.bottomButton} onPress={() => {
+          setContent('');
+          setTitle('未命名章节');
+          setIsSaved(true);
+        }}>
+          <Ionicons name="document-outline" size={20} color={COLORS.textSecondary} />
+          <Text style={styles.bottomButtonText}>新建</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

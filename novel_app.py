@@ -1966,391 +1966,206 @@ class FullscreenWriter:
 # ==================== 小说智能体 ====================
 
 class NovelAgent:
-    """小说创作智能体"""
+    """小说创作智能体 - 参考AutoGen多智能体协作架构
+    
+    智能体角色：
+    - Writer (作家): 负责创作小说内容
+    - Reviewer (审校): 负责检查质量和一致性
+    - Editor (编辑/质量门): 负责最终裁定是否通过
+    
+    协作流程（参考AutoGen的GroupChat模式）：
+    1. Writer生成内容 → 2. Reviewer审校 → 3. Editor判定
+       → 不过关 → Writer修订 → Reviewer再审校 → ...
+       → 过关 → 保存定稿
+    
+    关键机制：
+    - 迭代修订循环：质量不达标自动触发修订
+    - 质量门控：设定最低通过分数线
+    - 反思记忆：记录每次修订的原因，供后续参考
+    """
+    
+    # 质量阈值
+    QUALITY_THRESHOLD = 75  # 评分低于此值自动触发修订
+    MAX_REVISION_ROUNDS = 3  # 最多修订轮次
     
     def __init__(self, ai_client: AIClient, memory: MemoryManager, log_callback=None, config: AppConfig = None):
         self.ai = ai_client
         self.memory = memory
         self.log = log_callback or print
         self.config = config
+        
+        # 智能体会话历史（参考AutoGen的对话记录）
+        self._conversation_log: List[Dict] = []
+        
+        # 修订记忆（记录每次修订的原因）
+        self._revision_memory: List[Dict] = []
+    
+    def _record_conversation(self, agent: str, action: str, content: str):
+        """记录智能体对话（参考AutoGen的消息历史）"""
+        self._conversation_log.append({
+            "agent": agent,
+            "action": action,
+            "content": content[:200],  # 只记录摘要
+            "timestamp": datetime.now().isoformat(),
+        })
     
     def _build_context(self, chapter_num: int, extra_context: str = "", max_chars: int = None) -> str:
-        """构建上下文 - 使用智能RAG检索 + 预算分配压缩
-        
-        参考Supermemory的RAG上下文注入策略，
-        优先检索与当前章节最相关的记忆，而非仅按时间顺序。
-        """
+        """构建上下文 - 使用智能RAG检索 + 预算分配压缩"""
         if max_chars is None:
             max_chars = self.config.get("context_window", 32000) // 4 if self.config else 8000
         
         # 优先使用智能上下文
         smart_context = self.memory.build_smart_context(
-            chapter_num, 
-            query=extra_context,  # 将额外上下文作为RAG查询
-            max_items=8
+            chapter_num, query=extra_context, max_items=8
         )
         
-        if smart_context:
-            if len(smart_context) <= max_chars:
-                return smart_context
-            return smart_context[:max_chars] + "\n...(上下文已截断)"
+        if smart_context and len(smart_context) <= max_chars:
+            return smart_context
         
-        # 降级：使用预算分配策略
-        budget = {
-            "settings": int(max_chars * 0.10),
-            "characters": int(max_chars * 0.15),
-            "global": int(max_chars * 0.15),
-            "recent": int(max_chars * 0.50),
-            "extra": int(max_chars * 0.10),
-        }
-        
+        # 降级到预算分配
+        budget = {"settings": int(max_chars * 0.10), "characters": int(max_chars * 0.15),
+                  "global": int(max_chars * 0.15), "recent": int(max_chars * 0.50),
+                  "extra": int(max_chars * 0.10)}
         parts = []
         
-        # 世界观
         settings = self.memory.get_settings()
         if settings:
-            settings_text = self._compress_settings(settings, budget["settings"])
-            if settings_text:
-                parts.append(f"【世界观】\n{settings_text}")
+            text = self._compress_settings(settings, budget["settings"])
+            if text: parts.append(f"【世界观】\n{text}")
         
-        # 角色
-        characters = self.memory.get_characters()
-        if characters:
-            chars_text = self._compress_characters(characters, budget["characters"])
-            if chars_text:
-                parts.append(f"【角色】\n{chars_text}")
+        chars = self.memory.get_characters()
+        if chars:
+            text = self._compress_characters(chars, budget["characters"])
+            if text: parts.append(f"【角色】\n{text}")
         
-        # 全局摘要
-        global_summary = self.memory.get_global_summary()
-        if global_summary:
-            compressed = self._compress_text(global_summary[:800], budget["global"], keep_tail=True)
-            parts.append(f"【全局摘要】\n{compressed}")
+        gs = self.memory.get_global_summary()
+        if gs:
+            parts.append(f"【全局摘要】\n{self._compress_text(gs[:800], budget['global'], True)}")
         
-        # 近期章节
         recent = self.memory.get_recent_summaries(3)
         if recent:
-            compressed = self._compress_recent_chapters(recent, budget["recent"], chapter_num)
-            parts.append(f"【近期章节】\n{compressed}")
+            parts.append(f"【近期章节】\n{self._compress_recent_chapters(recent, budget['recent'], chapter_num)}")
         
         if extra_context:
             parts.append(f"【补充】\n{extra_context[:500]}")
         
         result = "\n\n".join(parts)
-        if len(result) > max_chars:
-            result = result[:max_chars] + "\n...(已压缩)"
-        
-        return result
-        
-        # 1. 世界观设定
-        settings = self.memory.get_settings()
-        if settings:
-            settings_text = self._compress_settings(settings, budget["settings"])
-            if settings_text:
-                parts.append(f"【世界观设定】\n{settings_text}")
-        
-        # 2. 角色档案
-        characters = self.memory.get_characters()
-        if characters:
-            chars_text = self._compress_characters(characters, budget["characters"])
-            if chars_text:
-                parts.append(f"【角色档案】\n{chars_text}")
-        
-        # 3. 全局摘要
-        global_summary = self.memory.get_global_summary()
-        if global_summary:
-            compressed = self._compress_text(global_summary, budget["global"], keep_tail=True)
-            parts.append(f"【故事全局摘要】\n{compressed}")
-        
-        # 4. 近期章节摘要（最重要，分配最多预算）
-        recent = self.memory.get_recent_summaries(5)
-        if recent:
-            compressed = self._compress_recent_chapters(recent, budget["recent"], chapter_num)
-            parts.append(f"【近期章节】\n{compressed}")
-        
-        # 5. 额外上下文
-        if extra_context:
-            compressed = self._compress_text(extra_context, budget["extra"], keep_tail=False)
-            parts.append(f"【补充信息】\n{compressed}")
-        
-        result = "\n\n".join(parts)
-        
-        # 如果仍然超长，按优先级从低到高裁剪
-        if len(result) > max_chars:
-            result = self._emergency_compress(parts, max_chars)
-        
-        return result
+        return result[:max_chars] + "\n...(已压缩)" if len(result) > max_chars else result
+    
+    # ===== 压缩方法 =====
     
     def _compress_settings(self, settings: dict, budget: int) -> str:
-        """压缩世界观设定：保留核心字段，省略细节"""
-        # 核心字段优先级
         priority_keys = ["world", "rules", "factions", "technology", "history", "geography", "culture"]
-        
-        result_parts = []
+        result = []
         used = 0
-        
         for key in priority_keys:
             if key in settings and used < budget:
-                value = settings[key]
-                if isinstance(value, str):
-                    remaining = budget - used
-                    if len(value) > remaining:
-                        value = value[:remaining] + "..."
-                    result_parts.append(f"{key}: {value}")
-                    used += len(value) + len(key) + 2
-                elif isinstance(value, list):
-                    items = ", ".join(str(v) for v in value[:5])
-                    remaining = budget - used
-                    if len(items) > remaining:
-                        items = items[:remaining] + "..."
-                    result_parts.append(f"{key}: {items}")
-                    used += len(items) + len(key) + 2
-        
-        # 如果还有未处理的键（非优先级）
-        for key, value in settings.items():
-            if key not in priority_keys and used < budget:
-                if isinstance(value, str) and len(value) < 50:
-                    result_parts.append(f"{key}: {value}")
-                    used += len(value) + len(key) + 2
-        
-        return "\n".join(result_parts)
+                val = str(settings[key])[:budget - used - len(key) - 3]
+                result.append(f"{key}: {val}")
+                used += len(val) + len(key) + 2
+        return "\n".join(result)
     
-    def _compress_characters(self, characters: dict, budget: int) -> str:
-        """压缩角色档案：保留核心信息，按重要性排序"""
-        # 核心字段
-        core_fields = ["name", "personality", "motivation", "background"]
-        
-        result_parts = []
+    def _compress_characters(self, chars: dict, budget: int) -> str:
+        core = ["name", "personality", "motivation"]
+        result = []
         used = 0
-        
-        for name, info in list(characters.items())[:10]:
-            if used >= budget:
-                break
-            
+        for name, info in list(chars.items())[:8]:
+            if used >= budget: break
             if isinstance(info, dict):
-                # 提取核心字段
-                core_info = []
-                for field in core_fields:
-                    if field in info:
-                        val = info[field]
-                        if isinstance(val, list):
-                            val = ", ".join(str(v) for v in val[:3])
-                        elif isinstance(val, str) and len(val) > 80:
-                            val = val[:80] + "..."
-                        core_info.append(f"{field}:{val}")
-                
-                line = f"- {name}: {'; '.join(core_info)}"
-                remaining = budget - used
-                if len(line) > remaining:
-                    line = line[:remaining] + "..."
-                
-                result_parts.append(line)
-                used += len(line) + 1
+                extra = "; ".join(f"{f}:{str(info.get(f,''))[:50]}" for f in core if f in info)
+                line = f"- {name}: {extra}"[:budget - used]
             else:
-                line = f"- {name}: {str(info)[:100]}"
-                result_parts.append(line)
-                used += len(line) + 1
-        
-        return "\n".join(result_parts)
-    
-    def _compress_recent_chapters(self, recent_text: str, budget: int, current_chapter: int) -> str:
-        """压缩近期章节：最近的章节保留更多细节，较早的只保留关键信息"""
-        # 按章节分割
-        chapters = recent_text.split("\n\n")
-        
-        if len(chapters) <= 1:
-            return self._compress_text(recent_text, budget, keep_tail=True)
-        
-        # 按章节号排序（最新的在后）
-        result_parts = []
-        used = 0
-        
-        # 最近1章保留完整（如果预算允许）
-        latest = chapters[-1] if chapters else ""
-        latest_budget = min(int(budget * 0.4), len(latest))
-        
-        if latest:
-            result_parts.append(latest[:latest_budget])
-            used += latest_budget
-        
-        # 其余章节压缩
-        for ch in reversed(chapters[:-1]):
-            if used >= budget:
-                break
-            
-            remaining = budget - used
-            # 每章最多分配剩余预算的30%
-            ch_budget = min(int(remaining * 0.3), len(ch))
-            
-            if ch_budget > 50:  # 至少保留50字符才有意义
-                compressed = self._compress_text(ch, ch_budget, keep_tail=True)
-                result_parts.insert(0, compressed)
-                used += len(compressed)
-        
-        return "\n\n".join(result_parts)
+                line = f"- {name}: {str(info)[:100]}"[:budget - used]
+            result.append(line)
+            used += len(line) + 1
+        return "\n".join(result)
     
     def _compress_text(self, text: str, budget: int, keep_tail: bool = True) -> str:
-        """通用文本压缩：保留开头和结尾，压缩中间
-        
-        Args:
-            text: 原始文本
-            budget: 目标字符数
-            keep_tail: True=保留结尾（适合摘要），False=保留开头（适合设定）
-        """
-        if len(text) <= budget:
-            return text
-        
-        if budget < 50:
-            return text[:budget] + "..."
-        
+        if len(text) <= budget: return text
+        if budget < 50: return text[:budget] + "..."
         if keep_tail:
-            # 保留开头30% + 结尾60%
-            head_size = int(budget * 0.3)
-            tail_size = budget - head_size - 5  # 5 for "...\n\n"
-            return text[:head_size] + "...\n\n" + text[-tail_size:]
+            head = int(budget * 0.3)
+            return text[:head] + "...\n\n" + text[-(budget - head - 5):]
         else:
-            # 保留开头70% + 结尾20%
-            head_size = int(budget * 0.7)
-            tail_size = budget - head_size - 5
-            return text[:head_size] + "...\n\n" + text[-tail_size:]
+            head = int(budget * 0.7)
+            return text[:head] + "...\n\n" + text[-(budget - head - 5):]
     
-    def _emergency_compress(self, parts: List[str], max_chars: int) -> str:
-        """紧急压缩：按优先级裁剪各部分"""
-        # 优先级：近期章节 > 全局摘要 > 角色 > 设定 > 额外
-        priority_order = [3, 2, 1, 0, 4]  # parts的索引
+    def _compress_recent_chapters(self, recent_text: str, budget: int, chapter_num: int) -> str:
+        chapters = recent_text.split("\n\n")
+        if len(chapters) <= 1: return self._compress_text(recent_text, budget, True)
+        result = []
+        used = 0
+        latest = chapters[-1] if chapters else ""
+        lb = min(int(budget * 0.4), len(latest))
+        if latest: result.append(latest[:lb]); used += lb
+        for ch in reversed(chapters[:-1]):
+            if used >= budget: break
+            cb = min(int((budget - used) * 0.3), len(ch))
+            if cb > 50: result.insert(0, self._compress_text(ch, cb, True)); used += cb
+        return "\n\n".join(result)
+    
+    # ===== 多智能体协作核心 =====
+    
+    def generate_with_collaboration(self, chapter_num: int, chapter_title: str,
+                                     chapter_outline: str, word_count: int = 3000) -> str:
+        """多智能体协作生成章节 - 核心编排方法
         
-        # 计算当前总长度
-        total = sum(len(p) for p in parts) + (len(parts) - 1) * 2  # \n\n分隔
+        参考AutoGen的GroupChat：Writer→Reviewer→Editor 循环
+        """
+        self._conversation_log = []
+        self.log(f"[编排器] 启动多智能体协作：第{chapter_num}章「{chapter_title}」")
         
-        # 按优先级从低到高裁剪
-        for idx in priority_order:
-            if total <= max_chars:
+        # 第1轮：Writer生成初稿
+        self.log(f"[Writer] 正在创作第{chapter_num}章初稿...")
+        self._record_conversation("Writer", "generate", f"开始创作第{chapter_num}章")
+        content = self._writer_generate(chapter_num, chapter_title, chapter_outline, word_count)
+        
+        # 迭代修订循环（参考AutoGen的反馈环）
+        for round_num in range(1, self.MAX_REVISION_ROUNDS + 1):
+            # Reviewer审校
+            self.log(f"[Reviewer] 正在审校第{chapter_num}章（第{round_num}轮）...")
+            self._record_conversation("Reviewer", "review", f"第{round_num}轮审校")
+            review = self._reviewer_evaluate(chapter_num, content)
+            
+            # Editor裁定（质量门）
+            self.log(f"[Editor] 质量裁定：{review.get('overall_score', 0)}分")
+            self._record_conversation("Editor", "judge", 
+                f"评分{review.get('overall_score', 0)}，阈值{self.QUALITY_THRESHOLD}")
+            
+            if review.get("overall_score", 0) >= self.QUALITY_THRESHOLD:
+                self.log(f"[Editor] ✅ 通过！质量达标。")
+                self._record_conversation("Editor", "approve", "质量达标，通过")
                 break
-            if idx < len(parts) and len(parts[idx]) > 100:
-                excess = total - max_chars
-                cut_size = min(excess + 50, len(parts[idx]) - 100)
-                parts[idx] = parts[idx][:len(parts[idx]) - cut_size] + "\n...(已压缩)"
-                total = sum(len(p) for p in parts) + (len(parts) - 1) * 2
+            
+            # 不达标，修订
+            suggestions = review.get("suggestions", [])
+            issues = review.get("issues", [])
+            self.log(f"[Editor] ⚠️ 质量不达标（{review.get('overall_score', 0)}/{self.QUALITY_THRESHOLD}），"
+                    f"触发第{round_num}轮修订...")
+            
+            # 记录修订记忆
+            self._revision_memory.append({
+                "chapter": chapter_num,
+                "round": round_num,
+                "issues": issues,
+                "suggestions": suggestions,
+            })
+            
+            # Writer修订
+            self.log(f"[Writer] 正在根据审校意见修订...")
+            self._record_conversation("Writer", "revise", f"第{round_num}轮修订")
+            content = self._writer_revise(chapter_num, content, review, chapter_outline)
         
-        return "\n\n".join(parts)
+        self.log(f"[编排器] 第{chapter_num}章协作完成")
+        return content
     
-    def generate_settings(self, genre: str, title: str, concept: str) -> dict:
-        """生成世界观设定"""
-        self.log(f"[智能体] 正在为《{title}》生成世界观设定...")
-        
-        system = """你是一位专业的小说世界观设定师。请根据用户提供的小说类型、标题和概念，生成详细的世界观设定。
-
-请以JSON格式输出，包含以下字段：
-- world: 世界背景描述
-- rules: 世界规则/法则
-- factions: 主要势力/阵营
-- history: 重要历史事件
-- technology: 科技/魔法水平
-- geography: 地理环境
-- culture: 文化特点"""
-        
-        prompt = f"小说类型：{genre}\n小说标题：{title}\n核心概念：{concept}\n\n请生成详细的世界观设定。"
-        
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
-        
-        # 尝试解析JSON
-        try:
-            # 提取JSON部分
-            json_start = response.find("{")
-            json_end = response.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                settings = json.loads(response[json_start:json_end])
-            else:
-                settings = {"raw": response}
-        except:
-            settings = {"raw": response}
-        
-        self.memory.save_settings(settings)
-        self.log(f"[智能体] 世界观设定生成完成")
-        return settings
-    
-    def generate_characters(self, genre: str, title: str, count: int = 5) -> dict:
-        """生成角色档案"""
-        self.log(f"[智能体] 正在生成{count}个角色...")
-        
-        settings = self.memory.get_settings()
-        system = f"""你是一位专业的小说角色设计师。请根据以下世界观设定创建角色。
-
-世界观设定：
-{json.dumps(settings, ensure_ascii=False, indent=2)}
-
-请以JSON格式输出角色列表，每个角色包含：
-- name: 姓名
-- age: 年龄
-- gender: 性别
-- personality: 性格特点
-- background: 背景故事
-- skills: 特殊能力
-- motivation: 动机/目标
-- relationships: 与其他角色的关系
-
-输出格式：{{"角色名": {{...}}, "角色名2": {{...}}}}"""
-        
-        prompt = f"小说类型：{genre}\n小说标题：{title}\n需要创建{count}个主要角色。"
-        
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
-        
-        try:
-            json_start = response.find("{")
-            json_end = response.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                characters = json.loads(response[json_start:json_end])
-            else:
-                characters = {"raw": response}
-        except:
-            characters = {"raw": response}
-        
-        self.memory.save_characters(characters)
-        self.log(f"[智能体] 角色生成完成，共{len(characters)}个角色")
-        return characters
-    
-    def generate_outline(self, genre: str, title: str, chapter_count: int) -> list:
-        """生成大纲"""
-        self.log(f"[智能体] 正在生成{chapter_count}章大纲...")
-        
-        context = self._build_context(0)
-        system = f"""你是一位专业的小说大纲规划师。请根据以下信息生成详细的小说大纲。
-
-{context}
-
-请以JSON格式输出大纲，格式为数组，每个元素包含：
-- chapter: 章节号
-- title: 章节标题
-- summary: 章节摘要（100-200字）
-- key_events: 关键事件列表
-- characters_involved: 涉及角色
-- emotional_arc: 情感走向
-
-输出格式：[{{"chapter": 1, ...}}, ...]"""
-        
-        prompt = f"小说类型：{genre}\n小说标题：{title}\n总章节数：{chapter_count}\n\n请生成详细大纲。"
-        
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
-        
-        try:
-            json_start = response.find("[")
-            json_end = response.rfind("]") + 1
-            if json_start >= 0 and json_end > json_start:
-                outline = json.loads(response[json_start:json_end])
-            else:
-                outline = [{"chapter": i+1, "title": f"第{i+1}章", "summary": "待规划"} for i in range(chapter_count)]
-        except:
-            outline = [{"chapter": i+1, "title": f"第{i+1}章", "summary": "待规划"} for i in range(chapter_count)]
-        
-        self.log(f"[智能体] 大纲生成完成，共{len(outline)}章")
-        return outline
-    
-    def generate_chapter(self, chapter_num: int, chapter_title: str, chapter_outline: str, word_count: int = 3000) -> str:
-        """生成单章内容（带长记忆）"""
-        self.log(f"[智能体] 正在生成第{chapter_num}章：{chapter_title}...")
-        
+    def _writer_generate(self, chapter_num: int, chapter_title: str, 
+                         chapter_outline: str, word_count: int) -> str:
+        """Writer智能体：生成章节内容"""
         context = self._build_context(chapter_num)
         
-        system = f"""你是一位专业的小说作家。请根据以下上下文信息创作小说章节。
+        system = f"""你是一位专业的小说作家（Writer Agent）。
+请根据以下上下文信息创作小说章节。
 
 {context}
 
@@ -2360,119 +2175,198 @@ class NovelAgent:
 3. 情节推进自然流畅
 4. 语言生动，有画面感
 5. 目标字数约{word_count}字
-6. 直接输出正文内容，不要添加额外说明"""
+6. 直接输出正文内容，不要添加额外说明
+7. 注意设置伏笔和悬念"""
         
         prompt = f"请创作第{chapter_num}章：{chapter_title}\n\n章节大纲：{chapter_outline}\n\n目标字数：{word_count}字\n\n请直接输出正文："
         
-        # 如果内容较长，分段生成
         if word_count > 3000:
             return self._generate_long_chapter(chapter_num, chapter_title, chapter_outline, word_count, context)
         
         response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4096)
-        
-        self.log(f"[智能体] 第{chapter_num}章生成完成，字数：{len(response)}")
+        self.log(f"[Writer] 第{chapter_num}章初稿完成，字数：{len(response)}")
         return response
+    
+    def _reviewer_evaluate(self, chapter_num: int, content: str, 
+                           previous_feedback: str = "") -> dict:
+        """Reviewer智能体：审校章节
+        
+        参考AutoGen的code_reviewer角色，检查质量和一致性
+        """
+        context = self._build_context(chapter_num)
+        
+        feedback_section = ""
+        if previous_feedback:
+            feedback_section = f"\n上次审校反馈（请重点关注）：\n{previous_feedback}"
+        
+        system = f"""你是一位专业的小说审校编辑（Reviewer Agent）。
+请严格检查以下章节内容的各方面质量。
+
+{context}
+{feedback_section}
+
+请以JSON格式输出审校结果：
+{{
+    "character_consistency": 0-100,  // 角色行为一致性
+    "plot_logic": 0-100,             // 情节逻辑
+    "writing_quality": 0-100,        // 文笔质量
+    "emotional_impact": 0-100,       // 情感感染力
+    "pacing": 0-100,                 // 节奏把控
+    "overall_score": 0-100,          // 综合评分
+    "strengths": ["优点1", ...],     // 写得好的地方
+    "issues": ["问题1", ...],        // 发现的问题
+    "suggestions": ["建议1", ...],   // 修改建议
+    "is_acceptable": true/false      // 是否可接受
+}}"""
+        
+        prompt = f"请审校第{chapter_num}章内容：\n\n{content[:4000]}"
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
+        
+        try:
+            return self._parse_json_response(response, {"overall_score": 70, "issues": [], "suggestions": []})
+        except:
+            return {"overall_score": 70, "issues": [], "suggestions": [], "raw": response}
+    
+    def _writer_revise(self, chapter_num: int, original: str, review: dict, 
+                       chapter_outline: str) -> str:
+        """Writer智能体：根据审校意见修订章节
+        
+        参考AutoGen的迭代优化循环
+        """
+        suggestions = review.get("suggestions", [])
+        issues = review.get("issues", [])
+        strengths = review.get("strengths", [])
+        
+        context = self._build_context(chapter_num)
+        
+        system = f"""你是一位专业的小说作家（Writer Agent），正在修订自己的作品。
+
+{context}
+
+修订原则：
+1. 根据审校意见进行针对性修改
+2. 保留已有的优点和长处
+3. 修改时注意不要破坏整体的连贯性
+4. 回应每一个具体问题"""
+        
+        prompt = f"""请修订第{chapter_num}章内容。
+
+审校反馈：
+优点（请保持）：{json.dumps(strengths, ensure_ascii=False)}
+问题（需修改）：{json.dumps(issues, ensure_ascii=False)}
+建议（参考）：{json.dumps(suggestions, ensure_ascii=False)}
+
+原文：
+{original[-4000:] if len(original) > 4000 else original}
+
+修订要求：请输出完整的修订后文本，直接输出正文："""
+        
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4096)
+        self.log(f"[Writer] 修订完成，字数：{len(response)}")
+        return response
+    
+    # ===== 传统方法（兼容旧接口）=====
+    
+    def generate_chapter(self, chapter_num: int, chapter_title: str, 
+                         chapter_outline: str, word_count: int = 3000) -> str:
+        """生成章节 - 使用多智能体协作"""
+        return self.generate_with_collaboration(chapter_num, chapter_title, 
+                                                chapter_outline, word_count)
+    
+    def review_chapter(self, chapter_num: int, content: str) -> dict:
+        """审校章节"""
+        return self._reviewer_evaluate(chapter_num, content)
+    
+    def generate_settings(self, genre: str, title: str, concept: str) -> dict:
+        """生成世界观"""
+        self.log(f"[智能体] 正在生成世界观...")
+        system = """你是一位专业的小说世界观设定师。请生成详细的世界观设定。
+以JSON格式输出：world/rules/factions/history/technology/geography/culture"""
+        prompt = f"小说类型：{genre}\n标题：{title}\n概念：{concept}"
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
+        settings = self._parse_json_response(response, {"raw": response})
+        self.memory.save_settings(settings)
+        return settings
+    
+    def generate_characters(self, genre: str, title: str, count: int = 5) -> dict:
+        """生成角色"""
+        self.log(f"[智能体] 正在生成{count}个角色...")
+        settings = self.memory.get_settings()
+        system = f"你是专业角色设计师。世界观：{json.dumps(settings, ensure_ascii=False)[:500]}\n输出JSON：{{'角色名': {{...}}}}"
+        prompt = f"小说类型：{genre}\n标题：{title}\n创建{count}个角色"
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
+        chars = self._parse_json_response(response, {"raw": response})
+        self.memory.save_characters(chars)
+        return chars
+    
+    def generate_outline(self, genre: str, title: str, chapter_count: int) -> list:
+        """生成大纲"""
+        self.log(f"[智能体] 正在生成{chapter_count}章大纲...")
+        context = self._build_context(0)
+        system = f"你是专业小说大纲规划师。\n{context}\n输出JSON数组：[{{'chapter':1,'title':'','summary':'','key_events':[],'characters_involved':[]}}]"
+        prompt = f"小说类型：{genre}\n标题：{title}\n章节数：{chapter_count}"
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
+        outline = self._parse_json_response(response, [], is_list=True)
+        if not outline:
+            outline = [{"chapter": i+1, "title": f"第{i+1}章", "summary": "待规划"} for i in range(chapter_count)]
+        return outline
+    
+    def finalize_chapter(self, chapter_num: int, content: str):
+        """定稿章节 + 更新记忆"""
+        # 章节摘要
+        summary = self.ai.chat(
+            [{"role": "user", "content": f"请生成摘要（100-200字）：\n{content[:2000]}"}],
+            system="你是故事摘要助手。", max_tokens=300
+        )
+        self.memory.save_chapter_summary(chapter_num, summary)
+        
+        # 全局摘要
+        old = self.memory.get_global_summary()
+        new = self.ai.chat(
+            [{"role": "user", "content": f"更新全局摘要：\n旧：{old}\n新章节：{summary}"}],
+            system="你是故事摘要助手。", max_tokens=500
+        )
+        self.memory.save_global_summary(new)
+        
+        # 关键词索引
+        kw = self.ai.chat([{"role": "user", "content": f"提取10个关键词，逗号分隔：\n{content[:1000]}"}],
+                         system="提取关键词。", max_tokens=200)
+        self.memory.update_index(chapter_num, [k.strip() for k in kw.split(",") if k.strip()])
+        
+        # 添加记忆块
+        self.memory.add_chunk("plot", summary, importance=8, 
+                             tags=kw.split(",")[:5] if kw else [])
+        self.memory.add_event(chapter_num, summary, "story")
+        
+        self.log(f"[智能体] 第{chapter_num}章定稿完成")
+    
+    # ===== 工具方法 =====
+    
+    @staticmethod
+    def _parse_json_response(response: str, default: Any, is_list: bool = False) -> Any:
+        """解析AI返回的JSON"""
+        try:
+            marker = "[" if is_list else "{"
+            end_marker = "]" if is_list else "}"
+            start = response.find(marker)
+            end = response.rfind(end_marker) + 1
+            if start >= 0 and end > start:
+                return json.loads(response[start:end])
+        except:
+            pass
+        return default
     
     def _generate_long_chapter(self, chapter_num, chapter_title, chapter_outline, word_count, context) -> str:
         """分段生成长章节"""
         parts = []
-        part_count = (word_count + 2999) // 3000  # 每段约3000字
-        
+        part_count = max((word_count + 2999) // 3000, 1)
         for i in range(part_count):
-            self.log(f"[智能体] 生成第{chapter_num}章 第{i+1}/{part_count}段...")
-            
-            part_prompt = f"""请继续创作第{chapter_num}章：{chapter_title}
-
-章节大纲：{chapter_outline}
-
-已写内容：
-{''.join(parts[-2:]) if parts else '（这是开头）'}
-
-请继续创作第{i+1}段（约3000字），保持连贯性。直接输出正文："""
-            
-            system = f"""你是一位专业的小说作家，正在创作长篇小说。请根据上下文继续创作。
-
-{context}
-
-要求：保持与已写内容的连贯性，语言生动，情节推进自然。"""
-            
-            response = self.ai.chat([{"role": "user", "content": part_prompt}], system=system, max_tokens=4096)
+            self.log(f"[Writer] 第{chapter_num}章 第{i+1}/{part_count}段...")
+            part_prompt = f"创作第{chapter_num}章：{chapter_title}\n大纲：{chapter_outline}\n已有：{''.join(parts[-2:]) or '（开头）'}\n请创作约3000字："
+            response = self.ai.chat([{"role": "user", "content": part_prompt}],
+                                   system=f"专业小说作家。\n{context[:1000]}", max_tokens=4096)
             parts.append(response)
-        
         return "\n\n".join(parts)
-    
-    def review_chapter(self, chapter_num: int, content: str) -> dict:
-        """审校章节（智能体自检）"""
-        self.log(f"[智能体] 正在审校第{chapter_num}章...")
-        
-        context = self._build_context(chapter_num)
-        
-        system = f"""你是一位专业的小说审校编辑。请检查以下章节内容的一致性和质量。
-
-{context}
-
-请检查以下方面并以JSON格式输出：
-1. character_consistency: 角色行为是否一致（0-100分）
-2. plot_logic: 情节逻辑是否合理（0-100分）
-3. timeline: 时间线是否正确（0-100分）
-4. setting_consistency: 设定是否一致（0-100分）
-5. overall_score: 总体评分（0-100分）
-6. issues: 发现的问题列表
-7. suggestions: 修改建议列表
-
-输出格式：{{"character_consistency": 85, ...}}"""
-        
-        prompt = f"请审校第{chapter_num}章内容：\n\n{content[:3000]}"
-        
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
-        
-        try:
-            json_start = response.find("{")
-            json_end = response.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                review = json.loads(response[json_start:json_end])
-            else:
-                review = {"raw": response, "overall_score": 70}
-        except:
-            review = {"raw": response, "overall_score": 70}
-        
-        self.log(f"[智能体] 审校完成，评分：{review.get('overall_score', 'N/A')}")
-        return review
-    
-    def finalize_chapter(self, chapter_num: int, content: str):
-        """定稿章节（更新记忆）"""
-        self.log(f"[智能体] 正在定稿第{chapter_num}章并更新记忆...")
-        
-        # 生成章节摘要
-        system = "请为以下章节生成简洁摘要（100-200字），包括主要事件、角色发展和关键信息。"
-        summary = self.ai.chat(
-            [{"role": "user", "content": f"请生成摘要：\n\n{content[:2000]}"}],
-            system=system, max_tokens=300
-        )
-        self.memory.save_chapter_summary(chapter_num, summary)
-        
-        # 更新全局摘要
-        old_global = self.memory.get_global_summary()
-        update_prompt = f"""请更新故事全局摘要。
-
-旧的全局摘要：
-{old_global}
-
-第{chapter_num}章摘要：
-{summary}
-
-请生成更新后的全局摘要（200-300字），整合新章节的信息。"""
-        
-        new_global = self.ai.chat([{"role": "user", "content": update_prompt}], system="你是故事摘要助手。", max_tokens=500)
-        self.memory.save_global_summary(new_global)
-        
-        # 提取关键词建立索引
-        keywords_prompt = f"请从以下文本中提取10个关键词，用逗号分隔：\n\n{content[:1000]}"
-        keywords_response = self.ai.chat([{"role": "user", "content": keywords_prompt}], system="提取关键词。", max_tokens=200)
-        keywords = [k.strip() for k in keywords_response.split(",") if k.strip()]
-        self.memory.update_index(chapter_num, keywords)
-        
-        self.log(f"[智能体] 第{chapter_num}章定稿完成，记忆已更新")
 
 
 # ==================== 阅读管理器 ====================

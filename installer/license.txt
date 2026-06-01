@@ -1,0 +1,57 @@
+MIT License
+
+Copyright (c) 2026 AI Novel Writer
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+============================================================================
+
+AI自动写小说系统 - 许可协议
+
+本软件是一个AI辅助小说创作工具，旨在帮助作者更高效地创作小说。
+
+使用条款：
+
+1. 本软件免费使用，可用于个人和商业用途。
+
+2. 使用本软件生成的内容，其版权归用户所有。
+
+3. 用户应遵守当地法律法规，不得使用本软件生成违法内容。
+
+4. 本软件依赖第三方AI服务（如OpenAI、Claude等），用户需自行获取API密钥并承担相关费用。
+
+5. 本软件按"现状"提供，不提供任何明示或暗示的保证。
+
+6. 作者不对因使用本软件而产生的任何损失承担责任。
+
+免责声明：
+
+1. 本软件生成的内容由AI模型产生，可能存在不准确或不当之处。
+
+2. 用户应自行审核和修改生成的内容，确保其符合要求。
+
+3. 本软件不保证生成内容的原创性，用户应自行进行查重。
+
+技术支持：
+
+如有问题或建议，请通过以下方式联系我们：
+- GitHub Issues: https://github.com/your-repo/ai-novel-writer/issues
+- 邮箱: support@example.com
+
+感谢使用 AI自动写小说系统！

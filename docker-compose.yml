@@ -1,0 +1,169 @@
+# AI自动写小说系统 - Docker Compose配置
+
+version: '3.8'
+
+services:
+  # PostgreSQL数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: ai-novel-postgres
+    environment:
+      POSTGRES_DB: ai_novel
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - ai-novel-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    container_name: ai-novel-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ai-novel-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # AI模型服务
+  ai-service:
+    build:
+      context: ./backend/ai-service
+      dockerfile: Dockerfile
+    container_name: ai-novel-ai-service
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ai_novel
+      - REDIS_URL=redis://redis:6379/0
+      - LOCAL_MODEL_PATH=/app/models/local
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+    volumes:
+      - ./models:/app/models
+      - ./logs/ai-service:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ai-novel-network
+    restart: unless-stopped
+
+  # 小说生成服务
+  novel-service:
+    build:
+      context: ./backend/novel-service
+      dockerfile: Dockerfile
+    container_name: ai-novel-novel-service
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ai_novel
+      - REDIS_URL=redis://redis:6379/0
+      - AI_SERVICE_URL=http://ai-service:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+    networks:
+      - ai-novel-network
+    restart: unless-stopped
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai-novel-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8001
+      - REACT_APP_NOVEL_SERVICE_URL=http://localhost:8002
+    depends_on:
+      - ai-service
+      - novel-service
+    networks:
+      - ai-novel-network
+    restart: unless-stopped
+
+  # Nginx反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: ai-novel-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - frontend
+      - ai-service
+      - novel-service
+    networks:
+      - ai-novel-network
+    restart: unless-stopped
+
+  # 监控服务
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ai-novel-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - ai-novel-network
+    restart: unless-stopped
+
+  # Grafana监控面板
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ai-novel-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+    networks:
+      - ai-novel-network
+    restart: unless-stopped
+
+# 数据卷
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+# 网络
+networks:
+  ai-novel-network:
+    driver: bridge

@@ -1,0 +1,44 @@
+# 小说生成服务依赖
+
+# Web框架
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# 数据库
+sqlalchemy==2.0.23
+asyncpg==0.29.0
+alembic==1.13.0
+
+# 缓存
+redis==5.0.1
+aioredis==2.0.1
+
+# HTTP客户端
+httpx==0.25.2
+
+# 工具库
+python-dotenv==1.0.0
+python-multipart==0.0.6
+
+# 数据处理
+numpy==1.26.2
+pandas==2.1.4
+
+# 向量数据库
+chromadb==0.4.22
+sentence-transformers==2.3.1
+
+# 日志和监控
+loguru==0.7.2
+
+# 开发工具
+pytest==7.4.3
+pytest-asyncio==0.23.2
+black==23.11.0
+isort==5.12.0
+flake8==6.1.0
+
+# 类型检查
+mypy==1.7.1

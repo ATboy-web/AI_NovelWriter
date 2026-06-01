@@ -3097,12 +3097,90 @@ class NovelWriterApp:
         title_entry = ttk.Entry(dialog, width=50)
         title_entry.pack(padx=20, pady=5)
         
-        ttk.Label(dialog, text="小说类型:").pack(anchor=tk.W, padx=20, pady=(10,5))
-        genre_var = tk.StringVar(value="scifi")
-        genre_combo = ttk.Combobox(dialog, textvariable=genre_var, values=[
-            "scifi-科幻", "mystery-悬疑", "romance-言情", "fantasy-奇幻", "urban-都市"
-        ], state="readonly", width=47)
-        genre_combo.pack(padx=20, pady=5)
+        ttk.Label(dialog, text="小说频道:").pack(anchor=tk.W, padx=20, pady=(10,5))
+        channel_var = tk.StringVar(value="male")
+        channel_frame = ttk.Frame(dialog)
+        channel_frame.pack(fill=tk.X, padx=20, pady=5)
+        ttk.Radiobutton(channel_frame, text="男生频道", variable=channel_var, value="male",
+                       command=lambda: update_genre_list("male")).pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(channel_frame, text="女生频道", variable=channel_var, value="female",
+                       command=lambda: update_genre_list("female")).pack(side=tk.LEFT, padx=10)
+        
+        # 男女频标签体系
+        MALE_GENRES = [
+            "玄幻-东方玄幻", "玄幻-异世大陆", "玄幻-高武世界",
+            "仙侠-古典仙侠", "仙侠-现代修真", "仙侠-洪荒封神",
+            "都市-都市生活", "都市-都市异能", "都市-青春校园",
+            "历史-架空历史", "历史-两宋元明", "历史-三国争霸",
+            "科幻-星际文明", "科幻-末世危机", "科幻-时空穿梭",
+            "悬疑-灵异恐怖", "悬疑-侦探推理", "悬疑-探险揭秘",
+            "游戏-电子竞技", "游戏-虚拟网游", "游戏-游戏异界",
+            "军事-抗战烽火", "军事-谍战特工", "军事-战争幻想",
+            "武侠-传统武侠", "武侠-国术古武", "武侠-武侠幻想",
+            "体育-篮球风云", "体育-足球天下", "体育-综合竞技",
+            "轻小说-原生幻想", "轻小说-搞笑吐槽", "轻小说-恋爱日常",
+            "二次元-青春日常", "二次元-变身入替", "二次元-同人衍生",
+        ]
+        
+        FEMALE_GENRES = [
+            "古代言情-女尊王朝", "古代言情-宫闱宅斗", "古代言情-穿越奇情",
+            "现代言情-豪门总裁", "现代言情-都市婚恋", "现代言情-职场丽人",
+            "幻想言情-异世恋歌", "幻想言情-快穿攻略", "幻想言情-魔法幻情",
+            "纯爱-古代纯爱", "纯爱-现代纯爱", "纯爱-幻想纯爱",
+            "浪漫青春-青春校园", "浪漫青春-疼痛成长", "浪漫青春-纯爱唯美",
+            "仙侠奇缘-古典仙缘", "仙侠奇缘-修仙情劫", "仙侠奇缘-洪荒情缘",
+            "悬疑灵异-推理侦探", "悬疑灵异-恐怖惊悚", "悬疑灵异-灵异鬼怪",
+            "游戏竞技-电子竞技", "游戏竞技-全息网游", "游戏竞技-电竞爱情",
+            "短篇-短篇言情", "短篇-微小说", "短篇-轻小说",
+        ]
+        
+        # 标签面板
+        tag_frame = ttk.LabelFrame(dialog, text="附加标签（可多选）", padding=5)
+        tag_frame.pack(fill=tk.X, padx=20, pady=5)
+        
+        # 男生标签
+        MALE_TAGS = {
+            "角色设定": ["废材崛起", "扮猪吃虎", "杀伐果断", "智商在线", "低调男主", "独行侠", "狠人大帝", "稳健型", "腹黑型", "热血少年", "冷面高手", "逍遥自在"],
+            "情节元素": ["系统流", "穿越大军", "重生复仇", "无敌流", "升级流", "种田流", "争霸流", "诸天流", "无限流", "签到流", "数据化", "聊天群"],
+            "世界观": ["异界大陆", "王朝争霸", "宗门林立", "末世废土", "星空宇宙", "灵气复苏", "赛博朋克", "求生冒险", "东方神话"],
+            "爽点标签": ["越级挑战", "越阶杀敌", "装逼打脸", "逆天改命", "一人成军", "万古不朽", "超神之路", "武道巅峰"],
+        }
+        
+        # 女生标签
+        FEMALE_TAGS = {
+            "角色设定": ["甜宠女主", "女强逆袭", "马甲大佬", "团宠担当", "万人迷", "病娇偏执", "霸总老公", "白月光", "替身前妻", "软萌娇妻", "女王御姐", "萌宝来袭"],
+            "情节元素": ["先婚后爱", "追妻火葬场", "带球跑", "契约婚姻", "养成系", "宅斗宫斗", "真假千金", "失忆重逢", "假戏真做", "隐婚密爱", "替身文学", "重生虐渣"],
+            "气氛风格": ["虐恋情深", "欢喜冤家", "温馨治愈", "爆笑甜宠", "暗恋成真", "虐渣打脸", "逆袭爽文", "甜到齁", "虐到哭", "轻松欢脱"],
+            "甜宠类型": ["一见钟情", "日久生情", "暗恋成真", "宠妻狂魔", "双向奔赴", "青梅竹马", "师生恋", "姐弟恋", "大叔宠", "萌宝助攻"],
+        }
+        
+        self.tag_vars = {}  # 存储标签选择状态
+        tags_container = ttk.Frame(tag_frame)
+        tags_container.pack(fill=tk.X)
+        
+        def update_genre_list(channel):
+            """切换频道时更新类型列表"""
+            genre_combo['values'] = MALE_GENRES if channel == "male" else FEMALE_GENRES
+            genre_var.set(MALE_GENRES[0] if channel == "male" else FEMALE_GENRES[0])
+            # 更新标签
+            for w in tags_container.winfo_children():
+                w.destroy()
+            self.tag_vars.clear()
+            tags = MALE_TAGS if channel == "male" else FEMALE_TAGS
+            row = 0
+            for cat_name, cat_tags in tags.items():
+                cat_label = ttk.Label(tags_container, text=f"{cat_name}:", font=("", 8, "bold"))
+                cat_label.grid(row=row, column=0, sticky=tk.W, pady=(5,0))
+                tag_frame_inner = ttk.Frame(tags_container)
+                tag_frame_inner.grid(row=row+1, column=0, sticky=tk.W, pady=2)
+                col = 0
+                for tag in cat_tags:
+                    var = tk.BooleanVar(value=False)
+                    self.tag_vars[tag] = var
+                    cb = ttk.Checkbutton(tag_frame_inner, text=tag, variable=var)
+                    cb.grid(row=0, column=col, padx=3, sticky=tk.W)
+                    col += 1
+                row += 2
         
         ttk.Label(dialog, text="核心概念:").pack(anchor=tk.W, padx=20, pady=(10,5))
         concept_text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, height=8)
@@ -3118,9 +3196,14 @@ class NovelWriterApp:
                 messagebox.showwarning("提示", "请输入小说标题")
                 return
             
-            genre = genre_var.get().split("-")[0]
+            genre_full = genre_var.get().split("-")
+            genre = genre_full[0] if len(genre_full) > 0 else ""
+            sub_genre = genre_full[1] if len(genre_full) > 1 else ""
             concept = concept_text.get("1.0", tk.END).strip()
             chapters = int(chapters_var.get())
+            
+            # 收集选中的标签
+            selected_tags = [tag for tag, var in self.tag_vars.items() if var.get()]
             
             # 创建小说目录
             safe_name = "".join(c for c in title if c.isalnum() or c in "_ -")[:30]
@@ -3131,6 +3214,9 @@ class NovelWriterApp:
             meta = {
                 "title": title,
                 "genre": genre,
+                "sub_genre": sub_genre,
+                "channel": channel_var.get(),
+                "tags": selected_tags,
                 "concept": concept,
                 "chapter_count": chapters,
                 "created_at": datetime.now().isoformat(),
@@ -3146,11 +3232,11 @@ class NovelWriterApp:
             self.current_chapter = 0
             
             self.title_var.set(title)
-            self.genre_var.set(genre)
+            self.genre_var.set(f"{genre}-{sub_genre}")
             self.chapter_var.set(f"0/{chapters}")
             
             dialog.destroy()
-            self._log(f"新建小说《{title}》创建成功")
+            self._log(f"新建小说《{title}》({sub_genre}) 创建成功，标签: {', '.join(selected_tags)}")
         
         ttk.Button(dialog, text="创建", command=confirm).pack(pady=20)
     

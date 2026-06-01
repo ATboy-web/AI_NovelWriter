@@ -49,6 +49,7 @@ from novel_toolkit import (ElementLibrary, BridgeLibrary, DescriptionLibrary,
                            DialogueEngine, StoryFlowEngine, StyleTransferEngine, AdaptEngine,
                            WebSearchAdaptEngine)
 from character_system import CharacterSystem, CharacterProfile
+from format_converter import FormatConverter, ImageManager
 
 
 # ==================== 配置管理 ====================
@@ -2808,6 +2809,8 @@ class NovelWriterApp:
         self.adapt_engine = None
         self.web_search_engine = None
         self.character_system = None
+        self.format_converter = None
+        self.image_manager = None
         
         self.current_novel_dir = None
         self.memory = None
@@ -2891,7 +2894,9 @@ class NovelWriterApp:
         btn_frame = tk.Frame(header, bg=C['accent'])
         btn_frame.pack(side=tk.RIGHT, padx=20, fill=tk.Y)
         
-        for text, cmd in [("新建", self._new_novel), ("打开", self._open_novel), ("导出", self._export_txt), ("设置", self._show_settings)]:
+        for text, cmd in [("新建", self._new_novel), ("打开", self._open_novel), 
+                         ("导出", self._export_txt), ("格式转换", self._show_format_converter),
+                         ("插入图片", self._insert_image), ("设置", self._show_settings)]:
             tk.Button(btn_frame, text=text, font=('微软雅黑', 10),
                      bg=C['accent_hover'], fg='white', relief=tk.FLAT,
                      padx=15, pady=5, cursor='hand2',
@@ -4021,6 +4026,176 @@ class NovelWriterApp:
             title = item.get("title", "未命名")
             self.outline_list.insert(tk.END, f"第{ch}章: {title}")
     
+    # ===== 格式转换 =====
+    
+    def _show_format_converter(self):
+        """显示格式转换对话框"""
+        if not self.current_novel_dir:
+            messagebox.showwarning("提示", "请先新建或打开小说")
+            return
+        
+        if not self.format_converter:
+            self.format_converter = FormatConverter(self.current_novel_dir)
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title("格式转换")
+        dialog.geometry("450x400")
+        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        C = UIStyle.COLORS
+        
+        tk.Label(dialog, text="选择导出格式:", font=('微软雅黑', 12, 'bold'),
+                bg=C['bg_dark'], fg=C['text_primary']).pack(pady=(15, 10))
+        
+        # 格式列表
+        formats = self.format_converter.get_formats()
+        format_var = tk.StringVar(value="html")
+        
+        for fmt_key, fmt_info in formats.items():
+            frame = tk.Frame(dialog, bg=C['bg_dark'])
+            frame.pack(fill=tk.X, padx=20, pady=3)
+            
+            tk.Radiobutton(frame, text=f"{fmt_info['name']} ({fmt_info['ext']})", 
+                          variable=format_var, value=fmt_key,
+                          font=('微软雅黑', 10), bg=C['bg_dark'], fg=C['text_primary'],
+                          selectcolor=C['accent']).pack(side=tk.LEFT)
+            tk.Label(frame, text=fmt_info['desc'], font=('微软雅黑', 8),
+                    bg=C['bg_dark'], fg=C['text_muted']).pack(side=tk.RIGHT)
+        
+        # 包含图片选项
+        include_images_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(dialog, text="包含插图（如有）", variable=include_images_var,
+                      font=('微软雅黑', 10), bg=C['bg_dark'], fg=C['text_primary'],
+                      selectcolor=C['accent']).pack(pady=10)
+        
+        def do_convert():
+            fmt = format_var.get()
+            
+            # 收集所有章节
+            chapters_dir = self.current_novel_dir / "chapters"
+            chapter_files = sorted(chapters_dir.glob("chapter_*.txt"))
+            chapters = []
+            
+            for cf in chapter_files:
+                num = int(cf.stem.split("_")[1])
+                content = cf.read_text(encoding='utf-8')
+                # 从大纲获取标题
+                title = f"第{num}章"
+                if self.outline and num <= len(self.outline):
+                    title = self.outline[num-1].get("title", title)
+                chapters.append({"num": num, "title": title, "content": content})
+            
+            if not chapters:
+                # 如果没有章节文件，使用编辑区内容
+                content = self.content_text.get("1.0", tk.END).strip()
+                if not content:
+                    messagebox.showwarning("提示", "没有可导出的内容")
+                    return
+            else:
+                content = "\n\n".join(ch["content"] for ch in chapters)
+            
+            meta = self._get_meta() if self.current_novel_dir else {}
+            
+            # 获取图片数据
+            images = None
+            if include_images_var.get() and self.image_manager:
+                images = self.image_manager.get_images_data()
+            
+            # 转换
+            result = self.format_converter.convert(
+                content=content,
+                title=meta.get("title", "小说"),
+                format_type=fmt,
+                chapters=chapters if chapters else None,
+                metadata=meta,
+                images=images,
+            )
+            
+            if result:
+                self._log(f"格式转换完成: {result}")
+                dialog.destroy()
+                
+                # 询问是否打开
+                if messagebox.askyesno("成功", f"已导出为{formats[fmt]['name']}格式\n\n{result}\n\n是否打开文件？"):
+                    import subprocess
+                    subprocess.Popen(['start', result], shell=True)
+            else:
+                messagebox.showerror("错误", "格式转换失败")
+        
+        tk.Button(dialog, text="开始转换", font=('微软雅黑', 11, 'bold'),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=20, pady=8,
+                 command=do_convert).pack(pady=15)
+    
+    # ===== 图片插入 =====
+    
+    def _insert_image(self):
+        """插入图片到编辑区"""
+        if not self.current_novel_dir:
+            messagebox.showwarning("提示", "请先新建或打开小说")
+            return
+        
+        if not self.image_manager:
+            self.image_manager = ImageManager(self.current_novel_dir)
+        
+        # 选择图片文件
+        file_path = filedialog.askopenfilename(
+            title="选择图片",
+            filetypes=[
+                ("图片文件", "*.png *.jpg *.jpeg *.gif *.bmp *.webp"),
+                ("所有文件", "*.*"),
+            ]
+        )
+        
+        if not file_path:
+            return
+        
+        # 导入图片
+        img_path = self.image_manager.import_image(file_path)
+        if not img_path:
+            messagebox.showerror("错误", "导入图片失败")
+            return
+        
+        # 在编辑区插入图片标记
+        cursor_pos = self.content_text.index(tk.INSERT)
+        img_name = Path(img_path).name
+        
+        # 插入Markdown格式的图片标记
+        marker = f"\n![插图]({img_name})\n"
+        self.content_text.insert(tk.INSERT, marker)
+        
+        # 尝试在Text widget中显示图片预览
+        try:
+            from PIL import Image, ImageTk
+            img = Image.open(img_path)
+            # 缩放图片
+            max_width = 400
+            ratio = max_width / img.width
+            new_size = (max_width, int(img.height * ratio))
+            img = img.resize(new_size, Image.LANCZOS)
+            
+            # 转换为Tkinter可用的格式
+            photo = ImageTk.PhotoImage(img)
+            
+            # 在Text widget中插入图片
+            self.content_text.image_create(tk.INSERT, image=photo)
+            self.content_text.insert(tk.INSERT, "\n")
+            
+            # 保持引用防止被垃圾回收
+            if not hasattr(self, '_photo_refs'):
+                self._photo_refs = []
+            self._photo_refs.append(photo)
+            
+        except ImportError:
+            # 如果没有PIL，只插入标记
+            pass
+        except Exception as e:
+            self._log(f"图片预览加载失败: {e}")
+        
+        self._log(f"已插入图片: {img_name}")
+        
+        # 更新字数
+        content = self.content_text.get("1.0", tk.END).strip()
+        self.word_count_var.set(str(len(content)))
+    
     def _on_outline_select(self, event):
         """大纲选中事件"""
         if not self.current_novel_dir or not self.outline:
@@ -4152,6 +4327,9 @@ class NovelWriterApp:
             if not self.character_system.load():
                 self.character_system.create_character("主角")
             self._update_char_display()
+            
+            self.format_converter = FormatConverter(self.current_novel_dir)
+            self.image_manager = ImageManager(self.current_novel_dir)
     
     def _update_char_display(self):
         """更新角色面板显示"""

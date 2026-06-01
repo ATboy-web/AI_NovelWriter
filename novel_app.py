@@ -4192,7 +4192,15 @@ class NovelWriterApp:
             # 转换为Tkinter可用的格式
             photo = ImageTk.PhotoImage(img)
             
-            # 在Text widget中插入图片
+            # 先删除之前插入的文本标记
+            self.content_text.delete("1.0", tk.END)
+            # 重新插入内容（不含标记）
+            current = self.content_text.get("1.0", tk.END)
+            current = current.replace(f"\n![插图]({img_name})\n", "")
+            self.content_text.delete("1.0", tk.END)
+            self.content_text.insert("1.0", current)
+            
+            # 在Text widget中插入图片预览
             self.content_text.image_create(tk.INSERT, image=photo)
             self.content_text.insert(tk.INSERT, "\n")
             
@@ -4202,7 +4210,7 @@ class NovelWriterApp:
             self._photo_refs.append(photo)
             
         except ImportError:
-            # 如果没有PIL，只插入标记
+            # 如果没有PIL，只保留文本标记（已插入）
             pass
         except Exception as e:
             self._log(f"图片预览加载失败: {e}")
@@ -5016,11 +5024,24 @@ class NovelWriterApp:
             messagebox.showwarning("提示", "请先配置AI")
             return
         
+        # 使用角色系统中的实际角色数据
+        characters = {}
+        if self.character_system and self.character_system.character:
+            char = self.character_system.character
+            characters = {char.name: char.personality or "性格待定"}
+        elif self.memory:
+            chars = self.memory.get_characters()
+            if chars:
+                for name, info in list(chars.items())[:3]:
+                    characters[name] = info.get("personality", "") if isinstance(info, dict) else ""
+        if not characters:
+            characters = {"主角": "待设定"}
+        
         def run():
             try:
                 result = self.bridge_lib.generate_bridge(
                     self.ai_client, self.bridge_cat_var.get(),
-                    {"主角": "待设定"}, self.bridge_setting.get()
+                    characters, self.bridge_setting.get()
                 )
                 self.root.after(0, lambda: self._show_tool_result(self.bridge_result, result))
             except Exception as e:
@@ -5097,11 +5118,26 @@ class NovelWriterApp:
         
         self.dialogue_engine = DialogueEngine(self.ai_client)
         
+        # 使用角色系统中的实际角色
+        characters = []
+        if self.character_system:
+            for name in self.character_system.get_character_names()[:4]:
+                char = self.character_system.characters.get(name)
+                if char:
+                    characters.append({"name": name, "personality": char.personality or "未知"})
+        if not characters and self.memory:
+            chars = self.memory.get_characters()
+            if chars:
+                for name, info in list(chars.items())[:4]:
+                    p = info.get("personality", "") if isinstance(info, dict) else ""
+                    characters.append({"name": name, "personality": p or "未知"})
+        if not characters:
+            characters = [{"name": "角色A", "personality": "开朗"}, {"name": "角色B", "personality": "内敛"}]
+        
         def run():
             try:
                 result = self.dialogue_engine.start_dialogue(
-                    self.dlg_scenario.get(),
-                    [{"name": "角色A", "personality": "开朗"}, {"name": "角色B", "personality": "内敛"}]
+                    self.dlg_scenario.get(), characters
                 )
                 text = self.dialogue_engine.export_text()
                 self.root.after(0, lambda: self._show_tool_result(self.dlg_result, text))
@@ -5132,26 +5168,58 @@ class NovelWriterApp:
     
     def _build_story_flow_tool(self):
         """故事流推演界面"""
+        C = UIStyle.COLORS
         f = self.tool_content_frame
         
-        ttk.Label(f, text="故事流推演 - 两种模式", font=("", 11, "bold")).pack(anchor=tk.W, pady=5)
+        tk.Label(f, text="故事流推演 - 4种模式", font=("", 11, "bold"),
+                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=5)
         
-        mode_frame = ttk.Frame(f)
-        mode_frame.pack(fill=tk.X, pady=3)
         self.sf_mode_var = tk.IntVar(value=1)
-        ttk.Radiobutton(mode_frame, text="模式1: 背景+事件→推演过程", variable=self.sf_mode_var, value=1).pack(side=tk.LEFT)
-        ttk.Radiobutton(mode_frame, text="模式2: 开端+结局→推演中间", variable=self.sf_mode_var, value=2).pack(side=tk.LEFT, padx=10)
+        modes = [
+            (1, "正向推演", "背景+事件→推演过程"),
+            (2, "桥接推演", "开端+结局→推演中间"),
+            (3, "分支推演", "当前故事→多个走向"),
+            (4, "冲突升级", "当前局面→逐步升级"),
+        ]
+        mode_frame = tk.Frame(f, bg=C['bg_dark'])
+        mode_frame.pack(fill=tk.X, pady=3)
+        for val, name, desc in modes:
+            tk.Radiobutton(mode_frame, text=f"{name}", variable=self.sf_mode_var, value=val,
+                          font=('微软雅黑', 9), bg=C['bg_dark'], fg=C['text_secondary'],
+                          selectcolor=C['accent']).pack(side=tk.LEFT, padx=5)
         
-        ttk.Label(f, text="输入内容:").pack(anchor=tk.W, pady=3)
-        self.sf_input = scrolledtext.ScrolledText(f, height=4, wrap=tk.WORD, font=("微软雅黑", 10))
+        # 提示文字
+        self.sf_hint = tk.Label(f, text="模式1: 输入背景和事件，推演故事发展过程", 
+                               font=('微软雅黑', 8), bg=C['bg_dark'], fg=C['text_muted'])
+        self.sf_hint.pack(anchor=tk.W, pady=2)
+        
+        # 模式切换时更新提示
+        def update_hint(*args):
+            hints = {1: "模式1: 输入背景和事件，推演故事发展过程",
+                    2: "模式2: 第一行写开端，最后一行写结局，推演中间过程",
+                    3: "模式3: 输入当前故事，生成多个可能走向分支",
+                    4: "模式4: 输入当前局面，推演冲突逐步升级的过程"}
+            self.sf_hint.config(text=hints.get(self.sf_mode_var.get(), ""))
+        
+        self.sf_mode_var.trace_add('write', update_hint)
+        
+        tk.Label(f, text="输入内容:", font=('微软雅黑', 9),
+                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=3)
+        self.sf_input = tk.Text(f, height=5, wrap=tk.WORD, font=('微软雅黑', 10),
+                               bg=C['input_bg'], fg=C['text_primary'])
         self.sf_input.pack(fill=tk.X, pady=3)
         
-        btn_frame = ttk.Frame(f)
+        btn_frame = tk.Frame(f, bg=C['bg_dark'])
         btn_frame.pack(fill=tk.X, pady=5)
-        ttk.Button(btn_frame, text="开始推演", command=self._run_story_flow).pack(side=tk.LEFT)
-        ttk.Button(btn_frame, text="插入到章节", command=lambda: self._insert_to_chapter(self.sf_result)).pack(side=tk.RIGHT)
+        tk.Button(btn_frame, text="开始推演", font=('微软雅黑', 9),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=10,
+                 command=self._run_story_flow).pack(side=tk.LEFT)
+        tk.Button(btn_frame, text="插入到章节", font=('微软雅黑', 9),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=10,
+                 command=lambda: self._insert_to_chapter(self.sf_result)).pack(side=tk.RIGHT)
         
-        self.sf_result = scrolledtext.ScrolledText(f, height=8, wrap=tk.WORD, font=("微软雅黑", 10))
+        self.sf_result = tk.Text(f, height=10, wrap=tk.WORD, font=('微软雅黑', 10),
+                                bg=C['bg_card'], fg=C['text_primary'])
         self.sf_result.pack(fill=tk.BOTH, expand=True, pady=5)
     
     def _run_story_flow(self):
@@ -5162,15 +5230,28 @@ class NovelWriterApp:
         self.story_flow_engine = StoryFlowEngine(self.ai_client)
         input_text = self.sf_input.get("1.0", tk.END).strip()
         
+        if not input_text:
+            messagebox.showinfo("提示", "请输入内容")
+            return
+        
+        mode = self.sf_mode_var.get()
+        
         def run():
             try:
-                if self.sf_mode_var.get() == 1:
+                if mode == 1:
                     result = self.story_flow_engine.mode1_forward(input_text, "主角", input_text)
-                else:
+                elif mode == 2:
                     lines = input_text.split("\n")
                     beginning = lines[0] if lines else ""
                     ending = lines[-1] if len(lines) > 1 else "结局待定"
                     result = self.story_flow_engine.mode2_bridge(beginning, ending)
+                elif mode == 3:
+                    result = self.story_flow_engine.mode3_branch(input_text, 3)
+                elif mode == 4:
+                    result = self.story_flow_engine.mode4_conflict_escalation(input_text)
+                else:
+                    result = "请选择推演模式"
+                
                 self.root.after(0, lambda: self._show_tool_result(self.sf_result, result))
             except Exception as e:
                 self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
@@ -5326,7 +5407,7 @@ class NovelWriterApp:
         for i, cat in enumerate(cats):
             tk.Radiobutton(cat_frame, text=cat, variable=self.ws_category_var, value=cat,
                           font=('微软雅黑', 9), bg=C['bg_dark'], fg=C['text_secondary'],
-                          selectcolor=C['accent'], command=lambda: None).pack(side=tk.LEFT, padx=5)
+                          selectcolor=C['accent'], command=self._refresh_ws_list).pack(side=tk.LEFT, padx=5)
         
         # 搜索输入
         search_frame = tk.Frame(f, bg=C['bg_dark'])

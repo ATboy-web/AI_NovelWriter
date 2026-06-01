@@ -150,7 +150,7 @@ class ElementLibrary:
         ]},
         "诅咒禁忌": {"desc":"诅咒设定", "items": [
             {"name":"血脉诅咒","template":"{family}家族世代背负诅咒：{effect}。解开诅咒需要{condition}，但代价是{cost}。"},
-            {"name":"禁术反噬","template":"施展{n}次禁术后，施术者将受到{cost}的反噬。{name}已经施展了{n-1}次。"},
+            {"name":"禁术反噬","template":"施展{n}次禁术后，施术者将受到{cost}的反噬。{name}已经施展了{n}次，距离反噬只差一步。"},
             {"name":"誓言诅咒","template":"在这个世界，违背誓言的代价是{punish}。{name}被迫立下了他无法完成的誓言。"},
             {"name":"地域诅咒","template":"踏入{place}的人都会受到诅咒：{effect}。{name}为了救{someone}，不得不踏入这片禁地。"},
         ]},
@@ -479,6 +479,8 @@ class WebSearchAdaptEngine:
         self.novel_dir = novel_dir
         self.custom_dir = novel_dir / "websearch_custom" if novel_dir else None
         if self.custom_dir: self.custom_dir.mkdir(exist_ok=True)
+        # 创建实例级副本，避免修改类变量
+        self.HOT_MEMES = {k: list(v) for k, v in self.__class__.HOT_MEMES.items()}
         self._load_custom_memes()
     
     def _custom_file(self) -> Path:
@@ -520,13 +522,21 @@ class WebSearchAdaptEngine:
     def delete_custom_meme(self, category: str, index: int):
         """删除自定义热点"""
         items = self.HOT_MEMES.get(category, [])
-        custom_items = [i for i in items if i.get("custom")]
-        if 0 <= index < len(custom_items):
-            items.remove(custom_items[index])
-            f = self._custom_file()
-            if f.exists():
-                with open(f, 'w', encoding='utf-8') as fp:
-                    json.dump({category: [i for i in items if i.get("custom")]}, fp, indent=2, ensure_ascii=False)
+        if 0 <= index < len(items) and items[index].get("custom"):
+            items.pop(index)
+            self._save_custom(category, items)
+    
+    def _save_custom(self, category: str, items: list):
+        """保存自定义热点到文件"""
+        f = self._custom_file()
+        f.parent.mkdir(exist_ok=True)
+        custom = {}
+        if f.exists():
+            try:
+                with open(f, 'r', encoding='utf-8') as fp: custom = json.load(fp)
+            except: pass
+        custom[category] = [i for i in items if i.get("custom")]
+        with open(f, 'w', encoding='utf-8') as fp: json.dump(custom, fp, indent=2, ensure_ascii=False)
     
     def get_categories(self) -> List[str]:
         return list(self.HOT_MEMES.keys())

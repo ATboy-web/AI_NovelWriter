@@ -891,6 +891,16 @@ class MemoryManager:
         counted = Counter(keywords)
         return [word for word, _ in counted.most_common(30)]
     
+    def get_settings(self) -> dict:
+        if self.settings_file.exists():
+            with open(self.settings_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+    
+    def save_settings(self, settings: dict):
+        with open(self.settings_file, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=2, ensure_ascii=False)
+    
     def update_index(self, chapter_num: int, keywords: List[str]):
         index = self._load_index()
         index[str(chapter_num)] = keywords
@@ -1383,18 +1393,20 @@ class FullscreenWriter:
             self.context_menu.grab_release()
     
     def _on_key_release(self, event=None):
-        """按键释放事件"""
-        # 更新字数
+        """按键释放事件 - 打字机模式+字数统计+Markdown高亮"""
         content = self.text_widget.get("1.0", tk.END).strip()
         self.word_count_label.config(text=f"字数: {len(content)}")
         
-        # 打字机模式
         if self.typewriter_mode:
             self._center_current_line()
         
-        # 清除AI建议（如果用户继续打字）
         if self.suggestion_active and event and event.keysym not in ('Tab', 'Shift_L', 'Shift_R', 'Control_L', 'Control_R'):
             self._clear_suggestion()
+        
+        # Markdown高亮（延迟更新避免频繁触发）
+        if hasattr(self, '_highlight_after_id'):
+            self.win.after_cancel(self._highlight_after_id)
+        self._highlight_after_id = self.win.after(300, self._update_markdown_highlighting)
     
     def _on_tab(self, event):
         """Tab键接受AI建议"""
@@ -1484,7 +1496,7 @@ class FullscreenWriter:
     
     def _toggle_ai(self):
         """切换AI辅助"""
-        self.ai_assist_enabled = self.ai_var.get()
+        self.ai_assist_enabled = not self.ai_assist_enabled
         self._update_status()
     
     def _toggle_typewriter(self):
@@ -1684,27 +1696,8 @@ class FullscreenWriter:
         self.text_widget.tag_configure('md_link', foreground='#3498db', underline=True)
         self.text_widget.tag_configure('md_hr', foreground='#bdc3c7')
         
-        # 绑定按键事件用于实时高亮
-        self.text_widget.bind('<KeyRelease>', self._on_key_release_md)
-    
-    def _on_key_release_md(self, event=None):
-        """按键释放时更新Markdown高亮和字数"""
-        # 更新字数
-        content = self.text_widget.get("1.0", tk.END).strip()
-        self.word_count_label.config(text=f"字数: {len(content)}")
-        
-        # 打字机模式
-        if self.typewriter_mode:
-            self._center_current_line()
-        
-        # 清除AI建议
-        if self.suggestion_active and event and event.keysym not in ('Tab', 'Shift_L', 'Shift_R'):
-            self._clear_suggestion()
-        
-        # 延迟更新高亮（避免频繁触发）
-        if hasattr(self, '_highlight_after_id'):
-            self.win.after_cancel(self._highlight_after_id)
-        self._highlight_after_id = self.win.after(300, self._update_markdown_highlighting)
+        # 绑定按键事件 - 用于打字机模式和AI辅助
+        self.text_widget.bind('<KeyRelease>', self._on_key_release)
     
     def _update_markdown_highlighting(self):
         """更新Markdown语法高亮"""
@@ -2490,29 +2483,30 @@ class ReadingManager:
                 return content
             
             elif ext == '.epub' and EPUB_SUPPORT:
+                import re
                 book = epub.read_epub(str(file_path))
                 content = []
                 for item in book.get_items():
                     if item.get_type() == 9:  # ITEM_DOCUMENT
-                        # 简单HTML转文本
                         html = item.get_content().decode('utf-8', errors='ignore')
-                        # 移除HTML标签
-                import re
-                text = re.sub(r'<[^>]+>', '', html)
-                text = re.sub(r'\s+', ' ', text).strip()
-                if text:
-                    content.append(text)
+                        text = re.sub(r'<[^>]+>', '', html)
+                        text = re.sub(r'\s+', ' ', text).strip()
+                        if text:
+                            content.append(text)
                 return '\n\n'.join(content)
             
             elif ext == '.pdf' and PDF_SUPPORT:
+                import re as pdf_re
                 with open(file_path, 'rb') as f:
                     reader = PyPDF2.PdfReader(f)
                     content = []
                     for i, page in enumerate(reader.pages):
-                        if page >= 0 and i < len(reader.pages):
+                        try:
                             text = page.extract_text()
-                            if text:
+                            if text and text.strip():
                                 content.append(text)
+                        except:
+                            pass
                     return '\n\n'.join(content)
             
             elif ext == '.docx' and DOCX_SUPPORT:
@@ -3418,13 +3412,17 @@ class NovelWriterApp:
         self.is_modified = True
     
     def _log(self, message: str):
-        """添加日志"""
-        self.log_text.config(state=tk.NORMAL)
-        timestamp = time.strftime("%H:%M:%S")
-        self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
-        self.log_text.see(tk.END)
-        self.log_text.config(state=tk.DISABLED)
-        self.root.update_idletasks()
+        """添加日志（线程安全）"""
+        def _do_log():
+            self.log_text.config(state=tk.NORMAL)
+            timestamp = time.strftime("%H:%M:%S")
+            self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
+            self.log_text.see(tk.END)
+            self.log_text.config(state=tk.DISABLED)
+        try:
+            self.root.after(0, _do_log)
+        except:
+            pass
     
     def _update_status(self):
         """更新状态栏"""
@@ -3872,16 +3870,12 @@ class NovelWriterApp:
         def run():
             try:
                 review = self.agent.review_chapter(self.current_chapter, content)
-                
-                # 显示审校结果
-                self.review_text.delete("1.0", tk.END)
-                self.review_text.insert("1.0", json.dumps(review, indent=2, ensure_ascii=False))
-                self.notebook.select(2)  # 切换到审校结果页
-                
+                review_json = json.dumps(review, indent=2, ensure_ascii=False)
+                self.root.after(0, lambda: self._display_review(review_json))
                 self._log(f"审校完成，评分：{review.get('overall_score', 'N/A')}")
             except Exception as e:
                 self._log(f"审校失败: {e}")
-                messagebox.showerror("错误", str(e))
+                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
         
         threading.Thread(target=run, daemon=True).start()
     
@@ -4560,7 +4554,7 @@ class NovelWriterApp:
         style_frame.pack(fill=tk.X, pady=3)
         ttk.Label(style_frame, text="目标风格:").pack(side=tk.LEFT)
         self.style_var = tk.StringVar(value="热血爽文")
-        styles = list(StyleTransferEngine(None).get_styles().keys())
+        styles = list(StyleTransferEngine.STYLES.keys())
         ttk.Combobox(style_frame, textvariable=self.style_var, values=styles, state="readonly", width=15).pack(side=tk.LEFT, padx=5)
         ttk.Button(style_frame, text="转换当前章节风格", command=self._convert_style).pack(side=tk.LEFT, padx=10)
         
@@ -4652,7 +4646,6 @@ class NovelWriterApp:
                 text = ""
                 for i, r in enumerate(results):
                     text += f"=== 片段{i+1} (匹配率: {r['match_rate']}%) ===\n"
-                    text += f"改编指示: {r['instruction']}\n\n"
                     text += f"{r['adapted']}\n\n"
                 self.root.after(0, lambda: self._show_tool_result(self.adapt_result, text))
             except Exception as e:
@@ -4858,16 +4851,19 @@ class NovelWriterApp:
             return
         if not self.web_search_engine:
             self.web_search_engine = WebSearchAdaptEngine(self.ai_client, self.current_novel_dir)
-        items = self.web_search_engine.get_items(self.ws_category_var.get())
+        category = self.ws_category_var.get()
+        items = self.web_search_engine.get_items(category)
         idx = sel[0]
         if idx < len(items):
             if not items[idx].get("custom"):
                 messagebox.showinfo("提示", "只能删除自定义添加的热点")
                 return
             if messagebox.askyesno("确认", f"确定删除「{items[idx].get('name','')}」？"):
-                self.web_search_engine.delete_custom_meme(self.ws_category_var.get(), idx)
+                # 直接从列表中移除并持久化
+                removed = items.pop(idx)
+                self.web_search_engine._save_custom(category, items)
                 self._refresh_ws_list()
-                self._log(f"已删除自定义热点")
+                self._log(f"已删除自定义热点: {removed.get('name','')}")
     
     def _refresh_ws_list(self):
         """刷新热点列表"""
@@ -4878,6 +4874,12 @@ class NovelWriterApp:
         for item in items:
             marker = "[自定义]" if item.get("custom") else ""
             self.ws_listbox.insert(tk.END, f"{marker}{item.get('name','')}: {item.get('desc','')}")
+    
+    def _display_review(self, review_json: str):
+        """显示审校结果（主线程调用）"""
+        self.review_text.delete("1.0", tk.END)
+        self.review_text.insert("1.0", review_json)
+        self.notebook.select(2)
     
     def _check_ready(self) -> bool:
         """检查是否就绪"""

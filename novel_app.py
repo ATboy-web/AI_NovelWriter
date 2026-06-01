@@ -4734,6 +4734,16 @@ class NovelWriterApp:
                  bg=C['accent'], fg='white', relief=tk.FLAT, padx=10,
                  command=self._ws_generate_from_list).pack(pady=5)
         
+        # 自定义添加按钮区
+        add_btn_frame = tk.Frame(f, bg=C['bg_dark'])
+        add_btn_frame.pack(fill=tk.X, pady=5)
+        tk.Button(add_btn_frame, text="+ 添加自定义热点", font=('微软雅黑', 9),
+                 bg=C['success'], fg='white', relief=tk.FLAT, padx=10,
+                 command=self._ws_add_custom).pack(side=tk.LEFT, padx=5)
+        tk.Button(add_btn_frame, text="删除自定义", font=('微软雅黑', 9),
+                 bg=C['error'], fg='white', relief=tk.FLAT, padx=10,
+                 command=self._ws_delete_custom).pack(side=tk.LEFT, padx=5)
+        
         # 结果展示
         self.ws_result = tk.Text(f, height=12, wrap=tk.WORD, font=('微软雅黑', 10),
                                 bg=C['bg_card'], fg=C['text_primary'],
@@ -4778,7 +4788,7 @@ class NovelWriterApp:
             return
         category = self.ws_category_var.get()
         if not self.web_search_engine:
-            self.web_search_engine = WebSearchAdaptEngine(self.ai_client)
+            self.web_search_engine = WebSearchAdaptEngine(self.ai_client, self.current_novel_dir)
         
         items = self.web_search_engine.get_items(category)
         idx = sel[0]
@@ -4787,6 +4797,79 @@ class NovelWriterApp:
             template = item.get("adapt", item.get("template", ""))
             result = self.web_search_engine._fill_template(template)
             self._show_tool_result(self.ws_result, result)
+    
+    def _ws_add_custom(self):
+        """用户添加自定义热点"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("添加自定义热点")
+        dialog.geometry("500x400")
+        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        C = UIStyle.COLORS
+        
+        ttk.Label(dialog, text="分类:").pack(anchor=tk.W, padx=20, pady=(15,3))
+        cat_var = tk.StringVar(value=self.ws_category_var.get())
+        cats = WebSearchAdaptEngine(self.ai_client).get_categories()
+        ttk.Combobox(dialog, textvariable=cat_var, values=cats, state="readonly", width=47).pack(padx=20)
+        
+        ttk.Label(dialog, text="热点名称:").pack(anchor=tk.W, padx=20, pady=(10,3))
+        name_entry = ttk.Entry(dialog, width=50)
+        name_entry.pack(padx=20)
+        
+        ttk.Label(dialog, text="描述（一句话说明）:").pack(anchor=tk.W, padx=20, pady=(10,3))
+        desc_entry = ttk.Entry(dialog, width=50)
+        desc_entry.pack(padx=20)
+        
+        ttk.Label(dialog, text="改编模板（用{name}等变量）:").pack(anchor=tk.W, padx=20, pady=(10,3))
+        template_text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, height=6)
+        template_text.pack(padx=20, fill=tk.X)
+        template_text.insert("1.0", "{name}是一个普通{职业}，直到那天{事件}...")
+        
+        def save():
+            name = name_entry.get().strip()
+            desc = desc_entry.get().strip()
+            tmpl = template_text.get("1.0", tk.END).strip()
+            if not name or not tmpl:
+                messagebox.showwarning("提示", "请填写名称和模板")
+                return
+            if not self.web_search_engine:
+                self.web_search_engine = WebSearchAdaptEngine(self.ai_client, self.current_novel_dir)
+            self.web_search_engine.add_custom_meme(cat_var.get(), name, desc, tmpl)
+            self._log(f"已添加自定义热点: {name}")
+            dialog.destroy()
+            # 刷新列表
+            self._refresh_ws_list()
+            messagebox.showinfo("成功", f"已保存自定义热点「{name}」")
+        
+        ttk.Button(dialog, text="保存", command=save).pack(pady=15)
+    
+    def _ws_delete_custom(self):
+        """删除自定义热点"""
+        sel = self.ws_listbox.curselection()
+        if not sel:
+            messagebox.showinfo("提示", "请先选择要删除的热点")
+            return
+        if not self.web_search_engine:
+            self.web_search_engine = WebSearchAdaptEngine(self.ai_client, self.current_novel_dir)
+        items = self.web_search_engine.get_items(self.ws_category_var.get())
+        idx = sel[0]
+        if idx < len(items):
+            if not items[idx].get("custom"):
+                messagebox.showinfo("提示", "只能删除自定义添加的热点")
+                return
+            if messagebox.askyesno("确认", f"确定删除「{items[idx].get('name','')}」？"):
+                self.web_search_engine.delete_custom_meme(self.ws_category_var.get(), idx)
+                self._refresh_ws_list()
+                self._log(f"已删除自定义热点")
+    
+    def _refresh_ws_list(self):
+        """刷新热点列表"""
+        self.ws_listbox.delete(0, tk.END)
+        if not self.web_search_engine:
+            self.web_search_engine = WebSearchAdaptEngine(self.ai_client, self.current_novel_dir)
+        items = self.web_search_engine.get_items(self.ws_category_var.get())
+        for item in items:
+            marker = "[自定义]" if item.get("custom") else ""
+            self.ws_listbox.insert(tk.END, f"{marker}{item.get('name','')}: {item.get('desc','')}")
     
     def _check_ready(self) -> bool:
         """检查是否就绪"""

@@ -1,6 +1,6 @@
 # AI小说创作工坊
 
-**免费开源的AI辅助小说创作软件**
+**开源的AI辅助小说创作软件**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-2.0.0-blue.svg)](https://github.com/ATboy-web/AI_NovelWriter/releases)

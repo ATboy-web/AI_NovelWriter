@@ -3,14 +3,14 @@
 **开源的AI辅助小说创作软件** | **免费 · 无需注册 · 无需付费**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.1.0-blue.svg)](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.1.0)
+[![Version](https://img.shields.io/badge/Version-2.3.0-blue.svg)](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.3.0)
 [![Python](https://img.shields.io/badge/Python-3.11+-green.svg)](https://python.org)
 
 一个完整的AI小说创作工具，支持桌面端和移动端，帮助创作者高效完成小说创作。
 
 ---
 
-## ✨ 功能特性（v2.1.0）
+## ✨ 功能特性（v2.3.0）
 
 ### 🤖 AI智能创作（参考AutoGen多智能体架构）
 - **多智能体协作** - Writer（作家）/ Reviewer（审校）/ Editor（质量门）三角色分工
@@ -102,6 +102,18 @@ python novel_app.py
 ---
 
 ## 📋 版本历史
+
+### v2.3.0 (2026-06-02)
+
+**新功能：**
+- ✅ AI绘图模块（ComfyUI/SD WebUI集成，角色立绘/场景插图/封面生成）
+- ✅ 插件系统（支持工具/库/导出器/AI四种插件类型）
+- ✅ 多人协作系统（Git版本控制，用户角色管理，章节分配/锁定）
+- ✅ 角色成长系统v2.0（多角色/AI创建/自定义武器技能）
+- ✅ 格式转换（TXT/HTML/Markdown/EPUB/PDF/DOCX）
+- ✅ 图片插入（本地图片嵌入编辑区）
+- ✅ 章节文件分析+智能推荐
+- ✅ 热点梗库扩充至39个
 
 ### v2.1.0 (2026-06-01)
 

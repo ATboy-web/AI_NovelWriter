@@ -3,14 +3,14 @@
 **开源的AI辅助小说创作软件** | **免费 · 无需注册 · 无需付费**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.3.0-blue.svg)](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.3.0)
+[![Version](https://img.shields.io/badge/Version-2.4.0-blue.svg)](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.4.0)
 [![Python](https://img.shields.io/badge/Python-3.11+-green.svg)](https://python.org)
 
 一个完整的AI小说创作工具，支持桌面端和移动端，帮助创作者高效完成小说创作。
 
 ---
 
-## ✨ 功能特性（v2.3.0）
+## ✨ 功能特性（v2.4.0）
 
 ### 🤖 AI智能创作（参考AutoGen多智能体架构）
 - **多智能体协作** - Writer（作家）/ Reviewer（审校）/ Editor（质量门）三角色分工
@@ -102,6 +102,13 @@ python novel_app.py
 ---
 
 ## 📋 版本历史
+
+### v2.4.0 (2026-06-02)
+
+**新功能：**
+- ✅ 云端存储功能（WebDAV/百度网盘/夸克网盘/迅雷网盘/阿里云盘）
+- ✅ 云端同步（上传/下载/增量同步）
+- ✅ 云端存储配置界面
 
 ### v2.3.0 (2026-06-02)
 

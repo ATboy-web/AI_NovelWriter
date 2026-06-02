@@ -44,6 +44,7 @@ from novel_toolkit import (ElementLibrary, BridgeLibrary, DescriptionLibrary,
                            WebSearchAdaptEngine)
 from character_system import CharacterSystem, CharacterProfile
 from format_converter import FormatConverter, ImageManager
+from cloud_storage import CloudStorageManager
 
 
 # ==================== 配置管理 ====================
@@ -2805,6 +2806,7 @@ class NovelWriterApp:
         self.character_system = None
         self.format_converter = None
         self.image_manager = None
+        self.cloud_storage = CloudStorageManager()
         
         self.current_novel_dir = None
         self.memory = None
@@ -2890,7 +2892,8 @@ class NovelWriterApp:
         
         for text, cmd in [("新建", self._new_novel), ("打开", self._open_novel), 
                          ("导出", self._export_txt), ("格式转换", self._show_format_converter),
-                         ("插入图片", self._insert_image), ("设置", self._show_settings)]:
+                         ("插入图片", self._insert_image), ("云端同步", self._cloud_sync),
+                         ("设置", self._show_settings)]:
             tk.Button(btn_frame, text=text, font=('微软雅黑', 10),
                      bg=C['accent_hover'], fg='white', relief=tk.FLAT,
                      padx=15, pady=5, cursor='hand2',
@@ -3768,6 +3771,116 @@ class NovelWriterApp:
         ttk.Label(img_frame, text="支持的后端:\n- ComfyUI: 本地部署的ComfyUI，需启动API模式\n- SD API: Stable Diffusion WebUI的API模式\n- Disabled: 不使用文生图", 
                   justify=tk.LEFT).pack(anchor=tk.W, padx=20, pady=10)
         
+        # ===== Tab 3: 云端存储配置 =====
+        cloud_frame = ttk.Frame(notebook)
+        notebook.add(cloud_frame, text="云端存储")
+        
+        ttk.Label(cloud_frame, text="云端存储配置", font=("", 11, "bold")).pack(anchor=tk.W, padx=20, pady=(15,10))
+        ttk.Label(cloud_frame, text="支持: WebDAV（坚果云）、百度网盘、夸克网盘、迅雷网盘、阿里云盘").pack(anchor=tk.W, padx=20, pady=(0,10))
+        
+        # 云存储提供商选择
+        cloud_provider_var = tk.StringVar(value="webdav")
+        providers = self.cloud_storage.get_available_providers()
+        provider_names = [p["name"] for p in providers]
+        provider_ids = [p["id"] for p in providers]
+        
+        ttk.Label(cloud_frame, text="选择云存储:").pack(anchor=tk.W, padx=20, pady=(5,3))
+        cloud_combo = ttk.Combobox(cloud_frame, textvariable=cloud_provider_var, 
+                                   values=provider_names, state="readonly", width=50)
+        cloud_combo.pack(padx=20, pady=3)
+        cloud_combo.set(provider_names[0] if provider_names else "")
+        
+        # 配置区域
+        config_frame = ttk.LabelFrame(cloud_frame, text="配置信息", padding=10)
+        config_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        # WebDAV配置
+        webdav_frame = ttk.Frame(config_frame)
+        ttk.Label(webdav_frame, text="WebDAV地址:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        webdav_url_entry = ttk.Entry(webdav_frame, width=40)
+        webdav_url_entry.insert(0, self.cloud_storage.config.get("webdav", {}).get("url", "https://dav.jianguoyun.com/dav/"))
+        webdav_url_entry.grid(row=0, column=1, padx=5, pady=2)
+        
+        ttk.Label(webdav_frame, text="用户名:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        webdav_user_entry = ttk.Entry(webdav_frame, width=40)
+        webdav_user_entry.insert(0, self.cloud_storage.config.get("webdav", {}).get("username", ""))
+        webdav_user_entry.grid(row=1, column=1, padx=5, pady=2)
+        
+        ttk.Label(webdav_frame, text="密码/应用密钥:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        webdav_pass_entry = ttk.Entry(webdav_frame, width=40, show="*")
+        webdav_pass_entry.insert(0, self.cloud_storage.config.get("webdav", {}).get("password", ""))
+        webdav_pass_entry.grid(row=2, column=1, padx=5, pady=2)
+        webdav_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # 百度网盘配置
+        baidu_frame = ttk.Frame(config_frame)
+        ttk.Label(baidu_frame, text="Access Token:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        baidu_token_entry = ttk.Entry(baidu_frame, width=40)
+        baidu_token_entry.insert(0, self.cloud_storage.config.get("baidu", {}).get("access_token", ""))
+        baidu_token_entry.grid(row=0, column=1, padx=5, pady=2)
+        baidu_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # 夸克网盘配置
+        quark_frame = ttk.Frame(config_frame)
+        ttk.Label(quark_frame, text="Cookie:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        quark_cookie_entry = ttk.Entry(quark_frame, width=40)
+        quark_cookie_entry.insert(0, self.cloud_storage.config.get("quark", {}).get("cookie", ""))
+        quark_cookie_entry.grid(row=0, column=1, padx=5, pady=2)
+        quark_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # 迅雷网盘配置
+        xunlei_frame = ttk.Frame(config_frame)
+        ttk.Label(xunlei_frame, text="Access Token:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        xunlei_token_entry = ttk.Entry(xunlei_frame, width=40)
+        xunlei_token_entry.insert(0, self.cloud_storage.config.get("xunlei", {}).get("access_token", ""))
+        xunlei_token_entry.grid(row=0, column=1, padx=5, pady=2)
+        xunlei_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # 阿里云盘配置
+        aliyun_frame = ttk.Frame(config_frame)
+        ttk.Label(aliyun_frame, text="Access Token:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        aliyun_token_entry = ttk.Entry(aliyun_frame, width=40)
+        aliyun_token_entry.insert(0, self.cloud_storage.config.get("aliyun", {}).get("access_token", ""))
+        aliyun_token_entry.grid(row=0, column=1, padx=5, pady=2)
+        aliyun_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # 测试连接按钮
+        def test_cloud_connection():
+            provider_name = cloud_combo.get()
+            provider_id = provider_ids[provider_names.index(provider_name)] if provider_name in provider_names else "webdav"
+            
+            # 保存配置
+            if provider_id == "webdav":
+                self.cloud_storage.configure_provider("webdav", {
+                    "url": webdav_url_entry.get(),
+                    "username": webdav_user_entry.get(),
+                    "password": webdav_pass_entry.get()
+                })
+            elif provider_id == "baidu":
+                self.cloud_storage.configure_provider("baidu", {
+                    "access_token": baidu_token_entry.get()
+                })
+            elif provider_id == "quark":
+                self.cloud_storage.configure_provider("quark", {
+                    "cookie": quark_cookie_entry.get()
+                })
+            elif provider_id == "xunlei":
+                self.cloud_storage.configure_provider("xunlei", {
+                    "access_token": xunlei_token_entry.get()
+                })
+            elif provider_id == "aliyun":
+                self.cloud_storage.configure_provider("aliyun", {
+                    "access_token": aliyun_token_entry.get()
+                })
+            
+            # 测试连接
+            if self.cloud_storage.connect_provider(provider_id):
+                messagebox.showinfo("成功", f"{provider_name} 连接成功！")
+            else:
+                messagebox.showwarning("失败", f"{provider_name} 连接失败，请检查配置")
+        
+        ttk.Button(cloud_frame, text="测试连接", command=test_cloud_connection).pack(pady=10)
+        
         # ===== 保存 =====
         def save():
             self.config.set("api_provider", provider_var.get())
@@ -4036,6 +4149,87 @@ class NovelWriterApp:
             ch = item.get("chapter", "?")
             title = item.get("title", "未命名")
             self.outline_list.insert(tk.END, f"第{ch}章: {title}")
+    
+    # ===== 云端同步 =====
+    
+    def _cloud_sync(self):
+        """云端同步对话框"""
+        if not self.current_novel_dir:
+            messagebox.showwarning("提示", "请先新建或打开小说")
+            return
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title("云端同步")
+        dialog.geometry("400x300")
+        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        C = UIStyle.COLORS
+        
+        tk.Label(dialog, text="云端同步", font=('微软雅黑', 12, 'bold'),
+                bg=C['bg_dark'], fg=C['text_primary']).pack(pady=(15, 10))
+        
+        # 获取可用的云存储
+        providers = self.cloud_storage.get_available_providers()
+        configured = [p for p in providers if p.get("configured")]
+        
+        if not configured:
+            tk.Label(dialog, text="未配置云存储\n\n请在 设置 → 云端存储 中配置",
+                    font=('微软雅黑', 10), bg=C['bg_dark'], fg=C['text_muted']).pack(pady=20)
+        else:
+            provider_var = tk.StringVar(value=configured[0]["name"])
+            for p in configured:
+                tk.Radiobutton(dialog, text=p["name"], variable=provider_var, value=p["name"],
+                              font=('微软雅黑', 10), bg=C['bg_dark'], fg=C['text_primary'],
+                              selectcolor=C['accent']).pack(anchor=tk.W, padx=30, pady=3)
+            
+            def do_upload():
+                provider_name = provider_var.get()
+                provider_id = next((p["id"] for p in configured if p["name"] == provider_name), None)
+                if provider_id:
+                    def run():
+                        try:
+                            self._log(f"开始上传到 {provider_name}...")
+                            success = self.cloud_storage.upload_novel(self.current_novel_dir, provider_id)
+                            if success:
+                                self._log(f"上传成功！")
+                                self.root.after(0, lambda: messagebox.showinfo("成功", f"小说已上传到 {provider_name}"))
+                            else:
+                                self._log(f"上传失败")
+                                self.root.after(0, lambda: messagebox.showerror("失败", f"上传失败，请检查网络和配置"))
+                        except Exception as e:
+                            self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+                    threading.Thread(target=run, daemon=True).start()
+            
+            def do_download():
+                provider_name = provider_var.get()
+                provider_id = next((p["id"] for p in configured if p["name"] == provider_name), None)
+                if provider_id:
+                    def run():
+                        try:
+                            self._log(f"开始从 {provider_name} 下载...")
+                            success = self.cloud_storage.download_novel("/AI_NovelWriter", self.current_novel_dir, provider_id)
+                            if success:
+                                self._log(f"下载成功！")
+                                self.root.after(0, lambda: messagebox.showinfo("成功", f"小说已从 {provider_name} 下载"))
+                            else:
+                                self._log(f"下载失败")
+                                self.root.after(0, lambda: messagebox.showerror("失败", f"下载失败"))
+                        except Exception as e:
+                            self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+                    threading.Thread(target=run, daemon=True).start()
+            
+            btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
+            btn_frame.pack(fill=tk.X, padx=30, pady=15)
+            
+            tk.Button(btn_frame, text="上传到云端", font=('微软雅黑', 10),
+                     bg=C['accent'], fg='white', relief=tk.FLAT, padx=15,
+                     command=do_upload).pack(side=tk.LEFT, padx=5)
+            tk.Button(btn_frame, text="从云端下载", font=('微软雅黑', 10),
+                     bg=C['success'], fg='white', relief=tk.FLAT, padx=15,
+                     command=do_download).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(dialog, text="关闭", font=('微软雅黑', 10),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=15,
+                 command=dialog.destroy).pack(pady=10)
     
     # ===== 格式转换 =====
     

@@ -3,14 +3,27 @@
 **开源的AI辅助小说创作软件** | **免费 · 无需注册 · 无需付费**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.4.0-blue.svg)](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.4.0)
+[![Version](https://img.shields.io/badge/Version-2.5.0-blue.svg)](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.5.0)
 [![Python](https://img.shields.io/badge/Python-3.11+-green.svg)](https://python.org)
+[![GitHub Actions](https://img.shields.io/github/actions/workflow/status/ATboy-web/AI_NovelWriter/ci.yml?label=CI)](https://github.com/ATboy-web/AI_NovelWriter/actions)
 
 一个完整的AI小说创作工具，支持桌面端和移动端，帮助创作者高效完成小说创作。
 
 ---
 
-## ✨ 功能特性（v2.4.0）
+## ✨ 功能特性（v2.5.0）
+
+### 📖 15种小说类型
+| 类型 | 说明 | 类型 | 说明 |
+|------|------|------|------|
+| 科幻小说 | 未来科技、太空探索 | 悬疑推理 | 逻辑推理、意外结局 |
+| 言情小说 | 情感细腻、浪漫氛围 | 奇幻小说 | 魔法世界、史诗冒险 |
+| 都市小说 | 现实背景、生活气息 | 历史小说 | 朝代更迭、权谋斗争 |
+| 武侠小说 | 江湖恩怨、侠义精神 | 仙侠小说 | 修仙渡劫、宗门纷争 |
+| 恐怖小说 | 恐怖氛围、心理恐惧 | 军事小说 | 战争场面、战友情谊 |
+| 游戏小说 | 游戏系统、升级打怪 | 体育小说 | 竞技比赛、热血拼搏 |
+| 穿越小说 | 时空穿越、改变历史 | 系统流 | 金手指、逆袭打脸 |
+| 末日小说 | 末世生存、人性考验 | | |
 
 ### 🤖 AI智能创作（参考AutoGen多智能体架构）
 - **多智能体协作** - Writer（作家）/ Reviewer（审校）/ Editor（质量门）三角色分工
@@ -46,9 +59,14 @@
 
 ### 📖 阅读管理
 - **多格式支持** - TXT、EPUB、PDF、DOCX、Markdown
-- **书签功能** - 添加、删除、跳转
+- **书签功能** - 添加、删除、跳转、导入、导出
 - **阅读主题** - 浅色/深色/护眼模式
 - **搜索功能** - 书籍内关键词搜索
+
+### 🔌 插件系统
+- **多种安装方式** - URL/ZIP/本地目录/GitHub仓库
+- **插件类型** - 工具/库/导出器/AI服务
+- **动态加载** - 安装后即时生效
 
 ### 📝 笔记系统
 - **文档笔记** - 当前章节专属
@@ -57,6 +75,7 @@
 
 ### 📱 多平台支持
 - **桌面版** - Python + tkinter (Windows)
+- **Web前端** - React + TypeScript + Vite
 - **移动版** - React Native (Android APK)
 
 ---
@@ -75,6 +94,24 @@ pip install httpx
 
 # 运行
 python novel_app.py
+```
+
+### Web前端
+
+```bash
+cd frontend-react
+npm install
+npm run dev
+# 访问 http://localhost:5173
+```
+
+### 后端服务 (Docker)
+
+```bash
+cd ai-novel-writer
+docker-compose up -d
+# AI服务: http://localhost:8001
+# 小说服务: http://localhost:8002
 ```
 
 ### Android版
@@ -103,6 +140,25 @@ python novel_app.py
 
 ## 📋 版本历史
 
+### v2.5.0 (2026-06-03)
+
+**新功能：**
+- ✅ 小说类型从5种扩展到15种（新增：历史/武侠/仙侠/恐怖/军事/游戏/体育/穿越/系统流/末日）
+- ✅ 通用生成器GenericNovelGenerator基类
+- ✅ 插件系统完善（支持URL/ZIP/本地目录/GitHub仓库安装）
+- ✅ 书签导入/导出功能
+- ✅ 后端Dockerfile（ai-service + novel-service）
+- ✅ React前端重构（Vite + TypeScript）
+- ✅ GitHub Actions CI/CD流水线
+
+**Bug修复：**
+- ✅ 修复新建小说后笔记系统不工作
+- ✅ 修复图片预览清空编辑区内容
+- ✅ 清理未使用的代码导入
+
+**测试：**
+- ✅ 15种小说类型生成器全部通过测试
+
 ### v2.4.0 (2026-06-02)
 
 **新功能：**
@@ -119,8 +175,6 @@ python novel_app.py
 - ✅ 角色成长系统v2.0（多角色/AI创建/自定义武器技能）
 - ✅ 格式转换（TXT/HTML/Markdown/EPUB/PDF/DOCX）
 - ✅ 图片插入（本地图片嵌入编辑区）
-- ✅ 章节文件分析+智能推荐
-- ✅ 热点梗库扩充至39个
 
 ### v2.1.0 (2026-06-01)
 
@@ -132,21 +186,8 @@ python novel_app.py
 - ✅ 大幅扩充创作工具（元素库160+/桥段库80+/描写库150+）
 - ✅ 笔记系统（文档笔记/工程笔记/便笺本）
 - ✅ 阅读管理器（TXT/EPUB/PDF/DOCX/MD）
-- ✅ 用户自定义热点/梗/笑话功能
 - ✅ 全屏写作模式（打字机/Markdown/字体缩放/背景主题）
 - ✅ Android APK（React Native）
-
-**Bug修复：**
-- ✅ 修复MemoryManager缺少get_settings/save_settings
-- ✅ 修复FullscreenWriter._toggle_ai引用未定义self.ai_var
-- ✅ 修复EPUB read_book缩进错误
-- ✅ 修复_adapt_random访问不存在的字典键
-- ✅ 修复delete_custom_meme索引错误
-- ✅ 修复模板{n-1}格式错误
-- ✅ 修复tkinter线程安全问题（6处）
-- ✅ 修复KeyRelease绑定冲突
-- ✅ 修复PDF PageObject比较错误
-- ✅ 修复新建小说时genre_combo未定义错误
 
 ### v2.0.0 (2026-05-30)
 - 初始版本发布
@@ -162,31 +203,27 @@ python novel_app.py
 | **EPUB大文件加载慢** | 低 | 超过10MB的EPUB文件解析较慢，建议分章节导入 |
 | **PDF中文乱码** | 低 | 部分扫描版PDF无法正确提取文字，建议使用TXT或DOCX |
 | **Android版功能不完整** | 中 | 移动版暂不支持全屏写作、文生图、阅读管理器等桌面版功能 |
-| **热点改编内容有限** | 低 | 内置热点梗库约20条，用户可自行添加更多 |
 
 ---
 
 ## 🗺️ 开发路线图
 
 ### 近期计划
-- [ ] 优化AI续写的响应速度
-- [ ] 添加更多热点梗内容（定期更新）
-- [ ] 支持导出EPUB/PDF格式
-- [ ] 添加暗色/亮色主题切换（桌面版）
-- [ ] 修复PDF中文提取问题
+- [ ] React前端集成到桌面版 (#1)
+- [ ] 完善单元测试 (#2)
+- [ ] 性能优化 (#3)
+- [ ] 完善云端存储API (#4)
+- [ ] 完善项目文档 (#5)
 
 ### 中期计划
-- [ ] 添加文生图集成（ComfyUI/SD WebUI）
 - [ ] 支持多人协作（云端同步）
 - [ ] 添加iOS版本
 - [ ] 集成更多AI模型（GPT-4o、Claude 3.5等）
-- [ ] 添加插件系统
 
 ### 长期计划
 - [ ] 建立创作者社区
 - [ ] 支持多语言
 - [ ] 添加语音输入
-- [ ] AI绘图自动生成插图
 - [ ] 建立创作者生态
 
 ---
@@ -196,11 +233,14 @@ python novel_app.py
 | 组件 | 技术 |
 |------|------|
 | 桌面版 | Python 3.11+ / tkinter |
+| Web前端 | React 19 / TypeScript / Vite |
 | 移动版 | React Native / Expo |
+| 后端服务 | FastAPI / ChromaDB |
 | AI模型 | Ollama / OpenAI API / DeepSeek API |
 | 智能体 | 参考AutoGen多智能体协作架构 |
 | 记忆系统 | 参考Supermemory RAG检索架构 |
-| 数据存储 | 本地JSON文件 |
+| 容器化 | Docker / Docker Compose |
+| CI/CD | GitHub Actions |
 | 打包工具 | PyInstaller (桌面) / Gradle (Android) |
 | 版本管理 | Git |
 
@@ -210,21 +250,30 @@ python novel_app.py
 
 ```
 AI_NovelWriter/
-├── novel_app.py          # 桌面版主程序 (4900+行)
-├── novel_toolkit.py      # 创作工具集 (580+行)
-├── installer/            # PyInstaller打包配置
-│   ├── dist/             # 打包输出 (exe)
-│   └── novel_app.spec    # 打包规范
-├── mobile-app/           # React Native移动版
-│   ├── App.tsx           # 主入口
-│   ├── src/screens/      # 页面组件
-│   ├── src/services/     # API服务
-│   ├── src/styles/       # 主题样式
-│   └── android/          # Android构建配置
-├── backend/              # 后端服务（可选）
-│   ├── ai-service/       # AI模型服务
-│   └── novel-service/    # 小说生成服务
-└── LICENSE               # MIT许可证
+├── novel_app.py              # 桌面版主程序 (6000+行)
+├── novel_toolkit.py          # 创作工具集
+├── character_system.py       # 角色成长系统
+├── format_converter.py       # 格式转换器
+├── cloud_storage.py          # 云端存储模块
+├── plugin_system.py          # 插件系统
+├── test_generators.py        # 测试脚本
+├── CHANGELOG.md              # 版本更新日志
+├── frontend-react/           # React前端应用
+│   ├── src/
+│   │   ├── pages/            # 页面组件
+│   │   └── App.tsx           # 主入口
+│   └── package.json
+├── backend/                  # 后端服务
+│   ├── ai-service/           # AI模型服务
+│   │   ├── Dockerfile
+│   │   └── app/
+│   └── novel-service/        # 小说生成服务
+│       ├── Dockerfile
+│       └── app/
+├── installer/                # PyInstaller打包配置
+├── mobile-app/               # React Native移动版
+├── .github/workflows/        # GitHub Actions
+└── LICENSE                   # MIT许可证
 ```
 
 ---
@@ -263,6 +312,7 @@ AI_NovelWriter/
 - [GitHub仓库](https://github.com/ATboy-web/AI_NovelWriter)
 - [Releases下载](https://github.com/ATboy-web/AI_NovelWriter/releases)
 - [问题反馈](https://github.com/ATboy-web/AI_NovelWriter/issues)
+- [CI/CD状态](https://github.com/ATboy-web/AI_NovelWriter/actions)
 - [Ollama官网](https://ollama.ai)
 
 ---
@@ -273,6 +323,9 @@ AI_NovelWriter/
 - [Ollama](https://ollama.ai) - 本地AI模型运行框架
 - [AutoGen](https://github.com/microsoft/autogen) - 多智能体协作架构参考
 - [Supermemory](https://github.com/supermemoryai/supermemory) - 记忆系统架构参考
+- [React](https://react.dev) - Web前端框架
+- [Vite](https://vitejs.dev) - 前端构建工具
+- [FastAPI](https://fastapi.tiangolo.com) - 后端API框架
 - [React Native](https://reactnative.dev) - 跨平台移动应用框架
 - [Expo](https://expo.dev) - React Native开发工具
 

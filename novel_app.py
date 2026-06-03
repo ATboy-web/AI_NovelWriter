@@ -5273,23 +5273,20 @@ class NovelWriterApp:
         self.elem_listbox = tk.Listbox(f, height=8, selectmode=tk.MULTIPLE)
         self.elem_listbox.pack(fill=tk.X, pady=3)
         
-        # 自定义元素
-        custom_frame = ttk.Frame(f)
-        custom_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(custom_frame, text="自定义元素:").pack(side=tk.LEFT)
-        self.custom_elem_entry = ttk.Entry(custom_frame, width=20)
-        self.custom_elem_entry.pack(side=tk.LEFT, padx=3)
-        ttk.Button(custom_frame, text="添加", command=self._add_custom_element).pack(side=tk.LEFT)
-        
-        # 生成按钮
+        # 生成按钮 + 自定义元素（同一行）
         btn_frame = ttk.Frame(f)
-        btn_frame.pack(fill=tk.X, pady=5)
+        btn_frame.pack(fill=tk.X, pady=3)
         ttk.Button(btn_frame, text="组合生成背景设定", command=self._gen_background_from_elements).pack(side=tk.LEFT)
-        ttk.Button(btn_frame, text="查看元素详情", command=self._view_element_detail).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="查看元素详情", command=self._view_element_detail).pack(side=tk.LEFT, padx=5)
+        ttk.Label(btn_frame, text="|").pack(side=tk.LEFT, padx=5)
+        ttk.Label(btn_frame, text="自定义:").pack(side=tk.LEFT)
+        self.custom_elem_entry = ttk.Entry(btn_frame, width=12)
+        self.custom_elem_entry.pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_frame, text="添加", command=self._add_custom_element).pack(side=tk.LEFT)
         
-        # 结果
+        # 结果（填充剩余空间）
         self.elem_result = scrolledtext.ScrolledText(f, height=8, wrap=tk.WORD, font=("微软雅黑", 10))
-        self.elem_result.pack(fill=tk.BOTH, expand=True, pady=5)
+        self.elem_result.pack(fill=tk.BOTH, expand=True, pady=3)
         
         if cats:
             self.elem_cat_var.set(cats[0])
@@ -5365,26 +5362,24 @@ class NovelWriterApp:
         cats = [c["name"] for c in self.bridge_lib.get_categories()]
         ttk.Combobox(cat_frame, textvariable=self.bridge_cat_var, values=cats, state="readonly", width=20).pack(side=tk.LEFT, padx=5)
         
-        ttk.Label(f, text="场景设定:").pack(anchor=tk.W, pady=3)
+        ttk.Label(f, text="场景设定:").pack(anchor=tk.W, pady=2)
         self.bridge_setting = ttk.Entry(f, width=60)
-        self.bridge_setting.pack(fill=tk.X, pady=3)
+        self.bridge_setting.pack(fill=tk.X, pady=2)
         self.bridge_setting.insert(0, "深夜的修炼室中")
         
-        # 自定义桥段
-        custom_frame = ttk.Frame(f)
-        custom_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(custom_frame, text="自定义桥段:").pack(side=tk.LEFT)
-        self.custom_bridge_entry = ttk.Entry(custom_frame, width=40)
-        self.custom_bridge_entry.pack(side=tk.LEFT, padx=3)
-        ttk.Button(custom_frame, text="添加", command=self._add_custom_bridge).pack(side=tk.LEFT)
-        
+        # 按钮行 + 自定义桥段
         btn_frame = ttk.Frame(f)
-        btn_frame.pack(fill=tk.X, pady=5)
+        btn_frame.pack(fill=tk.X, pady=3)
         ttk.Button(btn_frame, text="查看模板", command=self._view_bridge_template).pack(side=tk.LEFT)
-        ttk.Button(btn_frame, text="AI生成桥段", command=self._gen_bridge).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="AI生成桥段", command=self._gen_bridge).pack(side=tk.LEFT, padx=5)
+        ttk.Label(btn_frame, text="|").pack(side=tk.LEFT, padx=5)
+        ttk.Label(btn_frame, text="自定义:").pack(side=tk.LEFT)
+        self.custom_bridge_entry = ttk.Entry(btn_frame, width=20)
+        self.custom_bridge_entry.pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_frame, text="添加", command=self._add_custom_bridge).pack(side=tk.LEFT)
         
         self.bridge_result = scrolledtext.ScrolledText(f, height=10, wrap=tk.WORD, font=("微软雅黑", 10))
-        self.bridge_result.pack(fill=tk.BOTH, expand=True, pady=5)
+        self.bridge_result.pack(fill=tk.BOTH, expand=True, pady=3)
         
         if cats:
             self.bridge_cat_var.set(cats[0])
@@ -5453,21 +5448,17 @@ class NovelWriterApp:
         ttk.Combobox(cat_frame, textvariable=self.desc_cat_var, values=cats, state="readonly", width=15).pack(side=tk.LEFT, padx=5)
         
         ttk.Label(cat_frame, text="描写对象:").pack(side=tk.LEFT, padx=(10,0))
-        self.desc_subject = ttk.Entry(cat_frame, width=20)
+        self.desc_subject = ttk.Entry(cat_frame, width=15)
         self.desc_subject.pack(side=tk.LEFT, padx=5)
-        
         ttk.Button(cat_frame, text="生成描写", command=self._gen_description).pack(side=tk.LEFT, padx=5)
-        
-        # 自定义描写关键词
-        custom_frame = ttk.Frame(f)
-        custom_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(custom_frame, text="自定义关键词:").pack(side=tk.LEFT)
-        self.custom_desc_entry = ttk.Entry(custom_frame, width=20)
-        self.custom_desc_entry.pack(side=tk.LEFT, padx=3)
-        ttk.Button(custom_frame, text="添加", command=self._add_custom_description).pack(side=tk.LEFT)
+        ttk.Label(cat_frame, text="|").pack(side=tk.LEFT, padx=3)
+        ttk.Label(cat_frame, text="自定义:").pack(side=tk.LEFT)
+        self.custom_desc_entry = ttk.Entry(cat_frame, width=10)
+        self.custom_desc_entry.pack(side=tk.LEFT, padx=2)
+        ttk.Button(cat_frame, text="添加", command=self._add_custom_description).pack(side=tk.LEFT)
         
         self.desc_result = scrolledtext.ScrolledText(f, height=10, wrap=tk.WORD, font=("微软雅黑", 10))
-        self.desc_result.pack(fill=tk.BOTH, expand=True, pady=5)
+        self.desc_result.pack(fill=tk.BOTH, expand=True, pady=3)
         
         if cats:
             self.desc_cat_var.set(cats[0])

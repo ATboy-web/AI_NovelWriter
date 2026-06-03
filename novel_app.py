@@ -3726,21 +3726,24 @@ class NovelWriterApp:
                  bg=C['accent'], fg='white', relief=tk.FLAT, padx=5).pack(side=tk.LEFT, padx=3)
         custom_tag_entry.bind("<Return>", lambda e: add_custom_tag())
         
-        # ===== 底部固定区域 =====
+        # ===== 底部固定区域（紧凑布局）=====
         bottom = tk.Frame(dialog, bg=C['bg_dark'])
-        bottom.pack(fill=tk.X, padx=15, pady=(0, 5))
+        bottom.pack(fill=tk.X, padx=15, pady=(0, 5), side=tk.BOTTOM)
         
-        tk.Label(bottom, text="核心概念:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(anchor=tk.W)
-        concept_text = scrolledtext.ScrolledText(bottom, wrap=tk.WORD, height=2, font=('微软雅黑', 9),
-                                                  bg=C['bg_card'], fg=C['text_primary'],
-                                                  insertbackground=C['text_primary'], relief=tk.FLAT)
-        concept_text.pack(fill=tk.X, pady=2)
+        # 核心概念（单行输入）
+        concept_row = tk.Frame(bottom, bg=C['bg_dark'])
+        concept_row.pack(fill=tk.X, pady=2)
+        tk.Label(concept_row, text="核心概念:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(side=tk.LEFT)
+        concept_text = tk.Entry(concept_row, font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_primary'],
+                               insertbackground=C['text_primary'], relief=tk.FLAT)
+        concept_text.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         
-        ch_bottom = tk.Frame(bottom, bg=C['bg_dark'])
-        ch_bottom.pack(fill=tk.X, pady=2)
-        tk.Label(ch_bottom, text="章节数:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(side=tk.LEFT)
+        # 章节数 + 创建按钮（同一行）
+        action_row = tk.Frame(bottom, bg=C['bg_dark'])
+        action_row.pack(fill=tk.X, pady=3)
+        tk.Label(action_row, text="章节数:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(side=tk.LEFT)
         chapters_var = tk.StringVar(value="20")
-        tk.Spinbox(ch_bottom, from_=1, to=500, textvariable=chapters_var, width=8,
+        tk.Spinbox(action_row, from_=1, to=500, textvariable=chapters_var, width=6,
                   font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_primary']).pack(side=tk.LEFT, padx=5)
         
         def confirm():
@@ -3752,7 +3755,7 @@ class NovelWriterApp:
             genre_full = genre_var.get().split("-")
             genre = genre_full[0] if len(genre_full) > 0 else ""
             sub_genre = genre_full[1] if len(genre_full) > 1 else ""
-            concept = concept_text.get("1.0", tk.END).strip()
+            concept = concept_text.get().strip()
             chapters = int(chapters_var.get())
             
             # 收集选中的标签
@@ -3793,8 +3796,8 @@ class NovelWriterApp:
             dialog.destroy()
             self._log(f"新建小说《{title}》({sub_genre}) 创建成功，标签: {', '.join(selected_tags)}")
         
-        tk.Button(bottom, text="创建小说", command=confirm, font=('微软雅黑', 10, 'bold'),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=20, pady=3).pack(pady=(5, 0))
+        tk.Button(action_row, text="创建小说", command=confirm, font=('微软雅黑', 10, 'bold'),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=20, pady=3).pack(side=tk.RIGHT, padx=10)
     
     def _open_novel(self):
         """打开小说"""

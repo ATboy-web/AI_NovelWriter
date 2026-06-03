@@ -3544,7 +3544,8 @@ class NovelWriterApp:
         w, h = min(680, sw - 100), min(600, sh - 100)
         x, y = (sw - w) // 2, (sh - h) // 2
         dialog.geometry(f"{w}x{h}+{x}+{y}")
-        dialog.resizable(False, False)
+        dialog.resizable(True, True)
+        dialog.minsize(500, 400)
         dialog.transient(self.root)
         dialog.grab_set()
         
@@ -3691,20 +3692,17 @@ class NovelWriterApp:
         bottom.pack(fill=tk.X, padx=15, pady=(0, 5))
         
         tk.Label(bottom, text="核心概念:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(anchor=tk.W)
-        concept_text = scrolledtext.ScrolledText(bottom, wrap=tk.WORD, height=4, font=('微软雅黑', 9),
+        concept_text = scrolledtext.ScrolledText(bottom, wrap=tk.WORD, height=2, font=('微软雅黑', 9),
                                                   bg=C['bg_card'], fg=C['text_primary'],
                                                   insertbackground=C['text_primary'], relief=tk.FLAT)
         concept_text.pack(fill=tk.X, pady=2)
         
         ch_bottom = tk.Frame(bottom, bg=C['bg_dark'])
-        ch_bottom.pack(fill=tk.X, pady=3)
-        tk.Label(ch_bottom, text="目标章节数:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(side=tk.LEFT)
+        ch_bottom.pack(fill=tk.X, pady=2)
+        tk.Label(ch_bottom, text="章节数:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(side=tk.LEFT)
         chapters_var = tk.StringVar(value="20")
         tk.Spinbox(ch_bottom, from_=1, to=500, textvariable=chapters_var, width=8,
                   font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_primary']).pack(side=tk.LEFT, padx=5)
-        
-        tk.Button(bottom, text="创建小说", command=confirm, font=('微软雅黑', 10, 'bold'),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=20, pady=5).pack(pady=5)
         
         def confirm():
             title = title_entry.get().strip()
@@ -3755,6 +3753,9 @@ class NovelWriterApp:
             
             dialog.destroy()
             self._log(f"新建小说《{title}》({sub_genre}) 创建成功，标签: {', '.join(selected_tags)}")
+        
+        tk.Button(bottom, text="创建小说", command=confirm, font=('微软雅黑', 10, 'bold'),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=20, pady=3).pack(pady=(5, 0))
     
     def _open_novel(self):
         """打开小说"""

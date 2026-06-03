@@ -3539,21 +3539,31 @@ class NovelWriterApp:
         """新建小说"""
         dialog = tk.Toplevel(self.root)
         dialog.title("新建小说")
-        dialog.geometry("650x700")
-        dialog.minsize(500, 500)
+        # 固定窗口大小，适合屏幕显示
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        w, h = min(680, sw - 100), min(600, sh - 100)
+        x, y = (sw - w) // 2, (sh - h) // 2
+        dialog.geometry(f"{w}x{h}+{x}+{y}")
+        dialog.resizable(False, False)
         dialog.transient(self.root)
         dialog.grab_set()
         
-        ttk.Label(dialog, text="小说标题:").pack(anchor=tk.W, padx=20, pady=(20,5))
-        title_entry = ttk.Entry(dialog, width=50)
-        title_entry.pack(padx=20, pady=5)
+        C = UIStyle.COLORS
         
-        ttk.Label(dialog, text="小说频道:").pack(anchor=tk.W, padx=20, pady=(10,5))
+        # ===== 顶部固定区域 =====
+        top = tk.Frame(dialog, bg=C['bg_dark'])
+        top.pack(fill=tk.X, padx=15, pady=(10, 0))
+        
+        tk.Label(top, text="小说标题:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=0, column=0, sticky=tk.W, pady=3)
+        title_entry = tk.Entry(top, font=('微软雅黑', 10), bg=C['bg_card'], fg=C['text_primary'], insertbackground=C['text_primary'], relief=tk.FLAT, width=40)
+        title_entry.grid(row=0, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
+        
+        tk.Label(top, text="小说频道:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=1, column=0, sticky=tk.W, pady=3)
         channel_var = tk.StringVar(value="male")
-        channel_frame = ttk.Frame(dialog)
-        channel_frame.pack(fill=tk.X, padx=20, pady=5)
+        ch_frame = tk.Frame(top, bg=C['bg_dark'])
+        ch_frame.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=3)
         
-        # 男女频标签体系
+        # 男女频类型列表
         MALE_GENRES = [
             "玄幻-东方玄幻", "玄幻-异世大陆", "玄幻-高武世界",
             "仙侠-古典仙侠", "仙侠-现代修真", "仙侠-洪荒封神",
@@ -3568,7 +3578,6 @@ class NovelWriterApp:
             "轻小说-原生幻想", "轻小说-搞笑吐槽", "轻小说-恋爱日常",
             "二次元-青春日常", "二次元-变身入替", "二次元-同人衍生",
         ]
-        
         FEMALE_GENRES = [
             "古代言情-女尊王朝", "古代言情-宫闱宅斗", "古代言情-穿越奇情",
             "现代言情-豪门总裁", "现代言情-都市婚恋", "现代言情-职场丽人",
@@ -3581,15 +3590,11 @@ class NovelWriterApp:
             "短篇-短篇言情", "短篇-微小说", "短篇-轻小说",
         ]
         
-        # 先创建genre_var和genre_combo，供update_genre_list使用
+        tk.Label(top, text="小说类型:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=2, column=0, sticky=tk.W, pady=3)
         genre_var = tk.StringVar(value=MALE_GENRES[0])
-        ttk.Label(dialog, text="小说类型:").pack(anchor=tk.W, padx=20, pady=(10,5))
-        genre_combo = ttk.Combobox(dialog, textvariable=genre_var, values=MALE_GENRES, state="readonly", width=47)
-        genre_combo.pack(padx=20, pady=5)
-        
-        # 标签面板（在频道选择之前创建，使用可滚动画布）
-        tag_frame = ttk.LabelFrame(dialog, text="附加标签（可多选）", padding=5)
-        tag_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+        genre_combo = ttk.Combobox(top, textvariable=genre_var, values=MALE_GENRES, state="readonly", width=35)
+        genre_combo.grid(row=2, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
+        top.columnconfigure(1, weight=1)
         
         # 男生标签（8类 80+标签）
         MALE_TAGS = {
@@ -3602,8 +3607,6 @@ class NovelWriterApp:
             "感情线": ["单女主", "多女主", "后宫流", "无女主", "暧昧流", "青梅竹马", "天降系", "傲娇女主", "御姐型", "萝莉型", "病娇女主"],
             "特殊设定": ["万界穿梭", "时间回溯", "读心术", "透视眼", "隐身术", "空间戒指", "金手指", "老爷爷", "神级血脉", "远古传承", "神器认主", "神兽伙伴"],
         }
-        
-        # 女生标签（8类 80+标签）
         FEMALE_TAGS = {
             "角色设定": ["甜宠女主", "女强逆袭", "马甲大佬", "团宠担当", "万人迷", "病娇偏执", "霸总老公", "白月光", "替身前妻", "软萌娇妻", "女王御姐", "萌宝来袭", "戏精女主", "佛系女主", "毒舌女主", "学霸女主"],
             "情节元素": ["先婚后爱", "追妻火葬场", "带球跑", "契约婚姻", "养成系", "宅斗宫斗", "真假千金", "失忆重逢", "假戏真做", "隐婚密爱", "替身文学", "重生虐渣", "闪婚闪离", "破镜重圆", "日久生情", "强取豪夺"],
@@ -3615,60 +3618,93 @@ class NovelWriterApp:
             "特殊元素": ["萌宝", "双胞胎", "龙凤胎", "穿越", "重生", "系统", "空间", "异能", "修仙", "娱乐圈", "豪门", "校园"],
         }
         
-        # 标签面板（使用简单的Frame）
-        tag_frame = tk.LabelFrame(dialog, text="附加标签（可多选）", padx=10, pady=10,
-                                  bg=UIStyle.COLORS['bg_dark'], fg=UIStyle.COLORS['text_primary'])
-        tag_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
+        # ===== 中间可滚动标签区域 =====
+        tag_outer = tk.LabelFrame(dialog, text=" 附加标签（可多选，鼠标滚轮滚动） ", padx=5, pady=5,
+                                  bg=C['bg_dark'], fg=C['accent_light'], font=('微软雅黑', 9))
+        tag_outer.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
         
-        self.tag_vars = {}  # 存储标签选择状态
-        tags_container = tk.Frame(tag_frame, bg=UIStyle.COLORS['bg_dark'])
-        tags_container.pack(fill=tk.BOTH, expand=True)
+        tag_canvas = tk.Canvas(tag_outer, bg=C['bg_dark'], highlightthickness=0, bd=0)
+        tag_scrollbar = tk.Scrollbar(tag_outer, orient=tk.VERTICAL, command=tag_canvas.yview)
+        tag_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        tag_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tag_canvas.configure(yscrollcommand=tag_scrollbar.set)
         
-        def update_genre_list(channel):
-            """切换频道时更新类型列表"""
+        tags_container = tk.Frame(tag_canvas, bg=C['bg_dark'])
+        tag_canvas_window = tag_canvas.create_window((0, 0), window=tags_container, anchor=tk.NW)
+        
+        # 鼠标滚轮滚动标签
+        def on_mousewheel(event):
+            tag_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        tag_canvas.bind_all("<MouseWheel>", on_mousewheel)
+        
+        # 使tags_container宽度跟随canvas
+        def on_canvas_configure(event):
+            tag_canvas.itemconfig(tag_canvas_window, width=event.width)
+        tag_canvas.bind("<Configure>", on_canvas_configure)
+        
+        self.tag_vars = {}
+        
+        def update_tags(channel):
+            """更新标签显示"""
             genre_combo['values'] = MALE_GENRES if channel == "male" else FEMALE_GENRES
             genre_var.set(MALE_GENRES[0] if channel == "male" else FEMALE_GENRES[0])
-            # 更新标签
             for w in tags_container.winfo_children():
                 w.destroy()
             self.tag_vars.clear()
             tags = MALE_TAGS if channel == "male" else FEMALE_TAGS
             for cat_name, cat_tags in tags.items():
-                cat_label = tk.Label(tags_container, text=f"{cat_name}:", 
-                                    font=("微软雅黑", 9, "bold"),
-                                    bg=UIStyle.COLORS['bg_dark'], fg=UIStyle.COLORS['accent_light'],
-                                    anchor=tk.W)
-                cat_label.pack(fill=tk.X, pady=(8, 2))
-                tag_line = tk.Frame(tags_container, bg=UIStyle.COLORS['bg_dark'])
-                tag_line.pack(fill=tk.X, pady=2)
+                cat_label = tk.Label(tags_container, text=cat_name, font=("微软雅黑", 9, "bold"),
+                                    bg=C['bg_dark'], fg=C['accent_light'], anchor=tk.W)
+                cat_label.pack(fill=tk.X, pady=(6, 1), padx=5)
+                tag_line = tk.Frame(tags_container, bg=C['bg_dark'])
+                tag_line.pack(fill=tk.X, padx=5)
                 for tag in cat_tags:
                     var = tk.BooleanVar(value=False)
                     self.tag_vars[tag] = var
-                    cb = tk.Checkbutton(tag_line, text=tag, variable=var,
-                                       font=("微软雅黑", 9),
-                                       bg=UIStyle.COLORS['bg_dark'], fg=UIStyle.COLORS['text_primary'],
-                                       selectcolor=UIStyle.COLORS['bg_card'],
-                                       activebackground=UIStyle.COLORS['bg_dark'],
-                                       activeforeground=UIStyle.COLORS['accent_light'],
-                                       relief=tk.FLAT, padx=2)
-                    cb.pack(side=tk.LEFT, padx=3, pady=1)
+                    cb = tk.Checkbutton(tag_line, text=tag, variable=var, font=("微软雅黑", 8),
+                                       bg=C['bg_dark'], fg=C['text_secondary'],
+                                       selectcolor=C['bg_card'],
+                                       activebackground=C['bg_dark'],
+                                       activeforeground=C['accent_light'],
+                                       relief=tk.FLAT, padx=1, pady=0)
+                    cb.pack(side=tk.LEFT, padx=2, pady=1)
+            tags_container.update_idletasks()
+            tag_canvas.configure(scrollregion=tag_canvas.bbox("all"))
+            tag_canvas.yview_moveto(0)
         
-        # 频道选择（放在标签之后）
-        ttk.Radiobutton(channel_frame, text="男生频道", variable=channel_var, value="male",
-                       command=lambda: update_genre_list("male")).pack(side=tk.LEFT, padx=10)
-        ttk.Radiobutton(channel_frame, text="女生频道", variable=channel_var, value="female",
-                       command=lambda: update_genre_list("female")).pack(side=tk.LEFT, padx=10)
+        # 频道选择
+        for text, val in [("男生频道", "male"), ("女生频道", "female")]:
+            rb = tk.Radiobutton(ch_frame, text=text, variable=channel_var, value=val,
+                               command=lambda v=val: update_tags(v),
+                               bg=C['bg_dark'], fg=C['text_primary'],
+                               selectcolor=C['bg_card'],
+                               activebackground=C['bg_dark'],
+                               activeforeground=C['accent_light'],
+                               font=('微软雅黑', 9))
+            rb.pack(side=tk.LEFT, padx=8)
         
-        # 初始化标签（默认显示男生标签）
-        update_genre_list("male")
+        # 初始化标签
+        update_tags("male")
         
-        ttk.Label(dialog, text="核心概念:").pack(anchor=tk.W, padx=20, pady=(10,5))
-        concept_text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, height=8)
-        concept_text.pack(padx=20, pady=5, fill=tk.X)
+        # ===== 底部固定区域 =====
+        bottom = tk.Frame(dialog, bg=C['bg_dark'])
+        bottom.pack(fill=tk.X, padx=15, pady=(0, 5))
         
-        ttk.Label(dialog, text="目标章节数:").pack(anchor=tk.W, padx=20, pady=(10,5))
+        tk.Label(bottom, text="核心概念:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(anchor=tk.W)
+        concept_text = scrolledtext.ScrolledText(bottom, wrap=tk.WORD, height=4, font=('微软雅黑', 9),
+                                                  bg=C['bg_card'], fg=C['text_primary'],
+                                                  insertbackground=C['text_primary'], relief=tk.FLAT)
+        concept_text.pack(fill=tk.X, pady=2)
+        
+        ch_bottom = tk.Frame(bottom, bg=C['bg_dark'])
+        ch_bottom.pack(fill=tk.X, pady=3)
+        tk.Label(ch_bottom, text="目标章节数:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(side=tk.LEFT)
         chapters_var = tk.StringVar(value="20")
-        ttk.Spinbox(dialog, from_=1, to=500, textvariable=chapters_var, width=10).pack(anchor=tk.W, padx=20, pady=5)
+        tk.Spinbox(ch_bottom, from_=1, to=500, textvariable=chapters_var, width=8,
+                  font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_primary']).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(bottom, text="创建小说", command=confirm, font=('微软雅黑', 10, 'bold'),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=20, pady=5).pack(pady=5)
         
         def confirm():
             title = title_entry.get().strip()
@@ -3719,8 +3755,6 @@ class NovelWriterApp:
             
             dialog.destroy()
             self._log(f"新建小说《{title}》({sub_genre}) 创建成功，标签: {', '.join(selected_tags)}")
-        
-        ttk.Button(dialog, text="创建", command=confirm).pack(pady=20)
     
     def _open_novel(self):
         """打开小说"""

@@ -3539,21 +3539,41 @@ class NovelWriterApp:
         """新建小说"""
         dialog = tk.Toplevel(self.root)
         dialog.title("新建小说")
-        # 固定窗口大小，适合屏幕显示
+        # 窗口大小适配屏幕
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-        w, h = min(680, sw - 100), min(600, sh - 100)
+        w, h = min(700, sw - 80), min(650, sh - 80)
         x, y = (sw - w) // 2, (sh - h) // 2
         dialog.geometry(f"{w}x{h}+{x}+{y}")
         dialog.resizable(True, True)
-        dialog.minsize(500, 400)
+        dialog.minsize(550, 450)
         dialog.transient(self.root)
         dialog.grab_set()
         
         C = UIStyle.COLORS
         
+        # ===== 底部固定区域（先pack，确保始终可见）=====
+        bottom = tk.Frame(dialog, bg=C['bg_dark'])
+        bottom.pack(side=tk.BOTTOM, fill=tk.X, padx=15, pady=8)
+        
+        # 核心概念
+        concept_row = tk.Frame(bottom, bg=C['bg_dark'])
+        concept_row.pack(fill=tk.X, pady=(0, 5))
+        tk.Label(concept_row, text="核心概念:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(side=tk.LEFT)
+        concept_entry = tk.Entry(concept_row, font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_primary'],
+                                insertbackground=C['text_primary'], relief=tk.FLAT)
+        concept_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        # 章节数 + 创建按钮
+        action_row = tk.Frame(bottom, bg=C['bg_dark'])
+        action_row.pack(fill=tk.X)
+        tk.Label(action_row, text="章节数:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(side=tk.LEFT)
+        chapters_var = tk.StringVar(value="20")
+        tk.Spinbox(action_row, from_=1, to=500, textvariable=chapters_var, width=6,
+                  font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_primary']).pack(side=tk.LEFT, padx=5)
+        
         # ===== 顶部固定区域 =====
         top = tk.Frame(dialog, bg=C['bg_dark'])
-        top.pack(fill=tk.X, padx=15, pady=(10, 0))
+        top.pack(side=tk.TOP, fill=tk.X, padx=15, pady=(10, 0))
         
         tk.Label(top, text="小说标题:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=0, column=0, sticky=tk.W, pady=3)
         title_entry = tk.Entry(top, font=('微软雅黑', 10), bg=C['bg_card'], fg=C['text_primary'], insertbackground=C['text_primary'], relief=tk.FLAT, width=40)
@@ -3633,10 +3653,11 @@ class NovelWriterApp:
         tags_container = tk.Frame(tag_canvas, bg=C['bg_dark'])
         tag_canvas_window = tag_canvas.create_window((0, 0), window=tags_container, anchor=tk.NW)
         
-        # 鼠标滚轮滚动标签
+        # 鼠标滚轮滚动标签（仅在标签区域生效）
         def on_mousewheel(event):
             tag_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        tag_canvas.bind_all("<MouseWheel>", on_mousewheel)
+        tag_canvas.bind("<MouseWheel>", on_mousewheel)
+        tags_container.bind("<MouseWheel>", on_mousewheel)
         
         # 使tags_container宽度跟随canvas
         def on_canvas_configure(event):
@@ -3755,7 +3776,7 @@ class NovelWriterApp:
             genre_full = genre_var.get().split("-")
             genre = genre_full[0] if len(genre_full) > 0 else ""
             sub_genre = genre_full[1] if len(genre_full) > 1 else ""
-            concept = concept_text.get().strip()
+            concept = concept_entry.get().strip()
             chapters = int(chapters_var.get())
             
             # 收集选中的标签
@@ -3797,7 +3818,7 @@ class NovelWriterApp:
             self._log(f"新建小说《{title}》({sub_genre}) 创建成功，标签: {', '.join(selected_tags)}")
         
         tk.Button(action_row, text="创建小说", command=confirm, font=('微软雅黑', 10, 'bold'),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=20, pady=3).pack(side=tk.RIGHT, padx=10)
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=20, pady=3).pack(side=tk.RIGHT)
     
     def _open_novel(self):
         """打开小说"""

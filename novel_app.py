@@ -3586,13 +3586,7 @@ class NovelWriterApp:
         genre_combo = ttk.Combobox(dialog, textvariable=genre_var, values=MALE_GENRES, state="readonly", width=47)
         genre_combo.pack(padx=20, pady=5)
         
-        # 频道选择（放在类型之后，确保genre_combo已创建）
-        ttk.Radiobutton(channel_frame, text="男生频道", variable=channel_var, value="male",
-                       command=lambda: update_genre_list("male")).pack(side=tk.LEFT, padx=10)
-        ttk.Radiobutton(channel_frame, text="女生频道", variable=channel_var, value="female",
-                       command=lambda: update_genre_list("female")).pack(side=tk.LEFT, padx=10)
-        
-        # 标签面板
+        # 标签面板（在频道选择之前创建）
         tag_frame = ttk.LabelFrame(dialog, text="附加标签（可多选）", padding=5)
         tag_frame.pack(fill=tk.X, padx=20, pady=5)
         
@@ -3639,6 +3633,15 @@ class NovelWriterApp:
                     cb.grid(row=0, column=col, padx=3, sticky=tk.W)
                     col += 1
                 row += 2
+        
+        # 频道选择（放在标签之后）
+        ttk.Radiobutton(channel_frame, text="男生频道", variable=channel_var, value="male",
+                       command=lambda: update_genre_list("male")).pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(channel_frame, text="女生频道", variable=channel_var, value="female",
+                       command=lambda: update_genre_list("female")).pack(side=tk.LEFT, padx=10)
+        
+        # 初始化标签（默认显示男生标签）
+        update_genre_list("male")
         
         ttk.Label(dialog, text="核心概念:").pack(anchor=tk.W, padx=20, pady=(10,5))
         concept_text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, height=8)

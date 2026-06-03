@@ -5893,6 +5893,12 @@ class NovelWriterApp:
         tk.Button(btn_frame, text="刷新列表", font=('微软雅黑', 9),
                  bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=10,
                  command=self._refresh_chapter_files).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="导入章节文件", font=('微软雅黑', 9),
+                 bg=C['warning'], fg='white', relief=tk.FLAT, padx=10,
+                 command=self._import_chapter_files).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="选择文件夹", font=('微软雅黑', 9),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=10,
+                 command=self._browse_chapter_folder).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="分析当前章节", font=('微软雅黑', 9),
                  bg=C['accent'], fg='white', relief=tk.FLAT, padx=10,
                  command=self._analyze_current_chapter).pack(side=tk.LEFT, padx=5)
@@ -5916,6 +5922,145 @@ class NovelWriterApp:
             size_kb = size / 1024
             name = f.stem.replace("chapter_", "第") + "章"
             self.ch_file_listbox.insert(tk.END, f"{name} ({size_kb:.1f}KB)")
+    
+    def _import_chapter_files(self):
+        """从任意文件夹导入章节文件"""
+        if not self.current_novel_dir:
+            messagebox.showwarning("提示", "请先新建或打开小说")
+            return
+        
+        file_paths = filedialog.askopenfilenames(
+            title="选择章节文件",
+            filetypes=[
+                ("文本文件", "*.txt"),
+                ("Markdown文件", "*.md"),
+                ("所有文件", "*.*")
+            ]
+        )
+        
+        if not file_paths:
+            return
+        
+        chapters_dir = self.current_novel_dir / "chapters"
+        chapters_dir.mkdir(exist_ok=True)
+        
+        # 获取当前最大章节号
+        existing = sorted(chapters_dir.glob("chapter_*.txt"))
+        next_num = len(existing) + 1
+        
+        imported = 0
+        for src in file_paths:
+            src_path = Path(src)
+            # 读取源文件
+            try:
+                with open(src_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except UnicodeDecodeError:
+                try:
+                    with open(src_path, 'r', encoding='gbk') as f:
+                        content = f.read()
+                except:
+                    self._log(f"无法读取文件: {src_path.name}")
+                    continue
+            
+            # 保存到章节目录
+            dest = chapters_dir / f"chapter_{next_num:04d}.txt"
+            with open(dest, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            next_num += 1
+            imported += 1
+        
+        self._refresh_chapter_files()
+        self._log(f"成功导入 {imported} 个章节文件")
+        messagebox.showinfo("成功", f"已导入 {imported} 个章节文件")
+    
+    def _browse_chapter_folder(self):
+        """选择文件夹浏览章节"""
+        folder_path = filedialog.askdirectory(title="选择包含章节文件的文件夹")
+        
+        if not folder_path:
+            return
+        
+        folder = Path(folder_path)
+        
+        # 扫描文件夹中的文本文件
+        text_files = []
+        for ext in ['*.txt', '*.md']:
+            text_files.extend(folder.glob(ext))
+        
+        if not text_files:
+            messagebox.showinfo("提示", "该文件夹中没有找到文本文件")
+            return
+        
+        # 显示找到的文件
+        text_files = sorted(text_files)
+        
+        # 创建选择对话框
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"选择章节 - {folder.name}")
+        dialog.geometry("500x400")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        tk.Label(dialog, text=f"找到 {len(text_files)} 个文本文件:", 
+                font=('微软雅黑', 10, 'bold')).pack(pady=10)
+        
+        # 文件列表（可多选）
+        listbox = tk.Listbox(dialog, selectmode=tk.MULTIPLE, font=('微软雅黑', 9))
+        listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        for f in text_files:
+            size_kb = f.stat().st_size / 1024
+            listbox.insert(tk.END, f"{f.name} ({size_kb:.1f}KB)")
+        
+        def import_selected():
+            selected = listbox.curselection()
+            if not selected:
+                messagebox.showwarning("提示", "请选择要导入的文件")
+                return
+            
+            if not self.current_novel_dir:
+                messagebox.showwarning("提示", "请先新建或打开小说")
+                dialog.destroy()
+                return
+            
+            chapters_dir = self.current_novel_dir / "chapters"
+            chapters_dir.mkdir(exist_ok=True)
+            
+            existing = sorted(chapters_dir.glob("chapter_*.txt"))
+            next_num = len(existing) + 1
+            
+            imported = 0
+            for idx in selected:
+                src_path = text_files[idx]
+                try:
+                    with open(src_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                except UnicodeDecodeError:
+                    try:
+                        with open(src_path, 'r', encoding='gbk') as f:
+                            content = f.read()
+                    except:
+                        continue
+                
+                dest = chapters_dir / f"chapter_{next_num:04d}.txt"
+                with open(dest, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                
+                next_num += 1
+                imported += 1
+            
+            self._refresh_chapter_files()
+            self._log(f"从文件夹导入 {imported} 个章节文件")
+            messagebox.showinfo("成功", f"已导入 {imported} 个章节文件")
+            dialog.destroy()
+        
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        tk.Button(btn_frame, text="全选", command=lambda: listbox.select_set(0, tk.END)).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="导入选中", command=import_selected, bg='#10b981', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
     
     def _on_chapter_file_select(self, event=None):
         """章节文件选中"""

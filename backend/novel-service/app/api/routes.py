@@ -12,11 +12,23 @@ from enum import Enum
 router = APIRouter()
 
 class NovelType(str, Enum):
+    # 基础类型
     SCIFI = "scifi"
     MYSTERY = "mystery"
     ROMANCE = "romance"
     FANTASY = "fantasy"
     URBAN = "urban"
+    # 新增类型
+    HISTORY = "history"
+    MARTIAL_ARTS = "martial_arts"
+    XIANXIA = "xianxia"
+    HORROR = "horror"
+    MILITARY = "military"
+    GAME = "game"
+    SPORTS = "sports"
+    TIME_TRAVEL = "time_travel"
+    SYSTEM_FLOW = "system_flow"
+    APOCALYPSE = "apocalypse"
 
 class StyleAnalysisRequest(BaseModel):
     """风格分析请求"""

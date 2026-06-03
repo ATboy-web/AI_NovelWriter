@@ -3,8 +3,6 @@ AI自动写小说系统 - 桌面应用程序
 集成AI API、长上下文记忆、智能体机制
 """
 
-import sys
-import os
 import json
 import time
 import threading
@@ -42,7 +40,7 @@ except ImportError:
 from novel_toolkit import (ElementLibrary, BridgeLibrary, DescriptionLibrary,
                            DialogueEngine, StoryFlowEngine, StyleTransferEngine, AdaptEngine,
                            WebSearchAdaptEngine)
-from character_system import CharacterSystem, CharacterProfile
+from character_system import CharacterSystem
 from format_converter import FormatConverter, ImageManager
 from cloud_storage import CloudStorageManager
 
@@ -601,7 +599,6 @@ class MemoryManager:
         if not created_at:
             return 0.5
         try:
-            from datetime import timedelta
             created = datetime.fromisoformat(created_at)
             days_ago = (datetime.now() - created).days
             # 7天半衰期
@@ -2493,7 +2490,6 @@ class ReadingManager:
                 return '\n\n'.join(content)
             
             elif ext == '.pdf' and PDF_SUPPORT:
-                import re as pdf_re
                 with open(file_path, 'rb') as f:
                     reader = PyPDF2.PdfReader(f)
                     content = []
@@ -3238,6 +3234,16 @@ class NovelWriterApp:
         self.bookmark_list.pack(fill=tk.X)
         self.bookmark_list.bind('<<ListboxSelect>>', self._on_bookmark_select)
         
+        # 书签操作按钮
+        bookmark_btn_frame = tk.Frame(bookmark_frame, bg=C['bg_dark'])
+        bookmark_btn_frame.pack(fill=tk.X, pady=(5, 0))
+        tk.Button(bookmark_btn_frame, text="导入书签", font=('微软雅黑', 8),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=5,
+                 command=self._import_bookmarks).pack(side=tk.LEFT, padx=2)
+        tk.Button(bookmark_btn_frame, text="导出书签", font=('微软雅黑', 8),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=5,
+                 command=self._export_bookmarks).pack(side=tk.LEFT, padx=2)
+        
         # 右侧阅读区域
         right_frame = tk.Frame(main_frame, bg=C['bg_dark'])
         right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -3418,6 +3424,57 @@ class NovelWriterApp:
         self.reading_manager.add_bookmark(self.current_book_path, position, title)
         self._refresh_bookmarks()
         self._log(f"已添加书签: {title}")
+    
+    def _import_bookmarks(self):
+        """导入书签"""
+        file_path = filedialog.askopenfilename(
+            title="导入书签",
+            filetypes=[("JSON文件", "*.json"), ("所有文件", "*.*")]
+        )
+        if not file_path:
+            return
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                bookmarks = json.load(f)
+            
+            if isinstance(bookmarks, list):
+                for bm in bookmarks:
+                    if 'book_path' in bm and 'position' in bm:
+                        self.reading_manager.add_bookmark(
+                            bm['book_path'],
+                            bm['position'],
+                            bm.get('title', '导入的书签')
+                        )
+                self._refresh_bookmarks()
+                self._log(f"已导入 {len(bookmarks)} 个书签")
+                messagebox.showinfo("成功", f"已导入 {len(bookmarks)} 个书签")
+            else:
+                messagebox.showerror("错误", "无效的书签文件格式")
+        except Exception as e:
+            messagebox.showerror("错误", f"导入失败: {str(e)}")
+    
+    def _export_bookmarks(self):
+        """导出书签"""
+        if not self.reading_manager.bookmarks:
+            messagebox.showinfo("提示", "没有可导出的书签")
+            return
+        
+        file_path = filedialog.asksaveasfilename(
+            title="导出书签",
+            defaultextension=".json",
+            filetypes=[("JSON文件", "*.json")]
+        )
+        if not file_path:
+            return
+        
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(self.reading_manager.bookmarks, f, indent=2, ensure_ascii=False)
+            self._log(f"已导出 {len(self.reading_manager.bookmarks)} 个书签")
+            messagebox.showinfo("成功", f"已导出 {len(self.reading_manager.bookmarks)} 个书签")
+        except Exception as e:
+            messagebox.showerror("错误", f"导出失败: {str(e)}")
     
     def _search_in_book(self):
         """在当前书籍中搜索"""
@@ -3629,6 +3686,7 @@ class NovelWriterApp:
             self.current_novel_dir = novel_dir
             self.memory = MemoryManager(novel_dir)
             self.agent = NovelAgent(self.ai_client, self.memory, log_callback=self._log, config=self.config)
+            self.note_manager = NoteManager(novel_dir=novel_dir, config=self.config)
             self.outline = []
             self.current_chapter = 0
             self._init_character_system()
@@ -3664,6 +3722,7 @@ class NovelWriterApp:
         self.current_novel_dir = novel_dir
         self.memory = MemoryManager(novel_dir)
         self.agent = NovelAgent(self.ai_client, self.memory, log_callback=self._log, config=self.config)
+        self.note_manager = NoteManager(novel_dir=novel_dir, config=self.config)
         self._init_character_system()
         self.title_var.set(meta.get("title", "未知"))
         self.genre_var.set(meta.get("genre", "未知"))
@@ -4380,11 +4439,11 @@ class NovelWriterApp:
             # 转换为Tkinter可用的格式
             photo = ImageTk.PhotoImage(img)
             
-            # 先删除之前插入的文本标记
-            self.content_text.delete("1.0", tk.END)
-            # 重新插入内容（不含标记）
+            # 先获取当前内容（不含标记）
             current = self.content_text.get("1.0", tk.END)
             current = current.replace(f"\n![插图]({img_name})\n", "")
+            
+            # 清空并重新插入内容
             self.content_text.delete("1.0", tk.END)
             self.content_text.insert("1.0", current)
             

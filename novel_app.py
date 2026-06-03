@@ -3539,7 +3539,8 @@ class NovelWriterApp:
         """新建小说"""
         dialog = tk.Toplevel(self.root)
         dialog.title("新建小说")
-        dialog.geometry("500x400")
+        dialog.geometry("650x700")
+        dialog.minsize(500, 500)
         dialog.transient(self.root)
         dialog.grab_set()
         
@@ -3586,9 +3587,9 @@ class NovelWriterApp:
         genre_combo = ttk.Combobox(dialog, textvariable=genre_var, values=MALE_GENRES, state="readonly", width=47)
         genre_combo.pack(padx=20, pady=5)
         
-        # 标签面板（在频道选择之前创建）
+        # 标签面板（在频道选择之前创建，使用可滚动画布）
         tag_frame = ttk.LabelFrame(dialog, text="附加标签（可多选）", padding=5)
-        tag_frame.pack(fill=tk.X, padx=20, pady=5)
+        tag_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
         
         # 男生标签
         MALE_TAGS = {
@@ -3606,9 +3607,16 @@ class NovelWriterApp:
             "甜宠类型": ["一见钟情", "日久生情", "暗恋成真", "宠妻狂魔", "双向奔赴", "青梅竹马", "师生恋", "姐弟恋", "大叔宠", "萌宝助攻"],
         }
         
+        # 标签面板使用可滚动画布
+        tag_canvas = tk.Canvas(tag_frame, bg=UIStyle.COLORS['bg_dark'], highlightthickness=0)
+        tag_scrollbar = tk.Scrollbar(tag_frame, orient=tk.VERTICAL, command=tag_canvas.yview)
+        tag_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        tag_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tag_canvas.configure(yscrollcommand=tag_scrollbar.set)
+        
         self.tag_vars = {}  # 存储标签选择状态
-        tags_container = ttk.Frame(tag_frame)
-        tags_container.pack(fill=tk.X)
+        tags_container = tk.Frame(tag_canvas, bg=UIStyle.COLORS['bg_dark'])
+        tag_canvas.create_window((0, 0), window=tags_container, anchor=tk.NW)
         
         def update_genre_list(channel):
             """切换频道时更新类型列表"""
@@ -3621,18 +3629,30 @@ class NovelWriterApp:
             tags = MALE_TAGS if channel == "male" else FEMALE_TAGS
             row = 0
             for cat_name, cat_tags in tags.items():
-                cat_label = ttk.Label(tags_container, text=f"{cat_name}:", font=("", 8, "bold"))
+                cat_label = tk.Label(tags_container, text=f"{cat_name}:", 
+                                    font=("微软雅黑", 8, "bold"),
+                                    bg=UIStyle.COLORS['bg_dark'], fg=UIStyle.COLORS['text_primary'])
                 cat_label.grid(row=row, column=0, sticky=tk.W, pady=(5,0))
-                tag_frame_inner = ttk.Frame(tags_container)
+                tag_frame_inner = tk.Frame(tags_container, bg=UIStyle.COLORS['bg_dark'])
                 tag_frame_inner.grid(row=row+1, column=0, sticky=tk.W, pady=2)
                 col = 0
                 for tag in cat_tags:
                     var = tk.BooleanVar(value=False)
                     self.tag_vars[tag] = var
-                    cb = ttk.Checkbutton(tag_frame_inner, text=tag, variable=var)
+                    cb = tk.Checkbutton(tag_frame_inner, text=tag, variable=var,
+                                       font=("微软雅黑", 8),
+                                       bg=UIStyle.COLORS['bg_dark'], fg=UIStyle.COLORS['text_secondary'],
+                                       selectcolor=UIStyle.COLORS['bg_card'],
+                                       activebackground=UIStyle.COLORS['bg_dark'],
+                                       activeforeground=UIStyle.COLORS['accent_light'])
                     cb.grid(row=0, column=col, padx=3, sticky=tk.W)
                     col += 1
                 row += 2
+            
+            # 更新画布滚动区域
+            tags_container.update_idletasks()
+            tag_canvas.configure(scrollregion=tag_canvas.bbox("all"))
+            tag_canvas.configure(width=600)
         
         # 频道选择（放在标签之后）
         ttk.Radiobutton(channel_frame, text="男生频道", variable=channel_var, value="male",

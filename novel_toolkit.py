@@ -292,6 +292,13 @@ class BridgeLibrary:
     def get_templates(self, category: str) -> List[str]:
         return self.BRIDGES.get(category, {}).get("templates", [])
     
+    def add_custom_item(self, category: str, template: str, desc: str = ""):
+        """添加自定义桥段模板"""
+        if category not in self.BRIDGES:
+            self.BRIDGES[category] = {"desc": desc or category, "templates": []}
+        if template not in self.BRIDGES[category]["templates"]:
+            self.BRIDGES[category]["templates"].append(template)
+    
     def generate_bridge(self, ai_client, category: str, characters: dict, setting: str) -> str:
         templates = self.get_templates(category)
         tmpl = templates[int(time.time()) % len(templates)] if templates else "请生成{category}场景。"
@@ -327,6 +334,13 @@ class DescriptionLibrary:
     
     def get_categories(self) -> List[str]:
         return list(self.CATEGORIES.keys())
+    
+    def add_custom_item(self, category: str, item: str):
+        """添加自定义描写关键词"""
+        if category not in self.CATEGORIES:
+            self.CATEGORIES[category] = []
+        if item not in self.CATEGORIES[category]:
+            self.CATEGORIES[category].append(item)
     
     def generate_description(self, ai_client, subject: str, category: str) -> str:
         prompt = f"请为'{subject}'生成一段生动的{category}描写（200-300字）。要求细节丰富，有画面感，适合小说使用。直接输出描写内容。"

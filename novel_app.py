@@ -3687,6 +3687,45 @@ class NovelWriterApp:
         # 初始化标签
         update_tags("male")
         
+        # 自定义标签输入
+        custom_frame = tk.Frame(tag_outer, bg=C['bg_dark'])
+        custom_frame.pack(fill=tk.X, padx=5, pady=(3, 0))
+        tk.Label(custom_frame, text="自定义:", bg=C['bg_dark'], fg=C['text_secondary'], font=('微软雅黑', 8)).pack(side=tk.LEFT)
+        custom_tag_entry = tk.Entry(custom_frame, font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_primary'],
+                                    insertbackground=C['text_primary'], relief=tk.FLAT, width=20)
+        custom_tag_entry.pack(side=tk.LEFT, padx=3)
+        
+        def add_custom_tag():
+            tag = custom_tag_entry.get().strip()
+            if not tag:
+                return
+            if tag in self.tag_vars:
+                messagebox.showinfo("提示", f"标签 '{tag}' 已存在")
+                return
+            var = tk.BooleanVar(value=True)
+            self.tag_vars[tag] = var
+            # 添加到最后一行
+            last_line = None
+            for w in tags_container.winfo_children():
+                if isinstance(w, tk.Frame):
+                    last_line = w
+            if last_line is None:
+                last_line = tk.Frame(tags_container, bg=C['bg_dark'])
+                last_line.pack(fill=tk.X, padx=5)
+            cb = tk.Checkbutton(last_line, text=tag, variable=var, font=("微软雅黑", 8),
+                               bg=C['bg_card'], fg=C['accent_light'],
+                               selectcolor=C['bg_dark'],
+                               activebackground=C['bg_card'],
+                               activeforeground=C['accent_light'],
+                               relief=tk.RAISED, padx=3, pady=1)
+            cb.pack(side=tk.LEFT, padx=2, pady=1)
+            custom_tag_entry.delete(0, tk.END)
+            self._log(f"添加自定义标签: {tag}")
+        
+        tk.Button(custom_frame, text="添加", command=add_custom_tag, font=('微软雅黑', 8),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=5).pack(side=tk.LEFT, padx=3)
+        custom_tag_entry.bind("<Return>", lambda e: add_custom_tag())
+        
         # ===== 底部固定区域 =====
         bottom = tk.Frame(dialog, bg=C['bg_dark'])
         bottom.pack(fill=tk.X, padx=15, pady=(0, 5))
@@ -5234,6 +5273,14 @@ class NovelWriterApp:
         self.elem_listbox = tk.Listbox(f, height=8, selectmode=tk.MULTIPLE)
         self.elem_listbox.pack(fill=tk.X, pady=3)
         
+        # 自定义元素
+        custom_frame = ttk.Frame(f)
+        custom_frame.pack(fill=tk.X, pady=3)
+        ttk.Label(custom_frame, text="自定义元素:").pack(side=tk.LEFT)
+        self.custom_elem_entry = ttk.Entry(custom_frame, width=20)
+        self.custom_elem_entry.pack(side=tk.LEFT, padx=3)
+        ttk.Button(custom_frame, text="添加", command=self._add_custom_element).pack(side=tk.LEFT)
+        
         # 生成按钮
         btn_frame = ttk.Frame(f)
         btn_frame.pack(fill=tk.X, pady=5)
@@ -5289,6 +5336,22 @@ class NovelWriterApp:
         
         threading.Thread(target=run, daemon=True).start()
     
+    def _add_custom_element(self):
+        """添加自定义元素"""
+        name = self.custom_elem_entry.get().strip()
+        if not name:
+            messagebox.showinfo("提示", "请输入元素名称")
+            return
+        cat = self.elem_cat_var.get()
+        if not cat:
+            messagebox.showinfo("提示", "请先选择类别")
+            return
+        self.element_lib.add_custom_item(cat, {"name": name, "template": f"自定义元素: {name}", "tags": ["自定义"]})
+        self._refresh_element_list()
+        self.custom_elem_entry.delete(0, tk.END)
+        self._log(f"添加自定义元素: {name} (类别: {cat})")
+        messagebox.showinfo("成功", f"已添加自定义元素: {name}")
+    
     def _build_bridges_tool(self):
         """桥段库界面"""
         f = self.tool_content_frame
@@ -5306,6 +5369,14 @@ class NovelWriterApp:
         self.bridge_setting = ttk.Entry(f, width=60)
         self.bridge_setting.pack(fill=tk.X, pady=3)
         self.bridge_setting.insert(0, "深夜的修炼室中")
+        
+        # 自定义桥段
+        custom_frame = ttk.Frame(f)
+        custom_frame.pack(fill=tk.X, pady=3)
+        ttk.Label(custom_frame, text="自定义桥段:").pack(side=tk.LEFT)
+        self.custom_bridge_entry = ttk.Entry(custom_frame, width=40)
+        self.custom_bridge_entry.pack(side=tk.LEFT, padx=3)
+        ttk.Button(custom_frame, text="添加", command=self._add_custom_bridge).pack(side=tk.LEFT)
         
         btn_frame = ttk.Frame(f)
         btn_frame.pack(fill=tk.X, pady=5)
@@ -5353,6 +5424,21 @@ class NovelWriterApp:
         
         threading.Thread(target=run, daemon=True).start()
     
+    def _add_custom_bridge(self):
+        """添加自定义桥段"""
+        template = self.custom_bridge_entry.get().strip()
+        if not template:
+            messagebox.showinfo("提示", "请输入桥段模板")
+            return
+        cat = self.bridge_cat_var.get()
+        if not cat:
+            messagebox.showinfo("提示", "请先选择桥段类型")
+            return
+        self.bridge_lib.add_custom_item(cat, template)
+        self.custom_bridge_entry.delete(0, tk.END)
+        self._log(f"添加自定义桥段: {template[:30]}... (类型: {cat})")
+        messagebox.showinfo("成功", f"已添加自定义桥段到 {cat}")
+    
     def _build_descriptions_tool(self):
         """描写库界面"""
         f = self.tool_content_frame
@@ -5371,6 +5457,14 @@ class NovelWriterApp:
         self.desc_subject.pack(side=tk.LEFT, padx=5)
         
         ttk.Button(cat_frame, text="生成描写", command=self._gen_description).pack(side=tk.LEFT, padx=5)
+        
+        # 自定义描写关键词
+        custom_frame = ttk.Frame(f)
+        custom_frame.pack(fill=tk.X, pady=3)
+        ttk.Label(custom_frame, text="自定义关键词:").pack(side=tk.LEFT)
+        self.custom_desc_entry = ttk.Entry(custom_frame, width=20)
+        self.custom_desc_entry.pack(side=tk.LEFT, padx=3)
+        ttk.Button(custom_frame, text="添加", command=self._add_custom_description).pack(side=tk.LEFT)
         
         self.desc_result = scrolledtext.ScrolledText(f, height=10, wrap=tk.WORD, font=("微软雅黑", 10))
         self.desc_result.pack(fill=tk.BOTH, expand=True, pady=5)
@@ -5394,6 +5488,21 @@ class NovelWriterApp:
                 self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
         
         threading.Thread(target=run, daemon=True).start()
+    
+    def _add_custom_description(self):
+        """添加自定义描写关键词"""
+        keyword = self.custom_desc_entry.get().strip()
+        if not keyword:
+            messagebox.showinfo("提示", "请输入描写关键词")
+            return
+        cat = self.desc_cat_var.get()
+        if not cat:
+            messagebox.showinfo("提示", "请先选择类别")
+            return
+        self.desc_lib.add_custom_item(cat, keyword)
+        self.custom_desc_entry.delete(0, tk.END)
+        self._log(f"添加自定义描写关键词: {keyword} (类别: {cat})")
+        messagebox.showinfo("成功", f"已添加自定义关键词: {keyword} 到 {cat}")
     
     def _build_dialogue_tool(self):
         """对话推演界面"""

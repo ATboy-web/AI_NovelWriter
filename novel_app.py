@@ -3491,7 +3491,8 @@ class NovelWriterApp:
         self.tool_type_var = tk.StringVar(value="elements")
         tools = [("elements", "元素库"), ("bridges", "桥段库"), ("descriptions", "描写库"),
                  ("dialogue", "对话推演"), ("story_flow", "故事流"), ("style", "风格转换"),
-                 ("adapt", "智能改编"), ("websearch", "热点改编"), ("chapters", "章节分析")]
+                 ("adapt", "智能改编"), ("websearch", "热点改编"), ("chapters", "章节分析"),
+                 ("memory_viz", "记忆可视化"), ("summary_mgmt", "摘要管理"), ("batch_ops", "批量操作")]
         
         for val, label in tools:
             tk.Radiobutton(tool_select_frame, text=label, variable=self.tool_type_var, value=val,
@@ -4239,15 +4240,16 @@ class NovelWriterApp:
         ttk.Label(ai_frame, text="模型名称:").pack(anchor=tk.W, padx=20, pady=(10,3))
         model_frame = ttk.Frame(ai_frame)
         model_frame.pack(fill=tk.X, padx=20, pady=3)
-        model_entry = ttk.Entry(model_frame, width=40)
-        model_entry.insert(0, self.config.get("model", "qwen2.5:14b"))
-        model_entry.pack(side=tk.LEFT)
+        model_var = tk.StringVar(value=self.config.get("model", "qwen2.5:14b"))
+        model_combo = ttk.Combobox(model_frame, textvariable=model_var, width=38)
+        model_combo.pack(side=tk.LEFT)
+        model_combo.set(self.config.get("model", "qwen2.5:14b"))
         
         def refresh_ollama():
             models = self.ai_client.get_ollama_models()
             if models:
-                model_entry.delete(0, tk.END)
-                model_entry.insert(0, models[0])
+                model_combo['values'] = models
+                model_var.set(models[0])
                 messagebox.showinfo("Ollama模型", f"发现 {len(models)} 个模型:\n" + "\n".join(models[:10]))
             else:
                 messagebox.showwarning("提示", "未检测到Ollama模型，请确保Ollama已启动")
@@ -4407,7 +4409,7 @@ class NovelWriterApp:
             self.config.set("api_provider", provider_var.get())
             self.config.set("api_key", key_entry.get().strip())
             self.config.set("api_base", base_entry.get().strip())
-            self.config.set("model", model_entry.get().strip())
+            self.config.set("model", model_var.get().strip())
             self.config.set("temperature", float(temp_var.get()))
             self.config.set("context_window", int(ctx_var.get()))
             self.config.set("img_provider", img_provider_var.get())
@@ -5618,6 +5620,12 @@ class NovelWriterApp:
             self._build_websearch_tool()
         elif tool_type == "chapters":
             self._build_chapter_analysis_tool()
+        elif tool_type == "memory_viz":
+            self._build_memory_viz_tool()
+        elif tool_type == "summary_mgmt":
+            self._build_summary_mgmt_tool()
+        elif tool_type == "batch_ops":
+            self._build_batch_ops_tool()
     
     def _build_elements_tool(self):
         """元素库界面"""
@@ -6358,6 +6366,258 @@ class NovelWriterApp:
         for item in items:
             marker = "[自定义]" if item.get("custom") else ""
             self.ws_listbox.insert(tk.END, f"{marker}{item.get('name','')}: {item.get('desc','')}")
+    
+    # ===== 记忆系统可视化工具 =====
+    
+    def _build_memory_viz_tool(self):
+        """记忆系统可视化 - 查看记忆状态"""
+        C = UIStyle.COLORS
+        f = self.tool_content_frame
+        
+        tk.Label(f, text="记忆系统可视化", font=("", 11, "bold"),
+                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=5)
+        
+        if not self.current_novel_dir:
+            tk.Label(f, text="请先新建或打开小说", font=("", 10),
+                    bg=C['bg_dark'], fg=C['text_muted']).pack(pady=20)
+            return
+        
+        # 记忆统计
+        stats_frame = tk.Frame(f, bg=C['bg_dark'])
+        stats_frame.pack(fill=tk.X, pady=5)
+        
+        report = self.memory.health_check()
+        
+        stats_text = f"""记忆系统状态:
+- 章节数: {report.get('total_chapters', 0)}
+- 卷数: {report.get('total_volumes', 0)}
+- 角色数: {report.get('total_characters', 0)}
+- 弧线数: {report.get('total_arcs', 0)}
+- 记忆块: {report.get('total_chunks', 0)}
+- 衰减记忆: {len(report.get('stale_chunks', []))}"""
+        
+        tk.Label(stats_frame, text=stats_text, font=("微软雅黑", 10),
+                bg=C['bg_dark'], fg=C['text_primary'], justify=tk.LEFT).pack(anchor=tk.W, padx=10)
+        
+        # 建议
+        if report.get('recommendations'):
+            tk.Label(f, text="建议:", font=("", 10, "bold"),
+                    bg=C['bg_dark'], fg=C['warning']).pack(anchor=tk.W, pady=(10, 3))
+            for rec in report['recommendations']:
+                tk.Label(f, text=f"  - {rec}", font=("微软雅黑", 9),
+                        bg=C['bg_dark'], fg=C['text_secondary']).pack(anchor=tk.W)
+        
+        # 操作按钮
+        btn_frame = tk.Frame(f, bg=C['bg_dark'])
+        btn_frame.pack(fill=tk.X, pady=10)
+        tk.Button(btn_frame, text="刷新", font=('微软雅黑', 9),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT,
+                 command=self._build_memory_viz_tool).pack(side=tk.LEFT, padx=5)
+    
+    # ===== 卷级摘要管理工具 =====
+    
+    def _build_summary_mgmt_tool(self):
+        """卷级摘要管理 - 查看和编辑摘要"""
+        C = UIStyle.COLORS
+        f = self.tool_content_frame
+        
+        tk.Label(f, text="分层摘要管理", font=("", 11, "bold"),
+                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=5)
+        
+        if not self.current_novel_dir:
+            tk.Label(f, text="请先新建或打开小说", font=("", 10),
+                    bg=C['bg_dark'], fg=C['text_muted']).pack(pady=20)
+            return
+        
+        # 全局摘要
+        tk.Label(f, text="全局摘要:", font=("", 10, "bold"),
+                bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W, pady=(5, 2))
+        global_text = tk.Text(f, height=3, wrap=tk.WORD, font=("微软雅黑", 9),
+                             bg=C['bg_card'], fg=C['text_primary'], relief=tk.FLAT)
+        global_text.pack(fill=tk.X, pady=2)
+        gs = self.memory.get_global_summary()
+        if gs:
+            global_text.insert("1.0", gs)
+        
+        def save_global():
+            content = global_text.get("1.0", tk.END).strip()
+            if content:
+                self.memory.save_global_summary(content)
+                self._log("全局摘要已保存")
+        
+        tk.Button(f, text="保存全局摘要", font=('微软雅黑', 9),
+                 bg=C['accent'], fg='white', relief=tk.FLAT,
+                 command=save_global).pack(anchor=tk.W, pady=3)
+        
+        # 卷级摘要列表
+        tk.Label(f, text="卷级摘要:", font=("", 10, "bold"),
+                bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W, pady=(10, 2))
+        
+        vol_frame = tk.Frame(f, bg=C['bg_dark'])
+        vol_frame.pack(fill=tk.BOTH, expand=True)
+        
+        vol_listbox = tk.Listbox(vol_frame, bg=C['bg_card'], fg=C['text_secondary'],
+                                font=('微软雅黑', 9), height=6, relief=tk.FLAT)
+        vol_listbox.pack(fill=tk.X, pady=3)
+        
+        # 加载卷级摘要
+        volumes_dir = self.memory.volumes_dir
+        if volumes_dir.exists():
+            for vf in sorted(volumes_dir.glob("volume_*.txt")):
+                vol_num = vf.stem.split("_")[1]
+                vol_listbox.insert(tk.END, f"第{vol_num}卷")
+        
+        # 卷摘要预览
+        vol_preview = tk.Text(f, height=3, wrap=tk.WORD, font=("微软雅黑", 9),
+                             bg=C['bg_card'], fg=C['text_primary'], relief=tk.FLAT)
+        vol_preview.pack(fill=tk.X, pady=3)
+        
+        def on_vol_select(event):
+            sel = vol_listbox.curselection()
+            if sel:
+                vol_num = int(vol_listbox.get(sel[0]).replace("第", "").replace("卷", ""))
+                summary = self.memory.get_volume_summary(vol_num)
+                vol_preview.delete("1.0", tk.END)
+                vol_preview.insert("1.0", summary)
+        
+        vol_listbox.bind('<<ListboxSelect>>', on_vol_select)
+        
+        # 弧线摘要
+        tk.Label(f, text="弧线摘要:", font=("", 10, "bold"),
+                bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W, pady=(10, 2))
+        
+        arc_listbox = tk.Listbox(f, bg=C['bg_card'], fg=C['text_secondary'],
+                                font=('微软雅黑', 9), height=4, relief=tk.FLAT)
+        arc_listbox.pack(fill=tk.X, pady=3)
+        
+        arcs = self.memory.get_all_arcs()
+        for arc in arcs:
+            arc_listbox.insert(tk.END, arc.get('name', ''))
+    
+    # ===== 批量操作工具 =====
+    
+    def _build_batch_ops_tool(self):
+        """批量操作 - 批量导入导出"""
+        C = UIStyle.COLORS
+        f = self.tool_content_frame
+        
+        tk.Label(f, text="批量操作", font=("", 11, "bold"),
+                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=5)
+        
+        if not self.current_novel_dir:
+            tk.Label(f, text="请先新建或打开小说", font=("", 10),
+                    bg=C['bg_dark'], fg=C['text_muted']).pack(pady=20)
+            return
+        
+        # 批量导入
+        import_frame = tk.LabelFrame(f, text="批量导入", padx=10, pady=10,
+                                     bg=C['bg_dark'], fg=C['text_primary'])
+        import_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Label(import_frame, text="从文件夹批量导入章节文件（支持txt/md格式）",
+                font=("微软雅黑", 9), bg=C['bg_dark'], fg=C['text_secondary']).pack(anchor=tk.W)
+        
+        def batch_import():
+            folder = filedialog.askdirectory(title="选择包含章节文件的文件夹")
+            if not folder:
+                return
+            folder_path = Path(folder)
+            text_files = sorted(list(folder_path.glob("*.txt")) + list(folder_path.glob("*.md")))
+            if not text_files:
+                messagebox.showinfo("提示", "该文件夹中没有txt/md文件")
+                return
+            
+            chapters_dir = self.current_novel_dir / "chapters"
+            chapters_dir.mkdir(exist_ok=True)
+            existing = sorted(chapters_dir.glob("chapter_*.txt"))
+            next_num = len(existing) + 1
+            
+            imported = 0
+            for src in text_files:
+                try:
+                    content = src.read_text(encoding='utf-8')
+                except:
+                    try:
+                        content = src.read_text(encoding='gbk')
+                    except:
+                        continue
+                dest = chapters_dir / f"chapter_{next_num:05d}.txt"
+                dest.write_text(content, encoding='utf-8')
+                next_num += 1
+                imported += 1
+            
+            self._log(f"批量导入 {imported} 个章节文件")
+            messagebox.showinfo("成功", f"已导入 {imported} 个章节文件")
+        
+        tk.Button(import_frame, text="选择文件夹批量导入", font=('微软雅黑', 9),
+                 bg=C['accent'], fg='white', relief=tk.FLAT,
+                 command=batch_import).pack(anchor=tk.W, pady=5)
+        
+        # 批量导出
+        export_frame = tk.LabelFrame(f, text="批量导出", padx=10, pady=10,
+                                     bg=C['bg_dark'], fg=C['text_primary'])
+        export_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Label(export_frame, text="导出所有章节到指定文件夹",
+                font=("微软雅黑", 9), bg=C['bg_dark'], fg=C['text_secondary']).pack(anchor=tk.W)
+        
+        def batch_export():
+            if not self.current_novel_dir:
+                return
+            folder = filedialog.askdirectory(title="选择导出目标文件夹")
+            if not folder:
+                return
+            
+            chapters_dir = self.current_novel_dir / "chapters"
+            if not chapters_dir.exists():
+                messagebox.showinfo("提示", "没有章节文件")
+                return
+            
+            chapter_files = sorted(chapters_dir.glob("chapter_*.txt"))
+            exported = 0
+            for cf in chapter_files:
+                dest = Path(folder) / cf.name
+                dest.write_text(cf.read_text(encoding='utf-8'), encoding='utf-8')
+                exported += 1
+            
+            self._log(f"批量导出 {exported} 个章节文件")
+            messagebox.showinfo("成功", f"已导出 {exported} 个章节文件到 {folder}")
+        
+        tk.Button(export_frame, text="导出所有章节", font=('微软雅黑', 9),
+                 bg=C['success'], fg='white', relief=tk.FLAT,
+                 command=batch_export).pack(anchor=tk.W, pady=5)
+        
+        # 批量生成摘要
+        summary_frame = tk.LabelFrame(f, text="批量生成摘要", padx=10, pady=10,
+                                      bg=C['bg_dark'], fg=C['text_primary'])
+        summary_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Label(summary_frame, text="为所有卷自动生成摘要（需AI配置）",
+                font=("微软雅黑", 9), bg=C['bg_dark'], fg=C['text_secondary']).pack(anchor=tk.W)
+        
+        def batch_summary():
+            if not self.ai_client.is_configured():
+                messagebox.showwarning("提示", "请先配置AI")
+                return
+            
+            chapters_dir = self.current_novel_dir / "chapters"
+            if not chapters_dir.exists():
+                return
+            
+            total_chapters = len(list(chapters_dir.glob("chapter_*.txt")))
+            total_volumes = (total_chapters - 1) // 100 + 1
+            
+            def run():
+                for vol in range(1, total_volumes + 1):
+                    self.memory.auto_generate_volume_summary(vol)
+                    self.root.after(0, lambda v=vol: self._log(f"第{v}卷摘要已生成"))
+                self.root.after(0, lambda: messagebox.showinfo("完成", f"已生成 {total_volumes} 个卷级摘要"))
+            
+            threading.Thread(target=run, daemon=True).start()
+        
+        tk.Button(summary_frame, text="批量生成卷级摘要", font=('微软雅黑', 9),
+                 bg=C['warning'], fg='white', relief=tk.FLAT,
+                 command=batch_summary).pack(anchor=tk.W, pady=5)
     
     # ===== 章节分析工具 =====
     

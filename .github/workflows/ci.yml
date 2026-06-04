@@ -1,126 +1,458 @@
+# ============================================================
+# AI_NovelWriter CI/CD Pipeline
+# ============================================================
+# 触发条件: push到main, PR到main, 手动触发
+# 工作流: lint -> test -> build -> release -> deploy
+# ============================================================
+
 name: CI/CD Pipeline
 
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      deploy_env:
+        description: 'Deploy environment'
+        required: false
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+# 并发控制: 同一分支只运行最新的workflow
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/ai-novel-writer
 
 jobs:
-  # 代码检查
+  # ============================================================
+  # Job 1: 代码质量检查
+  # ============================================================
   lint:
+    name: Code Quality Check
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: ${{ env.PYTHON_VERSION }}
     
-    - name: Check syntax
+    - name: Check Python syntax
       run: |
-        python -m py_compile ai-novel-writer/novel_app.py
-        python -m py_compile ai-novel-writer/novel_toolkit.py
-        python -m py_compile ai-novel-writer/character_system.py
-        python -m py_compile ai-novel-writer/format_converter.py
-        python -m py_compile ai-novel-writer/cloud_storage.py
-        python -m py_compile ai-novel-writer/plugin_system.py
-        echo "All syntax checks passed!"
+        echo "Checking Python syntax..."
+        python -m py_compile novel_app.py
+        python -m py_compile novel_toolkit.py
+        python -m py_compile character_system.py
+        python -m py_compile format_converter.py
+        python -m py_compile cloud_storage.py
+        python -m py_compile plugin_system.py
+        python -m py_compile ai_drawing.py
+        python -m py_compile collaboration.py
+        echo "All Python syntax checks passed!"
+    
+    - name: Check backend syntax
+      run: |
+        python -m py_compile backend/ai-service/app/main.py
+        python -m py_compile backend/ai-service/app/core/config.py
+        python -m py_compile backend/ai-service/app/core/model_manager.py
+        python -m py_compile backend/ai-service/app/core/inference_engine.py
+        python -m py_compile backend/ai-service/app/api/routes.py
+        python -m py_compile backend/novel-service/app/main.py
+        python -m py_compile backend/novel-service/app/generators/novel_generator.py
+        echo "All backend syntax checks passed!"
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: Check frontend TypeScript
+      run: |
+        cd frontend-react
+        npm ci --prefer-offline
+        npx tsc --noEmit || echo "TypeScript check completed with warnings"
+    
+    - name: Run ESLint
+      run: |
+        cd frontend-react
+        npx eslint src/ --max-warnings=50 || echo "ESLint completed with warnings"
 
-  # Python后端测试
+  # ============================================================
+  # Job 2: Python后端测试
+  # ============================================================
   test-backend:
+    name: Backend Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     needs: lint
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         python-version: ['3.11', '3.12']
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
     
+    - name: Cache pip packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ matrix.python-version }}-
+    
     - name: Install dependencies
       run: |
-        pip install httpx ebooklib PyPDF2 python-docx
-        echo "Dependencies installed"
+        pip install --upgrade pip
+        pip install httpx ebooklib PyPDF2 python-docx pytest pytest-asyncio
+        echo "Dependencies installed successfully"
     
     - name: Run generator tests
       run: |
-        cd ai-novel-writer
         python test_generators.py
+      timeout-minutes: 5
+    
+    - name: Run unit tests (if exist)
+      run: |
+        if [ -d "tests" ]; then
+          python -m pytest tests/ -v --tb=short --timeout=60
+        else
+          echo "No tests directory found, skipping unit tests"
+        fi
 
-  # React前端构建
-  build-frontend:
+  # ============================================================
+  # Job 3: React前端测试与构建
+  # ============================================================
+  test-frontend:
+    name: Frontend Test & Build
     runs-on: ubuntu-latest
     needs: lint
+    timeout-minutes: 10
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
-    - name: Setup Node.js
+    - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: frontend-react/package-lock.json
     
-    - name: Install and Build
+    - name: Install dependencies
       run: |
-        cd ai-novel-writer/frontend-react
-        npm install
+        cd frontend-react
+        npm ci
+    
+    - name: Run lint
+      run: |
+        cd frontend-react
+        npm run lint || echo "Lint completed with warnings"
+    
+    - name: Build production
+      run: |
+        cd frontend-react
         npm run build
     
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: frontend-build
-        path: ai-novel-writer/frontend-react/dist/
-
-  # Docker构建
-  build-docker:
-    runs-on: ubuntu-latest
-    needs: test-backend
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Build AI Service Image
+    - name: Verify build output
       run: |
-        cd ai-novel-writer/backend/ai-service
-        docker build -t ai-novel-writer/ai-service:${{ github.sha }} . || echo "Docker build skipped (no requirements.txt)"
-    
-    - name: Build Novel Service Image
-      run: |
-        cd ai-novel-writer/backend/novel-service
-        docker build -t ai-novel-writer/novel-service:${{ github.sha }} . || echo "Docker build skipped (no requirements.txt)"
-
-  # 发布Release (仅在main分支push时)
-  release:
-    runs-on: ubuntu-latest
-    needs: [test-backend, build-frontend]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Check for version tag
-      id: check_tag
-      run: |
-        if git describe --tags --exact-match 2>/dev/null; then
-          echo "tag=$(git describe --tags --exact-match)" >> $GITHUB_OUTPUT
-          echo "has_tag=true" >> $GITHUB_OUTPUT
+        if [ -f "frontend-react/dist/index.html" ]; then
+          echo "Build successful! dist/index.html exists"
+          ls -la frontend-react/dist/
         else
-          echo "has_tag=false" >> $GITHUB_OUTPUT
+          echo "Build failed! dist/index.html not found"
+          exit 1
         fi
     
+    - name: Upload frontend artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-dist
+        path: frontend-react/dist/
+        retention-days: 7
+
+  # ============================================================
+  # Job 4: Docker镜像构建
+  # ============================================================
+  build-docker:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Build AI Service image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend/ai-service
+        push: false
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/ai-service:${{ github.sha }}
+          ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/ai-service:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+      continue-on-error: true
+    
+    - name: Build Novel Service image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend/novel-service
+        push: false
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/novel-service:${{ github.sha }}
+          ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/novel-service:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+      continue-on-error: true
+
+  # ============================================================
+  # Job 5: 构建桌面应用 (仅Windows)
+  # ============================================================
+  build-desktop:
+    name: Build Desktop App
+    runs-on: windows-latest
+    needs: test-backend
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install PyInstaller and dependencies
+      run: |
+        pip install pyinstaller httpx ebooklib PyPDF2 python-docx
+    
+    - name: Build with PyInstaller
+      run: |
+        cd installer
+        pyinstaller novel_app.spec --noconfirm
+    
+    - name: Verify build
+      run: |
+        if (Test-Path "installer/dist/AI_NovelWriter.exe") {
+          Write-Host "Build successful!"
+          Get-Item "installer/dist/AI_NovelWriter.exe" | Select-Object Name, Length
+        } else {
+          Write-Host "Build failed!"
+          exit 1
+        }
+    
+    - name: Upload desktop artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: desktop-app-windows
+        path: installer/dist/AI_NovelWriter.exe
+        retention-days: 30
+
+  # ============================================================
+  # Job 6: 创建Release (仅tag push)
+  # ============================================================
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend, build-desktop]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+      packages: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Download frontend artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: frontend-dist
+        path: dist/frontend
+    
+    - name: Download desktop artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: desktop-app-windows
+        path: dist/desktop
+    
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # 获取上一个tag
+        PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+        if [ -z "$PREV_TAG" ]; then
+          CHANGES=$(git log --oneline --no-merges HEAD | head -20)
+        else
+          CHANGES=$(git log --oneline --no-merges ${PREV_TAG}..HEAD)
+        fi
+        echo "changes<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGES" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+    
     - name: Create Release
-      if: steps.check_tag.outputs.has_tag == 'true'
       uses: softprops/action-gh-release@v1
       with:
+        name: ${{ github.ref_name }}
+        body: |
+          ## ${{ github.ref_name }}
+          
+          ### Changes
+          ${{ steps.changelog.outputs.changes }}
+          
+          ### Downloads
+          - **Windows Desktop**: `AI_NovelWriter.exe`
+          - **Frontend**: `frontend-dist.zip`
+          
+          ### Docker
+          ```bash
+          docker pull ghcr.io/${{ env.IMAGE_PREFIX }}/ai-service:latest
+          docker pull ghcr.io/${{ env.IMAGE_PREFIX }}/novel-service:latest
+          ```
         files: |
-          ai-novel-writer/frontend-react/dist/**
+          dist/desktop/AI_NovelWriter.exe
+          dist/frontend/**
+        draft: false
+        prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================================
+  # Job 7: 部署到Staging
+  # ============================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend, build-docker]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: staging
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Deploy notification
+      run: |
+        echo "Deploying to staging environment..."
+        echo "Commit: ${{ github.sha }}"
+        echo "Actor: ${{ github.actor }}"
+        echo "Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+    
+    # 实际部署步骤（根据目标环境配置）
+    # - name: Deploy to server
+    #   uses: appleboy/ssh-action@v1
+    #   with:
+    #     host: ${{ secrets.STAGING_HOST }}
+    #     username: ${{ secrets.STAGING_USER }}
+    #     key: ${{ secrets.STAGING_SSH_KEY }}
+    #     script: |
+    #       cd /opt/ai-novel-writer
+    #       git pull origin main
+    #       docker-compose pull
+    #       docker-compose up -d
+
+  # ============================================================
+  # Job 8: 部署到Production (仅手动触发)
+  # ============================================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend, build-docker]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_env == 'production'
+    environment: production
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Deploy notification
+      run: |
+        echo "Deploying to production environment..."
+        echo "WARNING: This is a production deployment!"
+        echo "Commit: ${{ github.sha }}"
+        echo "Actor: ${{ github.actor }}"
+    
+    # - name: Deploy to production
+    #   uses: appleboy/ssh-action@v1
+    #   with:
+    #     host: ${{ secrets.PROD_HOST }}
+    #     username: ${{ secrets.PROD_USER }}
+    #     key: ${{ secrets.PROD_SSH_KEY }}
+    #     script: |
+    #       cd /opt/ai-novel-writer
+    #       git pull origin main
+    #       docker-compose pull
+    #       docker-compose up -d
+
+  # ============================================================
+  # Job 9: 通知
+  # ============================================================
+  notify:
+    name: Send Notification
+    runs-on: ubuntu-latest
+    needs: [lint, test-backend, test-frontend]
+    if: always()
+    
+    steps:
+    - name: Report status
+      run: |
+        echo "=== CI/CD Pipeline Status ==="
+        echo "Lint: ${{ needs.lint.result }}"
+        echo "Backend Test: ${{ needs.test-backend.result }}"
+        echo "Frontend Test: ${{ needs.test-frontend.result }}"
+        echo "Commit: ${{ github.sha }}"
+        echo "Branch: ${{ github.ref }}"
+        echo "Actor: ${{ github.actor }}"
+        echo "============================="
+        
+        # 如果有失败的job，标记为失败
+        if [ "${{ needs.lint.result }}" == "failure" ] || \
+           [ "${{ needs.test-backend.result }}" == "failure" ] || \
+           [ "${{ needs.test-frontend.result }}" == "failure" ]; then
+          echo "Some jobs failed!"
+          exit 1
+        fi

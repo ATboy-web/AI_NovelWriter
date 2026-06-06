@@ -1,0 +1,9 @@
+[project]
+name = "ai-novel-writer"
+version = "2.5.1"
+description = "AI自动写小说系统"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "backend/tests"]
+python_files = "test_*.py"

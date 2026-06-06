@@ -5,6 +5,7 @@
 
 import os
 import json
+import threading
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import hashlib
@@ -369,13 +370,15 @@ class VectorStoreManager:
 
 # 全局实例
 _vector_store_manager = None
+_vector_store_manager_lock = threading.Lock()
 
 def get_vector_store_manager() -> VectorStoreManager:
     """获取向量数据库管理器实例"""
     global _vector_store_manager
-    if _vector_store_manager is None:
-        _vector_store_manager = VectorStoreManager()
-    return _vector_store_manager
+    with _vector_store_manager_lock:
+        if _vector_store_manager is None:
+            _vector_store_manager = VectorStoreManager()
+        return _vector_store_manager
 
 
 # 便捷函数

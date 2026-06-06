@@ -159,886 +159,6 @@ class NovelGenerator(ABC):
                 "novel_type": self.novel_type.value if self.novel_type else "unknown"
             }
 
-class SciFiNovelGenerator(NovelGenerator):
-    """科幻小说生成器"""
-    
-    def __init__(self, ai_service_url: str = "http://localhost:8001"):
-        super().__init__(ai_service_url)
-        self.novel_type = NovelType.SCIFI
-        self.metadata = {
-            "genre": "科幻",
-            "features": ["未来科技", "太空探索", "人工智能", "时间旅行"],
-            "style": "硬科幻风格，注重科学逻辑和世界观设定"
-        }
-    
-    async def generate_outline(self, title: str, synopsis: str, chapter_count: int = 10) -> Dict[str, Any]:
-        """生成科幻小说大纲"""
-        try:
-            data = {
-                "novel_type": "scifi",
-                "title": title,
-                "synopsis": synopsis,
-                "chapter_count": chapter_count,
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/outline", data)
-            
-            if result.get("success"):
-                return result
-            else:
-                # 使用默认大纲结构
-                return self._create_default_outline(title, synopsis, chapter_count)
-                
-        except Exception as e:
-            print(f"大纲生成失败，使用默认结构: {e}")
-            return self._create_default_outline(title, synopsis, chapter_count)
-    
-    def _create_default_outline(self, title: str, synopsis: str, chapter_count: int) -> Dict[str, Any]:
-        """创建默认科幻小说大纲"""
-        return {
-            "title": title,
-            "synopsis": synopsis,
-            "chapters": [
-                {
-                    "title": f"第{i+1}章",
-                    "summary": f"科幻故事第{i+1}部分",
-                    "plot": "待补充",
-                    "characters": []
-                }
-                for i in range(chapter_count)
-            ],
-            "characters": [
-                {"name": "主角", "role": "主角", "traits": ["聪明", "勇敢"]},
-                {"name": "配角", "role": "配角", "traits": ["忠诚", "幽默"]}
-            ],
-            "world_building": {
-                "time_period": "未来",
-                "technology_level": "高度发达",
-                "society_structure": "待设定"
-            }
-        }
-    
-    async def generate_chapter(self, chapter_index: int, chapter_outline: str, previous_content: str = "") -> str:
-        """生成科幻章节内容"""
-        try:
-            data = {
-                "novel_type": "scifi",
-                "chapter_title": f"第{chapter_index + 1}章",
-                "chapter_outline": chapter_outline,
-                "previous_content": previous_content,
-                "model_type": "local",
-                "max_tokens": 2000,
-                "temperature": 0.8
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/chapter", data)
-            
-            if result.get("success"):
-                return result.get("content", "")
-            else:
-                return self._create_default_chapter(chapter_index, chapter_outline)
-                
-        except Exception as e:
-            print(f"章节生成失败，使用默认内容: {e}")
-            return self._create_default_chapter(chapter_index, chapter_outline)
-    
-    def _create_default_chapter(self, chapter_index: int, chapter_outline: str) -> str:
-        """创建默认科幻章节内容"""
-        return f"""第{chapter_index + 1}章
-
-{chapter_outline}
-
-（此处为AI生成的科幻内容，包含未来科技、太空探索等元素）
-
-在遥远的未来，人类已经掌握了星际旅行的技术。主角站在宇宙飞船的观景窗前，望着浩瀚的星空，思考着人类在宇宙中的位置。
-
-"我们真的准备好了吗？"主角喃喃自语。
-
-飞船的AI助手回应道："根据我的计算，人类已经有78.3%的概率准备好面对宇宙的挑战。"
-
-主角笑了笑："那剩下的21.7%呢？"
-
-"那是未知的领域，"AI助手回答，"但正是这些未知，让探索变得有意义。"""
-
-    async def generate_character(self, character_name: str, character_role: str, character_traits: List[str]) -> Dict[str, Any]:
-        """生成科幻人物设定"""
-        try:
-            data = {
-                "novel_type": "scifi",
-                "character_name": character_name,
-                "character_role": character_role,
-                "character_traits": character_traits,
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/character", data)
-            
-            if result.get("success"):
-                return result.get("character_profile", {})
-            else:
-                return self._create_default_character(character_name, character_role, character_traits)
-                
-        except Exception as e:
-            print(f"人物生成失败，使用默认设定: {e}")
-            return self._create_default_character(character_name, character_role, character_traits)
-    
-    def _create_default_character(self, character_name: str, character_role: str, character_traits: List[str]) -> Dict[str, Any]:
-        """创建默认科幻人物设定"""
-        return {
-            "basic_info": {
-                "age": 30,
-                "gender": "男",
-                "appearance": "身高180cm，短发，眼神坚定",
-                "occupation": "星际探险家"
-            },
-            "personality": character_traits,
-            "background": f"{character_name}是一位经验丰富的星际探险家，曾参与多次重要的太空任务。",
-            "relationships": [],
-            "growth": "从普通飞行员成长为星际舰队的指挥官",
-            "skills": ["星际导航", "外星语言", "高级驾驶技术", "危机处理"]
-        }
-    
-    async def analyze_style(self, content: str) -> Dict[str, Any]:
-        """分析科幻文本风格"""
-        try:
-            data = {
-                "content": content,
-                "analysis_type": "comprehensive",
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/analyze/style", data)
-            
-            if result.get("success"):
-                return result.get("analysis_results", {})
-            else:
-                return self._create_default_style_analysis()
-                
-        except Exception as e:
-            print(f"风格分析失败，使用默认分析: {e}")
-            return self._create_default_style_analysis()
-    
-    def _create_default_style_analysis(self) -> Dict[str, Any]:
-        """创建默认科幻风格分析"""
-        return {
-            "language_style": "硬科幻风格，注重科学逻辑",
-            "narrative_perspective": "第三人称全知视角",
-            "emotional_tone": "理性、探索、充满希望",
-            "literary_devices": ["科学术语", "未来设定", "技术描写"],
-            "sentence_features": "长句为主，包含技术细节",
-            "vocabulary_features": "科技术语丰富，专业性强",
-            "overall_evaluation": "典型的硬科幻风格，适合科幻爱好者"
-        }
-
-class MysteryNovelGenerator(NovelGenerator):
-    """悬疑推理小说生成器"""
-    
-    def __init__(self, ai_service_url: str = "http://localhost:8001"):
-        super().__init__(ai_service_url)
-        self.novel_type = NovelType.MYSTERY
-        self.metadata = {
-            "genre": "悬疑推理",
-            "features": ["犯罪谜题", "逻辑推理", "悬疑氛围", "意外结局"],
-            "style": "注重逻辑推理和悬疑氛围营造"
-        }
-    
-    async def generate_outline(self, title: str, synopsis: str, chapter_count: int = 10) -> Dict[str, Any]:
-        """生成悬疑推理小说大纲"""
-        try:
-            data = {
-                "novel_type": "mystery",
-                "title": title,
-                "synopsis": synopsis,
-                "chapter_count": chapter_count,
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/outline", data)
-            
-            if result.get("success"):
-                return result
-            else:
-                return self._create_default_outline(title, synopsis, chapter_count)
-                
-        except Exception as e:
-            print(f"大纲生成失败，使用默认结构: {e}")
-            return self._create_default_outline(title, synopsis, chapter_count)
-    
-    def _create_default_outline(self, title: str, synopsis: str, chapter_count: int) -> Dict[str, Any]:
-        """创建默认悬疑推理小说大纲"""
-        return {
-            "title": title,
-            "synopsis": synopsis,
-            "chapters": [
-                {
-                    "title": f"第{i+1}章",
-                    "summary": f"悬疑推理故事第{i+1}部分",
-                    "plot": "待补充",
-                    "characters": []
-                }
-                for i in range(chapter_count)
-            ],
-            "characters": [
-                {"name": "侦探", "role": "主角", "traits": ["聪明", "观察力强", "逻辑严密"]},
-                {"name": "嫌疑人A", "role": "嫌疑人", "traits": ["神秘", "可疑"]},
-                {"name": "嫌疑人B", "role": "嫌疑人", "traits": ["冷静", "难以捉摸"]}
-            ],
-            "mystery_structure": {
-                "crime": "待设定",
-                "clues": [],
-                "red_herrings": [],
-                "solution": "待揭示"
-            }
-        }
-    
-    async def generate_chapter(self, chapter_index: int, chapter_outline: str, previous_content: str = "") -> str:
-        """生成悬疑推理章节内容"""
-        try:
-            data = {
-                "novel_type": "mystery",
-                "chapter_title": f"第{chapter_index + 1}章",
-                "chapter_outline": chapter_outline,
-                "previous_content": previous_content,
-                "model_type": "local",
-                "max_tokens": 2000,
-                "temperature": 0.7
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/chapter", data)
-            
-            if result.get("success"):
-                return result.get("content", "")
-            else:
-                return self._create_default_chapter(chapter_index, chapter_outline)
-                
-        except Exception as e:
-            print(f"章节生成失败，使用默认内容: {e}")
-            return self._create_default_chapter(chapter_index, chapter_outline)
-    
-    def _create_default_chapter(self, chapter_index: int, chapter_outline: str) -> str:
-        """创建默认悬疑推理章节内容"""
-        return f"""第{chapter_index + 1}章
-
-{chapter_outline}
-
-（此处为AI生成的悬疑推理内容，包含逻辑推理、悬疑氛围等元素）
-
-雨夜，侦探站在犯罪现场，仔细观察着每一个细节。死者是一位著名的收藏家，他的书房被翻得乱七八糟。
-
-"奇怪，"侦探喃喃自语，"如果是为了财物，为什么只拿走了那幅画？"
-
-助手回答："也许那幅画价值连城？"
-
-侦探摇摇头："不，这里一定有更深的原因。"
-
-他注意到窗户上的痕迹："看，这里有撬痕，但工具痕迹很专业，不像是普通小偷。"
-
-助手若有所思："您的意思是...这是内部人员干的？"
-
-侦探微微一笑："让我们继续调查，真相总会浮出水面的。"""
-
-    async def generate_character(self, character_name: str, character_role: str, character_traits: List[str]) -> Dict[str, Any]:
-        """生成悬疑推理人物设定"""
-        try:
-            data = {
-                "novel_type": "mystery",
-                "character_name": character_name,
-                "character_role": character_role,
-                "character_traits": character_traits,
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/character", data)
-            
-            if result.get("success"):
-                return result.get("character_profile", {})
-            else:
-                return self._create_default_character(character_name, character_role, character_traits)
-                
-        except Exception as e:
-            print(f"人物生成失败，使用默认设定: {e}")
-            return self._create_default_character(character_name, character_role, character_traits)
-    
-    def _create_default_character(self, character_name: str, character_role: str, character_traits: List[str]) -> Dict[str, Any]:
-        """创建默认悬疑推理人物设定"""
-        return {
-            "basic_info": {
-                "age": 35,
-                "gender": "男",
-                "appearance": "身材高大，目光锐利，总是穿着风衣",
-                "occupation": "私家侦探"
-            },
-            "personality": character_traits,
-            "background": f"{character_name}是一位经验丰富的侦探，破获过无数棘手案件。",
-            "relationships": [],
-            "growth": "从普通警察成长为传奇侦探",
-            "skills": ["逻辑推理", "观察力", "审讯技巧", "犯罪心理学"]
-        }
-    
-    async def analyze_style(self, content: str) -> Dict[str, Any]:
-        """分析悬疑推理文本风格"""
-        try:
-            data = {
-                "content": content,
-                "analysis_type": "comprehensive",
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/analyze/style", data)
-            
-            if result.get("success"):
-                return result.get("analysis_results", {})
-            else:
-                return self._create_default_style_analysis()
-                
-        except Exception as e:
-            print(f"风格分析失败，使用默认分析: {e}")
-            return self._create_default_style_analysis()
-    
-    def _create_default_style_analysis(self) -> Dict[str, Any]:
-        """创建默认悬疑推理风格分析"""
-        return {
-            "language_style": "悬疑推理风格，注重细节描写",
-            "narrative_perspective": "第三人称限制视角",
-            "emotional_tone": "紧张、悬疑、引人入胜",
-            "literary_devices": ["伏笔", "悬念", "误导", "反转"],
-            "sentence_features": "长短句结合，节奏紧凑",
-            "vocabulary_features": "描述性词汇丰富，专业术语适度",
-            "overall_evaluation": "典型的悬疑推理风格，适合推理爱好者"
-        }
-
-class RomanceNovelGenerator(NovelGenerator):
-    """言情小说生成器"""
-    
-    def __init__(self, ai_service_url: str = "http://localhost:8001"):
-        super().__init__(ai_service_url)
-        self.novel_type = NovelType.ROMANCE
-        self.metadata = {
-            "genre": "言情",
-            "features": ["情感细腻", "人物关系复杂", "甜蜜虐心", "浪漫氛围"],
-            "style": "注重情感描写和人物内心世界"
-        }
-    
-    async def generate_outline(self, title: str, synopsis: str, chapter_count: int = 10) -> Dict[str, Any]:
-        """生成言情小说大纲"""
-        try:
-            data = {
-                "novel_type": "romance",
-                "title": title,
-                "synopsis": synopsis,
-                "chapter_count": chapter_count,
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/outline", data)
-            
-            if result.get("success"):
-                return result
-            else:
-                return self._create_default_outline(title, synopsis, chapter_count)
-                
-        except Exception as e:
-            print(f"大纲生成失败，使用默认结构: {e}")
-            return self._create_default_outline(title, synopsis, chapter_count)
-    
-    def _create_default_outline(self, title: str, synopsis: str, chapter_count: int) -> Dict[str, Any]:
-        """创建默认言情小说大纲"""
-        return {
-            "title": title,
-            "synopsis": synopsis,
-            "chapters": [
-                {
-                    "title": f"第{i+1}章",
-                    "summary": f"言情故事第{i+1}部分",
-                    "plot": "待补充",
-                    "characters": []
-                }
-                for i in range(chapter_count)
-            ],
-            "characters": [
-                {"name": "女主角", "role": "主角", "traits": ["温柔", "善良", "坚强"]},
-                {"name": "男主角", "role": "男主", "traits": ["帅气", "专一", "深情"]},
-                {"name": "情敌", "role": "配角", "traits": ["嫉妒", "心机"]}
-            ],
-            "romance_structure": {
-                "meeting": "浪漫邂逅",
-                "conflict": "误会分离",
-                "climax": "真情告白",
-                "ending": "幸福结局"
-            }
-        }
-    
-    async def generate_chapter(self, chapter_index: int, chapter_outline: str, previous_content: str = "") -> str:
-        """生成言情章节内容"""
-        try:
-            data = {
-                "novel_type": "romance",
-                "chapter_title": f"第{chapter_index + 1}章",
-                "chapter_outline": chapter_outline,
-                "previous_content": previous_content,
-                "model_type": "local",
-                "max_tokens": 2000,
-                "temperature": 0.9
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/chapter", data)
-            
-            if result.get("success"):
-                return result.get("content", "")
-            else:
-                return self._create_default_chapter(chapter_index, chapter_outline)
-                
-        except Exception as e:
-            print(f"章节生成失败，使用默认内容: {e}")
-            return self._create_default_chapter(chapter_index, chapter_outline)
-    
-    def _create_default_chapter(self, chapter_index: int, chapter_outline: str) -> str:
-        """创建默认言情章节内容"""
-        return f"""第{chapter_index + 1}章
-
-{chapter_outline}
-
-（此处为AI生成的言情内容，包含甜蜜、虐心、浪漫等元素）
-
-阳光透过咖啡厅的玻璃窗洒进来，她坐在角落的位置，手指无意识地搅动着杯中的拿铁。
-
-"你好，这里有人吗？"
-
-她抬起头，对上了一双深邃的眼眸。那是一个穿着白色衬衫的男人，笑容温暖得像是三月的春风。
-
-"没...没有。"她有些慌乱地回答。
-
-男人坐下，从口袋里拿出一本书。她偷偷看了一眼，竟然是她最喜欢的那本小说。
-
-"你也喜欢这本书？"男人注意到她的目光，微笑着问道。
-
-她的心跳漏了一拍，命运的齿轮在这一刻开始转动。"""
-    
-    async def generate_character(self, character_name: str, character_role: str, character_traits: List[str]) -> Dict[str, Any]:
-        """生成言情人物设定"""
-        try:
-            data = {
-                "novel_type": "romance",
-                "character_name": character_name,
-                "character_role": character_role,
-                "character_traits": character_traits,
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/character", data)
-            
-            if result.get("success"):
-                return result.get("character_profile", {})
-            else:
-                return self._create_default_character(character_name, character_role, character_traits)
-                
-        except Exception as e:
-            print(f"人物生成失败，使用默认设定: {e}")
-            return self._create_default_character(character_name, character_role, character_traits)
-    
-    def _create_default_character(self, character_name: str, character_role: str, character_traits: List[str]) -> Dict[str, Any]:
-        """创建默认言情人物设定"""
-        return {
-            "basic_info": {
-                "age": 25,
-                "gender": "女" if "女" in character_role else "男",
-                "appearance": "清秀可人，笑起来有两个小酒窝" if "女" in character_role else "帅气俊朗，眼神温柔",
-                "occupation": "设计师" if "女" in character_role else "总裁"
-            },
-            "personality": character_traits,
-            "background": f"{character_name}是一个{('温柔善良' if '女' in character_role else '成熟稳重')}的人，有着不为人知的过去。",
-            "relationships": [],
-            "growth": "从情伤中走出，学会真正地爱与被爱",
-            "skills": ["厨艺", "绘画", "钢琴", "写作"] if "女" in character_role else ["商业头脑", "音乐", "运动", "厨艺"]
-        }
-    
-    async def analyze_style(self, content: str) -> Dict[str, Any]:
-        """分析言情文本风格"""
-        try:
-            data = {
-                "content": content,
-                "analysis_type": "comprehensive",
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/analyze/style", data)
-            
-            if result.get("success"):
-                return result.get("analysis_results", {})
-            else:
-                return self._create_default_style_analysis()
-                
-        except Exception as e:
-            print(f"风格分析失败，使用默认分析: {e}")
-            return self._create_default_style_analysis()
-    
-    def _create_default_style_analysis(self) -> Dict[str, Any]:
-        """创建默认言情风格分析"""
-        return {
-            "language_style": "言情风格，情感细腻，描写细腻",
-            "narrative_perspective": "第一人称或第三人称限制视角",
-            "emotional_tone": "甜蜜、虐心、浪漫、温馨",
-            "literary_devices": ["心理描写", "环境烘托", "对话推动", "细节刻画"],
-            "sentence_features": "短句为主，节奏轻快，情感充沛",
-            "vocabulary_features": "情感词汇丰富，描写细腻",
-            "overall_evaluation": "典型的言情风格，适合喜欢浪漫故事的读者"
-        }
-
-class FantasyNovelGenerator(NovelGenerator):
-    """奇幻小说生成器"""
-    
-    def __init__(self, ai_service_url: str = "http://localhost:8001"):
-        super().__init__(ai_service_url)
-        self.novel_type = NovelType.FANTASY
-        self.metadata = {
-            "genre": "奇幻",
-            "features": ["魔法系统", "异世界", "种族多样", "史诗冒险"],
-            "style": "注重世界观构建和奇幻元素"
-        }
-    
-    async def generate_outline(self, title: str, synopsis: str, chapter_count: int = 10) -> Dict[str, Any]:
-        """生成奇幻小说大纲"""
-        try:
-            data = {
-                "novel_type": "fantasy",
-                "title": title,
-                "synopsis": synopsis,
-                "chapter_count": chapter_count,
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/outline", data)
-            
-            if result.get("success"):
-                return result
-            else:
-                return self._create_default_outline(title, synopsis, chapter_count)
-                
-        except Exception as e:
-            print(f"大纲生成失败，使用默认结构: {e}")
-            return self._create_default_outline(title, synopsis, chapter_count)
-    
-    def _create_default_outline(self, title: str, synopsis: str, chapter_count: int) -> Dict[str, Any]:
-        """创建默认奇幻小说大纲"""
-        return {
-            "title": title,
-            "synopsis": synopsis,
-            "chapters": [
-                {
-                    "title": f"第{i+1}章",
-                    "summary": f"奇幻故事第{i+1}部分",
-                    "plot": "待补充",
-                    "characters": []
-                }
-                for i in range(chapter_count)
-            ],
-            "characters": [
-                {"name": "勇者", "role": "主角", "traits": ["勇敢", "正义", "成长"]},
-                {"name": "法师", "role": "伙伴", "traits": ["智慧", "神秘", "强大"]},
-                {"name": "魔王", "role": "反派", "traits": ["强大", "残忍", "野心"]}
-            ],
-            "world_building": {
-                "magic_system": "元素魔法体系",
-                "races": ["人类", "精灵", "矮人", "兽人"],
-                "geography": "多块大陆，各有特色",
-                "history": "古老的战争与预言"
-            }
-        }
-    
-    async def generate_chapter(self, chapter_index: int, chapter_outline: str, previous_content: str = "") -> str:
-        """生成奇幻章节内容"""
-        try:
-            data = {
-                "novel_type": "fantasy",
-                "chapter_title": f"第{chapter_index + 1}章",
-                "chapter_outline": chapter_outline,
-                "previous_content": previous_content,
-                "model_type": "local",
-                "max_tokens": 2000,
-                "temperature": 0.85
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/chapter", data)
-            
-            if result.get("success"):
-                return result.get("content", "")
-            else:
-                return self._create_default_chapter(chapter_index, chapter_outline)
-                
-        except Exception as e:
-            print(f"章节生成失败，使用默认内容: {e}")
-            return self._create_default_chapter(chapter_index, chapter_outline)
-    
-    def _create_default_chapter(self, chapter_index: int, chapter_outline: str) -> str:
-        """创建默认奇幻章节内容"""
-        return f"""第{chapter_index + 1}章
-
-{chapter_outline}
-
-（此处为AI生成的奇幻内容，包含魔法、异世界、冒险等元素）
-
-月光洒在古老的石板路上，勇者紧握着手中的圣剑，感受着剑身传来的温暖力量。
-
-"前面就是魔王城了。"法师指着远处那座笼罩在黑暗中的城堡，"我能感受到那里强大的魔力波动。"
-
-勇者点点头："我们已经走了这么远，不能在这里退缩。"
-
-精灵弓箭手从树梢上跳下来："前方有巡逻的魔物，数量不少。"
-
-矮人战士锤了锤自己的盾牌："那就让他们来吧！我的斧头已经饥渴难耐了！"
-
-勇者看着自己的伙伴们，心中涌起一股暖流。无论前方有什么危险，他们都会一起面对。
-
-"出发！"勇者高举圣剑，剑身绽放出耀眼的光芒。"""
-    
-    async def generate_character(self, character_name: str, character_role: str, character_traits: List[str]) -> Dict[str, Any]:
-        """生成奇幻人物设定"""
-        try:
-            data = {
-                "novel_type": "fantasy",
-                "character_name": character_name,
-                "character_role": character_role,
-                "character_traits": character_traits,
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/character", data)
-            
-            if result.get("success"):
-                return result.get("character_profile", {})
-            else:
-                return self._create_default_character(character_name, character_role, character_traits)
-                
-        except Exception as e:
-            print(f"人物生成失败，使用默认设定: {e}")
-            return self._create_default_character(character_name, character_role, character_traits)
-    
-    def _create_default_character(self, character_name: str, character_role: str, character_traits: List[str]) -> Dict[str, Any]:
-        """创建默认奇幻人物设定"""
-        return {
-            "basic_info": {
-                "age": 20,
-                "gender": "男",
-                "appearance": "棕色短发，眼神坚定，身穿皮甲",
-                "occupation": "冒险者"
-            },
-            "personality": character_traits,
-            "background": f"{character_name}是一个来自小村庄的年轻人，被命运选中成为勇者。",
-            "relationships": [],
-            "growth": "从普通村民成长为拯救世界的英雄",
-            "skills": ["剑术", "基础魔法", "野外生存", "领导力"]
-        }
-    
-    async def analyze_style(self, content: str) -> Dict[str, Any]:
-        """分析奇幻文本风格"""
-        try:
-            data = {
-                "content": content,
-                "analysis_type": "comprehensive",
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/analyze/style", data)
-            
-            if result.get("success"):
-                return result.get("analysis_results", {})
-            else:
-                return self._create_default_style_analysis()
-                
-        except Exception as e:
-            print(f"风格分析失败，使用默认分析: {e}")
-            return self._create_default_style_analysis()
-    
-    def _create_default_style_analysis(self) -> Dict[str, Any]:
-        """创建默认奇幻风格分析"""
-        return {
-            "language_style": "奇幻风格，想象力丰富，描写宏大",
-            "narrative_perspective": "第三人称全知视角",
-            "emotional_tone": "史诗、冒险、热血、神秘",
-            "literary_devices": ["世界观构建", "魔法描写", "种族设定", "史诗叙事"],
-            "sentence_features": "长短句结合，描写细腻，场景宏大",
-            "vocabulary_features": "奇幻词汇丰富，独创性强",
-            "overall_evaluation": "典型的奇幻风格，适合喜欢冒险故事的读者"
-        }
-
-class UrbanNovelGenerator(NovelGenerator):
-    """都市小说生成器"""
-    
-    def __init__(self, ai_service_url: str = "http://localhost:8001"):
-        super().__init__(ai_service_url)
-        self.novel_type = NovelType.URBAN
-        self.metadata = {
-            "genre": "都市",
-            "features": ["现实背景", "人物鲜明", "生活气息", "社会百态"],
-            "style": "贴近现实，描写都市生活和人情世故"
-        }
-    
-    async def generate_outline(self, title: str, synopsis: str, chapter_count: int = 10) -> Dict[str, Any]:
-        """生成都市小说大纲"""
-        try:
-            data = {
-                "novel_type": "urban",
-                "title": title,
-                "synopsis": synopsis,
-                "chapter_count": chapter_count,
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/outline", data)
-            
-            if result.get("success"):
-                return result
-            else:
-                return self._create_default_outline(title, synopsis, chapter_count)
-                
-        except Exception as e:
-            print(f"大纲生成失败，使用默认结构: {e}")
-            return self._create_default_outline(title, synopsis, chapter_count)
-    
-    def _create_default_outline(self, title: str, synopsis: str, chapter_count: int) -> Dict[str, Any]:
-        """创建默认都市小说大纲"""
-        return {
-            "title": title,
-            "synopsis": synopsis,
-            "chapters": [
-                {
-                    "title": f"第{i+1}章",
-                    "summary": f"都市故事第{i+1}部分",
-                    "plot": "待补充",
-                    "characters": []
-                }
-                for i in range(chapter_count)
-            ],
-            "characters": [
-                {"name": "主角", "role": "主角", "traits": ["聪明", "努力", "上进"]},
-                {"name": "女主", "role": "女主", "traits": ["独立", "善良", "美丽"]},
-                {"name": "对手", "role": "配角", "traits": ["野心", "手段", "城府"]}
-            ],
-            "urban_elements": {
-                "setting": "现代都市",
-                "industry": "科技/金融/娱乐",
-                "conflicts": "职场竞争、感情纠葛、家庭矛盾"
-            }
-        }
-    
-    async def generate_chapter(self, chapter_index: int, chapter_outline: str, previous_content: str = "") -> str:
-        """生成都市章节内容"""
-        try:
-            data = {
-                "novel_type": "urban",
-                "chapter_title": f"第{chapter_index + 1}章",
-                "chapter_outline": chapter_outline,
-                "previous_content": previous_content,
-                "model_type": "local",
-                "max_tokens": 2000,
-                "temperature": 0.8
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/chapter", data)
-            
-            if result.get("success"):
-                return result.get("content", "")
-            else:
-                return self._create_default_chapter(chapter_index, chapter_outline)
-                
-        except Exception as e:
-            print(f"章节生成失败，使用默认内容: {e}")
-            return self._create_default_chapter(chapter_index, chapter_outline)
-    
-    def _create_default_chapter(self, chapter_index: int, chapter_outline: str) -> str:
-        """创建默认都市章节内容"""
-        return f"""第{chapter_index + 1}章
-
-{chapter_outline}
-
-（此处为AI生成的都市内容，包含职场、生活、情感等元素）
-
-清晨的阳光透过落地窗洒进办公室，李明站在窗前，俯瞰着这座繁华的城市。
-
-"李总，早会要开始了。"秘书敲门提醒道。
-
-李明点点头，整理了一下西装领带。今天有一个重要的项目提案，关系到公司未来的发展方向。
-
-会议室里，各部门负责人已经就座。竞争对手的代表也来了，带着挑衅的笑容。
-
-"李总，听说你们也在争取这个项目？"对手代表假惺惺地笑着。
-
-李明不卑不亢地回答："公平竞争，各凭本事。"
-
-会议开始了，李明打开精心准备的PPT，自信地开始讲解他的方案。在这个弱肉强食的商业世界里，只有最强者才能生存。"""
-    
-    async def generate_character(self, character_name: str, character_role: str, character_traits: List[str]) -> Dict[str, Any]:
-        """生成都市人物设定"""
-        try:
-            data = {
-                "novel_type": "urban",
-                "character_name": character_name,
-                "character_role": character_role,
-                "character_traits": character_traits,
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/generate/character", data)
-            
-            if result.get("success"):
-                return result.get("character_profile", {})
-            else:
-                return self._create_default_character(character_name, character_role, character_traits)
-                
-        except Exception as e:
-            print(f"人物生成失败，使用默认设定: {e}")
-            return self._create_default_character(character_name, character_role, character_traits)
-    
-    def _create_default_character(self, character_name: str, character_role: str, character_traits: List[str]) -> Dict[str, Any]:
-        """创建默认都市人物设定"""
-        return {
-            "basic_info": {
-                "age": 28,
-                "gender": "男",
-                "appearance": "穿着得体，气质不凡",
-                "occupation": "企业高管"
-            },
-            "personality": character_traits,
-            "background": f"{character_name}是白手起家的创业者，凭借自己的努力在城市站稳脚跟。",
-            "relationships": [],
-            "growth": "从普通职员成长为商业精英",
-            "skills": ["商业谈判", "领导力", "人脉资源", "危机处理"]
-        }
-    
-    async def analyze_style(self, content: str) -> Dict[str, Any]:
-        """分析都市文本风格"""
-        try:
-            data = {
-                "content": content,
-                "analysis_type": "comprehensive",
-                "model_type": "local"
-            }
-            
-            result = await self._call_ai_service("/api/v1/analyze/style", data)
-            
-            if result.get("success"):
-                return result.get("analysis_results", {})
-            else:
-                return self._create_default_style_analysis()
-                
-        except Exception as e:
-            print(f"风格分析失败，使用默认分析: {e}")
-            return self._create_default_style_analysis()
-    
-    def _create_default_style_analysis(self) -> Dict[str, Any]:
-        """创建默认都市风格分析"""
-        return {
-            "language_style": "都市风格，贴近现实，描写细腻",
-            "narrative_perspective": "第三人称限制视角",
-            "emotional_tone": "现实、励志、热血、温情",
-            "literary_devices": ["生活细节", "职场描写", "人物对话", "心理刻画"],
-            "sentence_features": "短句为主，节奏明快，对话多",
-            "vocabulary_features": "现代词汇丰富，生活化表达",
-            "overall_evaluation": "典型的都市风格，适合喜欢现实题材的读者"
-        }
-
-
 class GenericNovelGenerator(NovelGenerator):
     """通用小说生成器 - 用于快速扩展新类型"""
     
@@ -1154,6 +274,108 @@ class GenericNovelGenerator(NovelGenerator):
 
 
 # 历史小说生成器
+
+class SciFiNovelGenerator(GenericNovelGenerator):
+    """科幻小说生成器"""
+    novel_type = NovelType.SCIFI
+    metadata = {
+        "name": "科幻小说生成器",
+        "description": "生成硬科幻、软科幻、太空歌剧等科幻类小说",
+        "elements": ["未来科技", "星际文明", "人工智能", "时间旅行", "平行宇宙"],
+        "atmosphere": "硬科幻、赛博朋克、太空歌剧、近未来",
+        "style": "理性、宏大、充满想象力"
+    }
+    _type_name = "科幻小说"
+    
+    def __init__(self, ai_service_url: str = "http://localhost:8001"):
+        super().__init__(
+            NovelType.SCIFI, "科幻",
+            ["未来科技", "太空探索", "人工智能", "时间旅行"],
+            "硬科幻风格，注重科学逻辑和世界观设定",
+            ai_service_url
+        )
+
+class MysteryNovelGenerator(GenericNovelGenerator):
+    """悬疑推理小说生成器"""
+    novel_type = NovelType.MYSTERY
+    metadata = {
+        "name": "悬疑推理小说生成器",
+        "description": "生成逻辑严密、情节曲折的推理小说",
+        "elements": ["犯罪谜题", "逻辑推理", "悬疑氛围", "意外结局", "侦探角色"],
+        "atmosphere": "悬疑、紧张、引人入胜",
+        "style": "理性、逻辑严密、注重细节"
+    }
+    _type_name = "悬疑推理小说"
+    
+    def __init__(self, ai_service_url: str = "http://localhost:8001"):
+        super().__init__(
+            NovelType.MYSTERY, "悬疑推理",
+            ["犯罪谜题", "逻辑推理", "悬疑氛围", "意外结局"],
+            "注重逻辑推理和悬疑氛围营造",
+            ai_service_url
+        )
+
+class RomanceNovelGenerator(GenericNovelGenerator):
+    """言情小说生成器"""
+    novel_type = NovelType.ROMANCE
+    metadata = {
+        "name": "言情小说生成器",
+        "description": "生成情感细腻、人物关系复杂的言情小说",
+        "elements": ["情感细腻", "人物关系复杂", "甜蜜虐心", "浪漫氛围", "情感冲突"],
+        "atmosphere": "甜蜜、浪漫、温馨、虐心",
+        "style": "情感细腻、描写生动、注重内心世界"
+    }
+    _type_name = "言情小说"
+    
+    def __init__(self, ai_service_url: str = "http://localhost:8001"):
+        super().__init__(
+            NovelType.ROMANCE, "言情",
+            ["情感细腻", "人物关系复杂", "甜蜜虐心", "浪漫氛围"],
+            "注重情感描写和人物内心世界",
+            ai_service_url
+        )
+
+class FantasyNovelGenerator(GenericNovelGenerator):
+    """奇幻小说生成器"""
+    novel_type = NovelType.FANTASY
+    metadata = {
+        "name": "奇幻小说生成器",
+        "description": "生成魔法系统、异世界、种族多样的奇幻小说",
+        "elements": ["魔法系统", "异世界", "种族多样", "史诗冒险", "世界观构建"],
+        "atmosphere": "史诗、冒险、热血、神秘",
+        "style": "想象力丰富、描写宏大、注重世界观"
+    }
+    _type_name = "奇幻小说"
+    
+    def __init__(self, ai_service_url: str = "http://localhost:8001"):
+        super().__init__(
+            NovelType.FANTASY, "奇幻",
+            ["魔法系统", "异世界", "种族多样", "史诗冒险"],
+            "注重世界观构建和奇幻元素",
+            ai_service_url
+        )
+
+class UrbanNovelGenerator(GenericNovelGenerator):
+    """都市小说生成器"""
+    novel_type = NovelType.URBAN
+    metadata = {
+        "name": "都市小说生成器",
+        "description": "生成贴近现实、人物鲜明的都市小说",
+        "elements": ["现实背景", "人物鲜明", "生活气息", "社会百态", "职场竞争"],
+        "atmosphere": "现实、励志、热血、温情",
+        "style": "贴近现实、描写细腻、注重人情世故"
+    }
+    _type_name = "都市小说"
+    
+    def __init__(self, ai_service_url: str = "http://localhost:8001"):
+        super().__init__(
+            NovelType.URBAN, "都市",
+            ["现实背景", "人物鲜明", "生活气息", "社会百态"],
+            "贴近现实，描写都市生活和人情世故",
+            ai_service_url
+        )
+
+
 class HistoryNovelGenerator(GenericNovelGenerator):
     def __init__(self, ai_service_url: str = "http://localhost:8001"):
         super().__init__(

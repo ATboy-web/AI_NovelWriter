@@ -8,6 +8,7 @@ import httpx
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from loguru import logger
 
 
 class AIDrawing:
@@ -31,7 +32,7 @@ class AIDrawing:
             elif self.provider == "sdwebui":
                 resp = httpx.get(f"{self.sdwebui_url}/sdapi/v1/options", timeout=5)
                 return resp.status_code == 200
-        except:
+        except Exception:
             pass
         
         return False
@@ -83,7 +84,7 @@ class AIDrawing:
             
             return None
         except Exception as e:
-            print(f"ComfyUI生成失败: {e}")
+            logger.error(f"ComfyUI生成失败: {e}")
             return None
     
     def _build_comfyui_workflow(self, prompt: str, negative_prompt: str,
@@ -155,7 +156,7 @@ class AIDrawing:
                 return base64.b64decode(images[0])
             return None
         except Exception as e:
-            print(f"SD WebUI生成失败: {e}")
+            logger.error(f"SD WebUI生成失败: {e}")
             return None
     
     def generate_character_portrait(self, character_name: str, appearance: str,

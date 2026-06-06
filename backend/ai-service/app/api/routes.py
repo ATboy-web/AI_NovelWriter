@@ -11,6 +11,12 @@ from enum import Enum
 # 创建路由器
 router = APIRouter()
 
+# 依赖注入函数
+def get_inference_engine():
+    """获取推理引擎实例（延迟导入避免循环依赖）"""
+    from ..main import inference_engine
+    return inference_engine
+
 class NovelType(str, Enum):
     # 基础类型
     SCIFI = "scifi"
@@ -107,11 +113,9 @@ class StyleAnalysisResponse(BaseModel):
     generation_time: float
 
 @router.post("/generate/chapter", response_model=ChapterResponse, tags=["小说生成"])
-async def generate_chapter(request: ChapterRequest):
+async def generate_chapter(request: ChapterRequest, inference_engine=Depends(get_inference_engine)):
     """生成小说章节"""
     try:
-        from ..main import inference_engine
-        
         # 生成章节内容
         result = await inference_engine.generate_novel_chapter(
             novel_type=request.novel_type.value,
@@ -143,11 +147,9 @@ async def generate_chapter(request: ChapterRequest):
         raise HTTPException(status_code=500, detail=f"章节生成失败: {str(e)}")
 
 @router.post("/generate/outline", response_model=NovelOutlineResponse, tags=["小说生成"])
-async def generate_outline(request: NovelOutlineRequest):
+async def generate_outline(request: NovelOutlineRequest, inference_engine=Depends(get_inference_engine)):
     """生成小说大纲"""
     try:
-        from ..main import inference_engine
-        
         # 构建大纲生成提示词
         prompt = f"""请为以下小说生成详细大纲：
 
@@ -209,7 +211,7 @@ async def generate_outline(request: NovelOutlineRequest):
                     }
                     for i in range(request.chapter_count)
                 ]
-        except:
+        except json.JSONDecodeError:
             # JSON解析失败，创建默认结构
             chapters = [
                 {
@@ -236,11 +238,9 @@ async def generate_outline(request: NovelOutlineRequest):
         raise HTTPException(status_code=500, detail=f"大纲生成失败: {str(e)}")
 
 @router.post("/generate/character", response_model=CharacterResponse, tags=["人物生成"])
-async def generate_character(request: CharacterRequest):
+async def generate_character(request: CharacterRequest, inference_engine=Depends(get_inference_engine)):
     """生成人物设定"""
     try:
-        from ..main import inference_engine
-        
         # 构建人物生成提示词
         traits_str = "、".join(request.character_traits)
         prompt = f"""请为以下人物生成详细设定：
@@ -302,7 +302,7 @@ async def generate_character(request: CharacterRequest):
                     "growth": "待补充",
                     "skills": []
                 }
-        except:
+        except json.JSONDecodeError:
             character_data = {
                 "basic_info": {"age": 25, "gender": "未知", "appearance": "待补充"},
                 "personality": request.character_traits,
@@ -325,11 +325,9 @@ async def generate_character(request: CharacterRequest):
         raise HTTPException(status_code=500, detail=f"人物生成失败: {str(e)}")
 
 @router.post("/analyze/style", response_model=StyleAnalysisResponse, tags=["文本分析"])
-async def analyze_style(request: StyleAnalysisRequest):
+async def analyze_style(request: StyleAnalysisRequest, inference_engine=Depends(get_inference_engine)):
     """分析文本风格"""
     try:
-        from ..main import inference_engine
-        
         # 构建风格分析提示词
         prompt = f"""请分析以下文本的写作风格：
 
@@ -378,7 +376,7 @@ async def analyze_style(request: StyleAnalysisRequest):
                     "vocabulary_features": "待分析",
                     "overall_evaluation": "待分析"
                 }
-        except:
+        except json.JSONDecodeError:
             analysis_data = {
                 "language_style": "待分析",
                 "narrative_perspective": "待分析",
@@ -440,10 +438,9 @@ async def get_novel_types():
     }
 
 @router.get("/health", tags=["健康检查"])
-async def health_check():
+async def health_check(inference_engine=Depends(get_inference_engine)):
     """健康检查端点"""
     try:
-        from ..main import inference_engine
         health_status = await inference_engine.health_check()
         return health_status
     except Exception as e:
@@ -453,10 +450,9 @@ async def health_check():
         }
 
 @router.get("/statistics", tags=["统计信息"])
-async def get_statistics():
+async def get_statistics(inference_engine=Depends(get_inference_engine)):
     """获取服务统计信息"""
     try:
-        from ..main import inference_engine
         stats = await inference_engine.get_statistics()
         return {
             "success": True,

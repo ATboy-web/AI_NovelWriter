@@ -4,6 +4,7 @@
 """
 
 import re
+import threading
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from enum import Enum
@@ -618,13 +619,15 @@ class ConsistencyChecker:
 
 # 全局实例
 _consistency_checker = None
+_consistency_checker_lock = threading.Lock()
 
 def get_consistency_checker() -> ConsistencyChecker:
     """获取一致性检查器实例"""
     global _consistency_checker
-    if _consistency_checker is None:
-        _consistency_checker = ConsistencyChecker()
-    return _consistency_checker
+    with _consistency_checker_lock:
+        if _consistency_checker is None:
+            _consistency_checker = ConsistencyChecker()
+        return _consistency_checker
 
 
 # 便捷函数

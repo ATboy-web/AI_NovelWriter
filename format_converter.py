@@ -339,7 +339,7 @@ class FormatConverter:
                     pdf.set_font("Chinese", size=12)
                     font_added = True
                     break
-                except:
+                except Exception:
                     continue
         
         if not font_added:

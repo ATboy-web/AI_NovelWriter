@@ -10,6 +10,7 @@ from enum import Enum
 import json
 import os
 from pathlib import Path
+from loguru import logger
 
 from .config import settings
 
@@ -55,7 +56,7 @@ class ModelManager:
         
     async def initialize(self):
         """初始化模型管理器"""
-        print("初始化模型管理器...")
+        logger.info("初始化模型管理器...")
         
         # 初始化云端客户端
         await self._init_cloud_clients()
@@ -63,7 +64,7 @@ class ModelManager:
         # 扫描本地模型
         await self._scan_local_models()
         
-        print(f"模型管理器初始化完成，发现 {len(self.models)} 个模型")
+        logger.info(f"模型管理器初始化完成，发现 {len(self.models)} 个模型")
     
     async def _init_cloud_clients(self):
         """初始化云端客户端"""
@@ -75,7 +76,7 @@ class ModelManager:
                     api_key=settings.OPENAI_API_KEY,
                     base_url=settings.OPENAI_API_BASE
                 )
-                print("OpenAI客户端初始化成功")
+                logger.info("OpenAI客户端初始化成功")
             
             # Claude客户端
             if settings.CLAUDE_API_KEY:
@@ -83,18 +84,18 @@ class ModelManager:
                 self.claude_client = anthropic.AsyncAnthropic(
                     api_key=settings.CLAUDE_API_KEY
                 )
-                print("Claude客户端初始化成功")
+                logger.info("Claude客户端初始化成功")
                 
         except ImportError as e:
-            print(f"云端客户端初始化失败: {e}")
+            logger.error(f"云端客户端初始化失败: {e}")
         except Exception as e:
-            print(f"云端客户端初始化错误: {e}")
+            logger.error(f"云端客户端初始化错误: {e}")
     
     async def _scan_local_models(self):
         """扫描本地模型目录"""
         model_path = Path(settings.LOCAL_MODEL_PATH)
         if not model_path.exists():
-            print(f"本地模型目录不存在: {model_path}")
+            logger.warning(f"本地模型目录不存在: {model_path}")
             return
         
         # 扫描模型文件
@@ -115,7 +116,7 @@ class ModelManager:
                         "file_size": model_file.stat().st_size,
                         "file_extension": model_file.suffix
                     }
-                    print(f"发现本地模型: {model_name}")
+                    logger.info(f"发现本地模型: {model_name}")
     
     async def get_available_models(self) -> List[str]:
         """获取所有可用模型名称"""
@@ -392,27 +393,27 @@ class ModelManager:
             if default_model:
                 try:
                     await self.load_model("local", default_model)
-                    print(f"默认本地模型加载成功: {default_model}")
+                    logger.info(f"默认本地模型加载成功: {default_model}")
                 except Exception as e:
-                    print(f"默认本地模型加载失败: {e}")
+                    logger.error(f"默认本地模型加载失败: {e}")
             
             # 检查云端模型可用性
             if self.openai_client:
                 try:
                     await self.load_model("openai")
-                    print("OpenAI模型可用")
+                    logger.info("OpenAI模型可用")
                 except Exception as e:
-                    print(f"OpenAI模型检查失败: {e}")
+                    logger.error(f"OpenAI模型检查失败: {e}")
             
             if self.claude_client:
                 try:
                     await self.load_model("claude")
-                    print("Claude模型可用")
+                    logger.info("Claude模型可用")
                 except Exception as e:
-                    print(f"Claude模型检查失败: {e}")
+                    logger.error(f"Claude模型检查失败: {e}")
                     
         except Exception as e:
-            print(f"加载默认模型失败: {e}")
+            logger.error(f"加载默认模型失败: {e}")
     
     def get_local_model(self):
         """获取本地模型实例"""

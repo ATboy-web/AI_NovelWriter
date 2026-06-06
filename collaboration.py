@@ -217,7 +217,7 @@ class CollaborationManager:
                 if line.startswith('UU') or line.startswith('AA'):
                     conflicts.append(line[3:])
             return conflicts
-        except:
+        except Exception:
             return []
     
     def resolve_conflicts(self, strategy: str = "ours") -> bool:
@@ -233,5 +233,5 @@ class CollaborationManager:
             subprocess.run(["git", "add", "."], cwd=str(self.project_dir),
                           capture_output=True)
             return True
-        except:
+        except Exception:
             return False

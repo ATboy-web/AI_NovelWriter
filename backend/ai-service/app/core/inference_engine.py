@@ -7,6 +7,7 @@ import asyncio
 from typing import Dict, Any, Optional
 from datetime import datetime
 import time
+from loguru import logger
 
 from .config import settings
 from .model_manager import ModelManager
@@ -231,7 +232,7 @@ class InferenceEngine:
                     )
             except Exception as e:
                 last_error = e
-                print(f"模型 {model_type} 生成失败: {e}")
+                logger.error(f"模型 {model_type} 生成失败: {e}")
                 continue
         
         # 所有模型都失败
@@ -395,7 +396,7 @@ class InferenceEngine:
                         temperature=0.1
                     )
                     local_status = "healthy"
-                except:
+                except Exception:
                     local_status = "error"
             
             # 测试云端模型
@@ -409,7 +410,7 @@ class InferenceEngine:
                         max_tokens=5
                     )
                     openai_status = "healthy"
-                except:
+                except Exception:
                     openai_status = "error"
             
             claude_status = "unavailable"
@@ -422,7 +423,7 @@ class InferenceEngine:
                         messages=[{"role": "user", "content": "test"}]
                     )
                     claude_status = "healthy"
-                except:
+                except Exception:
                     claude_status = "error"
             
             return {

@@ -116,21 +116,21 @@ class WebDAVProvider(CloudProvider):
                 # 这里简化处理，实际应该解析XML
                 return files
             return []
-        except:
+        except Exception:
             return []
     
     def delete_file(self, remote_path: str) -> bool:
         try:
             resp = self.client.delete(remote_path)
             return resp.status_code in [200, 204]
-        except:
+        except Exception:
             return False
     
     def create_folder(self, remote_path: str) -> bool:
         try:
             resp = self.client.request("MKCOL", remote_path)
             return resp.status_code in [200, 201]
-        except:
+        except Exception:
             return False
 
 
@@ -156,7 +156,7 @@ class BaiduPanProvider(CloudProvider):
             )
             self.connected = resp.status_code == 200
             return self.connected
-        except:
+        except Exception:
             return False
     
     def upload(self, local_path: Path, remote_path: str) -> bool:
@@ -237,7 +237,7 @@ class BaiduPanProvider(CloudProvider):
                     f.write(resp.content)
                 return True
             return False
-        except:
+        except Exception:
             return False
     
     def list_files(self, remote_path: str = "/") -> List[Dict]:
@@ -254,7 +254,7 @@ class BaiduPanProvider(CloudProvider):
                 data = resp.json()
                 return data.get("list", [])
             return []
-        except:
+        except Exception:
             return []
     
     def delete_file(self, remote_path: str) -> bool:
@@ -265,7 +265,7 @@ class BaiduPanProvider(CloudProvider):
                 json={"filelist": [remote_path]}
             )
             return resp.status_code == 200
-        except:
+        except Exception:
             return False
     
     def create_folder(self, remote_path: str) -> bool:
@@ -276,7 +276,7 @@ class BaiduPanProvider(CloudProvider):
                 json={"path": remote_path, "isdir": 1}
             )
             return resp.status_code == 200
-        except:
+        except Exception:
             return False
 
 
@@ -301,7 +301,7 @@ class QuarkPanProvider(CloudProvider):
             )
             self.connected = resp.status_code == 200
             return self.connected
-        except:
+        except Exception:
             return False
     
     def upload(self, local_path: Path, remote_path: str) -> bool:
@@ -355,7 +355,7 @@ class QuarkPanProvider(CloudProvider):
                     f.write(resp.content)
                 return True
             return False
-        except:
+        except Exception:
             return False
     
     def list_files(self, remote_path: str = "/") -> List[Dict]:
@@ -369,7 +369,7 @@ class QuarkPanProvider(CloudProvider):
                 data = resp.json()
                 return data.get("data", {}).get("list", [])
             return []
-        except:
+        except Exception:
             return []
     
     def delete_file(self, remote_path: str) -> bool:
@@ -380,7 +380,7 @@ class QuarkPanProvider(CloudProvider):
                 json={"filelist": [remote_path]}
             )
             return resp.status_code == 200
-        except:
+        except Exception:
             return False
     
     def create_folder(self, remote_path: str) -> bool:
@@ -391,7 +391,7 @@ class QuarkPanProvider(CloudProvider):
                 json={"file_name": remote_path, "pdir_fid": "", "file_type": "folder"}
             )
             return resp.status_code == 200
-        except:
+        except Exception:
             return False
 
 
@@ -416,7 +416,7 @@ class XunleiPanProvider(CloudProvider):
             )
             self.connected = resp.status_code == 200
             return self.connected
-        except:
+        except Exception:
             return False
     
     def upload(self, local_path: Path, remote_path: str) -> bool:
@@ -467,7 +467,7 @@ class XunleiPanProvider(CloudProvider):
                     f.write(resp.content)
                 return True
             return False
-        except:
+        except Exception:
             return False
     
     def list_files(self, remote_path: str = "/") -> List[Dict]:
@@ -481,7 +481,7 @@ class XunleiPanProvider(CloudProvider):
                 data = resp.json()
                 return data.get("files", [])
             return []
-        except:
+        except Exception:
             return []
     
     def delete_file(self, remote_path: str) -> bool:
@@ -491,7 +491,7 @@ class XunleiPanProvider(CloudProvider):
                 headers={"Authorization": f"Bearer {self.access_token}"}
             )
             return resp.status_code == 200
-        except:
+        except Exception:
             return False
     
     def create_folder(self, remote_path: str) -> bool:
@@ -502,7 +502,7 @@ class XunleiPanProvider(CloudProvider):
                 json={"name": remote_path, "parent_id": "", "kind": "folder"}
             )
             return resp.status_code == 200
-        except:
+        except Exception:
             return False
 
 
@@ -528,7 +528,7 @@ class AliyunPanProvider(CloudProvider):
             )
             self.connected = resp.status_code == 200
             return self.connected
-        except:
+        except Exception:
             return False
     
     def upload(self, local_path: Path, remote_path: str) -> bool:
@@ -594,7 +594,7 @@ class AliyunPanProvider(CloudProvider):
                             f.write(resp.content)
                         return True
             return False
-        except:
+        except Exception:
             return False
     
     def list_files(self, remote_path: str = "/") -> List[Dict]:
@@ -608,7 +608,7 @@ class AliyunPanProvider(CloudProvider):
                 data = resp.json()
                 return data.get("items", [])
             return []
-        except:
+        except Exception:
             return []
     
     def delete_file(self, remote_path: str) -> bool:
@@ -619,7 +619,7 @@ class AliyunPanProvider(CloudProvider):
                 json={"file_id": remote_path}
             )
             return resp.status_code == 200
-        except:
+        except Exception:
             return False
     
     def create_folder(self, remote_path: str) -> bool:
@@ -630,7 +630,7 @@ class AliyunPanProvider(CloudProvider):
                 json={"name": remote_path, "parent_file_id": "", "type": "folder"}
             )
             return resp.status_code == 200
-        except:
+        except Exception:
             return False
 
 

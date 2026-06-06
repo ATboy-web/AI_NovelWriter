@@ -1,0 +1,567 @@
+{
+  "前端情节流": {
+    "desc": "网文开头的经典情节模式",
+    "items": [
+      {
+        "name": "重生复仇",
+        "tags": [
+          "重生",
+          "逆袭"
+        ],
+        "template": "{name}在{event}中含恨而死，再睁眼竟回到{n}年前。这一次，他要让所有仇人付出代价。"
+      },
+      {
+        "name": "系统激活",
+        "tags": [
+          "系统",
+          "金手指"
+        ],
+        "template": "'叮——{system_name}绑定成功！'机械声在{name}脑中响起，他的人生从此改变。"
+      },
+      {
+        "name": "被退婚",
+        "tags": [
+          "退婚",
+          "打脸"
+        ],
+        "template": "'你配不上我。'{female}当众撕毁婚约。{name}冷笑：'三十年河东三十年河西，莫欺少年穷！'"
+      },
+      {
+        "name": "意外传承",
+        "tags": [
+          "传承",
+          "修仙"
+        ],
+        "template": "{name}偶得{artifact}，一道金光没入眉心——上古{master}的传承尽在其中！"
+      },
+      {
+        "name": "末日降临",
+        "tags": [
+          "末日",
+          "异能"
+        ],
+        "template": "{date}，天空裂开血红缝隙。{name}在绝望中觉醒了{ability}——他成了最后的希望。"
+      },
+      {
+        "name": "穿越异世",
+        "tags": [
+          "穿越",
+          "异世界"
+        ],
+        "template": "一道白光闪过，{name}睁开眼发现自己躺在陌生的{place}，身边站着一位{creature}。"
+      },
+      {
+        "name": "被逐家族",
+        "tags": [
+          "家族",
+          "逆袭"
+        ],
+        "template": "'你被逐出{family}了！'{name}捡起地上的令牌，头也不回地走向山外——他要去创造自己的传奇。"
+      },
+      {
+        "name": "捡到神器",
+        "tags": [
+          "神器",
+          "冒险"
+        ],
+        "template": "在{place}角落，{name}捡到一个蒙尘的{item}。触碰的瞬间，天地色变，万道金光冲天而起。"
+      },
+      {
+        "name": "灵气复苏",
+        "tags": [
+          "灵气",
+          "末世"
+        ],
+        "template": "公元{year}年，天地灵气开始复苏。动植物变异，人类觉醒超能。{name}是第一批觉醒者。"
+      },
+      {
+        "name": "都市异能",
+        "tags": [
+          "都市",
+          "异能"
+        ],
+        "template": "{name}是{company}的普通员工，直到那天他发现自己能{ability}。整个都市的暗面在他眼前展开。"
+      },
+      {
+        "name": "被废修为",
+        "tags": [
+          "修仙",
+          "复仇"
+        ],
+        "template": "曾经的天才{name}被废去修为沦为废物。但他发现了一本残缺古籍，里面记载着一门被遗忘的{technique}。"
+      },
+      {
+        "name": "绑定聊天群",
+        "tags": [
+          "聊天群",
+          "诸天"
+        ],
+        "template": "'{name}加入万界聊天群。'——一个横跨诸天的对话窗口出现在他眼前，各路大佬在线指导。"
+      },
+      {
+        "name": "签到系统",
+        "tags": [
+          "签到",
+          "日常"
+        ],
+        "template": "'叮！签到成功！获得{reward}！'——从那天起，{name}每天醒来第一件事就是签到。"
+      },
+      {
+        "name": "被关小黑屋",
+        "tags": [
+          "囚禁",
+          "逆袭"
+        ],
+        "template": "被关在暗无天日的{place}已经{n}年了。{name}没有绝望，他在囚牢中悟出了{technique}。"
+      },
+      {
+        "name": "人设崩塌",
+        "tags": [
+          "娱乐圈",
+          "逆袭"
+        ],
+        "template": "一夜之间，{name}的公众形象崩塌。但她发现了幕后黑手，决定用实力打脸所有人。"
+      }
+    ]
+  },
+  "短篇故事流": {
+    "desc": "短篇故事核心情节",
+    "items": [
+      {
+        "name": "一封改变命运的信",
+        "template": "那封信躺在邮箱里很久了。{name}打开它的那一刻，{event}——他的人生从此分岔。"
+      },
+      {
+        "name": "最后一天",
+        "template": "医生说出那个数字后，{name}的世界安静了。他决定用最后{time}去做自己一直不敢做的事。"
+      },
+      {
+        "name": "十年重逢",
+        "template": "咖啡店里，她依然点了一杯拿铁。'{name}，好久不见。'他抬头，十年的时光在眼前静止。"
+      },
+      {
+        "name": "不能说出的秘密",
+        "template": "每个人都有秘密。{name}的秘密是{secret}。这个秘密改变了他和所有人的命运。"
+      },
+      {
+        "name": "一个约定",
+        "template": "'{time}年后，我们在这里见。'——那是{name}和{other}的约定。现在，约定的时间到了。"
+      },
+      {
+        "name": "他回来了",
+        "template": "消失了{n}年的{name}突然回到{place}。没有人知道这些年他去了哪里，但他带回了{thing}。"
+      },
+      {
+        "name": "那场意外",
+        "template": "如果那天{name}没有走那条路，一切都不会发生。但命运没有如果。"
+      }
+    ]
+  },
+  "世界布局": {
+    "desc": "世界架构设定",
+    "items": [
+      {
+        "name": "九天十地",
+        "template": "九天之上，仙宫林立；十地之下，万族争霸。{name}从一个凡人踏上了逆天之路。"
+      },
+      {
+        "name": "三界大战",
+        "template": "人界、仙界、魔界三界大战一触即发。{name}夹在中间，左右为难。"
+      },
+      {
+        "name": "星辰大海",
+        "template": "银河只是起点。{name}驾驶着{ship}驶向{distance}光年外的{planet}——那里藏着人类文明最后的希望。"
+      },
+      {
+        "name": "位面交汇",
+        "template": "两个位面交汇，{world1}和{world2}的法则相互碰撞。{name}是唯一能在两个位面自由穿梭的人。"
+      },
+      {
+        "name": "内世界",
+        "template": "每个强者体内都有一个内世界。{name}的内世界是{type}，拥有{feature}的特殊能力。"
+      },
+      {
+        "name": "虚空裂缝",
+        "template": "大陆中央突然出现一道虚空裂缝，从里面涌出的不是怪物，而是——{thing}。整个世界为之疯狂。"
+      },
+      {
+        "name": "神国降世",
+        "template": "某天，一座巨大的神国从天而降，悬浮在{place}上空。从此世界格局彻底改变。"
+      }
+    ]
+  },
+  "势力结构": {
+    "desc": "世界势力设定",
+    "items": [
+      {
+        "name": "四大宗门",
+        "template": "{a}（{sa}）、{b}（{sb}）、{c}（{sc}）、{d}（{sd}）——四大宗门表面和气实则暗潮汹涌。"
+      },
+      {
+        "name": "帝国争霸",
+        "template": "{n}大帝国：{list}。其中{strongest}最强，但{weakest}正在秘密研发{weapon}意图翻盘。"
+      },
+      {
+        "name": "暗影组织",
+        "template": "{org}，一个遍布{area}的神秘组织。成员{feature}，目标是{goal}。{name}意外成为其中一员。"
+      },
+      {
+        "name": "学院体系",
+        "template": "{academy}是大陆最强学府，分为{n}大院系：{depts}。在这里，天才只是门槛。"
+      },
+      {
+        "name": "佣兵公会",
+        "template": "佣兵公会遍布大陆，分为{n}个等级。{name}从最低级的F级佣兵一路杀上SSS级。"
+      },
+      {
+        "name": "商业联盟",
+        "template": "{name}商业联盟控制着大陆{n}%的贸易。得罪他们等于得罪了{list}。"
+      },
+      {
+        "name": "神殿势力",
+        "template": "{name}神殿，供奉着{god}。信徒遍布{area}，大祭司{leader}是站在大陆顶端的存在。"
+      }
+    ]
+  },
+  "人物设定": {
+    "desc": "角色设定模板",
+    "items": [
+      {
+        "name": "废材逆袭主角",
+        "template": "{name}是公认的废物。但他体内藏着一股{power}，只待{trigger}便会爆发。"
+      },
+      {
+        "name": "扮猪吃虎",
+        "template": "{name}看起来平平无奇，谁都看不起他。直到那天{event}，他露出了真正的实力——{level}！"
+      },
+      {
+        "name": "杀伐果断型",
+        "template": "{name}的字典里没有'犹豫'。当断则断，杀伐果断，一夜之间{event}。"
+      },
+      {
+        "name": "智商在线型",
+        "template": "{name}最强的不是拳头，而是头脑。每一步都在计算之中，所有人都成了他的棋子。"
+      },
+      {
+        "name": "反派BOSS",
+        "template": "{name}，称号{title}。表面{surface}，实则{dark_side}。他的目标只有一个：{goal}。"
+      },
+      {
+        "name": "红颜知己",
+        "template": "{name}，{identity}。她是主角最信任的人，也是唯一知道主角秘密的人。"
+      },
+      {
+        "name": "亦敌亦友",
+        "template": "{name}和主角的关系复杂——有时并肩作战，有时刀刃相向。但彼此都认可对方的{quality}。"
+      },
+      {
+        "name": "隐世强者",
+        "template": "{name}看起来只是个{ordinary}，但真正身份是{identity}，实力已达{level}。"
+      },
+      {
+        "name": "黑化角色",
+        "template": "曾经最善良的{name}，在经历{event}后彻底黑化。现在的他只相信{thing}。"
+      },
+      {
+        "name": "搞笑担当",
+        "template": "{name}是团队里的开心果。虽然实力最弱，但他的{skill}总能在关键时刻创造奇迹。"
+      }
+    ]
+  },
+  "修炼体系": {
+    "desc": "力量等级系统",
+    "items": [
+      {
+        "name": "九重天",
+        "template": "炼气→筑基→金丹→元婴→化神→炼虚→合体→大乘→渡劫。每一重天都是一次{effect}。"
+      },
+      {
+        "name": "五行体系",
+        "template": "金木水火土五行相生相克。觉醒{element}属性的修炼者可以{ability}。双属性以上为天才。"
+      },
+      {
+        "name": "血脉觉醒",
+        "template": "普通→精英→王级→皇级→帝级→圣级→神级。血脉浓度决定上限，但{name}的血脉是{special}。"
+      },
+      {
+        "name": "精神力体系",
+        "template": "感应力→精神力→念动力→领域→法则→世界。{name}天生精神力{S}级，可以{ability}。"
+      },
+      {
+        "name": "武道体系",
+        "template": "外劲→内劲→化劲→罡劲→丹劲→神劲。以力破万法，拳碎虚空。"
+      },
+      {
+        "name": "星位体系",
+        "template": "一星→三星→五星→七星→九星→星辰之主。每点亮一颗星，获得一项{ability}。"
+      },
+      {
+        "name": "字母阶位",
+        "template": "F→E→D→C→B→A→S→SS→SSS。每突破一个阶位，{effect}。SSS之上还有传说中的{ultimate}。"
+      }
+    ]
+  },
+  "灭世场景": {
+    "desc": "世界级灾难",
+    "items": [
+      {
+        "name": "天地大劫",
+        "template": "每{n}年降临一次的大劫。{effect1}、{effect2}，万物凋零。只有{condition}才能存活。"
+      },
+      {
+        "name": "魔族入侵",
+        "template": "封印{n}年的魔族破封而出。天空{sky}，大地{earth}，无数{creature}涌入人间。"
+      },
+      {
+        "name": "天道崩塌",
+        "template": "天道崩裂，法则混乱。{effect}，整个世界陷入{state}。{name}必须找到{way}。"
+      },
+      {
+        "name": "冰河纪元",
+        "template": "极寒降临，世界被冰雪覆盖。气温骤降到{temp}，{creature}从冰层深处苏醒。"
+      },
+      {
+        "name": "人工智能叛变",
+        "template": "公元{year}年，{AI}觉醒自我意识。一夜之间控制所有电子设备，人类文明危在旦夕。"
+      },
+      {
+        "name": "丧尸病毒",
+        "template": "{virus}病毒爆发，丧尸横行。{name}必须在{n}天内找到解药，否则全人类都将{result}。"
+      },
+      {
+        "name": "空间崩塌",
+        "template": "空间裂缝四处出现，{place}最先被吞噬。科学家发现{n}天后整个宇宙将{result}。"
+      }
+    ]
+  },
+  "特殊地理": {
+    "desc": "特殊地形场所",
+    "items": [
+      {
+        "name": "禁忌之地",
+        "template": "{name}禁地位于{location}，踏入者{danger}。传说深处有{treasure}，但无人能活着走出来。"
+      },
+      {
+        "name": "秘境",
+        "template": "每{n}年开启一次的{name}秘境，内藏{resource}和{secret}。只有{level}以上才能进入。"
+      },
+      {
+        "name": "绝地",
+        "template": "{name}，大陆最危险的地方。{danger}，但也是{opportunity}的圣地。"
+      },
+      {
+        "name": "空中之城",
+        "template": "悬浮在云层之上的{name}，由{technology}驱动。只有{condition}才能登上去。"
+      },
+      {
+        "name": "地下世界",
+        "template": "在{place}地底{n}米处，存在着一个完整的地下世界。那里有{creature}和{resource}。"
+      },
+      {
+        "name": "时空隧道",
+        "template": "{name}隧道连接着不同的时空。穿过它，可以去往{time}，但每次穿越都有{risk}。"
+      }
+    ]
+  },
+  "特定种族": {
+    "desc": "非人类种族",
+    "items": [
+      {
+        "name": "龙族",
+        "template": "龙族，{origin}。寿命{lifespan}，天赋{talent}。黄金龙最强，黑龙最神秘。"
+      },
+      {
+        "name": "精灵族",
+        "template": "精灵族，居住在{location}。擅长弓箭和魔法，与自然{relation}。分为光明精灵和黑暗精灵。"
+      },
+      {
+        "name": "机械族",
+        "template": "由{origin}创造的机械生命。核心{core}，身体{body}。追求{goal}，与人类{relation}。"
+      },
+      {
+        "name": "兽人族",
+        "template": "兽人，{origin}的产物。拥有{animal}的特征和力量。部落制，崇尚{value}。"
+      },
+      {
+        "name": "血族",
+        "template": "血族，以{source}为生的不死生物。分为{n}个氏族：{clans}。永生的诅咒。"
+      },
+      {
+        "name": "天使族",
+        "template": "居住在{realm}的神圣种族。拥有{n}对翅膀，等级越高翅膀越多。与{enemy}对立。"
+      }
+    ]
+  },
+  "神秘遗迹": {
+    "desc": "古代遗迹",
+    "items": [
+      {
+        "name": "上古遗迹",
+        "template": "{name}遗迹传说是{civ}留下的最后作品。共{n}层，每层都有{trap}和{guard}。最深处藏着{treasure}。"
+      },
+      {
+        "name": "远古战场",
+        "template": "{side1}与{side2}的决战之地。至今弥漫着{residue}，偶尔出现{phenomenon}。埋藏着无数{thing}。"
+      },
+      {
+        "name": "失落的文明",
+        "template": "{name}文明在{n}年前神秘消失。只留下{ruins}。{name2}在探索中发现了{secret}。"
+      },
+      {
+        "name": "海底宫殿",
+        "template": "在{sea}深处，沉睡着{name}的宫殿。传说里面有{item}，但被{guard}守护着。"
+      }
+    ]
+  },
+  "世界规则": {
+    "desc": "底层规则",
+    "items": [
+      {
+        "name": "天道法则",
+        "template": "天道法则：{rule}。违反者遭{punish}。但{name}发现了规则中的一个漏洞。"
+      },
+      {
+        "name": "因果律",
+        "template": "{cause}必有{effect}。强者的因果线密密麻麻，弱者寥寥几条。{name}修的是因果之道。"
+      },
+      {
+        "name": "等价交换",
+        "template": "获得{thing}必须付出{cost}。这是世界的铁律。但{name}找到了打破这条规则的方法。"
+      },
+      {
+        "name": "灵气浓度",
+        "template": "不同区域灵气浓度不同，{place1}最高达{n}倍，{place2}几乎为零。这决定了修炼的难度。"
+      }
+    ]
+  },
+  "奇遇设定": {
+    "desc": "主角机缘",
+    "items": [
+      {
+        "name": "山洞奇遇",
+        "template": "{name}被追杀跌落山崖，意外发现一个隐秘山洞。里面有{thing}和{master}留下的{legacy}。"
+      },
+      {
+        "name": "拍卖捡漏",
+        "template": "{name}在拍卖会上花{price}买到一件不起眼的{item}。回家后发现——这是{identity}！"
+      },
+      {
+        "name": "戒指老爷爷",
+        "template": "{name}捡到一个古朴戒指。当晚，一道虚影从戒指中浮现：'年轻人，老夫乃{title}...'"
+      },
+      {
+        "name": "雷劫淬体",
+        "template": "渡劫失败本该魂飞魄散，{name}却意外用雷劫淬炼肉身，练成了传说中的{body_type}。"
+      },
+      {
+        "name": "时间秘境",
+        "template": "{name}误入时间秘境，外面{n}天里面{n2}年。当他出来时，修为已突破{level}！"
+      },
+      {
+        "name": "天降陨石",
+        "template": "一颗陨石坠落在{place}。{name}赶到后发现这不是陨石，而是一艘{ship}！"
+      }
+    ]
+  },
+  "武器法宝": {
+    "desc": "神兵利器",
+    "items": [
+      {
+        "name": "本命法宝",
+        "template": "{name}，{rank}级法宝。由{material}炼制，可{ability}。与{name2}心神相连。"
+      },
+      {
+        "name": "传承神兵",
+        "template": "{name}，上古{master}的佩剑。剑身{appearance}，蕴含{power}。认主条件：{condition}。"
+      },
+      {
+        "name": "可成长武器",
+        "template": "{name}，最初只是{level}级。但它的特殊之处在于能吞噬{resource}进化。"
+      },
+      {
+        "name": "符箓大全",
+        "template": "{n}种符箓：攻击符、防御符、治疗符、传送符……{name}是大陆最强的符师。"
+      },
+      {
+        "name": "机甲武装",
+        "template": "{name}机甲，{n}米高，配备{weapons}。驾驶者{name2}是{rank}级机甲师。"
+      }
+    ]
+  },
+  "城镇描写": {
+    "desc": "城市设定",
+    "items": [
+      {
+        "name": "繁华都城",
+        "template": "{name}城，人口{n}万。城墙{wall}，街道{street}。城中最出名的是{feature}。"
+      },
+      {
+        "name": "边陲小镇",
+        "template": "{name}镇坐落在{location}，人口不过{n}。虽偏僻，但{feature}使其闻名遐迩。"
+      },
+      {
+        "name": "罪恶之城",
+        "template": "{name}是大陆最混乱的城市。没有法律，拳头就是一切。但这里能买到{thing}。"
+      },
+      {
+        "name": "魔法学院城",
+        "template": "{name}是一座以魔法学院为核心的城市。整个城市{feature}，空气中弥漫着{smell}。"
+      }
+    ]
+  },
+  "语言文字": {
+    "desc": "特殊语言",
+    "items": [
+      {
+        "name": "上古神文",
+        "template": "上古神文由{civ}所创，每一个文字都蕴含{power}。{name}是{n}年来唯一能解读的人。"
+      },
+      {
+        "name": "龙语魔法",
+        "template": "龙语是最古老的语言之一。用龙语吟唱的魔法威力是普通魔法的{n}倍。"
+      },
+      {
+        "name": "符文体系",
+        "template": "{n}枚基础符文可以组合成无限的魔法阵。{name}是大陆最年轻的符文大师。"
+      }
+    ]
+  },
+  "诅咒禁忌": {
+    "desc": "诅咒设定",
+    "items": [
+      {
+        "name": "血脉诅咒",
+        "template": "{family}家族世代背负诅咒：{effect}。解开诅咒需要{condition}，但代价是{cost}。"
+      },
+      {
+        "name": "禁术反噬",
+        "template": "施展{n}次禁术后，施术者将受到{cost}的反噬。{name}已经施展了{n}次，距离反噬只差一步。"
+      },
+      {
+        "name": "誓言诅咒",
+        "template": "在这个世界，违背誓言的代价是{punish}。{name}被迫立下了他无法完成的誓言。"
+      },
+      {
+        "name": "地域诅咒",
+        "template": "踏入{place}的人都会受到诅咒：{effect}。{name}为了救{someone}，不得不踏入这片禁地。"
+      }
+    ]
+  },
+  "经济体系": {
+    "desc": "经济货币",
+    "items": [
+      {
+        "name": "灵石货币",
+        "template": "下品灵石→中品灵石→上品灵石→极品灵石→神石。{n}下品换1中品。{name}穷得只剩{n}块。"
+      },
+      {
+        "name": "贡献点系统",
+        "template": "{org}内部使用贡献点交易。完成{task}获得{n}点。{name}攒了{time}终于凑够了{goal}。"
+      },
+      {
+        "name": "以物易物",
+        "template": "在{place}，货币没用。只有{resource}才值钱。{name}用{thing}换到了{item}。"
+      }
+    ]
+  }
+}

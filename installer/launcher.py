@@ -401,7 +401,7 @@ class LauncherGUI:
             icon_path = Path(__file__).parent.parent / "icon.ico"
             if icon_path.exists():
                 self.root.iconbitmap(str(icon_path))
-        except:
+        except Exception:
             pass
         
         # 创建界面

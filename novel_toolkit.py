@@ -18,6 +18,33 @@ class ElementLibrary:
         self.novel_dir = novel_dir
         self.custom_dir = novel_dir / "elements" if novel_dir else None
         if self.custom_dir: self.custom_dir.mkdir(exist_ok=True)
+        
+        # 尝试从JSON文件加载CATEGORIES
+        self._loaded_categories = self._load_categories_from_json()
+    
+    def _load_categories_from_json(self) -> Dict:
+        """尝试从JSON文件加载CATEGORIES，如果失败则返回None"""
+        # 尝试多个可能的路径
+        possible_paths = [
+            # 相对于当前模块的路径
+            Path(__file__).parent / "novel_data" / "elements.json",
+            # 相对于工作目录的路径
+            Path("novel_data") / "elements.json",
+            # 绝对路径
+            Path("C:/Users/Administrator/WorkBuddy/2026-05-30-16-50-56/ai-novel-writer/novel_data/elements.json")
+        ]
+        
+        for json_path in possible_paths:
+            try:
+                if json_path.exists():
+                    with open(json_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    if data:  # 确保数据不为空
+                        return data
+            except (json.JSONDecodeError, Exception):
+                continue
+        
+        return None
     
     CATEGORIES = {
         "前端情节流": {"desc": "网文开头的经典情节模式", "items": [
@@ -162,7 +189,9 @@ class ElementLibrary:
     }
     
     def get_categories(self) -> List[Dict]:
-        cats = [{"name": k, "desc": v["desc"], "count": len(v["items"])} for k, v in self.CATEGORIES.items()]
+        # 优先使用加载的JSON数据，否则使用硬编码数据
+        categories = self._loaded_categories if self._loaded_categories else self.CATEGORIES
+        cats = [{"name": k, "desc": v["desc"], "count": len(v["items"])} for k, v in categories.items()]
         if self.custom_dir:
             for f in self.custom_dir.glob("*.json"):
                 with open(f, 'r', encoding='utf-8') as fp:
@@ -171,7 +200,9 @@ class ElementLibrary:
         return cats
     
     def get_items(self, category: str) -> List[Dict]:
-        if category in self.CATEGORIES: return self.CATEGORIES[category]["items"]
+        # 优先使用加载的JSON数据，否则使用硬编码数据
+        categories = self._loaded_categories if self._loaded_categories else self.CATEGORIES
+        if category in categories: return categories[category]["items"]
         if self.custom_dir:
             f = self.custom_dir / f"{category}.json"
             if f.exists():
@@ -527,7 +558,7 @@ class WebSearchAdaptEngine:
                         self.HOT_MEMES[cat].extend(items)
                     else:
                         self.HOT_MEMES[cat] = items
-            except: pass
+            except (FileNotFoundError, json.JSONDecodeError): pass
     
     def add_custom_meme(self, category: str, name: str, desc: str, adapt_template: str):
         """用户自行添加热点内容"""
@@ -542,7 +573,7 @@ class WebSearchAdaptEngine:
         if f.exists():
             try: 
                 with open(f, 'r', encoding='utf-8') as fp: custom = json.load(fp)
-            except: pass
+            except (FileNotFoundError, json.JSONDecodeError): pass
         if category not in custom: custom[category] = []
         custom[category].append(item)
         with open(f, 'w', encoding='utf-8') as fp: json.dump(custom, fp, indent=2, ensure_ascii=False)
@@ -563,7 +594,7 @@ class WebSearchAdaptEngine:
         if f.exists():
             try:
                 with open(f, 'r', encoding='utf-8') as fp: custom = json.load(fp)
-            except: pass
+            except (FileNotFoundError, json.JSONDecodeError): pass
         custom[category] = [i for i in items if i.get("custom")]
         with open(f, 'w', encoding='utf-8') as fp: json.dump(custom, fp, indent=2, ensure_ascii=False)
     

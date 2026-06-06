@@ -12,10 +12,13 @@ from datetime import datetime
 
 # GUI
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, scrolledtext
+from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
 # HTTP客户端
 import httpx
+
+# 结构化日志
+from loguru import logger
 
 # 文件格式支持（条件导入）
 try:
@@ -45,3084 +48,25 @@ from format_converter import FormatConverter, ImageManager
 from cloud_storage import CloudStorageManager
 
 
-# ==================== 配置管理 ====================
+# ==================== 从 app 包导入核心类 ====================
+from app import (AppConfig, AIClient, ImageGenerator, SceneDetector,
+                 MemoryManager, NoteManager, FullscreenWriter,
+                 NovelAgent, ReadingManager, UIStyle)
 
-class AppConfig:
-    """应用配置"""
-    
-    def __init__(self):
-        self.config_dir = Path.home() / ".ai_novel_writer"
-        self.config_dir.mkdir(exist_ok=True)
-        self.config_file = self.config_dir / "config.json"
-        self.novels_dir = self.config_dir / "novels"
-        self.novels_dir.mkdir(exist_ok=True)
-        self.config = self._load()
-    
-    def _load(self) -> dict:
-        if self.config_file.exists():
-            with open(self.config_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return {
-            "api_provider": "ollama",  # openai / claude / deepseek / ollama / custom
-            "api_key": "",
-            "api_base": "http://localhost:11434",
-            "model": "qwen2.5:14b",
-            "max_tokens": 4096,
-            "temperature": 0.8,
-            "context_window": 32000,  # 上下文窗口大小（字符数）
-            "auto_save": True,
-            "theme": "light",
-            # 文生图配置
-            "img_provider": "comfyui",  # comfyui / sdapi / disabled
-            "img_api_base": "http://127.0.0.1:8188",
-            "img_model": "sd_xl_base_1.0.safetensors",
-            "img_width": 1024,
-            "img_height": 1024,
-            "auto_detect_scene": True,  # 自动检测名场面
-        }
-    
-    def save(self):
-        with open(self.config_file, 'w', encoding='utf-8') as f:
-            json.dump(self.config, f, indent=2, ensure_ascii=False)
-    
-    def get(self, key: str, default=None):
-        return self.config.get(key, default)
-    
-    def set(self, key: str, value):
-        self.config[key] = value
-        self.save()
+from app.panels import (ElementsPanelMixin, BridgesPanelMixin,
+                        DescriptionsPanelMixin, DialoguePanelMixin,
+                        StoryFlowPanelMixin, StylePanelMixin,
+                        AdaptPanelMixin, WebSearchPanelMixin,
+                        MemoryVizPanelMixin, SummaryMgmtPanelMixin,
+                        BatchOpsPanelMixin, ChapterAnalysisPanelMixin)
 
 
-# ==================== AI客户端 ====================
-
-class AIClient:
-    """统一AI客户端"""
-    
-    PROVIDERS = {
-        "ollama": {
-            "name": "Ollama (本地)",
-            "base_url": "http://localhost:11434",
-            "models": ["qwen2.5:14b", "qwen2.5:7b", "llama3.1:8b", "deepseek-r1:14b", "glm4:9b"],
-        },
-        "openai": {
-            "name": "OpenAI",
-            "base_url": "https://api.openai.com/v1",
-            "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
-        },
-        "deepseek": {
-            "name": "DeepSeek",
-            "base_url": "https://api.deepseek.com/v1",
-            "models": ["deepseek-chat", "deepseek-reasoner"],
-        },
-        "claude": {
-            "name": "Claude",
-            "base_url": "https://api.anthropic.com/v1",
-            "models": ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
-        },
-        "custom": {
-            "name": "自定义API",
-            "base_url": "",
-            "models": [],
-        },
-    }
-    
-    def __init__(self, config: AppConfig):
-        self.config = config
-        self.client = None
-        self._init_client()
-    
-    def _init_client(self):
-        provider = self.config.get("api_provider", "ollama")
-        api_key = self.config.get("api_key", "")
-        api_base = self.config.get("api_base", "")
-        
-        base_url = api_base or self.PROVIDERS.get(provider, {}).get("base_url", "")
-        
-        if provider == "claude" and api_key:
-            try:
-                import anthropic
-                self.client = anthropic.Anthropic(api_key=api_key)
-            except ImportError:
-                pass
-        elif provider == "ollama":
-            # Ollama不需要API密钥
-            self.client = httpx.Client(base_url=base_url, timeout=300.0)
-        elif api_key:
-            self.client = httpx.Client(
-                base_url=base_url,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                timeout=120.0,
-            )
-    
-    def is_configured(self) -> bool:
-        provider = self.config.get("api_provider", "ollama")
-        if provider == "ollama":
-            return self.client is not None
-        return self.client is not None and self.config.get("api_key", "")
-    
-    def get_ollama_models(self) -> List[str]:
-        """获取Ollama本地模型列表"""
-        try:
-            base_url = self.config.get("api_base", "http://localhost:11434")
-            resp = httpx.get(f"{base_url}/api/tags", timeout=5)
-            if resp.status_code == 200:
-                models = resp.json().get("models", [])
-                return [m["name"] for m in models]
-        except:
-            pass
-        return []
-    
-    def chat(self, messages: List[Dict], system: str = "", **kwargs) -> str:
-        """发送聊天请求"""
-        if not self.is_configured():
-            raise Exception("AI API未配置，请在设置中配置API密钥")
-        
-        provider = self.config.get("api_provider", "ollama")
-        model = self.config.get("model", "qwen2.5:14b")
-        max_tokens = kwargs.get("max_tokens", self.config.get("max_tokens", 4096))
-        temperature = kwargs.get("temperature", self.config.get("temperature", 0.8))
-        
-        if provider == "claude":
-            return self._chat_claude(messages, system, model, max_tokens, temperature)
-        elif provider == "ollama":
-            return self._chat_ollama(messages, system, model, max_tokens, temperature)
-        else:
-            return self._chat_openai(messages, system, model, max_tokens, temperature)
-    
-    def _chat_openai(self, messages, system, model, max_tokens, temperature) -> str:
-        """OpenAI兼容接口"""
-        full_messages = []
-        if system:
-            full_messages.append({"role": "system", "content": system})
-        full_messages.extend(messages)
-        
-        response = self.client.post("/chat/completions", json={
-            "model": model,
-            "messages": full_messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        })
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
-    
-    def _chat_ollama(self, messages, system, model, max_tokens, temperature) -> str:
-        """Ollama本地模型接口"""
-        full_messages = []
-        if system:
-            full_messages.append({"role": "system", "content": system})
-        full_messages.extend(messages)
-        
-        response = self.client.post("/api/chat", json={
-            "model": model,
-            "messages": full_messages,
-            "stream": False,
-            "options": {
-                "temperature": temperature,
-                "num_predict": max_tokens,
-            },
-        })
-        response.raise_for_status()
-        return response.json()["message"]["content"]
-    
-    def _chat_claude(self, messages, system, model, max_tokens, temperature) -> str:
-        """Claude接口"""
-        response = self.client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            system=system or "",
-            messages=messages,
-        )
-        return response.content[0].text
-
-
-# ==================== 文生图模块 ====================
-
-class ImageGenerator:
-    """文生图模块 - 支持ComfyUI和SD API"""
-    
-    def __init__(self, config: AppConfig):
-        self.config = config
-    
-    def is_configured(self) -> bool:
-        provider = self.config.get("img_provider", "disabled")
-        return provider != "disabled"
-    
-    def generate(self, prompt: str, negative_prompt: str = "", width: int = 1024, height: int = 1024) -> Optional[bytes]:
-        """生成图片，返回图片字节数据"""
-        provider = self.config.get("img_provider", "comfyui")
-        
-        if provider == "comfyui":
-            return self._generate_comfyui(prompt, negative_prompt, width, height)
-        elif provider == "sdapi":
-            return self._generate_sdapi(prompt, negative_prompt, width, height)
-        return None
-    
-    def _generate_comfyui(self, prompt, negative_prompt, width, height) -> Optional[bytes]:
-        """通过ComfyUI生成图片"""
-        try:
-            api_base = self.config.get("img_api_base", "http://127.0.0.1:8188")
-            model = self.config.get("img_model", "sd_xl_base_1.0.safetensors")
-            
-            # ComfyUI工作流
-            workflow = {
-                "3": {
-                    "class_type": "KSampler",
-                    "inputs": {
-                        "seed": int(time.time()) % (2**32),
-                        "steps": 25,
-                        "cfg": 7.0,
-                        "sampler_name": "euler",
-                        "scheduler": "normal",
-                        "denoise": 1.0,
-                        "model": ["4", 0],
-                        "positive": ["6", 0],
-                        "negative": ["7", 0],
-                        "latent_image": ["5", 0],
-                    }
-                },
-                "4": {
-                    "class_type": "CheckpointLoaderSimple",
-                    "inputs": {"ckpt_name": model}
-                },
-                "5": {
-                    "class_type": "EmptyLatentImage",
-                    "inputs": {"width": width, "height": height, "batch_size": 1}
-                },
-                "6": {
-                    "class_type": "CLIPTextEncode",
-                    "inputs": {"text": prompt, "clip": ["4", 1]}
-                },
-                "7": {
-                    "class_type": "CLIPTextEncode",
-                    "inputs": {"text": negative_prompt or "low quality, blurry, deformed", "clip": ["4", 1]}
-                },
-                "8": {
-                    "class_type": "VAEDecode",
-                    "inputs": {"samples": ["3", 0], "vae": ["4", 2]}
-                },
-                "9": {
-                    "class_type": "SaveImage",
-                    "inputs": {"filename_prefix": "novel_img", "images": ["8", 0]}
-                },
-            }
-            
-            # 提交工作流
-            resp = httpx.post(f"{api_base}/prompt", json={"prompt": workflow}, timeout=10)
-            resp.raise_for_status()
-            prompt_id = resp.json()["prompt_id"]
-            
-            # 轮询等待完成
-            for _ in range(120):  # 最多等2分钟
-                time.sleep(1)
-                hist_resp = httpx.get(f"{api_base}/history/{prompt_id}", timeout=5)
-                if hist_resp.status_code == 200:
-                    history = hist_resp.json()
-                    if prompt_id in history:
-                        outputs = history[prompt_id].get("outputs", {})
-                        if "9" in outputs:
-                            img_info = outputs["9"]["images"][0]
-                            img_resp = httpx.get(
-                                f"{api_base}/view",
-                                params={"filename": img_info["filename"], "subfolder": img_info.get("subfolder", ""), "type": img_info["type"]},
-                                timeout=10
-                            )
-                            return img_resp.content
-            
-            return None
-        except Exception as e:
-            print(f"ComfyUI生成失败: {e}")
-            return None
-    
-    def _generate_sdapi(self, prompt, negative_prompt, width, height) -> Optional[bytes]:
-        """通过Stable Diffusion WebUI API生成图片"""
-        try:
-            import base64
-            api_base = self.config.get("img_api_base", "http://127.0.0.1:7860")
-            
-            resp = httpx.post(f"{api_base}/sdapi/v1/txt2img", json={
-                "prompt": prompt,
-                "negative_prompt": negative_prompt or "low quality, blurry",
-                "width": width,
-                "height": height,
-                "steps": 25,
-                "cfg_scale": 7.0,
-                "sampler_name": "Euler a",
-            }, timeout=120)
-            resp.raise_for_status()
-            
-            images = resp.json().get("images", [])
-            if images:
-                return base64.b64decode(images[0])
-            return None
-        except Exception as e:
-            print(f"SD API生成失败: {e}")
-            return None
-    
-    def save_image(self, img_data: bytes, save_dir: Path, name: str) -> Path:
-        """保存图片"""
-        img_dir = save_dir / "images"
-        img_dir.mkdir(exist_ok=True)
-        filepath = img_dir / f"{name}.png"
-        with open(filepath, 'wb') as f:
-            f.write(img_data)
-        return filepath
-
-
-# ==================== 名场面检测器 ====================
-
-class SceneDetector:
-    """名场面检测器 - 检测适合生成插图的场景"""
-    
-    # 触发关键词
-    SCENE_KEYWORDS = [
-        # 战斗场面
-        "大战", "对决", "交锋", "激战", "厮杀", "出剑", "拔刀", "施展",
-        # 震撼场面
-        "震撼", "壮观", "磅礴", "恢弘", "浩瀚", "天地变色", "风云变幻",
-        # 帅气描写
-        "英俊", "潇洒", "飘逸", "凌厉", "霸气", "威严", "冷峻", "邪魅",
-        # 美丽描写
-        "绝美", "倾城", "惊艳", "如画", "仙子", "出尘", "清丽", "妩媚",
-        # 情感高潮
-        "告白", "拥吻", "热泪", "重逢", "离别", "生死", "牺牲",
-        # 场景转换
-        "踏入", "登临", "俯瞰", "仰望", "穿越", "降临",
-    ]
-    
-    CHARACTER_KEYWORDS = [
-        "主角", "少年", "少女", "男子", "女子", "将军", "帝王", "仙人",
-        "剑客", "侠女", "公主", "王子", "魔王", "天使", "龙", "凤",
-    ]
-    
-    @staticmethod
-    def detect(content: str) -> List[Dict[str, str]]:
-        """检测内容中的名场面，返回场景列表"""
-        scenes = []
-        
-        # 方法1: 关键词匹配
-        for keyword in SceneDetector.SCENE_KEYWORDS:
-            if keyword in content:
-                # 找到关键词所在的句子
-                for sentence in content.replace("。", "。\n").replace("！", "！\n").replace("？", "？\n").split("\n"):
-                    if keyword in sentence and len(sentence.strip()) > 10:
-                        scene_type = SceneDetector._classify_scene(sentence)
-                        scenes.append({
-                            "text": sentence.strip()[:200],
-                            "keyword": keyword,
-                            "type": scene_type,
-                            "prompt": SceneDetector._build_prompt(sentence, scene_type),
-                        })
-        
-        # 去重
-        seen = set()
-        unique_scenes = []
-        for s in scenes:
-            key = s["text"][:50]
-            if key not in seen:
-                seen.add(key)
-                unique_scenes.append(s)
-        
-        return unique_scenes[:5]  # 最多返回5个场景
-    
-    @staticmethod
-    def _classify_scene(text: str) -> str:
-        """分类场景类型"""
-        battle_words = ["战", "斗", "杀", "剑", "刀", "拳", "攻", "击"]
-        beauty_words = ["美", "仙", "丽", "艳", "俊", "帅", "魅"]
-        emotion_words = ["泪", "笑", "爱", "恨", "告白", "拥", "吻"]
-        
-        for w in battle_words:
-            if w in text:
-                return "battle"
-        for w in beauty_words:
-            if w in text:
-                return "beauty"
-        for w in emotion_words:
-            if w in text:
-                return "emotion"
-        return "epic"
-    
-    @staticmethod
-    def _build_prompt(text: str, scene_type: str) -> str:
-        """构建文生图提示词"""
-        style_map = {
-            "battle": "epic battle scene, dynamic action, dramatic lighting, cinematic, anime style, high detail",
-            "beauty": "beautiful character portrait, elegant pose, soft lighting, anime style, highly detailed",
-            "emotion": "emotional scene, cinematic composition, warm lighting, anime style, expressive",
-            "epic": "epic fantasy scene, grand scale, dramatic atmosphere, anime style, masterpiece",
-        }
-        base_style = style_map.get(scene_type, style_map["epic"])
-        return f"{text[:100]}, {base_style}, best quality, masterpiece"
-
-
-# ==================== 长上下文记忆管理 ====================
-
-class MemoryManager:
-    """长上下文记忆管理器 - 分层架构，支持5000章小说
-    
-    分层架构：
-    1. 全局摘要 - 整个故事的核心概述 (1个文件)
-    2. 卷级摘要 - 每100章为一卷的概述 (50个文件)
-    3. 弧线摘要 - 重要剧情弧线的概述 (200个文件)
-    4. 章节摘要 - 每章的详细摘要 (5000个文件)
-    
-    核心机制：
-    1. RAG检索 - 倒排索引+关键词匹配，支持百万级检索
-    2. 语义去重 - 相似记忆自动合并
-    3. 记忆评分 - 根据重要性/新鲜度/引用次数打分
-    4. 知识图谱 - 角色关系+事件时间线
-    5. 分页加载 - 按需加载，不全部读入内存
-    6. 角色活跃度 - 按活跃度加载角色卡片
-    """
-    
-    VOLUME_SIZE = 100  # 每卷100章
-    
-    def __init__(self, novel_dir: Path):
-        self.novel_dir = novel_dir
-        self.memory_dir = novel_dir / "memory"
-        self.memory_dir.mkdir(exist_ok=True)
-        
-        # 全局摘要
-        self.global_summary_file = self.memory_dir / "global_summary.txt"
-        # 章节摘要目录
-        self.chapters_dir = self.memory_dir / "chapters"
-        self.chapters_dir.mkdir(exist_ok=True)
-        # 卷级摘要目录 (新增)
-        self.volumes_dir = self.memory_dir / "volumes"
-        self.volumes_dir.mkdir(exist_ok=True)
-        # 弧线摘要目录 (新增)
-        self.arcs_dir = self.memory_dir / "arcs"
-        self.arcs_dir.mkdir(exist_ok=True)
-        # 角色档案（含关系图）
-        self.characters_file = self.memory_dir / "characters.json"
-        # 世界观设定
-        self.settings_file = self.memory_dir / "settings.json"
-        # 事件时间线目录 (改为分页存储)
-        self.timeline_dir = self.memory_dir / "timeline"
-        self.timeline_dir.mkdir(exist_ok=True)
-        # 记忆块分页存储 (改为分页)
-        self.chunks_dir = self.memory_dir / "chunks"
-        self.chunks_dir.mkdir(exist_ok=True)
-        # 倒排索引 (新增，替代全量遍历)
-        self.inverted_index_file = self.memory_dir / "inverted_index.json"
-        # 记忆评分
-        self.scores_file = self.memory_dir / "scores.json"
-        # 角色活跃度 (新增)
-        self.character_activity_file = self.memory_dir / "character_activity.json"
-        
-        # 缓存
-        self._inverted_index = self._load_inverted_index()
-        self._scores = self._load_scores()
-        self._character_activity = self._load_character_activity()
-        self._current_page = 0  # 当前chunks页
-        self._chunks_cache = []  # 当前页的chunks缓存
-    
-    # ===== 初始化加载方法 =====
-    
-    def _load_inverted_index(self) -> Dict:
-        if self.inverted_index_file.exists():
-            try:
-                return json.loads(self.inverted_index_file.read_text(encoding='utf-8'))
-            except: pass
-        return {}
-    
-    def _save_inverted_index(self):
-        self.inverted_index_file.write_text(json.dumps(self._inverted_index, ensure_ascii=False), encoding='utf-8')
-    
-    def _load_scores(self) -> Dict:
-        if self.scores_file.exists():
-            try:
-                return json.loads(self.scores_file.read_text(encoding='utf-8'))
-            except: pass
-        return {}
-    
-    def _save_scores(self):
-        self.scores_file.write_text(json.dumps(self._scores, ensure_ascii=False), encoding='utf-8')
-    
-    def _load_character_activity(self) -> Dict:
-        if self.character_activity_file.exists():
-            try:
-                return json.loads(self.character_activity_file.read_text(encoding='utf-8'))
-            except: pass
-        return {}
-    
-    def _save_character_activity(self):
-        self.character_activity_file.write_text(json.dumps(self._character_activity, ensure_ascii=False), encoding='utf-8')
-    
-    # ===== 卷级摘要管理 =====
-    
-    def _chapter_to_volume(self, chapter_num: int) -> int:
-        """章节号转卷号 (每100章一卷)"""
-        return (chapter_num - 1) // self.VOLUME_SIZE + 1
-    
-    def save_volume_summary(self, volume_num: int, summary: str):
-        """保存卷级摘要"""
-        file = self.volumes_dir / f"volume_{volume_num:03d}.txt"
-        file.write_text(summary, encoding='utf-8')
-    
-    def get_volume_summary(self, volume_num: int) -> str:
-        """获取卷级摘要"""
-        file = self.volumes_dir / f"volume_{volume_num:03d}.txt"
-        if file.exists():
-            return file.read_text(encoding='utf-8')
-        return ""
-    
-    def get_current_volume_summary(self, chapter_num: int) -> str:
-        """获取当前卷的摘要"""
-        vol = self._chapter_to_volume(chapter_num)
-        return self.get_volume_summary(vol)
-    
-    def auto_generate_volume_summary(self, volume_num: int, ai_client=None):
-        """自动生成卷级摘要（汇总该卷所有章节摘要）"""
-        start_ch = (volume_num - 1) * self.VOLUME_SIZE + 1
-        end_ch = volume_num * self.VOLUME_SIZE
-        
-        summaries = []
-        for ch_num in range(start_ch, end_ch + 1):
-            ch_sum = self.get_chapter_summary(ch_num)
-            if ch_sum:
-                summaries.append(f"第{ch_num}章: {ch_sum[:100]}")
-        
-        if not summaries:
-            return ""
-        
-        # 简单拼接（如果有AI可以进一步压缩）
-        summary = f"第{volume_num}卷 (第{start_ch}-{end_ch}章):\n" + "\n".join(summaries)
-        self.save_volume_summary(volume_num, summary)
-        return summary
-    
-    # ===== 弧线摘要管理 =====
-    
-    def save_arc_summary(self, arc_name: str, summary: str, chapters: List[int] = None):
-        """保存弧线摘要"""
-        safe_name = "".join(c for c in arc_name if c.isalnum() or c in "_ -")[:30]
-        file = self.arcs_dir / f"arc_{safe_name}.json"
-        data = {
-            "name": arc_name,
-            "summary": summary,
-            "chapters": chapters or [],
-            "updated_at": datetime.now().isoformat()
-        }
-        file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
-    
-    def get_arc_summary(self, arc_name: str) -> str:
-        """获取弧线摘要"""
-        safe_name = "".join(c for c in arc_name if c.isalnum() or c in "_ -")[:30]
-        file = self.arcs_dir / f"arc_{safe_name}.json"
-        if file.exists():
-            data = json.loads(file.read_text(encoding='utf-8'))
-            return data.get("summary", "")
-        return ""
-    
-    def get_all_arcs(self) -> List[Dict]:
-        """获取所有弧线"""
-        arcs = []
-        for f in self.arcs_dir.glob("arc_*.json"):
-            try:
-                arcs.append(json.loads(f.read_text(encoding='utf-8')))
-            except: pass
-        return arcs
-    
-    # ===== 核心记忆保存 =====
-    
-    def save_global_summary(self, summary: str):
-        with open(self.global_summary_file, 'w', encoding='utf-8') as f:
-            f.write(summary)
-    
-    def get_global_summary(self) -> str:
-        if self.global_summary_file.exists():
-            return self.global_summary_file.read_text(encoding='utf-8')
-        return ""
-    
-    def save_chapter_summary(self, chapter_num: int, summary: str):
-        file = self.chapters_dir / f"chapter_{chapter_num:05d}.txt"
-        with open(file, 'w', encoding='utf-8') as f:
-            f.write(summary)
-        # 更新倒排索引
-        self._update_inverted_index(f"chapter_{chapter_num}", summary)
-        # 更新记忆评分
-        self._update_score(f"chapter_{chapter_num}", "summary", importance=8)
-        # 检查是否需要自动生成卷级摘要
-        if chapter_num % self.VOLUME_SIZE == 0:
-            vol = self._chapter_to_volume(chapter_num)
-            self.auto_generate_volume_summary(vol)
-    
-    def get_chapter_summary(self, chapter_num: int) -> str:
-        file = self.chapters_dir / f"chapter_{chapter_num:05d}.txt"
-        if file.exists():
-            return file.read_text(encoding='utf-8')
-        return ""
-    
-    def get_recent_summaries(self, count: int = 5) -> str:
-        """获取最近N章的摘要"""
-        chapters = sorted(self.chapters_dir.glob("chapter_*.txt"), reverse=True)
-        summaries = []
-        for ch in chapters[:count]:
-            num_str = ch.stem.split("_")[1]
-            content = ch.read_text(encoding='utf-8')
-            summaries.append(f"第{num_str}章摘要：\n{content}")
-            self._increment_reference(f"chapter_{num_str}")
-        return "\n\n".join(reversed(summaries))
-    
-    def get_chapter_range_summary(self, start: int, end: int) -> str:
-        """获取章节范围的摘要（分页加载）"""
-        summaries = []
-        for ch_num in range(start, min(end + 1, start + 50)):  # 最多50章
-            ch_sum = self.get_chapter_summary(ch_num)
-            if ch_sum:
-                summaries.append(f"第{ch_num}章: {ch_sum[:80]}")
-        return "\n".join(summaries) if summaries else ""
-    
-    # ===== 角色活跃度管理 =====
-    
-    def update_character_activity(self, char_name: str, chapter_num: int):
-        """更新角色活跃度"""
-        if char_name not in self._character_activity:
-            self._character_activity[char_name] = {
-                "appearances": [],
-                "last_seen": chapter_num,
-                "importance": 5
-            }
-        activity = self._character_activity[char_name]
-        if chapter_num not in activity["appearances"]:
-            activity["appearances"].append(chapter_num)
-            # 只保留最近100次出场
-            if len(activity["appearances"]) > 100:
-                activity["appearances"] = activity["appearances"][-100:]
-        activity["last_seen"] = chapter_num
-        self._save_character_activity()
-    
-    def get_active_characters(self, chapter_num: int, window: int = 50) -> List[str]:
-        """获取最近活跃的角色（按活跃度排序）"""
-        active = []
-        for name, activity in self._character_activity.items():
-            last_seen = activity.get("last_seen", 0)
-            if chapter_num - last_seen <= window:
-                count = len([c for c in activity.get("appearances", []) if c >= chapter_num - window])
-                active.append((name, count, last_seen))
-        
-        # 按出场次数排序
-        active.sort(key=lambda x: x[1], reverse=True)
-        return [name for name, _, _ in active[:10]]  # 返回前10个活跃角色
-    
-    # ===== RAG检索 - 倒排索引优化 =====
-    
-    def _update_inverted_index(self, doc_id: str, content: str):
-        """更新倒排索引"""
-        keywords = self._extract_keywords(content)
-        for kw in keywords:
-            if kw not in self._inverted_index:
-                self._inverted_index[kw] = []
-            if doc_id not in self._inverted_index[kw]:
-                self._inverted_index[kw].append(doc_id)
-        # 定期保存（每100次更新保存一次）
-        if len(self._inverted_index) % 100 == 0:
-            self._save_inverted_index()
-    
-    def retrieve_relevant(self, query: str, top_k: int = 5) -> List[Dict]:
-        """RAG检索：使用倒排索引快速查找
-        
-        使用倒排索引避免遍历所有chunks，支持百万级检索
-        """
-        query_keywords = set(self._extract_keywords(query))
-        if not query_keywords:
-            return []
-        
-        # 使用倒排索引快速找到候选文档
-        candidate_ids = set()
-        for kw in query_keywords:
-            if kw in self._inverted_index:
-                candidate_ids.update(self._inverted_index[kw])
-        
-        # 如果没有索引，降级为遍历章节摘要
-        if not candidate_ids:
-            return self._fallback_search(query_keywords, top_k)
-        
-        # 计算候选文档的相关性
-        scored = []
-        for doc_id in candidate_ids:
-            content = self._get_document_content(doc_id)
-            if content:
-                chunk = {"id": doc_id, "content": content}
-                score = self._calculate_relevance(chunk, query_keywords)
-                if score > 0:
-                    scored.append({**chunk, "relevance": score})
-        
-        scored.sort(key=lambda x: x["relevance"], reverse=True)
-        top = scored[:top_k]
-        
-        for chunk in top:
-            self._increment_reference(chunk.get("id", ""))
-        
-        return top
-    
-    def _fallback_search(self, query_keywords: set, top_k: int) -> List[Dict]:
-        """降级搜索：遍历最近的章节摘要"""
-        scored = []
-        chapters = sorted(self.chapters_dir.glob("chapter_*.txt"), reverse=True)
-        for ch_file in chapters[:200]:  # 只搜索最近200章
-            try:
-                content = ch_file.read_text(encoding='utf-8')
-                doc_id = ch_file.stem
-                chunk = {"id": doc_id, "content": content}
-                score = self._calculate_relevance(chunk, query_keywords)
-                if score > 0:
-                    scored.append({**chunk, "relevance": score})
-            except: pass
-        
-        scored.sort(key=lambda x: x["relevance"], reverse=True)
-        return scored[:top_k]
-    
-    def _get_document_content(self, doc_id: str) -> str:
-        """获取文档内容（支持不同类型的文档）"""
-        # 章节摘要
-        if doc_id.startswith("chapter_"):
-            file = self.chapters_dir / f"{doc_id}.txt"
-            if file.exists():
-                return file.read_text(encoding='utf-8')
-        # 卷级摘要
-        elif doc_id.startswith("volume_"):
-            file = self.volumes_dir / f"{doc_id}.txt"
-            if file.exists():
-                return file.read_text(encoding='utf-8')
-        # 弧线摘要
-        elif doc_id.startswith("arc_"):
-            file = self.arcs_dir / f"{doc_id}.json"
-            if file.exists():
-                data = json.loads(file.read_text(encoding='utf-8'))
-                return data.get("summary", "")
-        return ""
-    
-    def _calculate_relevance(self, chunk: Dict, query_keywords: set) -> float:
-        """计算记忆块与查询的相关性分数"""
-        content = chunk.get("content", "")
-        content_keywords = set(self._extract_keywords(content))
-        
-        # 关键词匹配得分
-        overlap = query_keywords & content_keywords
-        keyword_score = len(overlap) / max(len(query_keywords), 1)
-        
-        # 新鲜度得分（指数衰减，7天半衰期）
-        created = chunk.get("created_at", "")
-        freshness = self._calc_freshness(created)
-        
-        # 重要性得分
-        importance = chunk.get("importance", 5) / 10.0
-        
-        # 引用得分
-        ref_count = self._scores.get(chunk.get("id", ""), {}).get("references", 0)
-        ref_score = min(ref_count / 10.0, 1.0)
-        
-        # 加权计算
-        weights = {"keyword": 0.40, "freshness": 0.20, "importance": 0.30, "ref": 0.10}
-        total = (
-            keyword_score * weights["keyword"] +
-            freshness * weights["freshness"] +
-            importance * weights["importance"] +
-            ref_score * weights["ref"]
-        )
-        
-        return round(total, 4)
-    
-    def _calc_freshness(self, created_at: str) -> float:
-        """计算新鲜度得分（指数衰减）"""
-        if not created_at:
-            return 0.5
-        try:
-            created = datetime.fromisoformat(created_at)
-            days_ago = (datetime.now() - created).days
-            # 7天半衰期
-            return 2 ** (-days_ago / 7)
-        except:
-            return 0.5
-    
-    # ===== 记忆块（Chunks）分页管理 =====
-    
-    def _get_chunks_page(self, page: int, page_size: int = 100) -> List[Dict]:
-        """获取指定页的chunks（分页加载）"""
-        page_file = self.chunks_dir / f"page_{page:04d}.json"
-        if page_file.exists():
-            try:
-                return json.loads(page_file.read_text(encoding='utf-8'))
-            except: pass
-        return []
-    
-    def _save_chunks_page(self, page: int, chunks: List[Dict]):
-        """保存指定页的chunks"""
-        page_file = self.chunks_dir / f"page_{page:04d}.json"
-        page_file.write_text(json.dumps(chunks, ensure_ascii=False, indent=1), encoding='utf-8')
-    
-    def _get_total_chunk_count(self) -> int:
-        """获取chunks总数"""
-        pages = list(self.chunks_dir.glob("page_*.json"))
-        if not pages:
-            return 0
-        last_page = sorted(pages)[-1]
-        try:
-            chunks = json.loads(last_page.read_text(encoding='utf-8'))
-            return (len(pages) - 1) * 100 + len(chunks)
-        except:
-            return 0
-    
-    def add_chunk(self, chunk_type: str, content: str, importance: int = 5, 
-                  tags: List[str] = None, related_to: List[str] = None):
-        """添加记忆块（分页存储）"""
-        # 去重检查（只检查最近几页）
-        existing = self._find_similar_chunk(content)
-        if existing:
-            self._merge_chunk(existing["id"], content, tags)
-            return existing["id"]
-        
-        chunk = {
-            "id": f"{chunk_type}_{int(time.time() * 1000)}",
-            "type": chunk_type,
-            "content": content,
-            "importance": importance,
-            "tags": tags or [],
-            "related_to": related_to or [],
-            "created_at": datetime.now().isoformat(),
-            "references": 0,
-        }
-        
-        # 找到当前页
-        total = self._get_total_chunk_count()
-        current_page = total // 100
-        page_chunks = self._get_chunks_page(current_page)
-        page_chunks.append(chunk)
-        self._save_chunks_page(current_page, page_chunks)
-        
-        # 更新倒排索引
-        self._update_inverted_index(chunk["id"], content)
-        self._update_score(chunk["id"], chunk_type, importance)
-        
-        return chunk["id"]
-    
-    def _find_similar_chunk(self, content: str, threshold: float = 0.7) -> Optional[Dict]:
-        """查找相似的记忆块（只检查最近几页）"""
-        content_keywords = set(self._extract_keywords(content))
-        if not content_keywords:
-            return None
-        
-        # 只检查最近3页（300个chunks）
-        total = self._get_total_chunk_count()
-        max_page = total // 100
-        for page in range(max(0, max_page - 2), max_page + 1):
-            for chunk in self._get_chunks_page(page):
-                chunk_keywords = set(self._extract_keywords(chunk.get("content", "")))
-                if not chunk_keywords:
-                    continue
-                overlap = len(content_keywords & chunk_keywords)
-                similarity = overlap / min(len(content_keywords), len(chunk_keywords))
-                if similarity > threshold:
-                    return chunk
-        return None
-    
-    def _merge_chunk(self, chunk_id: str, new_content: str, new_tags: List[str] = None):
-        """合并记忆块"""
-        # 查找chunk所在的页
-        total = self._get_total_chunk_count()
-        max_page = total // 100
-        for page in range(max_page + 1):
-            page_chunks = self._get_chunks_page(page)
-            for chunk in page_chunks:
-                if chunk["id"] == chunk_id:
-                    if new_content not in chunk["content"]:
-                        chunk["content"] += f"\n\n[更新]\n{new_content}"
-                    if new_tags:
-                        chunk["tags"] = list(set(chunk.get("tags", []) + new_tags))
-                    chunk["updated_at"] = datetime.now().isoformat()
-                    self._save_chunks_page(page, page_chunks)
-                    return
-        self._save_inverted_index()
-    
-    def _update_score(self, doc_id: str, doc_type: str, importance: int = 5):
-        """更新记忆评分"""
-        if doc_id not in self._scores:
-            self._scores[doc_id] = {"type": doc_type, "importance": importance, "references": 0, "created": datetime.now().isoformat()}
-        else:
-            self._scores[doc_id]["importance"] = max(self._scores[doc_id].get("importance", 5), importance)
-        self._save_scores()
-    
-    def _increment_reference(self, doc_id: str):
-        """增加引用计数"""
-        if doc_id not in self._scores:
-            self._scores[doc_id] = {"references": 0}
-        self._scores[doc_id]["references"] = self._scores[doc_id].get("references", 0) + 1
-    
-    # ===== 事件时间线（分页存储）=====
-    
-    def _get_timeline_page(self, chapter_num: int) -> int:
-        """章节号转时间线页码（每100章一页）"""
-        return (chapter_num - 1) // 100
-    
-    def add_event(self, chapter_num: int, event: str, event_type: str = "story", 
-                  characters_involved: List[str] = None):
-        """添加事件到时间线（分页存储）"""
-        page = self._get_timeline_page(chapter_num)
-        page_file = self.timeline_dir / f"timeline_{page:03d}.json"
-        
-        events = []
-        if page_file.exists():
-            try:
-                events = json.loads(page_file.read_text(encoding='utf-8'))
-            except: pass
-        
-        events.append({
-            "chapter": chapter_num,
-            "event": event,
-            "type": event_type,
-            "characters": characters_involved or [],
-            "timestamp": datetime.now().isoformat(),
-        })
-        
-        page_file.write_text(json.dumps(events, ensure_ascii=False, indent=1), encoding='utf-8')
-    
-    def get_timeline(self, from_chapter: int = 0, to_chapter: int = None) -> List[Dict]:
-        """获取时间线（按范围加载）"""
-        if to_chapter is None:
-            to_chapter = from_chapter + 200 if from_chapter > 0 else 999999
-        
-        all_events = []
-        start_page = self._get_timeline_page(from_chapter)
-        end_page = self._get_timeline_page(to_chapter)
-        
-        for page in range(start_page, end_page + 1):
-            page_file = self.timeline_dir / f"timeline_{page:03d}.json"
-            if page_file.exists():
-                try:
-                    events = json.loads(page_file.read_text(encoding='utf-8'))
-                    for e in events:
-                        ch = e.get("chapter", 0)
-                        if from_chapter <= ch <= to_chapter:
-                            all_events.append(e)
-                except: pass
-        
-        return sorted(all_events, key=lambda e: (e.get("chapter", 0), e.get("timestamp", "")))
-    
-    # ===== 角色档案和关系图 =====
-    
-    def save_characters(self, characters: dict):
-        with open(self.characters_file, 'w', encoding='utf-8') as f:
-            json.dump(characters, f, indent=2, ensure_ascii=False)
-    
-    def get_characters(self) -> dict:
-        if self.characters_file.exists():
-            with open(self.characters_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return {}
-    
-    def update_character(self, name: str, data: dict):
-        """更新角色信息，自动检测关系变化"""
-        characters = self.get_characters()
-        
-        old_data = characters.get(name, {})
-        
-        # 合并更新
-        if isinstance(old_data, dict) and isinstance(data, dict):
-            old_data.update(data)
-            characters[name] = old_data
-        else:
-            characters[name] = data
-        
-        self.save_characters(characters)
-        
-        # 检测关系变化并记录
-        if "relationships" in data:
-            for rel_name, rel_type in data["relationships"].items():
-                self.add_event(
-                    chapter_num=0,
-                    event=f"角色关系更新: {name} ↔ {rel_name} ({rel_type})",
-                    event_type="character",
-                    characters_involved=[name, rel_name]
-                )
-    
-    # ===== 记忆评分和衰减 =====
-    
-    def _update_score(self, item_id: str, item_type: str, importance: int = 5):
-        """更新记忆评分"""
-        if item_id not in self._scores:
-            self._scores[item_id] = {
-                "type": item_type,
-                "importance": importance,
-                "references": 0,
-                "created_at": datetime.now().isoformat(),
-            }
-        self._scores[item_id]["importance"] = max(
-            self._scores[item_id].get("importance", 5), importance
-        )
-        self._save_scores()
-    
-    def _increment_reference(self, item_id: str):
-        """增加引用计数"""
-        if item_id not in self._scores:
-            self._scores[item_id] = {"type": "unknown", "importance": 5, "references": 0,
-                                      "created_at": datetime.now().isoformat()}
-        self._scores[item_id]["references"] = self._scores[item_id].get("references", 0) + 1
-        self._scores[item_id]["last_referenced"] = datetime.now().isoformat()
-        self._save_scores()
-    
-    def _save_scores(self):
-        with open(self.scores_file, 'w', encoding='utf-8') as f:
-            json.dump(self._scores, f, indent=2, ensure_ascii=False)
-    
-    def _load_scores(self) -> dict:
-        if self.scores_file.exists():
-            with open(self.scores_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return {}
-    
-    # ===== 记忆健康检查 =====
-    
-    def health_check(self) -> Dict:
-        """检查记忆系统的健康状况
-        
-        参考Supermemory的质量控制思路：
-        1. 检测矛盾信息
-        2. 检测衰减严重的记忆
-        3. 检测孤立记忆（无关联）
-        4. 统计记忆状态
-        """
-        total_chunks = self._get_total_chunk_count()
-        total_chapters = len(list(self.chapters_dir.glob("chapter_*.txt")))
-        total_volumes = len(list(self.volumes_dir.glob("volume_*.txt")))
-        
-        report = {
-            "total_chunks": total_chunks,
-            "total_chapters": total_chapters,
-            "total_volumes": total_volumes,
-            "total_characters": len(self.get_characters()),
-            "total_arcs": len(list(self.arcs_dir.glob("arc_*.json"))),
-            "stale_chunks": [],
-            "orphan_chunks": [],
-            "recommendations": [],
-        }
-        
-        # 检测衰减（只检查最近几页）
-        total = self._get_total_chunk_count()
-        max_page = total // 100
-        for page in range(max(0, max_page - 2), max_page + 1):
-            for chunk in self._get_chunks_page(page):
-                score = self._scores.get(chunk.get("id", ""), {})
-                refs = score.get("references", 0)
-                created = score.get("created_at", "")
-                freshness = self._calc_freshness(created)
-                if freshness < 0.2 and refs < 2:
-                    report["stale_chunks"].append({
-                        "id": chunk["id"],
-                        "type": chunk.get("type", ""),
-                        "freshness": round(freshness, 3),
-                    })
-        
-        # 生成建议
-        if report["stale_chunks"]:
-            report["recommendations"].append(f"有 {len(report['stale_chunks'])} 条记忆已衰减")
-        if total_chunks > 5000:
-            report["recommendations"].append("记忆块超过5000个，建议归档旧章节记忆")
-        if total_chapters > 100 and total_volumes == 0:
-            report["recommendations"].append(f"已有{total_chapters}章但无卷级摘要，建议生成卷级摘要")
-        
-        return report
-    
-    # ===== 关键词提取和搜索 =====
-    
-    @staticmethod
-    def _extract_keywords(text: str) -> List[str]:
-        """提取关键词（简易分词）"""
-        # 中文常见停用词
-        stopwords = {'的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一',
-                     '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有',
-                     '看', '好', '自己', '这', '他', '她', '它', '们', '那', '被', '把',
-                     '可以', '这个', '那个', '什么', '怎么', '因为', '所以', '但是', '然后'}
-        
-        # 提取2-4字词组
-        keywords = []
-        cleaned = ''
-        for c in text:
-            if '\u4e00' <= c <= '\u9fff' or c.isalnum():
-                cleaned += c
-            else:
-                cleaned += ' '
-        
-        # 提取词组
-        for i in range(len(cleaned)):
-            for l in [2, 3, 4]:
-                if i + l <= len(cleaned):
-                    word = cleaned[i:i+l]
-                    if word not in stopwords and all('\u4e00' <= c <= '\u9fff' for c in word):
-                        keywords.append(word)
-        
-        # 去重并排序
-        from collections import Counter
-        counted = Counter(keywords)
-        return [word for word, _ in counted.most_common(30)]
-    
-    def get_settings(self) -> dict:
-        if self.settings_file.exists():
-            with open(self.settings_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return {}
-    
-    def save_settings(self, settings: dict):
-        with open(self.settings_file, 'w', encoding='utf-8') as f:
-            json.dump(settings, f, indent=2, ensure_ascii=False)
-    
-    def update_index(self, chapter_num: int, keywords: List[str]):
-        index = self._load_index()
-        index[str(chapter_num)] = keywords
-        with open(self.index_file, 'w', encoding='utf-8') as f:
-            json.dump(index, f, indent=2, ensure_ascii=False)
-    
-    def search_by_keyword(self, keyword: str) -> List[int]:
-        index = self._load_index()
-        results = []
-        for ch_num, keywords in index.items():
-            if keyword in keywords:
-                results.append(int(ch_num))
-        return sorted(results)
-    
-    def _load_index(self) -> dict:
-        if self.index_file.exists():
-            with open(self.index_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return {}
-    
-    # ===== 智能上下文构建 =====
-    
-    def build_smart_context(self, chapter_num: int, query: str = "",
-                            max_items: int = 10) -> str:
-        """智能构建上下文 - 核心RAG方法
-        
-        优先级排序：
-        1. 当前查询相关的记忆块（RAG检索）
-        2. 最近章节的事件时间线
-        3. 高频引用的角色信息
-        4. 世界观设定
-        """
-        parts = []
-        
-        # 1. RAG检索相关记忆
-        if query:
-            relevant = self.retrieve_relevant(query, top_k=5)
-            if relevant:
-                items = []
-                for r in relevant:
-                    items.append(f"[{r.get('type', '')}|相关性{r.get('relevance', 0):.2f}] {r.get('content', '')[:200]}")
-                parts.append(f"【相关记忆】\n" + "\n\n".join(items))
-        
-        # 2. 最近时间线事件（使用分页加载）
-        recent_events = self.get_timeline(from_chapter=max(1, chapter_num - 5), to_chapter=chapter_num)
-        if recent_events:
-            event_lines = []
-            for e in recent_events[-10:]:
-                event_lines.append(f"第{e.get('chapter', 0)}章: {e.get('event', '')}")
-            parts.append(f"【故事时间线（最近）】\n" + "\n".join(event_lines))
-        
-        # 3. 活跃角色（按活跃度排序）
-        characters = self.get_characters()
-        if characters:
-            active_names = self.get_active_characters(chapter_num, window=50)
-            char_lines = []
-            for name in active_names[:5]:
-                if name in characters:
-                    info = characters[name]
-                    if isinstance(info, dict):
-                        char_lines.append(f"- {name}: {info.get('personality', '')[:50]}")
-                    else:
-                        char_lines.append(f"- {name}: {str(info)[:50]}")
-            if not char_lines:
-                # 降级到引用次数排序
-                for name, info in list(characters.items())[:5]:
-                    if isinstance(info, dict):
-                        char_lines.append(f"- {name}: {info.get('personality', '')[:50]}")
-                    else:
-                        char_lines.append(f"- {name}: {str(info)[:50]}")
-            if char_lines:
-                parts.append(f"【活跃角色】\n" + "\n".join(char_lines))
-        
-        # 4. 世界观
-        settings = self.get_settings()
-        if settings:
-            settings_text = json.dumps(settings, ensure_ascii=False, indent=2)[:500]
-            parts.append(f"【世界观】\n{settings_text}")
-        
-        return "\n\n---\n\n".join(parts)
-
-
-# ==================== 笔记管理器 ====================
-
-class NoteManager:
-    """笔记管理器 - 文档笔记、工程笔记、便笺本"""
-    
-    def __init__(self, novel_dir: Optional[Path] = None, config: Optional[AppConfig] = None):
-        self.novel_dir = novel_dir
-        self.config = config
-        
-        # 便笺本（全局共享）
-        if config:
-            self.sticky_file = config.config_dir / "sticky_notes.json"
-        else:
-            self.sticky_file = Path.home() / ".ai_novel_writer" / "sticky_notes.json"
-        
-        # 工程笔记和文档笔记在 novel_dir 下
-        if novel_dir:
-            self.notes_dir = novel_dir / "notes"
-            self.notes_dir.mkdir(exist_ok=True)
-            self.project_note_file = self.notes_dir / "_project_notes.json"
-            self.doc_notes_dir = self.notes_dir / "docs"
-            self.doc_notes_dir.mkdir(exist_ok=True)
-    
-    # ===== 便笺本（全局）=====
-    
-    def get_sticky_notes(self) -> List[Dict]:
-        if self.sticky_file.exists():
-            with open(self.sticky_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return []
-    
-    def save_sticky_notes(self, notes: List[Dict]):
-        with open(self.sticky_file, 'w', encoding='utf-8') as f:
-            json.dump(notes, f, indent=2, ensure_ascii=False)
-    
-    def add_sticky_note(self, content: str, tags: List[str] = None) -> Dict:
-        notes = self.get_sticky_notes()
-        note = {
-            "id": int(time.time() * 1000),
-            "content": content,
-            "tags": tags or [],
-            "created_at": datetime.now().isoformat(),
-        }
-        notes.append(note)
-        self.save_sticky_notes(notes)
-        return note
-    
-    def delete_sticky_note(self, note_id: int):
-        notes = self.get_sticky_notes()
-        notes = [n for n in notes if n.get("id") != note_id]
-        self.save_sticky_notes(notes)
-    
-    # ===== 工程笔记 =====
-    
-    def get_project_notes(self) -> List[Dict]:
-        if not self.novel_dir:
-            return []
-        if self.project_note_file.exists():
-            with open(self.project_note_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return []
-    
-    def save_project_notes(self, notes: List[Dict]):
-        if not self.novel_dir:
-            return
-        with open(self.project_note_file, 'w', encoding='utf-8') as f:
-            json.dump(notes, f, indent=2, ensure_ascii=False)
-    
-    def add_project_note(self, title: str, content: str) -> Dict:
-        notes = self.get_project_notes()
-        note = {
-            "id": int(time.time() * 1000),
-            "title": title,
-            "content": content,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
-        }
-        notes.append(note)
-        self.save_project_notes(notes)
-        return note
-    
-    def update_project_note(self, note_id: int, title: str = None, content: str = None):
-        notes = self.get_project_notes()
-        for n in notes:
-            if n.get("id") == note_id:
-                if title is not None:
-                    n["title"] = title
-                if content is not None:
-                    n["content"] = content
-                n["updated_at"] = datetime.now().isoformat()
-                break
-        self.save_project_notes(notes)
-    
-    def delete_project_note(self, note_id: int):
-        notes = self.get_project_notes()
-        notes = [n for n in notes if n.get("id") != note_id]
-        self.save_project_notes(notes)
-    
-    # ===== 文档笔记 =====
-    
-    def get_doc_notes(self, chapter_num: int) -> List[Dict]:
-        if not self.novel_dir:
-            return []
-        note_file = self.doc_notes_dir / f"chapter_{chapter_num:04d}.json"
-        if note_file.exists():
-            with open(note_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return []
-    
-    def save_doc_notes(self, chapter_num: int, notes: List[Dict]):
-        if not self.novel_dir:
-            return
-        note_file = self.doc_notes_dir / f"chapter_{chapter_num:04d}.json"
-        with open(note_file, 'w', encoding='utf-8') as f:
-            json.dump(notes, f, indent=2, ensure_ascii=False)
-    
-    def add_doc_note(self, chapter_num: int, content: str, position: int = 0) -> Dict:
-        notes = self.get_doc_notes(chapter_num)
-        note = {
-            "id": int(time.time() * 1000),
-            "content": content,
-            "position": position,
-            "created_at": datetime.now().isoformat(),
-        }
-        notes.append(note)
-        self.save_doc_notes(chapter_num, notes)
-        return note
-    
-    def delete_doc_note(self, chapter_num: int, note_id: int):
-        notes = self.get_doc_notes(chapter_num)
-        notes = [n for n in notes if n.get("id") != note_id]
-        self.save_doc_notes(chapter_num, notes)
-    
-    # ===== 便笺发送到工程 =====
-    
-    def send_sticky_to_project(self, note_id: int, target: str = "project"):
-        """将便笺内容发送到工程笔记"""
-        sticky_notes = self.get_sticky_notes()
-        note = None
-        for n in sticky_notes:
-            if n.get("id") == note_id:
-                note = n
-                break
-        if note and self.novel_dir:
-            self.add_project_note(
-                title=f"来自便笺 - {note['content'][:20]}",
-                content=note["content"]
-            )
-
-
-# ==================== 全屏写作窗口 ====================
-
-class FullscreenWriter:
-    """全屏沉浸式写作窗口"""
-    
-    def __init__(self, parent, ai_client: AIClient, config: AppConfig, 
-                 initial_text: str = "", save_callback=None, shared_context: str = ""):
-        self.parent = parent
-        self.ai = ai_client
-        self.config = config
-        self.save_callback = save_callback
-        self.text_content = initial_text
-        self.shared_context = shared_context  # 共享上下文（世界观、角色、大纲等）
-        
-        # 写作设置
-        self.font_size = 18
-        self.paper_width = 700
-        self.paper_position = "center"  # center / left / right
-        self.bg_opacity = 0.85
-        self.typewriter_mode = True  # 打字机模式
-        self.ai_assist_enabled = True
-        
-        # AI续写相关
-        self.ai_suggestion = ""
-        self.suggestion_active = False
-        
-        # 创建窗口
-        self.win = tk.Toplevel(parent)
-        self.win.title("全屏写作")
-        self.win.attributes('-fullscreen', True)
-        self.win.configure(bg='#1a1a2e')
-        
-        self._create_widgets()
-        self._bind_events()
-        
-        # 加载设置
-        self._load_writer_settings()
-    
-    def _create_widgets(self):
-        """创建全屏写作界面"""
-        C = UIStyle.COLORS
-        
-        # 顶部工具栏
-        self.toolbar = tk.Frame(self.win, bg='#16213e', height=40)
-        self.toolbar.pack(fill=tk.X)
-        self.toolbar.pack_propagate(False)
-        
-        # 左侧按钮
-        left_btns = tk.Frame(self.toolbar, bg='#16213e')
-        left_btns.pack(side=tk.LEFT, padx=15, fill=tk.Y)
-        
-        tk.Button(left_btns, text="退出 (Esc)", font=('微软雅黑', 9),
-                 bg='#e74c3c', fg='white', relief=tk.FLAT, padx=10,
-                 command=self._exit_fullscreen).pack(side=tk.LEFT, pady=5)
-        tk.Button(left_btns, text="保存", font=('微软雅黑', 9),
-                 bg='#27ae60', fg='white', relief=tk.FLAT, padx=10,
-                 command=self._save).pack(side=tk.LEFT, padx=8, pady=5)
-        
-        # AI功能按钮区
-        ai_btns = tk.Frame(self.toolbar, bg='#16213e')
-        ai_btns.pack(side=tk.LEFT, padx=20, fill=tk.Y)
-        
-        tk.Label(ai_btns, text="AI辅助:", font=('微软雅黑', 9),
-                bg='#16213e', fg='#a78bfa').pack(side=tk.LEFT, pady=5)
-        
-        ai_features = [
-            ("续写 (Tab)", self._ai_continue, '#7c3aed'),
-            ("扩写", self._ai_expand, '#3b82f6'),
-            ("简写", self._ai_compress, '#f59e0b'),
-            ("润色", self._ai_polish, '#10b981'),
-            ("改写", self._ai_rewrite, '#ef4444'),
-            ("对话", self._ai_dialogue, '#8b5cf6'),
-        ]
-        
-        for text, cmd, color in ai_features:
-            tk.Button(ai_btns, text=text, font=('微软雅黑', 8),
-                     bg=color, fg='white', relief=tk.FLAT, padx=8, pady=3,
-                     cursor='hand2', activebackground=color,
-                     command=cmd).pack(side=tk.LEFT, padx=2, pady=5)
-        
-        # 右侧控件
-        right_ctrls = tk.Frame(self.toolbar, bg='#16213e')
-        right_ctrls.pack(side=tk.RIGHT, padx=15, fill=tk.Y)
-        
-        # 打字机模式
-        self.tw_var = tk.BooleanVar(value=self.typewriter_mode)
-        tk.Checkbutton(right_ctrls, text="打字机", variable=self.tw_var,
-                      font=('微软雅黑', 9), bg='#16213e', fg='#94a3b8',
-                      selectcolor='#7c3aed', activebackground='#16213e',
-                      command=self._toggle_typewriter).pack(side=tk.LEFT, pady=5)
-        
-        # 字数统计
-        self.word_count_label = tk.Label(right_ctrls, text="字数: 0",
-                                        font=('微软雅黑', 9), bg='#16213e', fg='#94a3b8')
-        self.word_count_label.pack(side=tk.LEFT, padx=15, pady=5)
-        
-        # 设置按钮
-        tk.Button(right_ctrls, text="设置", font=('微软雅黑', 9),
-                 bg='#353548', fg='#94a3b8', relief=tk.FLAT, padx=10,
-                 command=self._show_writer_settings).pack(side=tk.LEFT, pady=5)
-        
-        # 背景层
-        self.bg_frame = tk.Frame(self.win, bg='#1a1a2e')
-        self.bg_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # 纸张容器（用于控制位置）
-        self.paper_container = tk.Frame(self.bg_frame, bg='#1a1a2e')
-        self.paper_container.pack(fill=tk.BOTH, expand=True, padx=50, pady=20)
-        
-        # 纸张
-        self.paper = tk.Frame(self.paper_container, bg='#f5f0e8', 
-                             width=self.paper_width, relief=tk.FLAT)
-        
-        # 内边距
-        self.inner_frame = tk.Frame(self.paper, bg='#f5f0e8')
-        self.inner_frame.pack(fill=tk.BOTH, expand=True, padx=60, pady=40)
-        
-        # Markdown工具栏
-        md_toolbar = tk.Frame(self.inner_frame, bg='#f5f0e8')
-        md_toolbar.pack(fill=tk.X, pady=(0, 5))
-        
-        md_btns = [
-            ("H1", "heading1", "# "), ("H2", "heading2", "## "), ("H3", "heading3", "### "),
-            ("B", "bold", "**"), ("I", "italic", "*"), ("S", "strike", "~~"),
-            ("•", "list", "- "), ("1.", "olist", "1. "), (">", "quote", "> "),
-            ("—", "hr", "\n---\n"), ("`", "code", "`"), ("```", "codeblock", "```\n"),
-        ]
-        
-        for text, name, prefix in md_btns:
-            btn = tk.Button(md_toolbar, text=text, font=('Consolas', 9, 'bold'),
-                          bg='#e8e3d8', fg='#5c5647', relief=tk.FLAT,
-                          padx=6, pady=2, cursor='hand2',
-                          activebackground='#d4cfc4',
-                          command=lambda p=prefix, n=name: self._insert_markdown(p, n))
-            btn.pack(side=tk.LEFT, padx=1)
-        
-        # Markdown预览开关
-        self.preview_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(md_toolbar, text="预览", variable=self.preview_var,
-                      font=('微软雅黑', 8), bg='#f5f0e8', fg='#5c5647',
-                      selectcolor='#7c3aed',
-                      command=self._toggle_preview).pack(side=tk.RIGHT, padx=5)
-        
-        # 写作区域容器（编辑+预览）
-        self.text_container = tk.Frame(self.inner_frame, bg='#f5f0e8')
-        self.text_container.pack(fill=tk.BOTH, expand=True)
-        
-        # 写作区域
-        self.text_widget = tk.Text(
-            self.text_container,
-            wrap=tk.WORD,
-            font=("Consolas", self.font_size),
-            bg='#f5f0e8',
-            fg='#2c2c2c',
-            insertbackground='#e74c3c',
-            insertwidth=3,
-            relief=tk.FLAT,
-            padx=20,
-            pady=20,
-            spacing1=2,
-            spacing3=2,
-            selectbackground='#3498db',
-            undo=True,
-        )
-        self.text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        # 预览区域（默认隐藏）
-        self.preview_widget = tk.Text(
-            self.text_container,
-            wrap=tk.WORD,
-            font=("微软雅黑", self.font_size),
-            bg='#ffffff',
-            fg='#2c2c2c',
-            relief=tk.FLAT,
-            padx=20,
-            pady=20,
-            state=tk.DISABLED,
-        )
-        # 预览默认不显示
-        
-        # 配置Markdown语法高亮
-        self._setup_markdown_highlighting()
-        
-        # 加载初始内容
-        if self.text_content:
-            self.text_widget.insert("1.0", self.text_content)
-        
-        # AI续写提示标签
-        self.suggestion_label = tk.Label(
-            self.inner_frame, text="", font=("微软雅黑", self.font_size),
-            fg='#999999', bg='#f5f0e8', anchor=tk.W, justify=tk.LEFT
-        )
-        
-        # AI处理状态标签
-        self.ai_status_label = tk.Label(
-            self.inner_frame, text="", font=("微软雅黑", 12),
-            fg='#f59e0b', bg='#f5f0e8', anchor=tk.CENTER
-        )
-        
-        # 右键菜单
-        self.context_menu = tk.Menu(self.text_widget, tearoff=0, 
-                                   font=('微软雅黑', 10),
-                                   bg='#2d2d3f', fg='#f8fafc',
-                                   activebackground='#7c3aed',
-                                   activeforeground='white')
-        self.context_menu.add_command(label="AI续写 (Tab)", command=self._ai_continue)
-        self.context_menu.add_command(label="AI扩写", command=self._ai_expand)
-        self.context_menu.add_command(label="AI简写", command=self._ai_compress)
-        self.context_menu.add_separator()
-        self.context_menu.add_command(label="AI润色", command=self._ai_polish)
-        self.context_menu.add_command(label="AI改写", command=self._ai_rewrite)
-        self.context_menu.add_command(label="AI生成对话", command=self._ai_dialogue)
-        self.context_menu.add_separator()
-        self.context_menu.add_command(label="撤销 (Ctrl+Z)", command=lambda: self.text_widget.edit_undo())
-        self.context_menu.add_command(label="重做 (Ctrl+Y)", command=lambda: self.text_widget.edit_redo())
-        
-        self.text_widget.bind("<Button-3>", self._show_context_menu)
-        
-        # 底部状态栏
-        self.status_bar = tk.Frame(self.win, bg='#16213e')
-        self.status_bar.pack(fill=tk.X, side=tk.BOTTOM)
-        
-        self.status_label = ttk.Label(self.status_bar, text="AI辅助: 开启 | 打字机模式: 开启", 
-                                      background='#16213e', foreground='white')
-        self.status_label.pack(side=tk.LEFT, padx=20, pady=5)
-        
-        self._update_paper_position()
-    
-    def _bind_events(self):
-        """绑定事件"""
-        self.win.bind('<Escape>', lambda e: self._exit_fullscreen())
-        self.win.bind('<Control-s>', lambda e: self._save())
-        self.win.bind('<Control-z>', lambda e: self.text_widget.edit_undo())
-        self.win.bind('<Control-y>', lambda e: self.text_widget.edit_redo())
-        
-        # AI功能快捷键
-        self.win.bind('<Control-e>', lambda e: self._ai_expand())   # Ctrl+E 扩写
-        self.win.bind('<Control-q>', lambda e: self._ai_compress()) # Ctrl+Q 简写
-        self.win.bind('<Control-r>', lambda e: self._ai_rewrite())  # Ctrl+R 改写
-        self.win.bind('<Control-p>', lambda e: self._ai_polish())   # Ctrl+P 润色
-        
-        # Markdown快捷键
-        self.win.bind('<Control-b>', lambda e: self._insert_markdown('**', 'bold'))     # Ctrl+B 加粗
-        self.win.bind('<Control-i>', lambda e: self._insert_markdown('*', 'italic'))    # Ctrl+I 斜体
-        self.win.bind('<Control-`>', lambda e: self._insert_markdown('`', 'code'))      # Ctrl+` 代码
-        self.win.bind('<Control-l>', lambda e: self._insert_markdown('- ', 'list'))     # Ctrl+L 列表
-        self.win.bind('<Control-Shift-P>', lambda e: self._toggle_preview())            # Ctrl+Shift+P 预览
-        
-        # 按键事件 - 用于打字机模式和AI辅助
-        self.text_widget.bind('<KeyRelease>', self._on_key_release)
-        self.text_widget.bind('<Tab>', self._on_tab)
-        
-        # 字体大小调整
-        self.win.bind('<Control-plus>', lambda e: self._change_font_size(1))
-        self.win.bind('<Control-minus>', lambda e: self._change_font_size(-1))
-        self.win.bind('<Control-equal>', lambda e: self._change_font_size(1))
-    
-    def _show_context_menu(self, event):
-        """显示右键菜单"""
-        try:
-            self.context_menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            self.context_menu.grab_release()
-    
-    def _on_key_release(self, event=None):
-        """按键释放事件 - 打字机模式+字数统计+Markdown高亮"""
-        content = self.text_widget.get("1.0", tk.END).strip()
-        self.word_count_label.config(text=f"字数: {len(content)}")
-        
-        if self.typewriter_mode:
-            self._center_current_line()
-        
-        if self.suggestion_active and event and event.keysym not in ('Tab', 'Shift_L', 'Shift_R', 'Control_L', 'Control_R'):
-            self._clear_suggestion()
-        
-        # Markdown高亮（延迟更新避免频繁触发）
-        if hasattr(self, '_highlight_after_id'):
-            self.win.after_cancel(self._highlight_after_id)
-        self._highlight_after_id = self.win.after(300, self._update_markdown_highlighting)
-    
-    def _on_tab(self, event):
-        """Tab键接受AI建议"""
-        if self.suggestion_active and self.ai_suggestion:
-            # 插入AI建议
-            self.text_widget.insert(tk.INSERT, self.ai_suggestion)
-            self._clear_suggestion()
-            return "break"  # 阻止默认Tab行为
-        
-        # 如果没有建议，触发AI续写
-        if self.ai_assist_enabled:
-            self._trigger_ai_suggestion()
-        return "break"
-    
-    def _trigger_ai_suggestion(self):
-        """触发AI续写建议 - 使用共享上下文"""
-        if not self.ai.is_configured():
-            return
-        
-        current_text = self.text_widget.get("1.0", tk.END).strip()
-        if not current_text:
-            return
-        
-        context = current_text[-500:]
-        system = "你是一位小说写作助手。请根据用户正在写的内容，续写20-50字。直接输出续写内容，不要添加任何说明。保持风格和语气一致。"
-        if self.shared_context:
-            system += f"\n\n小说背景信息（供参考，保持一致性）：\n{self.shared_context[:1000]}"
-        
-        def generate():
-            try:
-                response = self.ai.chat(
-                    [{"role": "user", "content": f"请续写以下内容：\n\n{context}"}],
-                    system=system,
-                    max_tokens=200,
-                    temperature=0.8
-                )
-                
-                self.ai_suggestion = response.strip()[:100]  # 限制长度
-                self.suggestion_active = True
-                
-                # 在主线程显示建议
-                self.win.after(0, self._show_suggestion)
-            except Exception as e:
-                print(f"AI续写失败: {e}")
-        
-        threading.Thread(target=generate, daemon=True).start()
-    
-    def _show_suggestion(self):
-        """显示AI建议（灰色提示文字）"""
-        if self.ai_suggestion:
-            # 在光标位置后显示灰色提示
-            cursor_pos = self.text_widget.index(tk.INSERT)
-            self.suggestion_label.config(text=self.ai_suggestion)
-            self.suggestion_label.place(in_=self.text_widget, relx=0, rely=1.0, anchor=tk.NW)
-    
-    def _clear_suggestion(self):
-        """清除AI建议"""
-        self.ai_suggestion = ""
-        self.suggestion_active = False
-        self.suggestion_label.place_forget()
-    
-    def _center_current_line(self):
-        """打字机模式 - 当前行居中"""
-        try:
-            # 获取光标位置
-            cursor_line = self.text_widget.index(tk.INSERT).split('.')[0]
-            
-            # 获取文本框高度
-            self.text_widget.update_idletasks()
-            widget_height = self.text_widget.winfo_height()
-            
-            # 计算当前行在文本中的位置
-            line_y = self.text_widget.dlineinfo(f"{cursor_line}.0")
-            if line_y:
-                # 计算滚动位置，使当前行居中
-                total_lines = int(self.text_widget.index(tk.END).split('.')[0])
-                target_pos = (int(cursor_line) - widget_height / (self.font_size * 2)) / total_lines
-                target_pos = max(0, min(1, target_pos))
-                self.text_widget.yview_moveto(target_pos)
-        except:
-            pass
-    
-    def _change_font_size(self, delta):
-        """调整字体大小"""
-        self.font_size = max(12, min(36, self.font_size + delta))
-        self.text_widget.configure(font=("微软雅黑", self.font_size))
-    
-    def _toggle_ai(self):
-        """切换AI辅助"""
-        self.ai_assist_enabled = not self.ai_assist_enabled
-        self._update_status()
-    
-    def _toggle_typewriter(self):
-        """切换打字机模式"""
-        self.typewriter_mode = self.tw_var.get()
-        self._update_status()
-    
-    def _update_status(self):
-        """更新状态栏"""
-        ai_status = "开启" if self.ai_assist_enabled else "关闭"
-        tw_status = "开启" if self.typewriter_mode else "关闭"
-        self.status_label.config(text=f"AI辅助: {ai_status} | 打字机模式: {tw_status}")
-    
-    def _update_paper_position(self):
-        """更新纸张位置"""
-        self.paper_container.pack_forget()
-        
-        if self.paper_position == "center":
-            self.paper_container.pack(fill=tk.BOTH, expand=True, padx=50, pady=20)
-            self.paper.pack(anchor=tk.CENTER, expand=True)
-        elif self.paper_position == "left":
-            self.paper_container.pack(fill=tk.BOTH, expand=True, padx=(50, 100), pady=20)
-            self.paper.pack(anchor=tk.W)
-        elif self.paper_position == "right":
-            self.paper_container.pack(fill=tk.BOTH, expand=True, padx=(100, 50), pady=20)
-            self.paper.pack(anchor=tk.E)
-        
-        self.paper.configure(width=self.paper_width)
-    
-    def _ai_expand(self):
-        """AI扩写 - 将选中文本或当前段落扩展为更详细的内容"""
-        self._ai_transform("expand")
-    
-    def _ai_compress(self):
-        """AI简写 - 将选中文本精简压缩"""
-        self._ai_transform("compress")
-    
-    def _ai_continue(self):
-        """AI续写 - 继续写下去（Tab键功能）"""
-        if self.suggestion_active and self.ai_suggestion:
-            self.text_widget.insert(tk.INSERT, self.ai_suggestion)
-            self._clear_suggestion()
-        else:
-            self._trigger_ai_suggestion()
-    
-    def _ai_polish(self):
-        """AI润色 - 优化语言表达"""
-        self._ai_transform("polish")
-    
-    def _ai_rewrite(self):
-        """AI改写 - 重新表达相同内容"""
-        self._ai_transform("rewrite")
-    
-    def _ai_dialogue(self):
-        """AI生成对话 - 根据上下文生成角色对话"""
-        self._ai_transform("dialogue")
-    
-    def _ai_transform(self, mode: str):
-        """AI文本变换通用方法"""
-        if not self.ai.is_configured():
-            return
-        
-        # 获取选中文本，如果没有选中则获取当前段落
-        try:
-            selected = self.text_widget.get(tk.SEL_FIRST, tk.SEL_LAST)
-        except tk.TclError:
-            # 没有选中文本，获取光标所在段落
-            cursor_pos = self.text_widget.index(tk.INSERT)
-            line_start = cursor_pos.split('.')[0] + '.0'
-            # 找到段落开头
-            while line_start > '1.0':
-                prev_line = self.text_widget.get(f"{line_start}-1l", line_start)
-                if prev_line.strip() == '':
-                    break
-                line_start = f"{line_start}-1l"
-            # 找到段落结尾
-            line_end = line_start
-            while True:
-                next_line = self.text_widget.get(line_end, f"{line_end}+1l")
-                if next_line.strip() == '' or line_end == self.text_widget.index(tk.END):
-                    break
-                line_end = f"{line_end}+1l"
-            selected = self.text_widget.get(line_start, line_end).strip()
-        
-        if not selected:
-            selected = self.text_widget.get("1.0", tk.END).strip()[-300:]
-        
-        # 构建提示词
-        prompts = {
-            "expand": {
-                "system": "你是一位小说写作助手。请将用户提供的文本扩写为更详细、更生动的内容。保持原有情节和风格，增加细节描写、心理活动、环境描写等。直接输出扩写后的内容。",
-                "user": f"请扩写以下内容，使其更加详细生动：\n\n{selected}",
-                "max_tokens": 1000,
-            },
-            "compress": {
-                "system": "你是一位小说写作助手。请将用户提供的文本精简压缩，保留核心情节和关键信息，去除冗余描写。直接输出精简后的内容。",
-                "user": f"请精简以下内容，保留核心情节：\n\n{selected}",
-                "max_tokens": 500,
-            },
-            "polish": {
-                "system": "你是一位小说写作助手。请润色用户提供的文本，优化语言表达，使其更加流畅、优美、有感染力。保持原有情节不变。直接输出润色后的内容。",
-                "user": f"请润色以下内容，优化语言表达：\n\n{selected}",
-                "max_tokens": 800,
-            },
-            "rewrite": {
-                "system": "你是一位小说写作助手。请用不同的表达方式重新改写用户提供的文本，保持相同的情节和含义，但使用不同的词汇和句式。直接输出改写后的内容。",
-                "user": f"请改写以下内容，使用不同的表达方式：\n\n{selected}",
-                "max_tokens": 800,
-            },
-            "dialogue": {
-                "system": "你是一位小说写作助手。请根据用户提供的文本内容，生成一段角色之间的对话。对话要符合角色性格，自然生动。直接输出对话内容。",
-                "user": f"请根据以下内容，生成角色之间的对话：\n\n{selected}",
-                "max_tokens": 600,
-            },
-        }
-        
-        prompt = prompts.get(mode, prompts["polish"])
-        
-        # 添加共享上下文
-        system = prompt["system"]
-        if self.shared_context:
-            system += f"\n\n小说背景（保持一致性）：\n{self.shared_context[:500]}"
-        
-        # 显示处理中状态
-        self._show_ai_status(f"AI{mode}中...")
-        
-        def generate():
-            try:
-                response = self.ai.chat(
-                    [{"role": "user", "content": prompt["user"]}],
-                    system=system,
-                    max_tokens=prompt["max_tokens"],
-                    temperature=0.7
-                )
-                
-                # 在主线程中替换文本
-                self.win.after(0, lambda: self._replace_selection(response.strip(), mode))
-                self.win.after(0, self._hide_ai_status)
-                
-            except Exception as e:
-                self.win.after(0, lambda: self._show_ai_status(f"AI错误: {str(e)[:30]}"))
-                self.win.after(3000, self._hide_ai_status)
-        
-        threading.Thread(target=generate, daemon=True).start()
-    
-    def _replace_selection(self, new_text: str, mode: str):
-        """替换选中文本"""
-        try:
-            self.text_widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
-        except tk.TclError:
-            # 没有选中，插入到光标位置
-            pass
-        
-        # 插入新文本
-        if mode == "expand":
-            # 扩写：插入到原位置后面
-            self.text_widget.insert(tk.INSERT, "\n\n" + new_text)
-        elif mode == "dialogue":
-            # 对话：插入到新行
-            self.text_widget.insert(tk.INSERT, "\n\n" + new_text)
-        else:
-            # 其他：替换
-            self.text_widget.insert(tk.INSERT, new_text)
-        
-        # 更新字数
-        content = self.text_widget.get("1.0", tk.END).strip()
-        self.word_count_label.config(text=f"字数: {len(content)}")
-    
-    def _show_ai_status(self, text: str):
-        """显示AI处理状态"""
-        if hasattr(self, 'ai_status_label'):
-            self.ai_status_label.config(text=text)
-            self.ai_status_label.place(relx=0.5, rely=0.05, anchor=tk.CENTER)
-    
-    def _hide_ai_status(self):
-        """隐藏AI处理状态"""
-        if hasattr(self, 'ai_status_label'):
-            self.ai_status_label.place_forget()
-    
-    # ===== Markdown功能 =====
-    
-    def _setup_markdown_highlighting(self):
-        """设置Markdown语法高亮"""
-        # 定义标签样式
-        self.text_widget.tag_configure('md_h1', font=('微软雅黑', self.font_size + 6, 'bold'), foreground='#1a1a2e')
-        self.text_widget.tag_configure('md_h2', font=('微软雅黑', self.font_size + 4, 'bold'), foreground='#2d2d3f')
-        self.text_widget.tag_configure('md_h3', font=('微软雅黑', self.font_size + 2, 'bold'), foreground='#3d3d52')
-        self.text_widget.tag_configure('md_bold', font=('Consolas', self.font_size, 'bold'))
-        self.text_widget.tag_configure('md_italic', font=('Consolas', self.font_size, 'italic'))
-        self.text_widget.tag_configure('md_strike', overstrike=True, foreground='#888888')
-        self.text_widget.tag_configure('md_code', font=('Consolas', self.font_size - 1), 
-                                      background='#e8e3d8', foreground='#c0392b')
-        self.text_widget.tag_configure('md_codeblock', font=('Consolas', self.font_size - 1),
-                                      background='#e8e3d8', foreground='#2c3e50')
-        self.text_widget.tag_configure('md_quote', foreground='#7f8c8d', lmargin1=20, lmargin2=20)
-        self.text_widget.tag_configure('md_list', lmargin1=20, lmargin2=30)
-        self.text_widget.tag_configure('md_link', foreground='#3498db', underline=True)
-        self.text_widget.tag_configure('md_hr', foreground='#bdc3c7')
-        
-        # 绑定按键事件 - 用于打字机模式和AI辅助
-        self.text_widget.bind('<KeyRelease>', self._on_key_release)
-    
-    def _update_markdown_highlighting(self):
-        """更新Markdown语法高亮"""
-        content = self.text_widget.get("1.0", tk.END)
-        
-        # 清除所有高亮标签
-        for tag in ['md_h1', 'md_h2', 'md_h3', 'md_bold', 'md_italic', 
-                    'md_strike', 'md_code', 'md_codeblock', 'md_quote', 'md_list', 'md_link', 'md_hr']:
-            self.text_widget.tag_remove(tag, "1.0", tk.END)
-        
-        import re
-        
-        # 标题高亮
-        for match in re.finditer(r'^(# .+)$', content, re.MULTILINE):
-            start = f"1.0+{match.start()}c"
-            end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_h1', start, end)
-        
-        for match in re.finditer(r'^(## .+)$', content, re.MULTILINE):
-            start = f"1.0+{match.start()}c"
-            end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_h2', start, end)
-        
-        for match in re.finditer(r'^(### .+)$', content, re.MULTILINE):
-            start = f"1.0+{match.start()}c"
-            end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_h3', start, end)
-        
-        # 加粗
-        for match in re.finditer(r'(\*\*[^*]+\*\*)', content):
-            start = f"1.0+{match.start()}c"
-            end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_bold', start, end)
-        
-        # 斜体
-        for match in re.finditer(r'(\*[^*]+\*)', content):
-            start = f"1.0+{match.start()}c"
-            end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_italic', start, end)
-        
-        # 删除线
-        for match in re.finditer(r'(~~[^~]+~~)', content):
-            start = f"1.0+{match.start()}c"
-            end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_strike', start, end)
-        
-        # 行内代码
-        for match in re.finditer(r'(`[^`]+`)', content):
-            start = f"1.0+{match.start()}c"
-            end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_code', start, end)
-        
-        # 代码块
-        for match in re.finditer(r'(```[\s\S]*?```)', content):
-            start = f"1.0+{match.start()}c"
-            end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_codeblock', start, end)
-        
-        # 引用
-        for match in re.finditer(r'^(> .+)$', content, re.MULTILINE):
-            start = f"1.0+{match.start()}c"
-            end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_quote', start, end)
-        
-        # 列表
-        for match in re.finditer(r'^(\- .+|\* .+|\d+\. .+)$', content, re.MULTILINE):
-            start = f"1.0+{match.start()}c"
-            end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_list', start, end)
-        
-        # 分割线
-        for match in re.finditer(r'^(---+|\*\*\*+)$', content, re.MULTILINE):
-            start = f"1.0+{match.start()}c"
-            end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_hr', start, end)
-    
-    def _insert_markdown(self, prefix: str, name: str):
-        """插入Markdown标记"""
-        try:
-            # 获取选中文本
-            selected = self.text_widget.get(tk.SEL_FIRST, tk.SEL_LAST)
-            
-            if name in ['bold', 'italic', 'strike', 'code']:
-                # 包围选中文本
-                self.text_widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
-                self.text_widget.insert(tk.INSERT, f"{prefix}{selected}{prefix}")
-            elif name == 'link':
-                # 插入链接
-                self.text_widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
-                self.text_widget.insert(tk.INSERT, f"[{selected}](url)")
-            else:
-                # 在选中文本前插入
-                self.text_widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
-                self.text_widget.insert(tk.INSERT, f"{prefix}{selected}")
-        except tk.TclError:
-            # 没有选中文本
-            if name in ['heading1', 'heading2', 'heading3']:
-                # 在行首插入标题
-                cursor_pos = self.text_widget.index(tk.INSERT)
-                line_start = cursor_pos.split('.')[0] + '.0'
-                self.text_widget.insert(line_start, prefix)
-            elif name == 'hr':
-                self.text_widget.insert(tk.INSERT, "\n---\n")
-            elif name == 'codeblock':
-                self.text_widget.insert(tk.INSERT, "```\n\n```")
-                # 移动光标到代码块中间
-                cursor_pos = self.text_widget.index(tk.INSERT)
-                self.text_widget.mark_set(tk.INSERT, f"{cursor_pos}-3l")
-            elif name in ['list', 'olist', 'quote']:
-                # 在行首插入
-                cursor_pos = self.text_widget.index(tk.INSERT)
-                line_start = cursor_pos.split('.')[0] + '.0'
-                self.text_widget.insert(line_start, prefix)
-            else:
-                # 在光标位置插入标记
-                self.text_widget.insert(tk.INSERT, f"{prefix}{prefix}")
-                # 移动光标到标记中间
-                cursor_pos = self.text_widget.index(tk.INSERT)
-                self.text_widget.mark_set(tk.INSERT, f"{cursor_pos}-1c")
-        
-        # 更新高亮
-        self._update_markdown_highlighting()
-    
-    def _toggle_preview(self):
-        """切换Markdown预览"""
-        if self.preview_var.get():
-            # 显示预览
-            self._update_preview()
-            self.preview_widget.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(10, 0))
-        else:
-            # 隐藏预览
-            self.preview_widget.pack_forget()
-    
-    def _update_preview(self):
-        """更新Markdown预览"""
-        content = self.text_widget.get("1.0", tk.END)
-        
-        # 简单的Markdown转HTML预览
-        import re
-        
-        # 转换Markdown为可读文本
-        preview = content
-        preview = re.sub(r'^# (.+)$', r'【标题】\1', preview, flags=re.MULTILINE)
-        preview = re.sub(r'^## (.+)$', r'【大标题】\1', preview, flags=re.MULTILINE)
-        preview = re.sub(r'^### (.+)$', r'【小标题】\1', preview, flags=re.MULTILINE)
-        preview = re.sub(r'\*\*([^*]+)\*\*', r'【加粗】\1', preview)
-        preview = re.sub(r'\*([^*]+)\*', r'【斜体】\1', preview)
-        preview = re.sub(r'~~([^~]+)~~', r'【删除】\1', preview)
-        preview = re.sub(r'`([^`]+)`', r'「\1」', preview)
-        preview = re.sub(r'^> (.+)$', r'  ┃ \1', preview, flags=re.MULTILINE)
-        preview = re.sub(r'^- (.+)$', r'  • \1', preview, flags=re.MULTILINE)
-        preview = re.sub(r'^---+$', '─' * 40, preview, flags=re.MULTILINE)
-        
-        self.preview_widget.config(state=tk.NORMAL)
-        self.preview_widget.delete("1.0", tk.END)
-        self.preview_widget.insert("1.0", preview)
-        self.preview_widget.config(state=tk.DISABLED)
-    
-    def _show_writer_settings(self):
-        """显示写作设置对话框"""
-        dialog = tk.Toplevel(self.win)
-        dialog.title("写作设置")
-        dialog.geometry("400x450")
-        dialog.transient(self.win)
-        dialog.grab_set()
-        
-        ttk.Label(dialog, text="字体大小:").pack(anchor=tk.W, padx=20, pady=(15,3))
-        font_var = tk.IntVar(value=self.font_size)
-        ttk.Scale(dialog, from_=12, to=36, variable=font_var, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=20)
-        
-        ttk.Label(dialog, text="纸张宽度:").pack(anchor=tk.W, padx=20, pady=(10,3))
-        width_var = tk.IntVar(value=self.paper_width)
-        ttk.Scale(dialog, from_=400, to=1000, variable=width_var, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=20)
-        
-        ttk.Label(dialog, text="纸张位置:").pack(anchor=tk.W, padx=20, pady=(10,3))
-        pos_var = tk.StringVar(value=self.paper_position)
-        pos_frame = ttk.Frame(dialog)
-        pos_frame.pack(fill=tk.X, padx=20)
-        ttk.Radiobutton(pos_frame, text="居中", variable=pos_var, value="center").pack(side=tk.LEFT, padx=10)
-        ttk.Radiobutton(pos_frame, text="左侧", variable=pos_var, value="left").pack(side=tk.LEFT, padx=10)
-        ttk.Radiobutton(pos_frame, text="右侧", variable=pos_var, value="right").pack(side=tk.LEFT, padx=10)
-        
-        ttk.Label(dialog, text="背景透明度:").pack(anchor=tk.W, padx=20, pady=(10,3))
-        opacity_var = tk.DoubleVar(value=self.bg_opacity)
-        ttk.Scale(dialog, from_=0.3, to=1.0, variable=opacity_var, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=20)
-        
-        ttk.Label(dialog, text="背景颜色:").pack(anchor=tk.W, padx=20, pady=(10,3))
-        bg_var = tk.StringVar(value="#f5f0e8")
-        colors = [("#f5f0e8", "米白"), ("#ffffff", "纯白"), ("#2c2c2c", "深灰"), ("#1a1a2e", "深蓝黑")]
-        color_frame = ttk.Frame(dialog)
-        color_frame.pack(fill=tk.X, padx=20)
-        for color, name in colors:
-            btn = tk.Button(color_frame, bg=color, width=4, height=2, 
-                          command=lambda c=color: bg_var.set(c))
-            btn.pack(side=tk.LEFT, padx=5)
-            ttk.Label(color_frame, text=name).pack(side=tk.LEFT, padx=(0,10))
-        
-        def apply():
-            self.font_size = font_var.get()
-            self.paper_width = width_var.get()
-            self.paper_position = pos_var.get()
-            self.bg_opacity = opacity_var.get()
-            
-            bg_color = bg_var.get()
-            self.paper.configure(bg=bg_color, width=self.paper_width)
-            self.inner_frame.configure(bg=bg_color)
-            self.text_widget.configure(bg=bg_color, font=("微软雅黑", self.font_size))
-            self.suggestion_label.configure(bg=bg_color)
-            
-            self._update_paper_position()
-            self._save_writer_settings()
-            dialog.destroy()
-        
-        ttk.Button(dialog, text="应用", command=apply).pack(pady=20)
-    
-    def _load_writer_settings(self):
-        """加载写作设置"""
-        if self.config:
-            settings_file = self.config.config_dir / "writer_settings.json"
-            if settings_file.exists():
-                with open(settings_file, 'r') as f:
-                    s = json.load(f)
-                self.font_size = s.get("font_size", 18)
-                self.paper_width = s.get("paper_width", 700)
-                self.paper_position = s.get("paper_position", "center")
-                self.bg_opacity = s.get("bg_opacity", 0.85)
-                self.typewriter_mode = s.get("typewriter_mode", True)
-                self.ai_assist_enabled = s.get("ai_assist", True)
-    
-    def _save_writer_settings(self):
-        """保存写作设置"""
-        if self.config:
-            settings_file = self.config.config_dir / "writer_settings.json"
-            with open(settings_file, 'w') as f:
-                json.dump({
-                    "font_size": self.font_size,
-                    "paper_width": self.paper_width,
-                    "paper_position": self.paper_position,
-                    "bg_opacity": self.bg_opacity,
-                    "typewriter_mode": self.typewriter_mode,
-                    "ai_assist": self.ai_assist_enabled,
-                }, f, indent=2)
-    
-    def _save(self):
-        """保存内容"""
-        self.text_content = self.text_widget.get("1.0", tk.END).strip()
-        if self.save_callback:
-            self.save_callback(self.text_content)
-    
-    def _exit_fullscreen(self):
-        """退出全屏"""
-        self._save()
-        self.win.destroy()
-    
-    def get_content(self) -> str:
-        """获取写作内容"""
-        return self.text_widget.get("1.0", tk.END).strip()
-
-
-# ==================== 小说智能体 ====================
-
-class NovelAgent:
-    """小说创作智能体 - 参考AutoGen多智能体协作架构
-    
-    智能体角色：
-    - Writer (作家): 负责创作小说内容
-    - Reviewer (审校): 负责检查质量和一致性
-    - Editor (编辑/质量门): 负责最终裁定是否通过
-    
-    协作流程（参考AutoGen的GroupChat模式）：
-    1. Writer生成内容 → 2. Reviewer审校 → 3. Editor判定
-       → 不过关 → Writer修订 → Reviewer再审校 → ...
-       → 过关 → 保存定稿
-    
-    关键机制：
-    - 迭代修订循环：质量不达标自动触发修订
-    - 质量门控：设定最低通过分数线
-    - 反思记忆：记录每次修订的原因，供后续参考
-    """
-    
-    # 质量阈值
-    QUALITY_THRESHOLD = 75  # 评分低于此值自动触发修订
-    MAX_REVISION_ROUNDS = 3  # 最多修订轮次
-    
-    def __init__(self, ai_client: AIClient, memory: MemoryManager, log_callback=None, config: AppConfig = None):
-        self.ai = ai_client
-        self.memory = memory
-        self.log = log_callback or print
-        self.config = config
-        
-        # 智能体会话历史（参考AutoGen的对话记录）
-        self._conversation_log: List[Dict] = []
-        
-        # 修订记忆（记录每次修订的原因）
-        self._revision_memory: List[Dict] = []
-    
-    def _record_conversation(self, agent: str, action: str, content: str):
-        """记录智能体对话（参考AutoGen的消息历史）"""
-        self._conversation_log.append({
-            "agent": agent,
-            "action": action,
-            "content": content[:200],  # 只记录摘要
-            "timestamp": datetime.now().isoformat(),
-        })
-    
-    def _build_context(self, chapter_num: int, extra_context: str = "", max_chars: int = None) -> str:
-        """构建上下文 - 分层架构，支持5000章小说
-        
-        上下文结构：
-        1. 全局摘要 (10%)
-        2. 当前卷摘要 (15%)
-        3. 当前弧线摘要 (10%)
-        4. 活跃角色 (15%)
-        5. 最近章节 (40%)
-        6. RAG检索结果 (10%)
-        """
-        if max_chars is None:
-            max_chars = self.config.get("context_window", 32000) // 4 if self.config else 8000
-        
-        parts = []
-        used = 0
-        
-        # 1. 全局摘要
-        gs = self.memory.get_global_summary()
-        if gs:
-            budget = int(max_chars * 0.10)
-            text = self._compress_text(gs, budget, keep_tail=True)
-            parts.append(f"【全局摘要】\n{text}")
-            used += len(text)
-        
-        # 2. 当前卷摘要
-        vol_summary = self.memory.get_current_volume_summary(chapter_num)
-        if vol_summary and used < max_chars:
-            budget = int(max_chars * 0.15)
-            text = self._compress_text(vol_summary, budget, keep_tail=True)
-            parts.append(f"【当前卷】\n{text}")
-            used += len(text)
-        
-        # 3. 活跃角色（按活跃度加载）
-        chars = self.memory.get_characters()
-        if chars and used < max_chars:
-            active_names = self.memory.get_active_characters(chapter_num, window=50)
-            budget = int(max_chars * 0.15)
-            text = self._compress_active_characters(chars, active_names, budget)
-            if text:
-                parts.append(f"【活跃角色】\n{text}")
-                used += len(text)
-        
-        # 4. 最近章节摘要（根据小说长度动态调整）
-        if used < max_chars:
-            # 5000章小说看最近5章，500章看最近3章
-            recent_count = 5 if chapter_num > 1000 else 3
-            budget = int(max_chars * 0.40)
-            recent = self.memory.get_recent_summaries(recent_count)
-            if recent:
-                text = self._compress_text(recent, budget, keep_tail=True)
-                parts.append(f"【近期章节】\n{text}")
-                used += len(text)
-        
-        # 5. RAG检索结果（如果有额外上下文）
-        if extra_context and used < max_chars:
-            budget = int(max_chars * 0.10)
-            relevant = self.memory.retrieve_relevant(extra_context, top_k=3)
-            if relevant:
-                rag_text = "\n".join([f"- {r.get('content', '')[:100]}" for r in relevant])
-                text = self._compress_text(rag_text, budget, keep_tail=False)
-                parts.append(f"【相关记忆】\n{text}")
-                used += len(text)
-        
-        # 6. 补充上下文
-        if extra_context and used < max_chars:
-            parts.append(f"【补充】\n{extra_context[:300]}")
-        
-        result = "\n\n".join(parts)
-        if len(result) > max_chars:
-            return result[:max_chars] + "\n...(已压缩)"
-        return result
-    
-    def _compress_active_characters(self, chars: dict, active_names: List[str], budget: int) -> str:
-        """压缩活跃角色信息"""
-        result = []
-        used = 0
-        
-        # 优先显示活跃角色
-        for name in active_names:
-            if used >= budget:
-                break
-            if name in chars:
-                info = chars[name]
-                if isinstance(info, dict):
-                    personality = info.get("personality", "")[:30]
-                    line = f"- {name}: {personality}"
-                else:
-                    line = f"- {name}: {str(info)[:50]}"
-                if used + len(line) <= budget:
-                    result.append(line)
-                    used += len(line)
-        
-        # 如果还有空间，添加其他重要角色
-        if used < budget:
-            for name, info in list(chars.items())[:5]:
-                if name not in active_names and used < budget:
-                    if isinstance(info, dict):
-                        personality = info.get("personality", "")[:20]
-                        line = f"- {name}: {personality}"
-                    else:
-                        line = f"- {name}: {str(info)[:30]}"
-                    if used + len(line) <= budget:
-                        result.append(line)
-                        used += len(line)
-        
-        return "\n".join(result)
-    
-    # ===== 压缩方法 =====
-    
-    def _compress_settings(self, settings: dict, budget: int) -> str:
-        priority_keys = ["world", "rules", "factions", "technology", "history", "geography", "culture"]
-        result = []
-        used = 0
-        for key in priority_keys:
-            if key in settings and used < budget:
-                val = str(settings[key])[:budget - used - len(key) - 3]
-                result.append(f"{key}: {val}")
-                used += len(val) + len(key) + 2
-        return "\n".join(result)
-    
-    def _compress_characters(self, chars: dict, budget: int) -> str:
-        core = ["name", "personality", "motivation"]
-        result = []
-        used = 0
-        for name, info in list(chars.items())[:8]:
-            if used >= budget: break
-            if isinstance(info, dict):
-                extra = "; ".join(f"{f}:{str(info.get(f,''))[:50]}" for f in core if f in info)
-                line = f"- {name}: {extra}"[:budget - used]
-            else:
-                line = f"- {name}: {str(info)[:100]}"[:budget - used]
-            result.append(line)
-            used += len(line) + 1
-        return "\n".join(result)
-    
-    def _compress_text(self, text: str, budget: int, keep_tail: bool = True) -> str:
-        if len(text) <= budget: return text
-        if budget < 50: return text[:budget] + "..."
-        if keep_tail:
-            head = int(budget * 0.3)
-            return text[:head] + "...\n\n" + text[-(budget - head - 5):]
-        else:
-            head = int(budget * 0.7)
-            return text[:head] + "...\n\n" + text[-(budget - head - 5):]
-    
-    def _compress_recent_chapters(self, recent_text: str, budget: int, chapter_num: int) -> str:
-        chapters = recent_text.split("\n\n")
-        if len(chapters) <= 1: return self._compress_text(recent_text, budget, True)
-        result = []
-        used = 0
-        latest = chapters[-1] if chapters else ""
-        lb = min(int(budget * 0.4), len(latest))
-        if latest: result.append(latest[:lb]); used += lb
-        for ch in reversed(chapters[:-1]):
-            if used >= budget: break
-            cb = min(int((budget - used) * 0.3), len(ch))
-            if cb > 50: result.insert(0, self._compress_text(ch, cb, True)); used += cb
-        return "\n\n".join(result)
-    
-    # ===== 多智能体协作核心 =====
-    
-    def generate_with_collaboration(self, chapter_num: int, chapter_title: str,
-                                     chapter_outline: str, word_count: int = 3000) -> str:
-        """多智能体协作生成章节 - 核心编排方法
-        
-        参考AutoGen的GroupChat：Writer→Reviewer→Editor 循环
-        """
-        self._conversation_log = []
-        self.log(f"[编排器] 启动多智能体协作：第{chapter_num}章「{chapter_title}」")
-        
-        # 第1轮：Writer生成初稿
-        self.log(f"[Writer] 正在创作第{chapter_num}章初稿...")
-        self._record_conversation("Writer", "generate", f"开始创作第{chapter_num}章")
-        content = self._writer_generate(chapter_num, chapter_title, chapter_outline, word_count)
-        
-        # 迭代修订循环（参考AutoGen的反馈环）
-        for round_num in range(1, self.MAX_REVISION_ROUNDS + 1):
-            # Reviewer审校
-            self.log(f"[Reviewer] 正在审校第{chapter_num}章（第{round_num}轮）...")
-            self._record_conversation("Reviewer", "review", f"第{round_num}轮审校")
-            review = self._reviewer_evaluate(chapter_num, content)
-            
-            # Editor裁定（质量门）
-            self.log(f"[Editor] 质量裁定：{review.get('overall_score', 0)}分")
-            self._record_conversation("Editor", "judge", 
-                f"评分{review.get('overall_score', 0)}，阈值{self.QUALITY_THRESHOLD}")
-            
-            if review.get("overall_score", 0) >= self.QUALITY_THRESHOLD:
-                self.log(f"[Editor] ✅ 通过！质量达标。")
-                self._record_conversation("Editor", "approve", "质量达标，通过")
-                break
-            
-            # 不达标，修订
-            suggestions = review.get("suggestions", [])
-            issues = review.get("issues", [])
-            self.log(f"[Editor] ⚠️ 质量不达标（{review.get('overall_score', 0)}/{self.QUALITY_THRESHOLD}），"
-                    f"触发第{round_num}轮修订...")
-            
-            # 记录修订记忆
-            self._revision_memory.append({
-                "chapter": chapter_num,
-                "round": round_num,
-                "issues": issues,
-                "suggestions": suggestions,
-            })
-            
-            # Writer修订
-            self.log(f"[Writer] 正在根据审校意见修订...")
-            self._record_conversation("Writer", "revise", f"第{round_num}轮修订")
-            content = self._writer_revise(chapter_num, content, review, chapter_outline)
-        
-        self.log(f"[编排器] 第{chapter_num}章协作完成")
-        return content
-    
-    def _writer_generate(self, chapter_num: int, chapter_title: str, 
-                         chapter_outline: str, word_count: int) -> str:
-        """Writer智能体：生成章节内容"""
-        context = self._build_context(chapter_num)
-        
-        system = f"""你是一位专业的小说作家（Writer Agent）。
-请根据以下上下文信息创作小说章节。
-
-{context}
-
-创作要求：
-1. 保持与前文的连贯性
-2. 角色行为符合其性格设定
-3. 情节推进自然流畅
-4. 语言生动，有画面感
-5. 目标字数约{word_count}字
-6. 直接输出正文内容，不要添加额外说明
-7. 注意设置伏笔和悬念"""
-        
-        prompt = f"请创作第{chapter_num}章：{chapter_title}\n\n章节大纲：{chapter_outline}\n\n目标字数：{word_count}字\n\n请直接输出正文："
-        
-        if word_count > 3000:
-            return self._generate_long_chapter(chapter_num, chapter_title, chapter_outline, word_count, context)
-        
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4096)
-        self.log(f"[Writer] 第{chapter_num}章初稿完成，字数：{len(response)}")
-        return response
-    
-    def _reviewer_evaluate(self, chapter_num: int, content: str, 
-                           previous_feedback: str = "") -> dict:
-        """Reviewer智能体：审校章节
-        
-        参考AutoGen的code_reviewer角色，检查质量和一致性
-        """
-        context = self._build_context(chapter_num)
-        
-        feedback_section = ""
-        if previous_feedback:
-            feedback_section = f"\n上次审校反馈（请重点关注）：\n{previous_feedback}"
-        
-        system = f"""你是一位专业的小说审校编辑（Reviewer Agent）。
-请严格检查以下章节内容的各方面质量。
-
-{context}
-{feedback_section}
-
-请以JSON格式输出审校结果：
-{{
-    "character_consistency": 0-100,  // 角色行为一致性
-    "plot_logic": 0-100,             // 情节逻辑
-    "writing_quality": 0-100,        // 文笔质量
-    "emotional_impact": 0-100,       // 情感感染力
-    "pacing": 0-100,                 // 节奏把控
-    "overall_score": 0-100,          // 综合评分
-    "strengths": ["优点1", ...],     // 写得好的地方
-    "issues": ["问题1", ...],        // 发现的问题
-    "suggestions": ["建议1", ...],   // 修改建议
-    "is_acceptable": true/false      // 是否可接受
-}}"""
-        
-        prompt = f"请审校第{chapter_num}章内容：\n\n{content[:4000]}"
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
-        
-        try:
-            return self._parse_json_response(response, {"overall_score": 70, "issues": [], "suggestions": []})
-        except:
-            return {"overall_score": 70, "issues": [], "suggestions": [], "raw": response}
-    
-    def _writer_revise(self, chapter_num: int, original: str, review: dict, 
-                       chapter_outline: str) -> str:
-        """Writer智能体：根据审校意见修订章节
-        
-        参考AutoGen的迭代优化循环
-        """
-        suggestions = review.get("suggestions", [])
-        issues = review.get("issues", [])
-        strengths = review.get("strengths", [])
-        
-        context = self._build_context(chapter_num)
-        
-        system = f"""你是一位专业的小说作家（Writer Agent），正在修订自己的作品。
-
-{context}
-
-修订原则：
-1. 根据审校意见进行针对性修改
-2. 保留已有的优点和长处
-3. 修改时注意不要破坏整体的连贯性
-4. 回应每一个具体问题"""
-        
-        prompt = f"""请修订第{chapter_num}章内容。
-
-审校反馈：
-优点（请保持）：{json.dumps(strengths, ensure_ascii=False)}
-问题（需修改）：{json.dumps(issues, ensure_ascii=False)}
-建议（参考）：{json.dumps(suggestions, ensure_ascii=False)}
-
-原文：
-{original[-4000:] if len(original) > 4000 else original}
-
-修订要求：请输出完整的修订后文本，直接输出正文："""
-        
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4096)
-        self.log(f"[Writer] 修订完成，字数：{len(response)}")
-        return response
-    
-    # ===== 传统方法（兼容旧接口）=====
-    
-    def generate_chapter(self, chapter_num: int, chapter_title: str, 
-                         chapter_outline: str, word_count: int = 3000) -> str:
-        """生成章节 - 使用多智能体协作"""
-        return self.generate_with_collaboration(chapter_num, chapter_title, 
-                                                chapter_outline, word_count)
-    
-    def review_chapter(self, chapter_num: int, content: str) -> dict:
-        """审校章节"""
-        return self._reviewer_evaluate(chapter_num, content)
-    
-    def generate_settings(self, genre: str, title: str, concept: str) -> dict:
-        """生成世界观"""
-        self.log(f"[智能体] 正在生成世界观...")
-        system = """你是一位专业的小说世界观设定师。请生成详细的世界观设定。
-以JSON格式输出：world/rules/factions/history/technology/geography/culture"""
-        prompt = f"小说类型：{genre}\n标题：{title}\n概念：{concept}"
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
-        settings = self._parse_json_response(response, {"raw": response})
-        self.memory.save_settings(settings)
-        return settings
-    
-    def generate_characters(self, genre: str, title: str, count: int = 5) -> dict:
-        """生成角色"""
-        self.log(f"[智能体] 正在生成{count}个角色...")
-        settings = self.memory.get_settings()
-        system = f"你是专业角色设计师。世界观：{json.dumps(settings, ensure_ascii=False)[:500]}\n输出JSON：{{'角色名': {{...}}}}"
-        prompt = f"小说类型：{genre}\n标题：{title}\n创建{count}个角色"
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
-        chars = self._parse_json_response(response, {"raw": response})
-        self.memory.save_characters(chars)
-        return chars
-    
-    def generate_outline(self, genre: str, title: str, chapter_count: int) -> list:
-        """生成大纲"""
-        self.log(f"[智能体] 正在生成{chapter_count}章大纲...")
-        context = self._build_context(0)
-        system = f"你是专业小说大纲规划师。\n{context}\n输出JSON数组：[{{'chapter':1,'title':'','summary':'','key_events':[],'characters_involved':[]}}]"
-        prompt = f"小说类型：{genre}\n标题：{title}\n章节数：{chapter_count}"
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
-        outline = self._parse_json_response(response, [], is_list=True)
-        if not outline:
-            outline = [{"chapter": i+1, "title": f"第{i+1}章", "summary": "待规划"} for i in range(chapter_count)]
-        return outline
-    
-    def finalize_chapter(self, chapter_num: int, content: str):
-        """定稿章节 + 更新记忆"""
-        # 章节摘要
-        summary = self.ai.chat(
-            [{"role": "user", "content": f"请生成摘要（100-200字）：\n{content[:2000]}"}],
-            system="你是故事摘要助手。", max_tokens=300
-        )
-        self.memory.save_chapter_summary(chapter_num, summary)
-        
-        # 全局摘要
-        old = self.memory.get_global_summary()
-        new = self.ai.chat(
-            [{"role": "user", "content": f"更新全局摘要：\n旧：{old}\n新章节：{summary}"}],
-            system="你是故事摘要助手。", max_tokens=500
-        )
-        self.memory.save_global_summary(new)
-        
-        # 关键词索引
-        kw = self.ai.chat([{"role": "user", "content": f"提取10个关键词，逗号分隔：\n{content[:1000]}"}],
-                         system="提取关键词。", max_tokens=200)
-        self.memory.update_index(chapter_num, [k.strip() for k in kw.split(",") if k.strip()])
-        
-        # 添加记忆块
-        self.memory.add_chunk("plot", summary, importance=8, 
-                             tags=kw.split(",")[:5] if kw else [])
-        self.memory.add_event(chapter_num, summary, "story")
-        
-        self.log(f"[智能体] 第{chapter_num}章定稿完成")
-    
-    # ===== 工具方法 =====
-    
-    @staticmethod
-    def _parse_json_response(response: str, default: Any, is_list: bool = False) -> Any:
-        """解析AI返回的JSON"""
-        try:
-            marker = "[" if is_list else "{"
-            end_marker = "]" if is_list else "}"
-            start = response.find(marker)
-            end = response.rfind(end_marker) + 1
-            if start >= 0 and end > start:
-                return json.loads(response[start:end])
-        except:
-            pass
-        return default
-    
-    def _generate_long_chapter(self, chapter_num, chapter_title, chapter_outline, word_count, context) -> str:
-        """分段生成长章节"""
-        parts = []
-        part_count = max((word_count + 2999) // 3000, 1)
-        for i in range(part_count):
-            self.log(f"[Writer] 第{chapter_num}章 第{i+1}/{part_count}段...")
-            part_prompt = f"创作第{chapter_num}章：{chapter_title}\n大纲：{chapter_outline}\n已有：{''.join(parts[-2:]) or '（开头）'}\n请创作约3000字："
-            response = self.ai.chat([{"role": "user", "content": part_prompt}],
-                                   system=f"专业小说作家。\n{context[:1000]}", max_tokens=4096)
-            parts.append(response)
-        return "\n\n".join(parts)
-
-
-# ==================== 阅读管理器 ====================
-
-class ReadingManager:
-    """阅读管理器 - 支持多种格式的小说阅读"""
-    
-    SUPPORTED_FORMATS = {
-        '.txt': 'TXT文本文件',
-        '.epub': 'EPUB电子书',
-        '.pdf': 'PDF文档',
-        '.docx': 'Word文档',
-        '.md': 'Markdown文件',
-    }
-    
-    def __init__(self, config: AppConfig):
-        self.config = config
-        self.books_dir = config.config_dir / "books"
-        self.books_dir.mkdir(exist_ok=True)
-        self.bookmarks_file = config.config_dir / "bookmarks.json"
-        self.reading_history_file = config.config_dir / "reading_history.json"
-        
-        # 阅读设置
-        self.font_size = 16
-        self.font_family = "微软雅黑"
-        self.line_spacing = 1.5
-        self.bg_color = "#f5f0e8"  # 米白色背景
-        self.text_color = "#2c2c2c"
-        self.theme = "light"  # light/dark/sepia
-        
-    def get_supported_formats(self) -> List[str]:
-        """获取支持的文件格式"""
-        return list(self.SUPPORTED_FORMATS.keys())
-    
-    def import_book(self, file_path: str) -> Optional[Dict]:
-        """导入书籍到书库"""
-        path = Path(file_path)
-        if not path.exists():
-            return None
-        
-        ext = path.suffix.lower()
-        if ext not in self.SUPPORTED_FORMATS:
-            return None
-        
-        # 复制到书库
-        dest = self.books_dir / path.name
-        import shutil
-        shutil.copy2(path, dest)
-        
-        # 提取元数据
-        meta = self._extract_metadata(dest, ext)
-        meta['file_path'] = str(dest)
-        meta['import_date'] = datetime.now().isoformat()
-        meta['last_read'] = None
-        meta['progress'] = 0
-        
-        return meta
-    
-    def _extract_metadata(self, file_path: Path, ext: str) -> Dict:
-        """提取书籍元数据"""
-        meta = {
-            'title': file_path.stem,
-            'author': '未知',
-            'format': ext,
-            'size': file_path.stat().st_size,
-            'pages': 0,
-            'chapters': [],
-        }
-        
-        try:
-            if ext == '.txt':
-                # 尝试读取前几行获取标题
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    lines = [f.readline().strip() for _ in range(10)]
-                    # 寻找标题行
-                    for line in lines:
-                        if line and len(line) < 50 and not line.startswith(('第', '章', '卷')):
-                            meta['title'] = line
-                            break
-            
-            elif ext == '.epub' and EPUB_SUPPORT:
-                book = epub.read_epub(str(file_path))
-                meta['title'] = book.get_metadata('DC', 'title')[0][0] if book.get_metadata('DC', 'title') else file_path.stem
-                meta['author'] = book.get_metadata('DC', 'creator')[0][0] if book.get_metadata('DC', 'creator') else '未知'
-                # 获取章节列表
-                for item in book.get_items():
-                    if item.get_type() == 9:  # ITEM_DOCUMENT
-                        meta['chapters'].append(item.get_name())
-            
-            elif ext == '.pdf' and PDF_SUPPORT:
-                with open(file_path, 'rb') as f:
-                    reader = PyPDF2.PdfReader(f)
-                    meta['pages'] = len(reader.pages)
-                    if reader.metadata:
-                        meta['title'] = reader.metadata.title or file_path.stem
-                        meta['author'] = reader.metadata.author or '未知'
-            
-            elif ext == '.docx' and DOCX_SUPPORT:
-                doc = Document(str(file_path))
-                # 获取段落数作为页数估计
-                meta['pages'] = len(doc.paragraphs) // 50  # 估计每页50段落
-        
-        except Exception as e:
-            print(f"提取元数据失败: {e}")
-        
-        return meta
-    
-    def read_book(self, file_path: str, page: int = 0) -> Optional[str]:
-        """读取书籍内容"""
-        path = Path(file_path)
-        if not path.exists():
-            return None
-        
-        ext = path.suffix.lower()
-        
-        try:
-            if ext == '.txt':
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                return content
-            
-            elif ext == '.epub' and EPUB_SUPPORT:
-                import re
-                book = epub.read_epub(str(file_path))
-                content = []
-                for item in book.get_items():
-                    if item.get_type() == 9:  # ITEM_DOCUMENT
-                        html = item.get_content().decode('utf-8', errors='ignore')
-                        text = re.sub(r'<[^>]+>', '', html)
-                        text = re.sub(r'\s+', ' ', text).strip()
-                        if text:
-                            content.append(text)
-                return '\n\n'.join(content)
-            
-            elif ext == '.pdf' and PDF_SUPPORT:
-                with open(file_path, 'rb') as f:
-                    reader = PyPDF2.PdfReader(f)
-                    content = []
-                    for i, page in enumerate(reader.pages):
-                        try:
-                            text = page.extract_text()
-                            if text and text.strip():
-                                content.append(text)
-                        except:
-                            pass
-                    return '\n\n'.join(content)
-            
-            elif ext == '.docx' and DOCX_SUPPORT:
-                doc = Document(str(file_path))
-                content = []
-                for para in doc.paragraphs:
-                    if para.text.strip():
-                        content.append(para.text)
-                return '\n\n'.join(content)
-            
-            elif ext == '.md':
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    return f.read()
-        
-        except Exception as e:
-            print(f"读取书籍失败: {e}")
-            return None
-        
-        return None
-    
-    def get_bookmarks(self) -> List[Dict]:
-        """获取所有书签"""
-        if self.bookmarks_file.exists():
-            with open(self.bookmarks_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return []
-    
-    def add_bookmark(self, file_path: str, position: int, title: str = ""):
-        """添加书签"""
-        bookmarks = self.get_bookmarks()
-        bookmark = {
-            'id': int(time.time() * 1000),
-            'file_path': file_path,
-            'position': position,
-            'title': title or f"书签 {len(bookmarks) + 1}",
-            'created_at': datetime.now().isoformat(),
-        }
-        bookmarks.append(bookmark)
-        with open(self.bookmarks_file, 'w', encoding='utf-8') as f:
-            json.dump(bookmarks, f, indent=2, ensure_ascii=False)
-        return bookmark
-    
-    def delete_bookmark(self, bookmark_id: int):
-        """删除书签"""
-        bookmarks = self.get_bookmarks()
-        bookmarks = [b for b in bookmarks if b.get('id') != bookmark_id]
-        with open(self.bookmarks_file, 'w', encoding='utf-8') as f:
-            json.dump(bookmarks, f, indent=2, ensure_ascii=False)
-    
-    def get_reading_history(self) -> List[Dict]:
-        """获取阅读历史"""
-        if self.reading_history_file.exists():
-            with open(self.reading_history_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return []
-    
-    def update_reading_progress(self, file_path: str, position: int, progress: float):
-        """更新阅读进度"""
-        history = self.get_reading_history()
-        
-        # 查找现有记录
-        found = False
-        for record in history:
-            if record.get('file_path') == file_path:
-                record['position'] = position
-                record['progress'] = progress
-                record['last_read'] = datetime.now().isoformat()
-                found = True
-                break
-        
-        # 添加新记录
-        if not found:
-            history.append({
-                'file_path': file_path,
-                'position': position,
-                'progress': progress,
-                'last_read': datetime.now().isoformat(),
-            })
-        
-        # 保存
-        with open(self.reading_history_file, 'w', encoding='utf-8') as f:
-            json.dump(history, f, indent=2, ensure_ascii=False)
-    
-    def get_library_books(self) -> List[Dict]:
-        """获取书库中的所有书籍"""
-        books = []
-        for file in self.books_dir.iterdir():
-            if file.is_file() and file.suffix.lower() in self.SUPPORTED_FORMATS:
-                meta = self._extract_metadata(file, file.suffix.lower())
-                meta['file_path'] = str(file)
-                books.append(meta)
-        return books
-    
-    def search_in_book(self, file_path: str, keyword: str) -> List[Dict]:
-        """在书籍中搜索关键词"""
-        content = self.read_book(file_path)
-        if not content:
-            return []
-        
-        results = []
-        lines = content.split('\n')
-        for i, line in enumerate(lines):
-            if keyword.lower() in line.lower():
-                results.append({
-                    'line_number': i + 1,
-                    'content': line.strip(),
-                    'context': lines[max(0, i-1):i+2],  # 上下文
-                })
-        
-        return results
-    
-    def export_bookmarks(self, file_path: str):
-        """导出书签到文件"""
-        bookmarks = self.get_bookmarks()
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(bookmarks, f, indent=2, ensure_ascii=False)
-    
-    def import_bookmarks(self, file_path: str):
-        """从文件导入书签"""
-        with open(file_path, 'r', encoding='utf-8') as f:
-            bookmarks = json.load(f)
-        
-        existing = self.get_bookmarks()
-        existing_ids = {b['id'] for b in existing}
-        
-        # 合并书签，避免重复
-        for bookmark in bookmarks:
-            if bookmark['id'] not in existing_ids:
-                existing.append(bookmark)
-        
-        with open(self.bookmarks_file, 'w', encoding='utf-8') as f:
-            json.dump(existing, f, indent=2, ensure_ascii=False)
-
-
-# ==================== UI样式管理 ====================
-
-class UIStyle:
-    """现代化UI样式"""
-    
-    # 颜色方案 - 深色主题
-    COLORS = {
-        'bg_dark': '#1e1e2e',        # 主背景
-        'bg_medium': '#2d2d3f',      # 次背景
-        'bg_light': '#3d3d52',       # 浅背景
-        'bg_card': '#252538',        # 卡片背景
-        'accent': '#7c3aed',         # 主色调（紫色）
-        'accent_light': '#a78bfa',   # 浅紫色
-        'accent_hover': '#6d28d9',   # 悬停色
-        'success': '#10b981',        # 成功绿
-        'warning': '#f59e0b',        # 警告黄
-        'error': '#ef4444',          # 错误红
-        'text_primary': '#f8fafc',   # 主文字
-        'text_secondary': '#94a3b8', # 次文字
-        'text_muted': '#64748b',     # 弱文字
-        'border': '#404055',         # 边框
-        'input_bg': '#2d2d3f',       # 输入框背景
-        'hover': '#353548',          # 悬停背景
-    }
-    
-    @classmethod
-    def apply_theme(cls, root):
-        """应用主题到根窗口"""
-        style = ttk.Style()
-        style.theme_use('clam')
-        
-        # 配置全局样式
-        root.configure(bg=cls.COLORS['bg_dark'])
-        
-        # Frame样式
-        style.configure('Dark.TFrame', background=cls.COLORS['bg_dark'])
-        style.configure('Card.TFrame', background=cls.COLORS['bg_card'])
-        style.configure('Medium.TFrame', background=cls.COLORS['bg_medium'])
-        
-        # Label样式
-        style.configure('Dark.TLabel', 
-                       background=cls.COLORS['bg_dark'],
-                       foreground=cls.COLORS['text_primary'],
-                       font=('微软雅黑', 10))
-        style.configure('Title.TLabel',
-                       background=cls.COLORS['bg_dark'],
-                       foreground=cls.COLORS['text_primary'],
-                       font=('微软雅黑', 14, 'bold'))
-        style.configure('Subtitle.TLabel',
-                       background=cls.COLORS['bg_dark'],
-                       foreground=cls.COLORS['text_secondary'],
-                       font=('微软雅黑', 10))
-        style.configure('Accent.TLabel',
-                       background=cls.COLORS['bg_dark'],
-                       foreground=cls.COLORS['accent_light'],
-                       font=('微软雅黑', 10))
-        
-        # Button样式
-        style.configure('Accent.TButton',
-                       background=cls.COLORS['accent'],
-                       foreground=cls.COLORS['text_primary'],
-                       font=('微软雅黑', 10),
-                       padding=(15, 8))
-        style.map('Accent.TButton',
-                 background=[('active', cls.COLORS['accent_hover']),
-                           ('pressed', cls.COLORS['accent_hover'])])
-        
-        style.configure('Secondary.TButton',
-                       background=cls.COLORS['bg_light'],
-                       foreground=cls.COLORS['text_primary'],
-                       font=('微软雅黑', 10),
-                       padding=(12, 6))
-        style.map('Secondary.TButton',
-                 background=[('active', cls.COLORS['hover'])])
-        
-        style.configure('Success.TButton',
-                       background=cls.COLORS['success'],
-                       foreground='white',
-                       font=('微软雅黑', 10, 'bold'),
-                       padding=(15, 8))
-        
-        # Notebook样式
-        style.configure('Dark.TNotebook',
-                       background=cls.COLORS['bg_dark'],
-                       borderwidth=0)
-        style.configure('Dark.TNotebook.Tab',
-                       background=cls.COLORS['bg_medium'],
-                       foreground=cls.COLORS['text_secondary'],
-                       padding=[15, 8],
-                       font=('微软雅黑', 10))
-        style.map('Dark.TNotebook.Tab',
-                 background=[('selected', cls.COLORS['accent']),
-                           ('active', cls.COLORS['hover'])],
-                 foreground=[('selected', 'white'),
-                           ('active', cls.COLORS['text_primary'])])
-        
-        # Entry样式
-        style.configure('Dark.TEntry',
-                       fieldbackground=cls.COLORS['input_bg'],
-                       foreground=cls.COLORS['text_primary'],
-                       insertcolor=cls.COLORS['text_primary'],
-                       font=('微软雅黑', 10))
-        
-        # Combobox样式
-        style.configure('Dark.TCombobox',
-                       fieldbackground=cls.COLORS['input_bg'],
-                       foreground=cls.COLORS['text_primary'],
-                       font=('微软雅黑', 10))
-        
-        # Checkbutton样式
-        style.configure('Dark.TCheckbutton',
-                       background=cls.COLORS['bg_dark'],
-                       foreground=cls.COLORS['text_primary'],
-                       font=('微软雅黑', 10))
-        
-        # Radiobutton样式
-        style.configure('Dark.TRadiobutton',
-                       background=cls.COLORS['bg_dark'],
-                       foreground=cls.COLORS['text_primary'],
-                       font=('微软雅黑', 10))
-        
-        # LabelFrame样式
-        style.configure('Card.TLabelframe',
-                       background=cls.COLORS['bg_card'],
-                       foreground=cls.COLORS['text_primary'],
-                       font=('微软雅黑', 10, 'bold'))
-        style.configure('Card.TLabelframe.Label',
-                       background=cls.COLORS['bg_card'],
-                       foreground=cls.COLORS['accent_light'],
-                       font=('微软雅黑', 10, 'bold'))
-        
-        # Separator样式
-        style.configure('Dark.TSeparator',
-                       background=cls.COLORS['border'])
-        
-        # Scrollbar样式
-        style.configure('Dark.Vertical.TScrollbar',
-                       background=cls.COLORS['bg_medium'],
-                       troughcolor=cls.COLORS['bg_dark'],
-                       arrowcolor=cls.COLORS['text_muted'])
-        
-        return style
-
-
-# ==================== 主应用程序 ====================
-
-class NovelWriterApp:
+class NovelWriterApp(
+    ElementsPanelMixin, BridgesPanelMixin, DescriptionsPanelMixin,
+    DialoguePanelMixin, StoryFlowPanelMixin, StylePanelMixin,
+    AdaptPanelMixin, WebSearchPanelMixin, MemoryVizPanelMixin,
+    SummaryMgmtPanelMixin, BatchOpsPanelMixin, ChapterAnalysisPanelMixin
+):
     """AI自动写小说主应用"""
     
     def __init__(self):
@@ -3152,6 +96,7 @@ class NovelWriterApp:
         self.outline = []
         self.current_chapter = 0
         self.is_modified = False  # 文档是否已修改
+        self._state_lock = threading.Lock()  # 保护共享状态的锁
         
         # 创建GUI
         self.root = tk.Tk()
@@ -3164,7 +109,7 @@ class NovelWriterApp:
             icon_path = Path(__file__).parent / "icon.ico"
             if icon_path.exists():
                 self.root.iconbitmap(str(icon_path))
-        except:
+        except Exception:
             pass
         
         # 应用主题
@@ -3179,6 +124,24 @@ class NovelWriterApp:
         self.root.bind('<Control-n>', lambda e: self._new_novel())
         self.root.bind('<Control-o>', lambda e: self._open_novel())
         self.root.bind('<F11>', lambda e: self._open_fullscreen_writer())
+    
+    def _run_async(self, task_func, success_callback=None, error_prefix="操作"):
+        """在后台线程执行任务，自动处理异常和UI线程回调
+        
+        Args:
+            task_func: 要执行的函数，返回结果传给 success_callback
+            success_callback: 成功回调 function(result)，在UI线程中执行
+            error_prefix: 错误消息前缀
+        """
+        def wrapper():
+            try:
+                result = task_func()
+                if success_callback:
+                    self.root.after(0, lambda: success_callback(result))
+            except Exception as e:
+                self._log(f"{error_prefix}失败: {e}")
+                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+        threading.Thread(target=wrapper, daemon=True).start()
     
     def _create_menu(self):
         """创建菜单栏"""
@@ -3298,21 +261,62 @@ class NovelWriterApp:
         agent_frame = tk.Frame(left_panel, bg=C['bg_medium'], padx=10, pady=5)
         agent_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
         
-        tk.Label(agent_frame, text="智能体步骤", font=('微软雅黑', 10, 'bold'),
+        tk.Label(agent_frame, text="创作流程", font=('微软雅黑', 10, 'bold'),
                 bg=C['bg_medium'], fg=C['accent_light']).pack(anchor=tk.W, pady=(0, 5))
         
-        steps = [
-            ("1. 世界观", self._gen_settings),
-            ("2. 角色", self._gen_characters),
-            ("3. 大纲", self._gen_outline),
-            ("4. 生成章节", self._gen_chapter),
-            ("5. 审校", self._review_chapter),
+        # 基础步骤
+        basic_label = tk.Label(agent_frame, text="基础设置", font=('微软雅黑', 8),
+                              bg=C['bg_medium'], fg=C['text_muted'])
+        basic_label.pack(anchor=tk.W, pady=(0, 2))
+        
+        basic_steps = [
+            ("1. 世界观设定", self._gen_settings),
+            ("2. 角色创建", self._gen_characters),
+            ("3. 故事大纲", self._gen_outline),
         ]
         
-        for text, cmd in steps:
+        for text, cmd in basic_steps:
             btn = tk.Button(agent_frame, text=text, font=('微软雅黑', 9),
                           bg=C['bg_light'], fg=C['text_secondary'], relief=tk.FLAT,
-                          padx=8, pady=5, cursor='hand2', anchor=tk.W,
+                          padx=8, pady=4, cursor='hand2', anchor=tk.W,
+                          activebackground=C['hover'],
+                          command=cmd)
+            btn.pack(fill=tk.X, pady=1)
+        
+        # 创作步骤
+        write_label = tk.Label(agent_frame, text="章节创作", font=('微软雅黑', 8),
+                              bg=C['bg_medium'], fg=C['text_muted'])
+        write_label.pack(anchor=tk.W, pady=(8, 2))
+        
+        write_steps = [
+            ("4. 生成初稿", self._gen_chapter),
+            ("5. AI审校", self._review_chapter),
+            ("6. 风格优化", self._style_optimize),
+            ("7. 保存章节", self._save_chapter),
+        ]
+        
+        for text, cmd in write_steps:
+            btn = tk.Button(agent_frame, text=text, font=('微软雅黑', 9),
+                          bg=C['bg_light'], fg=C['text_secondary'], relief=tk.FLAT,
+                          padx=8, pady=4, cursor='hand2', anchor=tk.W,
+                          activebackground=C['hover'],
+                          command=cmd)
+            btn.pack(fill=tk.X, pady=1)
+        
+        # 导入与分析
+        import_label = tk.Label(agent_frame, text="导入分析", font=('微软雅黑', 8),
+                               bg=C['bg_medium'], fg=C['text_muted'])
+        import_label.pack(anchor=tk.W, pady=(8, 2))
+        
+        import_steps = [
+            ("导入文档", self._import_document),
+            ("AI分析建议", self._ai_analyze_content),
+        ]
+        
+        for text, cmd in import_steps:
+            btn = tk.Button(agent_frame, text=text, font=('微软雅黑', 9),
+                          bg=C['accent_bg'], fg=C['accent_light'], relief=tk.FLAT,
+                          padx=8, pady=4, cursor='hand2', anchor=tk.W,
                           activebackground=C['hover'],
                           command=cmd)
             btn.pack(fill=tk.X, pady=1)
@@ -3361,8 +365,37 @@ class NovelWriterApp:
         outline_frame = tk.Frame(left_panel, bg=C['bg_medium'], padx=10, pady=5)
         outline_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 10))
         
-        tk.Label(outline_frame, text="章节大纲", font=('微软雅黑', 10, 'bold'),
-                bg=C['bg_medium'], fg=C['accent_light']).pack(anchor=tk.W, pady=(0, 5))
+        # 大纲类型选择
+        outline_header = tk.Frame(outline_frame, bg=C['bg_medium'])
+        outline_header.pack(fill=tk.X, pady=(0, 5))
+        
+        tk.Label(outline_header, text="大纲", font=('微软雅黑', 10, 'bold'),
+                bg=C['bg_medium'], fg=C['accent_light']).pack(side=tk.LEFT)
+        
+        # 大纲类型下拉框
+        self.outline_type_var = tk.StringVar(value="章节大纲")
+        outline_type_combo = ttk.Combobox(outline_header, textvariable=self.outline_type_var,
+                                         values=["整体大纲", "章节大纲", "故事大纲"],
+                                         state="readonly", width=10, font=('微软雅黑', 8))
+        outline_type_combo.pack(side=tk.RIGHT)
+        outline_type_combo.bind('<<ComboboxSelected>>', self._on_outline_type_change)
+        
+        # 大纲操作按钮
+        outline_btn_frame = tk.Frame(outline_frame, bg=C['bg_medium'])
+        outline_btn_frame.pack(fill=tk.X, pady=2)
+        
+        tk.Button(outline_btn_frame, text="生成", font=('微软雅黑', 8),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=4,
+                 command=self._gen_outline).pack(side=tk.LEFT, padx=1)
+        tk.Button(outline_btn_frame, text="添加", font=('微软雅黑', 8),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=4,
+                 command=self._add_outline_item).pack(side=tk.LEFT, padx=1)
+        tk.Button(outline_btn_frame, text="编辑", font=('微软雅黑', 8),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=4,
+                 command=self._edit_outline_item).pack(side=tk.LEFT, padx=1)
+        tk.Button(outline_btn_frame, text="删除", font=('微软雅黑', 8),
+                 bg=C['danger'], fg='white', relief=tk.FLAT, padx=4,
+                 command=self._delete_outline_item).pack(side=tk.RIGHT, padx=1)
         
         # 大纲列表框
         list_frame = tk.Frame(outline_frame, bg=C['bg_dark'])
@@ -3390,10 +423,35 @@ class NovelWriterApp:
         chapter_frame = tk.Frame(self.notebook, bg=C['bg_dark'])
         self.notebook.add(chapter_frame, text=" 章节内容 ")
         
-        # 章节标题
+        # 章节标题和导航
+        title_bar = tk.Frame(chapter_frame, bg=C['bg_dark'])
+        title_bar.pack(fill=tk.X, padx=15, pady=(10, 5))
+        
         self.chapter_title_var = tk.StringVar(value="选择或生成章节")
-        tk.Label(chapter_frame, textvariable=self.chapter_title_var, 
-                font=('微软雅黑', 13, 'bold'), bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=15, pady=(10, 5))
+        tk.Label(title_bar, textvariable=self.chapter_title_var, 
+                font=('微软雅黑', 13, 'bold'), bg=C['bg_dark'], fg=C['text_primary']).pack(side=tk.LEFT)
+        
+        # 章节导航按钮
+        nav_frame = tk.Frame(title_bar, bg=C['bg_dark'])
+        nav_frame.pack(side=tk.RIGHT)
+        
+        self.prev_chapter_btn = tk.Button(nav_frame, text="◀ 上一章", font=('微软雅黑', 9),
+                                         bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT,
+                                         padx=8, pady=2, cursor='hand2',
+                                         command=self._prev_chapter)
+        self.prev_chapter_btn.pack(side=tk.LEFT, padx=2)
+        
+        self.next_chapter_btn = tk.Button(nav_frame, text="下一章 ▶", font=('微软雅黑', 9),
+                                         bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT,
+                                         padx=8, pady=2, cursor='hand2',
+                                         command=self._next_chapter)
+        self.next_chapter_btn.pack(side=tk.LEFT, padx=2)
+        
+        self.save_chapter_btn = tk.Button(nav_frame, text="💾 保存", font=('微软雅黑', 9),
+                                          bg=C['accent'], fg='white', relief=tk.FLAT,
+                                          padx=8, pady=2, cursor='hand2',
+                                          command=self._save_chapter)
+        self.save_chapter_btn.pack(side=tk.LEFT, padx=2)
         
         # 写作区域
         text_frame = tk.Frame(chapter_frame, bg=C['bg_dark'])
@@ -3760,7 +818,7 @@ class NovelWriterApp:
             line_num = int(first_visible.split('.')[0])
             total_lines = int(self.reader_text.index(tk.END).split('.')[0])
             position = int(line_num / total_lines * 100) if total_lines > 0 else 0
-        except:
+        except (tk.TclError, ValueError, ZeroDivisionError):
             position = 0
         
         title = f"书签 - {Path(self.current_book_path).stem} - {position}%"
@@ -3857,6 +915,10 @@ class NovelWriterApp:
     
     def _log(self, message: str):
         """添加日志（线程安全）"""
+        # 使用loguru记录日志
+        logger.info(message)
+        
+        # 同时更新UI日志区域
         def _do_log():
             self.log_text.config(state=tk.NORMAL)
             timestamp = time.strftime("%H:%M:%S")
@@ -3865,7 +927,7 @@ class NovelWriterApp:
             self.log_text.config(state=tk.DISABLED)
         try:
             self.root.after(0, _do_log)
-        except:
+        except RuntimeError:
             pass
     
     def _update_status(self):
@@ -3894,26 +956,6 @@ class NovelWriterApp:
         
         C = UIStyle.COLORS
         
-        # ===== 底部固定区域（先pack，确保始终可见）=====
-        bottom = tk.Frame(dialog, bg=C['bg_dark'])
-        bottom.pack(side=tk.BOTTOM, fill=tk.X, padx=15, pady=8)
-        
-        # 核心概念
-        concept_row = tk.Frame(bottom, bg=C['bg_dark'])
-        concept_row.pack(fill=tk.X, pady=(0, 5))
-        tk.Label(concept_row, text="核心概念:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(side=tk.LEFT)
-        concept_entry = tk.Entry(concept_row, font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_primary'],
-                                insertbackground=C['text_primary'], relief=tk.FLAT)
-        concept_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        
-        # 章节数 + 创建按钮
-        action_row = tk.Frame(bottom, bg=C['bg_dark'])
-        action_row.pack(fill=tk.X)
-        tk.Label(action_row, text="章节数:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(side=tk.LEFT)
-        chapters_var = tk.StringVar(value="20")
-        tk.Spinbox(action_row, from_=1, to=500, textvariable=chapters_var, width=6,
-                  font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_primary']).pack(side=tk.LEFT, padx=5)
-        
         # ===== 顶部固定区域 =====
         top = tk.Frame(dialog, bg=C['bg_dark'])
         top.pack(side=tk.TOP, fill=tk.X, padx=15, pady=(10, 0))
@@ -3922,10 +964,101 @@ class NovelWriterApp:
         title_entry = tk.Entry(top, font=('微软雅黑', 10), bg=C['bg_card'], fg=C['text_primary'], insertbackground=C['text_primary'], relief=tk.FLAT, width=40)
         title_entry.grid(row=0, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
         
-        tk.Label(top, text="小说频道:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=1, column=0, sticky=tk.W, pady=3)
+        # 快速模板
+        tk.Label(top, text="快速模板:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=1, column=0, sticky=tk.W, pady=3)
+        template_var = tk.StringVar(value="无")
+        template_combo = ttk.Combobox(top, textvariable=template_var, state="readonly", width=35)
+        template_combo['values'] = ["无", "穿越异世", "重生归来", "系统流", "都市异能", "修仙问道"]
+        template_combo.grid(row=1, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
+        
+        # 模板变量输入区域
+        template_vars_frame = tk.Frame(top, bg=C['bg_dark'])
+        template_vars_frame.grid(row=2, column=0, columnspan=2, sticky=tk.EW, pady=3)
+        
+        template_entries = {}
+        
+        TEMPLATES = {
+            "穿越异世": {
+                "genre": "玄幻-异世大陆",
+                "tags": ["穿越", "异世界"],
+                "template": "一道白光闪过，{name}睁开眼发现自己躺在陌生的{place}，身边站着一位{creature}。",
+                "vars": {
+                    "name": ("主角名", "李云"),
+                    "place": ("地点", "竹林"),
+                    "creature": ("人物", "白发老者")
+                }
+            },
+            "重生归来": {
+                "genre": "都市-都市异能",
+                "tags": ["重生", "复仇"],
+                "template": "当{name}再次睁开眼，发现自己回到了{year}年，一切还来得及改变。",
+                "vars": {
+                    "name": ("主角名", "张伟"),
+                    "year": ("年份", "2010")
+                }
+            },
+            "系统流": {
+                "genre": "玄幻-东方玄幻",
+                "tags": ["系统流", "升级"],
+                "template": "叮！恭喜宿主{name}激活{system_name}系统，当前等级：Lv.1。",
+                "vars": {
+                    "name": ("主角名", "王明"),
+                    "system_name": ("系统名", "万界商城")
+                }
+            },
+            "都市异能": {
+                "genre": "都市-都市异能",
+                "tags": ["异能", "都市"],
+                "template": "一场意外让{name}获得了{ability}的能力，从此生活发生了翻天覆地的变化。",
+                "vars": {
+                    "name": ("主角名", "林风"),
+                    "ability": ("能力", "透视")
+                }
+            },
+            "修仙问道": {
+                "genre": "仙侠-古典仙侠",
+                "tags": ["修仙", "问道"],
+                "template": "少年{name}偶得{treasure}，踏上漫漫修仙路。",
+                "vars": {
+                    "name": ("主角名", "陈轩"),
+                    "treasure": ("宝物", "上古功法")
+                }
+            }
+        }
+        
+        def on_template_change(event=None):
+            # 清除旧的模板变量输入框
+            for widget in template_vars_frame.winfo_children():
+                widget.destroy()
+            template_entries.clear()
+            
+            template_name = template_var.get()
+            if template_name == "无":
+                return
+            
+            template = TEMPLATES.get(template_name, {})
+            vars_def = template.get("vars", {})
+            
+            row = 0
+            col = 0
+            for var_name, (label, default) in vars_def.items():
+                lbl = tk.Label(template_vars_frame, text=f"{label}:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 8))
+                lbl.grid(row=row, column=col*2, sticky=tk.W, padx=(0, 3), pady=1)
+                entry = tk.Entry(template_vars_frame, font=('微软雅黑', 8), bg=C['bg_card'], fg=C['text_primary'], width=12)
+                entry.insert(0, default)
+                entry.grid(row=row, column=col*2+1, padx=(0, 10), pady=1)
+                template_entries[var_name] = entry
+                col += 1
+                if col >= 3:
+                    col = 0
+                    row += 1
+        
+        template_combo.bind('<<ComboboxSelected>>', on_template_change)
+        
+        tk.Label(top, text="小说频道:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=3, column=0, sticky=tk.W, pady=3)
         channel_var = tk.StringVar(value="male")
         ch_frame = tk.Frame(top, bg=C['bg_dark'])
-        ch_frame.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=3)
+        ch_frame.grid(row=3, column=1, sticky=tk.W, padx=(5, 0), pady=3)
         
         # 男女频类型列表
         MALE_GENRES = [
@@ -3954,10 +1087,10 @@ class NovelWriterApp:
             "短篇-短篇言情", "短篇-微小说", "短篇-轻小说",
         ]
         
-        tk.Label(top, text="小说类型:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=2, column=0, sticky=tk.W, pady=3)
+        tk.Label(top, text="小说类型:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=4, column=0, sticky=tk.W, pady=3)
         genre_var = tk.StringVar(value=MALE_GENRES[0])
         genre_combo = ttk.Combobox(top, textvariable=genre_var, values=MALE_GENRES, state="readonly", width=35)
-        genre_combo.grid(row=2, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
+        genre_combo.grid(row=4, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
         top.columnconfigure(1, weight=1)
         
         # 男生标签（8类 80+标签）
@@ -4119,11 +1252,33 @@ class NovelWriterApp:
             genre_full = genre_var.get().split("-")
             genre = genre_full[0] if len(genre_full) > 0 else ""
             sub_genre = genre_full[1] if len(genre_full) > 1 else ""
-            concept = concept_entry.get().strip()
+            concept = concept_text.get().strip()
             chapters = int(chapters_var.get())
             
             # 收集选中的标签
             selected_tags = [tag for tag, var in self.tag_vars.items() if var.get()]
+            
+            # 处理模板
+            template_name = template_var.get()
+            if template_name != "无" and template_name in TEMPLATES:
+                template_data = TEMPLATES[template_name]
+                # 收集模板变量值
+                vars_values = {}
+                for var_name, entry in template_entries.items():
+                    vars_values[var_name] = entry.get().strip()
+                
+                # 生成模板内容
+                template_content = template_data["template"]
+                for var_name, value in vars_values.items():
+                    template_content = template_content.replace(f"{{{var_name}}}", value)
+                
+                # 使用模板的类型和标签
+                if not selected_tags:
+                    selected_tags = template_data.get("tags", [])
+                
+                # 保存模板内容到概念
+                if not concept:
+                    concept = template_content
             
             # 创建小说目录
             safe_name = "".join(c for c in title if c.isalnum() or c in "_ -")[:30]
@@ -4140,6 +1295,7 @@ class NovelWriterApp:
                 "concept": concept,
                 "chapter_count": chapters,
                 "created_at": datetime.now().isoformat(),
+                "template": template_name if template_name != "无" else None,
             }
             with open(novel_dir / "meta.json", 'w', encoding='utf-8') as f:
                 json.dump(meta, f, indent=2, ensure_ascii=False)
@@ -4199,12 +1355,48 @@ class NovelWriterApp:
         
         # 计算进度
         chapters_dir = novel_dir / "chapters"
+        total_chapters = meta.get('chapter_count', 0)
+        completed_chapters = 0
+        
         if chapters_dir.exists():
-            chapter_files = list(chapters_dir.glob("chapter_*.txt"))
-            self.current_chapter = len(chapter_files)
-            self.chapter_var.set(f"{self.current_chapter}/{meta.get('chapter_count', '?')}")
+            chapter_files = sorted(chapters_dir.glob("chapter_*.txt"))
+            completed_chapters = len(chapter_files)
+            self.current_chapter = completed_chapters
+            self.chapter_var.set(f"{completed_chapters}/{total_chapters or '?'}")
+            
+            # 加载最后一章内容到编辑器
+            if chapter_files:
+                last_chapter_file = chapter_files[-1]
+                try:
+                    content = last_chapter_file.read_text(encoding='utf-8')
+                    self.content_text.delete("1.0", tk.END)
+                    self.content_text.insert("1.0", content)
+                    # 更新字数统计
+                    self.word_count_var.set(f"字数: {len(content)}")
+                    # 从文件名提取章节号
+                    chapter_num = int(last_chapter_file.stem.split('_')[-1])
+                    if self.outline and chapter_num <= len(self.outline):
+                        chapter_title = self.outline[chapter_num - 1].get('title', f'第{chapter_num}章')
+                        self.chapter_title_var.set(f"第{chapter_num}章: {chapter_title}")
+                except Exception as e:
+                    self._log(f"加载最后一章失败: {e}")
         
         self._log(f"已打开小说《{meta.get('title', '未知')}》")
+        
+        # 显示进度提示
+        if total_chapters and completed_chapters > 0:
+            if completed_chapters < total_chapters:
+                remaining = total_chapters - completed_chapters
+                msg = f"小说《{meta.get('title')}》进度：已完成 {completed_chapters}/{total_chapters} 章\n\n"
+                msg += f"还剩 {remaining} 章未完成。\n\n"
+                msg += "接下来可以：\n"
+                msg += "1. 点击「自动创作」继续自动生成剩余章节\n"
+                msg += "2. 点击「生成下一章」手动逐章创作\n"
+                msg += "3. 在编辑器中手动编写"
+                self.root.after(500, lambda: messagebox.showinfo("继续创作", msg))
+            elif completed_chapters >= total_chapters:
+                self.root.after(500, lambda: messagebox.showinfo("已完成", 
+                    f"小说《{meta.get('title')}》已全部完成！共 {completed_chapters} 章。"))
     
     def _show_settings(self):
         """显示设置对话框"""
@@ -4432,6 +1624,11 @@ class NovelWriterApp:
         """生成世界观"""
         if not self._check_ready():
             return
+        if hasattr(self, '_gen_running') and self._gen_running:
+            self._log("生成任务正在进行中，请勿重复点击")
+            return
+        
+        self._gen_running = True
         
         def run():
             try:
@@ -4440,7 +1637,8 @@ class NovelWriterApp:
                 self._log("世界观设定已保存到 memory/settings.json")
             except Exception as e:
                 self._log(f"生成失败: {e}")
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+            finally:
+                self._gen_running = False
         
         threading.Thread(target=run, daemon=True).start()
     
@@ -4448,6 +1646,11 @@ class NovelWriterApp:
         """生成角色"""
         if not self._check_ready():
             return
+        if hasattr(self, '_gen_running') and self._gen_running:
+            self._log("生成任务正在进行中，请勿重复点击")
+            return
+        
+        self._gen_running = True
         
         def run():
             try:
@@ -4456,7 +1659,8 @@ class NovelWriterApp:
                 self._log("角色档案已保存到 memory/characters.json")
             except Exception as e:
                 self._log(f"生成失败: {e}")
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+            finally:
+                self._gen_running = False
         
         threading.Thread(target=run, daemon=True).start()
     
@@ -4464,6 +1668,11 @@ class NovelWriterApp:
         """生成大纲"""
         if not self._check_ready():
             return
+        if hasattr(self, '_gen_running') and self._gen_running:
+            self._log("生成任务正在进行中，请勿重复点击")
+            return
+        
+        self._gen_running = True
         
         def run():
             try:
@@ -4481,7 +1690,8 @@ class NovelWriterApp:
                 self._log("大纲已保存到 outline.json")
             except Exception as e:
                 self._log(f"生成失败: {e}")
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+            finally:
+                self._gen_running = False
         
         threading.Thread(target=run, daemon=True).start()
     
@@ -4500,7 +1710,7 @@ class NovelWriterApp:
             return
         
         chapter_info = self.outline[self.current_chapter - 1]
-        
+
         def run():
             try:
                 ch_num = self.current_chapter  # 捕获当前值，避免竞态
@@ -4545,9 +1755,12 @@ class NovelWriterApp:
             messagebox.showwarning("提示", "没有可审校的内容")
             return
         
+        with self._state_lock:
+            ch_num = self.current_chapter
+
         def run():
             try:
-                review = self.agent.review_chapter(self.current_chapter, content)
+                review = self.agent.review_chapter(ch_num, content)
                 review_json = json.dumps(review, indent=2, ensure_ascii=False)
                 self.root.after(0, lambda: self._display_review(review_json))
                 self._log(f"审校完成，评分：{review.get('overall_score', 'N/A')}")
@@ -4557,55 +1770,371 @@ class NovelWriterApp:
         
         threading.Thread(target=run, daemon=True).start()
     
-    def _auto_generate(self):
-        """自动创作全流程"""
+    def _style_optimize(self):
+        """风格优化当前章节"""
         if not self._check_ready():
             return
+        
+        content = self.content_text.get("1.0", tk.END).strip()
+        if not content:
+            messagebox.showwarning("提示", "没有可优化的内容")
+            return
+        
+        def run():
+            try:
+                self._log("正在进行风格优化...")
+                
+                settings = self.memory.get_settings() if self.memory else {}
+                meta = self._get_meta()
+                
+                system = f"""你是专业小说风格优化师。小说类型：{meta.get('genre', '未知')}
+世界观：{json.dumps(settings, ensure_ascii=False)[:300] if settings else '未知'}
+
+优化要求：
+1. 保持原文情节和结构
+2. 增强文学性和可读性
+3. 优化句式和用词
+4. 增加细节描写（适当）
+5. 确保风格一致
+6. 直接输出优化后的内容"""
+                
+                prompt = f"请优化以下章节内容：\n\n{content[:3000]}"
+                
+                result = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
+                
+                self.root.after(0, lambda: self._display_optimized(result))
+                self._log("风格优化完成")
+                
+            except Exception as e:
+                self._log(f"风格优化失败: {e}")
+        
+        threading.Thread(target=run, daemon=True).start()
+    
+    def _display_optimized(self, content):
+        """显示优化后的内容"""
+        self.content_text.delete("1.0", tk.END)
+        self.content_text.insert("1.0", content)
+        self.word_count_var.set(f"字数: {len(content)}")
+        self._log("优化内容已加载到编辑器，请审阅后保存")
+    
+    def _import_document(self):
+        """导入作者文档（txt/docx/md）"""
+        file_path = filedialog.askopenfilename(
+            title="选择要导入的文档",
+            filetypes=[
+                ("所有支持格式", "*.txt *.docx *.md"),
+                ("TXT文件", "*.txt"),
+                ("Word文档", "*.docx"),
+                ("Markdown文件", "*.md"),
+                ("所有文件", "*.*"),
+            ]
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            file_path = Path(file_path)
+            content = ""
+            
+            if file_path.suffix.lower() == '.txt' or file_path.suffix.lower() == '.md':
+                content = file_path.read_text(encoding='utf-8')
+            elif file_path.suffix.lower() == '.docx':
+                try:
+                    from docx import Document
+                    doc = Document(str(file_path))
+                    content = '\n\n'.join([para.text for para in doc.paragraphs if para.text.strip()])
+                except ImportError:
+                    messagebox.showerror("错误", "需要安装 python-docx 库才能导入 Word 文档\n请运行: pip install python-docx")
+                    return
+            else:
+                messagebox.showerror("错误", f"不支持的文件格式: {file_path.suffix}")
+                return
+            
+            if not content.strip():
+                messagebox.showwarning("提示", "文档内容为空")
+                return
+            
+            self._imported_content = content
+            self._imported_file = file_path.name
+            
+            self._show_import_preview(content, file_path.name)
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"导入失败: {str(e)}")
+    
+    def _show_import_preview(self, content, filename):
+        """显示导入内容预览"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"导入预览 - {filename}")
+        dialog.geometry("600x500")
+        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        C = UIStyle.COLORS
+        
+        tk.Label(dialog, text=f"已导入: {filename}", font=('微软雅黑', 12, 'bold'),
+                bg=C['bg_dark'], fg=C['accent_light']).pack(pady=(15, 5))
+        
+        tk.Label(dialog, text=f"字数: {len(content)}", font=('微软雅黑', 10),
+                bg=C['bg_dark'], fg=C['text_secondary']).pack(pady=(0, 10))
+        
+        preview_text = tk.Text(dialog, wrap=tk.WORD, font=('微软雅黑', 10),
+                              bg=C['bg_card'], fg=C['text_primary'], height=15)
+        preview_text.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
+        preview_text.insert("1.0", content[:2000] + ("..." if len(content) > 2000 else ""))
+        preview_text.config(state=tk.DISABLED)
+        
+        btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        btn_frame.pack(fill=tk.X, padx=15, pady=10)
+        
+        def insert_direct():
+            self.content_text.insert(tk.INSERT, content)
+            dialog.destroy()
+            self._log(f"已插入导入内容: {filename}")
+        
+        def ai_analyze():
+            dialog.destroy()
+            self._ai_analyze_content()
+        
+        tk.Button(btn_frame, text="直接插入", command=insert_direct,
+                 bg=C['accent'], fg='white', font=('微软雅黑', 10), padx=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="AI分析建议", command=ai_analyze,
+                 bg=C['success'], fg='white', font=('微软雅黑', 10), padx=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="取消", command=dialog.destroy,
+                 bg=C['bg_light'], fg=C['text_primary'], font=('微软雅黑', 10), padx=15).pack(side=tk.RIGHT, padx=5)
+    
+    def _ai_analyze_content(self):
+        """AI分析导入的内容并给出建议"""
+        if not hasattr(self, '_imported_content') or not self._imported_content:
+            messagebox.showwarning("提示", "请先导入文档（创作流程 → 导入文档）")
+            return
+        
+        if not self._check_ready():
+            return
+        
+        content = self._imported_content
+        filename = self._imported_file
+        
+        def run():
+            try:
+                self._log(f"正在AI分析导入内容: {filename}...")
+                
+                meta = self._get_meta()
+                settings = self.memory.get_settings() if self.memory else {}
+                outline = self.outline if self.outline else []
+                
+                system = """你是专业小说顾问。分析导入的文档内容，给出详细的创作建议。
+
+分析维度：
+1. 内容摘要（200字以内）
+2. 写作风格分析
+3. 优点与亮点
+4. 需要改进的地方
+5. 与当前小说的关联建议
+6. 下一步创作建议（具体可执行的3-5条建议）
+
+输出格式要求：
+- 使用清晰的标题和分段
+- 建议要具体可执行
+- 语言要专业但易懂"""
+                
+                context = f"当前小说：《{meta.get('title', '未命名')}》\n类型：{meta.get('genre', '未知')}\n"
+                if outline:
+                    context += f"大纲章节数：{len(outline)}\n"
+                
+                prompt = f"""{context}
+
+导入的文档内容（文件名：{filename}）：
+---
+{content[:3000]}
+---
+
+请分析以上内容并给出创作建议。"""
+                
+                result = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
+                
+                self.root.after(0, lambda: self._display_analysis_result(result, filename))
+                self._log("AI分析完成")
+                
+            except Exception as e:
+                self._log(f"AI分析失败: {e}")
+        
+        threading.Thread(target=run, daemon=True).start()
+    
+    def _display_analysis_result(self, analysis, filename):
+        """显示AI分析结果"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"AI分析报告 - {filename}")
+        dialog.geometry("700x600")
+        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        C = UIStyle.COLORS
+        
+        tk.Label(dialog, text="AI分析报告", font=('微软雅黑', 14, 'bold'),
+                bg=C['bg_dark'], fg=C['accent_light']).pack(pady=(15, 10))
+        
+        result_text = tk.Text(dialog, wrap=tk.WORD, font=('微软雅黑', 11),
+                             bg=C['bg_card'], fg=C['text_primary'], padx=20, pady=15)
+        result_text.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
+        result_text.insert("1.0", analysis)
+        
+        scrollbar = tk.Scrollbar(result_text, command=result_text.yview)
+        result_text.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        btn_frame.pack(fill=tk.X, padx=15, pady=10)
+        
+        def insert_content():
+            if hasattr(self, '_imported_content'):
+                self.content_text.insert(tk.INSERT, self._imported_content)
+                dialog.destroy()
+                self._log(f"已插入导入内容")
+        
+        def use_as_reference():
+            if self.note_manager:
+                self.note_manager.add_note("AI分析参考", analysis)
+                self._log("分析结果已保存到笔记")
+            dialog.destroy()
+        
+        tk.Button(btn_frame, text="插入原文", command=insert_content,
+                 bg=C['accent'], fg='white', font=('微软雅黑', 10), padx=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="保存为参考", command=use_as_reference,
+                 bg=C['success'], fg='white', font=('微软雅黑', 10), padx=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="关闭", command=dialog.destroy,
+                 bg=C['bg_light'], fg=C['text_primary'], font=('微软雅黑', 10), padx=15).pack(side=tk.RIGHT, padx=5)
+    
+    def _auto_generate(self):
+        """自动创作全流程"""
+        # 防重复点击
+        if hasattr(self, '_auto_running') and self._auto_running:
+            self._log("自动创作正在进行中，请勿重复点击")
+            return
+        
+        if not self._check_ready():
+            return
+        
+        self._auto_running = True
+        self.auto_btn.config(state=tk.DISABLED, text="创作中...")
         
         meta = self._get_meta()
         
         def run():
             try:
-                # 1. 生成世界观
                 self._log("=== 开始自动创作 ===")
-                self.agent.generate_settings(meta["genre"], meta["title"], meta.get("concept", ""))
                 
-                # 2. 生成角色
-                self.agent.generate_characters(meta["genre"], meta["title"])
+                # 1. 生成世界观（如果不存在）
+                settings_file = self.current_novel_dir / "memory" / "settings.json"
+                if not settings_file.exists():
+                    try:
+                        self.agent.generate_settings(meta["genre"], meta["title"], meta.get("concept", ""))
+                    except Exception as e:
+                        self._log(f"世界观生成失败，跳过: {e}")
+                else:
+                    self._log("世界观已存在，跳过生成")
+
+                # 2. 生成角色（如果不存在）
+                characters_dir = self.current_novel_dir / "characters"
+                if not characters_dir.exists() or not list(characters_dir.glob("*.json")):
+                    try:
+                        self.agent.generate_characters(meta["genre"], meta["title"])
+                    except Exception as e:
+                        self._log(f"角色生成失败，跳过: {e}")
+                else:
+                    self._log("角色已存在，跳过生成")
+
+                # 3. 生成大纲（如果不存在）
+                outline_file = self.current_novel_dir / "outline.json"
+                if not outline_file.exists() or not self.outline:
+                    try:
+                        with self._state_lock:
+                            self.outline = self.agent.generate_outline(meta["genre"], meta["title"], meta["chapter_count"])
+                        with open(outline_file, 'w', encoding='utf-8') as f:
+                            with self._state_lock:
+                                json.dump(self.outline, f, indent=2, ensure_ascii=False)
+                        self.root.after(0, self._refresh_outline_list)
+                    except Exception as e:
+                        self._log(f"大纲生成失败: {e}")
+                        self._auto_running = False
+                        self.root.after(0, lambda: self.auto_btn.config(state=tk.NORMAL, text="自动创作"))
+                        return
+                else:
+                    self._log("大纲已存在，跳过生成")
+
+                # 4. 逐章生成（从已完成的下一章开始）
+                chapters_dir = self.current_novel_dir / "chapters"
+                chapters_dir.mkdir(exist_ok=True)
+                existing_chapters = set()
+                for f in chapters_dir.glob("chapter_*.txt"):
+                    try:
+                        num = int(f.stem.split('_')[-1])
+                        existing_chapters.add(num)
+                    except ValueError:
+                        pass
                 
-                # 3. 生成大纲
-                self.outline = self.agent.generate_outline(meta["genre"], meta["title"], meta["chapter_count"])
-                with open(self.current_novel_dir / "outline.json", 'w', encoding='utf-8') as f:
-                    json.dump(self.outline, f, indent=2, ensure_ascii=False)
-                self.root.after(0, self._refresh_outline_list)
+                with self._state_lock:
+                    outline_snapshot = list(self.outline)
                 
-                # 4. 逐章生成
-                for i, chapter_info in enumerate(self.outline):
-                    self.current_chapter = i + 1
-                    content = self.agent.generate_chapter(
-                        self.current_chapter,
-                        chapter_info.get("title", f"第{self.current_chapter}章"),
-                        chapter_info.get("summary", ""),
-                        word_count=3000
-                    )
+                total = len(outline_snapshot)
+                skipped = 0
+                generated = 0
+                failed = 0
+                
+                for i, chapter_info in enumerate(outline_snapshot):
+                    ch_num = i + 1
                     
-                    # 保存
-                    chapters_dir = self.current_novel_dir / "chapters"
-                    chapters_dir.mkdir(exist_ok=True)
-                    with open(chapters_dir / f"chapter_{self.current_chapter:04d}.txt", 'w', encoding='utf-8') as f:
-                        f.write(content)
+                    # 跳过已完成的章节
+                    if ch_num in existing_chapters:
+                        skipped += 1
+                        continue
                     
-                    # 定稿
-                    self.agent.finalize_chapter(self.current_chapter, content)
+                    with self._state_lock:
+                        self.current_chapter = ch_num
                     
-                    # 更新UI
-                    self.root.after(0, lambda c=content, n=self.current_chapter, t=chapter_info.get("title", ""): self._display_chapter(n, t, c))
+                    try:
+                        content = self.agent.generate_chapter(
+                            ch_num,
+                            chapter_info.get("title", f"第{ch_num}章"),
+                            chapter_info.get("summary", ""),
+                            word_count=3000
+                        )
+
+                        # 保存
+                        with open(chapters_dir / f"chapter_{ch_num:04d}.txt", 'w', encoding='utf-8') as f:
+                            f.write(content)
+
+                        # 定稿
+                        self.agent.finalize_chapter(ch_num, content)
+
+                        # 更新UI
+                        self.root.after(0, lambda c=content, n=ch_num, t=chapter_info.get("title", ""): self._display_chapter(n, t, c))
+                        self._log(f"第{ch_num}章创作完成")
+                        generated += 1
+                    except Exception as e:
+                        self._log(f"第{ch_num}章创作失败，继续下一章: {e}")
+                        failed += 1
+                        continue
                 
-                self._log("=== 自动创作完成 ===")
-                self.root.after(0, lambda: messagebox.showinfo("完成", f"《{meta['title']}》创作完成！"))
+                # 更新进度显示
+                self.root.after(0, lambda: self.chapter_var.set(f"{len(existing_chapters) + generated}/{total}"))
+                
+                summary = f"=== 自动创作完成 ===\n"
+                summary += f"总章数: {total}\n"
+                if skipped > 0:
+                    summary += f"跳过已完成: {skipped} 章\n"
+                summary += f"本次生成: {generated} 章\n"
+                if failed > 0:
+                    summary += f"失败: {failed} 章\n"
+                self._log(summary)
+                
+                if generated > 0:
+                    self.root.after(0, lambda: messagebox.showinfo("完成", f"《{meta['title']}》创作完成！\n本次生成 {generated} 章"))
+                elif skipped > 0:
+                    self.root.after(0, lambda: messagebox.showinfo("提示", "所有章节已完成，无需继续创作"))
+                    
             except Exception as e:
                 self._log(f"自动创作失败: {e}")
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+            finally:
+                self._auto_running = False
+                self.root.after(0, lambda: self.auto_btn.config(state=tk.NORMAL, text="自动创作"))
         
         threading.Thread(target=run, daemon=True).start()
     
@@ -4636,6 +2165,80 @@ class NovelWriterApp:
         
         self._log(f"第{self.current_chapter}章已保存")
         messagebox.showinfo("成功", "章节已保存")
+    
+    def _prev_chapter(self):
+        """加载上一章"""
+        if not self.outline or not self.current_novel_dir:
+            return
+        if self.current_chapter <= 1:
+            self._log("已经是第一章")
+            return
+        
+        # 保存当前章节
+        self._save_chapter_silent()
+        
+        # 切换到上一章
+        self.current_chapter -= 1
+        self._load_chapter_by_number(self.current_chapter)
+    
+    def _next_chapter(self):
+        """加载下一章"""
+        if not self.outline or not self.current_novel_dir:
+            return
+        if self.current_chapter >= len(self.outline):
+            self._log("已经是最后一章")
+            return
+        
+        # 保存当前章节
+        self._save_chapter_silent()
+        
+        # 切换到下一章
+        self.current_chapter += 1
+        self._load_chapter_by_number(self.current_chapter)
+    
+    def _save_chapter_silent(self):
+        """静默保存当前章节（不弹窗）"""
+        if not self.current_novel_dir:
+            return
+        content = self.content_text.get("1.0", tk.END).strip()
+        if not content:
+            return
+        chapters_dir = self.current_novel_dir / "chapters"
+        chapters_dir.mkdir(exist_ok=True)
+        with open(chapters_dir / f"chapter_{self.current_chapter:04d}.txt", 'w', encoding='utf-8') as f:
+            f.write(content)
+        self._log(f"第{self.current_chapter}章已自动保存")
+    
+    def _load_chapter_by_number(self, ch_num):
+        """根据章节号加载内容"""
+        if not self.outline or ch_num < 1 or ch_num > len(self.outline):
+            return
+        
+        chapter_info = self.outline[ch_num - 1]
+        chapters_dir = self.current_novel_dir / "chapters"
+        chapter_file = chapters_dir / f"chapter_{ch_num:04d}.txt"
+        
+        if chapter_file.exists():
+            content = chapter_file.read_text(encoding='utf-8')
+            self.content_text.delete("1.0", tk.END)
+            self.content_text.insert("1.0", content)
+            self.chapter_title_var.set(f"第{ch_num}章: {chapter_info.get('title', '')}")
+            self.word_count_var.set(f"字数: {len(content)}")
+            self._log(f"已加载第{ch_num}章")
+        else:
+            self.content_text.delete("1.0", tk.END)
+            self.content_text.insert("1.0", f"章节大纲：\n{chapter_info.get('summary', '无')}\n\n在此处编写内容...")
+            self.chapter_title_var.set(f"第{ch_num}章: {chapter_info.get('title', '')} (未生成)")
+            self.word_count_var.set("字数: 0")
+            self._log(f"第{ch_num}章尚未生成，可手动编写")
+        
+        # 更新进度显示
+        self.chapter_var.set(f"{ch_num}/{len(self.outline)}")
+        
+        # 更新大纲列表选中状态
+        self.outline_list.selection_clear(0, tk.END)
+        self.outline_list.selection_set(ch_num - 1)
+        self.outline_list.see(ch_num - 1)
     
     def _export_txt(self):
         """导出全文TXT"""
@@ -4668,10 +2271,256 @@ class NovelWriterApp:
     def _refresh_outline_list(self):
         """刷新大纲列表"""
         self.outline_list.delete(0, tk.END)
-        for item in self.outline:
-            ch = item.get("chapter", "?")
-            title = item.get("title", "未命名")
-            self.outline_list.insert(tk.END, f"第{ch}章: {title}")
+        outline_type = self.outline_type_var.get()
+        
+        if outline_type == "章节大纲":
+            for item in self.outline:
+                ch = item.get("chapter", "?")
+                title = item.get("title", "未命名")
+                self.outline_list.insert(tk.END, f"第{ch}章: {title}")
+        elif outline_type == "整体大纲":
+            overall = self._get_overall_outline()
+            for i, item in enumerate(overall):
+                self.outline_list.insert(tk.END, f"{i+1}. {item.get('title', '未命名')}")
+        elif outline_type == "故事大纲":
+            stories = self._get_story_outlines()
+            for name, story in stories.items():
+                self.outline_list.insert(tk.END, f"📖 {name}")
+    
+    def _on_outline_type_change(self, event=None):
+        """大纲类型切换"""
+        self._refresh_outline_list()
+    
+    def _get_overall_outline(self) -> list:
+        """获取整体大纲"""
+        if not self.current_novel_dir:
+            return []
+        outline_dir = self.current_novel_dir / "outlines"
+        overall_file = outline_dir / "overall.json"
+        if overall_file.exists():
+            with open(overall_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    
+    def _save_overall_outline(self, data: list):
+        """保存整体大纲"""
+        if not self.current_novel_dir:
+            return
+        outline_dir = self.current_novel_dir / "outlines"
+        outline_dir.mkdir(exist_ok=True)
+        with open(outline_dir / "overall.json", 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    
+    def _get_story_outlines(self) -> dict:
+        """获取所有故事大纲"""
+        if not self.current_novel_dir:
+            return {}
+        outline_dir = self.current_novel_dir / "outlines"
+        stories_file = outline_dir / "stories.json"
+        if stories_file.exists():
+            with open(stories_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+    
+    def _save_story_outlines(self, data: dict):
+        """保存故事大纲"""
+        if not self.current_novel_dir:
+            return
+        outline_dir = self.current_novel_dir / "outlines"
+        outline_dir.mkdir(exist_ok=True)
+        with open(outline_dir / "stories.json", 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    
+    def _add_outline_item(self):
+        """添加大纲项"""
+        if not self.current_novel_dir:
+            messagebox.showwarning("提示", "请先创建或打开小说")
+            return
+        
+        outline_type = self.outline_type_var.get()
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"添加{outline_type}")
+        dialog.geometry("500x400")
+        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        C = UIStyle.COLORS
+        
+        tk.Label(dialog, text=f"添加{outline_type}", font=('微软雅黑', 12, 'bold'),
+                bg=C['bg_dark'], fg=C['text_primary']).pack(pady=(15, 10))
+        
+        # 标题输入
+        title_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        title_frame.pack(fill=tk.X, padx=20, pady=5)
+        tk.Label(title_frame, text="标题:", bg=C['bg_dark'], fg=C['text_primary']).pack(side=tk.LEFT)
+        title_entry = tk.Entry(title_frame, font=('微软雅黑', 10), bg=C['bg_card'], fg=C['text_primary'])
+        title_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        # 内容输入
+        tk.Label(dialog, text="内容:", bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=20, pady=(10, 3))
+        content_text = tk.Text(dialog, wrap=tk.WORD, font=('微软雅黑', 10),
+                              bg=C['bg_card'], fg=C['text_primary'], height=12)
+        content_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+        
+        def confirm():
+            title = title_entry.get().strip()
+            content = content_text.get("1.0", tk.END).strip()
+            if not title:
+                messagebox.showwarning("提示", "请输入标题")
+                return
+            
+            if outline_type == "整体大纲":
+                overall = self._get_overall_outline()
+                overall.append({"title": title, "content": content})
+                self._save_overall_outline(overall)
+            elif outline_type == "故事大纲":
+                stories = self._get_story_outlines()
+                stories[title] = {"title": title, "content": content, "chapters": []}
+                self._save_story_outlines(stories)
+            elif outline_type == "章节大纲":
+                ch_num = len(self.outline) + 1
+                self.outline.append({"chapter": ch_num, "title": title, "summary": content})
+                outline_file = self.current_novel_dir / "outline.json"
+                with open(outline_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.outline, f, indent=2, ensure_ascii=False)
+            
+            self._refresh_outline_list()
+            dialog.destroy()
+            self._log(f"已添加{outline_type}: {title}")
+        
+        tk.Button(dialog, text="确认添加", command=confirm, bg=C['accent'], fg='white',
+                 font=('微软雅黑', 10), padx=20, pady=5).pack(pady=10)
+    
+    def _edit_outline_item(self):
+        """编辑大纲项"""
+        selection = self.outline_list.curselection()
+        if not selection:
+            messagebox.showwarning("提示", "请先选择要编辑的大纲项")
+            return
+        
+        idx = selection[0]
+        outline_type = self.outline_type_var.get()
+        
+        # 获取当前内容
+        if outline_type == "章节大纲":
+            if idx < len(self.outline):
+                item = self.outline[idx]
+                title = item.get("title", "")
+                content = item.get("summary", "")
+            else:
+                return
+        elif outline_type == "整体大纲":
+            overall = self._get_overall_outline()
+            if idx < len(overall):
+                item = overall[idx]
+                title = item.get("title", "")
+                content = item.get("content", "")
+            else:
+                return
+        elif outline_type == "故事大纲":
+            stories = self._get_story_outlines()
+            names = list(stories.keys())
+            if idx < len(names):
+                item = stories[names[idx]]
+                title = item.get("title", "")
+                content = item.get("content", "")
+            else:
+                return
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"编辑{outline_type}")
+        dialog.geometry("500x400")
+        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        C = UIStyle.COLORS
+        
+        tk.Label(dialog, text=f"编辑{outline_type}", font=('微软雅黑', 12, 'bold'),
+                bg=C['bg_dark'], fg=C['text_primary']).pack(pady=(15, 10))
+        
+        # 标题输入
+        title_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        title_frame.pack(fill=tk.X, padx=20, pady=5)
+        tk.Label(title_frame, text="标题:", bg=C['bg_dark'], fg=C['text_primary']).pack(side=tk.LEFT)
+        title_entry = tk.Entry(title_frame, font=('微软雅黑', 10), bg=C['bg_card'], fg=C['text_primary'])
+        title_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        title_entry.insert(0, title)
+        
+        # 内容输入
+        tk.Label(dialog, text="内容:", bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=20, pady=(10, 3))
+        content_text = tk.Text(dialog, wrap=tk.WORD, font=('微软雅黑', 10),
+                              bg=C['bg_card'], fg=C['text_primary'], height=12)
+        content_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+        content_text.insert("1.0", content)
+        
+        def confirm():
+            new_title = title_entry.get().strip()
+            new_content = content_text.get("1.0", tk.END).strip()
+            if not new_title:
+                messagebox.showwarning("提示", "请输入标题")
+                return
+            
+            if outline_type == "章节大纲":
+                self.outline[idx]["title"] = new_title
+                self.outline[idx]["summary"] = new_content
+                outline_file = self.current_novel_dir / "outline.json"
+                with open(outline_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.outline, f, indent=2, ensure_ascii=False)
+            elif outline_type == "整体大纲":
+                overall = self._get_overall_outline()
+                overall[idx] = {"title": new_title, "content": new_content}
+                self._save_overall_outline(overall)
+            elif outline_type == "故事大纲":
+                stories = self._get_story_outlines()
+                names = list(stories.keys())
+                old_name = names[idx]
+                del stories[old_name]
+                stories[new_title] = {"title": new_title, "content": new_content, "chapters": []}
+                self._save_story_outlines(stories)
+            
+            self._refresh_outline_list()
+            dialog.destroy()
+            self._log(f"已更新{outline_type}: {new_title}")
+        
+        tk.Button(dialog, text="确认修改", command=confirm, bg=C['accent'], fg='white',
+                 font=('微软雅黑', 10), padx=20, pady=5).pack(pady=10)
+    
+    def _delete_outline_item(self):
+        """删除大纲项"""
+        selection = self.outline_list.curselection()
+        if not selection:
+            messagebox.showwarning("提示", "请先选择要删除的大纲项")
+            return
+        
+        idx = selection[0]
+        outline_type = self.outline_type_var.get()
+        
+        if not messagebox.askyesno("确认", f"确定要删除这个{outline_type}吗？"):
+            return
+        
+        if outline_type == "章节大纲":
+            if idx < len(self.outline):
+                removed = self.outline.pop(idx)
+                # 重新编号
+                for i, item in enumerate(self.outline):
+                    item["chapter"] = i + 1
+                outline_file = self.current_novel_dir / "outline.json"
+                with open(outline_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.outline, f, indent=2, ensure_ascii=False)
+                self._log(f"已删除: {removed.get('title', '')}")
+        elif outline_type == "整体大纲":
+            overall = self._get_overall_outline()
+            if idx < len(overall):
+                removed = overall.pop(idx)
+                self._save_overall_outline(overall)
+                self._log(f"已删除: {removed.get('title', '')}")
+        elif outline_type == "故事大纲":
+            stories = self._get_story_outlines()
+            names = list(stories.keys())
+            if idx < len(names):
+                removed_name = names[idx]
+                del stories[removed_name]
+                self._save_story_outlines(stories)
+                self._log(f"已删除: {removed_name}")
+        
+        self._refresh_outline_list()
     
     # ===== 云端同步 =====
     
@@ -4944,7 +2793,8 @@ class NovelWriterApp:
         idx = selection[0]
         if idx < len(self.outline):
             chapter_info = self.outline[idx]
-            self.current_chapter = chapter_info.get("chapter", idx + 1)
+            # 使用索引+1作为章节号（与文件命名一致）
+            self.current_chapter = idx + 1
             
             # 尝试加载已生成的章节
             chapters_dir = self.current_novel_dir / "chapters"
@@ -4956,10 +2806,15 @@ class NovelWriterApp:
                 self.content_text.insert("1.0", content)
                 self.chapter_title_var.set(f"第{self.current_chapter}章: {chapter_info.get('title', '')}")
                 self.word_count_var.set(f"字数: {len(content)}")
+                self._log(f"已加载第{self.current_chapter}章，可编辑后按 Ctrl+S 保存")
             else:
                 self.chapter_title_var.set(f"第{self.current_chapter}章: {chapter_info.get('title', '')} (未生成)")
                 self.content_text.delete("1.0", tk.END)
-                self.content_text.insert("1.0", f"章节大纲：\n{chapter_info.get('summary', '无')}")
+                self.content_text.insert("1.0", f"章节大纲：\n{chapter_info.get('summary', '无')}\n\n在此处编写内容...")
+            
+            # 更新进度显示
+            total = len(self.outline)
+            self.chapter_var.set(f"{self.current_chapter}/{total}")
     
     def _detect_and_prompt_image(self, content: str, chapter_num: int):
         """检测名场面并提醒生成图片"""
@@ -5039,8 +2894,10 @@ class NovelWriterApp:
             
             # 自动更新记忆
             if self.memory and self.agent:
+                with self._state_lock:
+                    ch_num = self.current_chapter
                 threading.Thread(target=lambda: self.agent.finalize_chapter(
-                    self.current_chapter, content), daemon=True).start()
+                    ch_num, content), daemon=True).start()
                 self._log(f"[联动] 全屏写作内容已保存并更新记忆")
         
         FullscreenWriter(
@@ -5252,6 +3109,9 @@ class NovelWriterApp:
         tk.Button(btn_frame, text="休息恢复", font=('微软雅黑', 9),
                  bg=C['success'], fg='white', relief=tk.FLAT, padx=8,
                  command=lambda: self._rest_character()).pack(side=tk.RIGHT, padx=3)
+        tk.Button(btn_frame, text="📖 故事线", font=('微软雅黑', 9),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=8,
+                 command=lambda: self._edit_character_story(char.name)).pack(side=tk.RIGHT, padx=3)
     
     def _rename_character(self, dialog):
         """重命名角色"""
@@ -5285,6 +3145,129 @@ class NovelWriterApp:
             self.character_system.save_character()
             self._update_char_display()
             self._log(f"{self.character_system.character.name} 休息恢复，HP/MP已满")
+    
+    def _edit_character_story(self, char_name: str):
+        """编辑角色故事线"""
+        if not self.current_novel_dir:
+            return
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"角色故事线 - {char_name}")
+        dialog.geometry("600x500")
+        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        C = UIStyle.COLORS
+        
+        # 加载角色故事
+        stories_dir = self.current_novel_dir / "character_stories"
+        stories_dir.mkdir(exist_ok=True)
+        story_file = stories_dir / f"{char_name}.json"
+        
+        story_data = {"name": char_name, "story_arcs": [], "notes": ""}
+        if story_file.exists():
+            with open(story_file, 'r', encoding='utf-8') as f:
+                story_data = json.load(f)
+        
+        tk.Label(dialog, text=f"📖 {char_name} 的故事线", font=('微软雅黑', 12, 'bold'),
+                bg=C['bg_dark'], fg=C['accent_light']).pack(pady=(15, 10))
+        
+        # 故事线列表
+        list_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
+        
+        story_list = tk.Listbox(list_frame, bg=C['bg_card'], fg=C['text_primary'],
+                               font=('微软雅黑', 10), selectbackground=C['accent'],
+                               relief=tk.FLAT, height=8)
+        story_list.pack(fill=tk.BOTH, expand=True)
+        
+        for arc in story_data.get("story_arcs", []):
+            story_list.insert(tk.END, f"• {arc.get('title', '未命名')}")
+        
+        # 故事详情
+        detail_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        detail_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
+        
+        tk.Label(detail_frame, text="故事详情:", bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W)
+        detail_text = tk.Text(detail_frame, wrap=tk.WORD, font=('微软雅黑', 10),
+                             bg=C['bg_card'], fg=C['text_primary'], height=6)
+        detail_text.pack(fill=tk.BOTH, expand=True)
+        detail_text.insert("1.0", story_data.get("notes", ""))
+        
+        def on_story_select(event):
+            selection = story_list.curselection()
+            if selection and selection[0] < len(story_data.get("story_arcs", [])):
+                arc = story_data["story_arcs"][selection[0]]
+                detail_text.delete("1.0", tk.END)
+                detail_text.insert("1.0", f"标题: {arc.get('title', '')}\n\n{arc.get('content', '')}")
+        
+        story_list.bind('<<ListboxSelect>>', on_story_select)
+        
+        # 操作按钮
+        btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        btn_frame.pack(fill=tk.X, padx=15, pady=10)
+        
+        def add_arc():
+            title = tk.simpledialog.askstring("添加故事线", "故事线标题:")
+            if title:
+                story_data.setdefault("story_arcs", []).append({"title": title, "content": ""})
+                story_list.insert(tk.END, f"• {title}")
+                self._log(f"为 {char_name} 添加故事线: {title}")
+        
+        def edit_arc():
+            selection = story_list.curselection()
+            if not selection:
+                messagebox.showwarning("提示", "请先选择故事线")
+                return
+            idx = selection[0]
+            if idx < len(story_data.get("story_arcs", [])):
+                content = detail_text.get("1.0", tk.END).strip()
+                story_data["story_arcs"][idx]["content"] = content
+                self._log(f"更新 {char_name} 的故事线")
+        
+        def save_story():
+            story_data["notes"] = detail_text.get("1.0", tk.END).strip()
+            with open(story_file, 'w', encoding='utf-8') as f:
+                json.dump(story_data, f, indent=2, ensure_ascii=False)
+            self._log(f"已保存 {char_name} 的故事线")
+            messagebox.showinfo("成功", "故事线已保存")
+        
+        def view_all_stories():
+            """查看所有角色的故事线"""
+            all_stories_window = tk.Toplevel(dialog)
+            all_stories_window.title("所有角色故事线")
+            all_stories_window.geometry("700x500")
+            all_stories_window.configure(bg=C['bg_dark'])
+            
+            all_text = tk.Text(all_stories_window, wrap=tk.WORD, font=('微软雅黑', 10),
+                              bg=C['bg_card'], fg=C['text_primary'])
+            all_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            # 加载所有角色故事
+            for f in stories_dir.glob("*.json"):
+                try:
+                    with open(f, 'r', encoding='utf-8') as fp:
+                        data = json.load(fp)
+                    name = data.get("name", f.stem)
+                    all_text.insert(tk.END, f"═══ {name} ═══\n")
+                    for arc in data.get("story_arcs", []):
+                        all_text.insert(tk.END, f"  📖 {arc.get('title', '')}\n")
+                        if arc.get('content'):
+                            all_text.insert(tk.END, f"     {arc['content'][:100]}...\n")
+                    if data.get("notes"):
+                        all_text.insert(tk.END, f"  备注: {data['notes'][:100]}...\n")
+                    all_text.insert(tk.END, "\n")
+                except Exception:
+                    pass
+            
+            all_text.config(state=tk.DISABLED)
+        
+        tk.Button(btn_frame, text="添加故事线", command=add_arc, bg=C['accent'], fg='white',
+                 font=('微软雅黑', 9), padx=8).pack(side=tk.LEFT, padx=3)
+        tk.Button(btn_frame, text="更新内容", command=edit_arc, bg=C['bg_light'], fg=C['text_primary'],
+                 font=('微软雅黑', 9), padx=8).pack(side=tk.LEFT, padx=3)
+        tk.Button(btn_frame, text="保存", command=save_story, bg=C['success'], fg='white',
+                 font=('微软雅黑', 9), padx=8).pack(side=tk.LEFT, padx=3)
+        tk.Button(btn_frame, text="查看所有角色故事", command=view_all_stories, bg=C['bg_light'], fg=C['text_primary'],
+                 font=('微软雅黑', 9), padx=8).pack(side=tk.RIGHT, padx=3)
     
     def _equip_weapon(self):
         """装备武器"""
@@ -5362,7 +3345,7 @@ class NovelWriterApp:
                         val = int(fields[field_key].get())
                         if val > 0:
                             attrs[attr_name] = val
-                    except:
+                    except Exception:
                         pass
                 
                 self.character_system.add_custom_weapon(
@@ -5627,1373 +3610,73 @@ class NovelWriterApp:
         elif tool_type == "batch_ops":
             self._build_batch_ops_tool()
     
-    def _build_elements_tool(self):
-        """元素库界面"""
-        f = self.tool_content_frame
-        
-        ttk.Label(f, text="小说元素库 - 选择元素组合生成背景设定", font=("", 11, "bold")).pack(anchor=tk.W, pady=5)
-        
-        # 类别选择
-        cat_frame = ttk.Frame(f)
-        cat_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(cat_frame, text="类别:").pack(side=tk.LEFT)
-        self.elem_cat_var = tk.StringVar()
-        cats = [c["name"] for c in self.element_lib.get_categories()]
-        cat_combo = ttk.Combobox(cat_frame, textvariable=self.elem_cat_var, values=cats, state="readonly", width=20)
-        cat_combo.pack(side=tk.LEFT, padx=5)
-        cat_combo.bind("<<ComboboxSelected>>", lambda e: self._refresh_element_list())
-        
-        # 元素列表
-        self.elem_listbox = tk.Listbox(f, height=8, selectmode=tk.MULTIPLE)
-        self.elem_listbox.pack(fill=tk.X, pady=3)
-        
-        # 生成按钮 + 自定义元素（同一行）
-        btn_frame = ttk.Frame(f)
-        btn_frame.pack(fill=tk.X, pady=3)
-        ttk.Button(btn_frame, text="组合生成背景设定", command=self._gen_background_from_elements).pack(side=tk.LEFT)
-        ttk.Button(btn_frame, text="查看元素详情", command=self._view_element_detail).pack(side=tk.LEFT, padx=5)
-        ttk.Label(btn_frame, text="|").pack(side=tk.LEFT, padx=5)
-        ttk.Label(btn_frame, text="自定义:").pack(side=tk.LEFT)
-        self.custom_elem_entry = ttk.Entry(btn_frame, width=12)
-        self.custom_elem_entry.pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_frame, text="添加", command=self._add_custom_element).pack(side=tk.LEFT)
-        
-        # 结果（填充剩余空间）
-        self.elem_result = scrolledtext.ScrolledText(f, height=8, wrap=tk.WORD, font=("微软雅黑", 10))
-        self.elem_result.pack(fill=tk.BOTH, expand=True, pady=3)
-        
-        if cats:
-            self.elem_cat_var.set(cats[0])
-            self._refresh_element_list()
-    
-    def _refresh_element_list(self):
-        self.elem_listbox.delete(0, tk.END)
-        items = self.element_lib.get_items(self.elem_cat_var.get())
-        for item in items:
-            self.elem_listbox.insert(tk.END, item.get("name", ""))
-    
-    def _view_element_detail(self):
-        sel = self.elem_listbox.curselection()
-        if not sel:
-            return
-        items = self.element_lib.get_items(self.elem_cat_var.get())
-        if sel[0] < len(items):
-            item = items[sel[0]]
-            self.elem_result.delete("1.0", tk.END)
-            self.elem_result.insert("1.0", f"名称: {item.get('name', '')}\n\n模板:\n{item.get('template', '')}\n\n标签: {', '.join(item.get('tags', []))}")
-    
-    def _gen_background_from_elements(self):
-        sel = self.elem_listbox.curselection()
-        if not sel:
-            messagebox.showinfo("提示", "请先选择元素")
-            return
-        
-        items = self.element_lib.get_items(self.elem_cat_var.get())
-        selected = [items[i] for i in sel if i < len(items)]
-        
-        if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
-            return
-        
-        def run():
-            try:
-                result = self.element_lib.generate_background(
-                    self.ai_client, selected, 
-                    self.genre_var.get(), self.title_var.get() or "未命名"
-                )
-                self.root.after(0, lambda: self._show_tool_result(self.elem_result, result))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
-        
-        threading.Thread(target=run, daemon=True).start()
-    
-    def _add_custom_element(self):
-        """添加自定义元素"""
-        name = self.custom_elem_entry.get().strip()
-        if not name:
-            messagebox.showinfo("提示", "请输入元素名称")
-            return
-        cat = self.elem_cat_var.get()
-        if not cat:
-            messagebox.showinfo("提示", "请先选择类别")
-            return
-        self.element_lib.add_custom_item(cat, {"name": name, "template": f"自定义元素: {name}", "tags": ["自定义"]})
-        self._refresh_element_list()
-        self.custom_elem_entry.delete(0, tk.END)
-        self._log(f"添加自定义元素: {name} (类别: {cat})")
-        messagebox.showinfo("成功", f"已添加自定义元素: {name}")
-    
-    def _build_bridges_tool(self):
-        """桥段库界面"""
-        f = self.tool_content_frame
-        
-        ttk.Label(f, text="角色桥段库 - 经典网文桥段生成", font=("", 11, "bold")).pack(anchor=tk.W, pady=5)
-        
-        cat_frame = ttk.Frame(f)
-        cat_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(cat_frame, text="桥段类型:").pack(side=tk.LEFT)
-        self.bridge_cat_var = tk.StringVar()
-        cats = [c["name"] for c in self.bridge_lib.get_categories()]
-        ttk.Combobox(cat_frame, textvariable=self.bridge_cat_var, values=cats, state="readonly", width=20).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Label(f, text="场景设定:").pack(anchor=tk.W, pady=2)
-        self.bridge_setting = ttk.Entry(f, width=60)
-        self.bridge_setting.pack(fill=tk.X, pady=2)
-        self.bridge_setting.insert(0, "深夜的修炼室中")
-        
-        # 按钮行 + 自定义桥段
-        btn_frame = ttk.Frame(f)
-        btn_frame.pack(fill=tk.X, pady=3)
-        ttk.Button(btn_frame, text="查看模板", command=self._view_bridge_template).pack(side=tk.LEFT)
-        ttk.Button(btn_frame, text="AI生成桥段", command=self._gen_bridge).pack(side=tk.LEFT, padx=5)
-        ttk.Label(btn_frame, text="|").pack(side=tk.LEFT, padx=5)
-        ttk.Label(btn_frame, text="自定义:").pack(side=tk.LEFT)
-        self.custom_bridge_entry = ttk.Entry(btn_frame, width=20)
-        self.custom_bridge_entry.pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_frame, text="添加", command=self._add_custom_bridge).pack(side=tk.LEFT)
-        
-        self.bridge_result = scrolledtext.ScrolledText(f, height=10, wrap=tk.WORD, font=("微软雅黑", 10))
-        self.bridge_result.pack(fill=tk.BOTH, expand=True, pady=3)
-        
-        if cats:
-            self.bridge_cat_var.set(cats[0])
-    
-    def _view_bridge_template(self):
-        templates = self.bridge_lib.get_templates(self.bridge_cat_var.get())
-        self.bridge_result.delete("1.0", tk.END)
-        self.bridge_result.insert("1.0", "\n\n".join(templates))
-    
-    def _gen_bridge(self):
-        if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
-            return
-        
-        # 使用角色系统中的实际角色数据
-        characters = {}
-        if self.character_system and self.character_system.character:
-            char = self.character_system.character
-            characters = {char.name: char.personality or "性格待定"}
-        elif self.memory:
-            chars = self.memory.get_characters()
-            if chars:
-                for name, info in list(chars.items())[:3]:
-                    characters[name] = info.get("personality", "") if isinstance(info, dict) else ""
-        if not characters:
-            characters = {"主角": "待设定"}
-        
-        def run():
-            try:
-                result = self.bridge_lib.generate_bridge(
-                    self.ai_client, self.bridge_cat_var.get(),
-                    characters, self.bridge_setting.get()
-                )
-                self.root.after(0, lambda: self._show_tool_result(self.bridge_result, result))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
-        
-        threading.Thread(target=run, daemon=True).start()
-    
-    def _add_custom_bridge(self):
-        """添加自定义桥段"""
-        template = self.custom_bridge_entry.get().strip()
-        if not template:
-            messagebox.showinfo("提示", "请输入桥段模板")
-            return
-        cat = self.bridge_cat_var.get()
-        if not cat:
-            messagebox.showinfo("提示", "请先选择桥段类型")
-            return
-        self.bridge_lib.add_custom_item(cat, template)
-        self.custom_bridge_entry.delete(0, tk.END)
-        self._log(f"添加自定义桥段: {template[:30]}... (类型: {cat})")
-        messagebox.showinfo("成功", f"已添加自定义桥段到 {cat}")
-    
-    def _build_descriptions_tool(self):
-        """描写库界面"""
-        f = self.tool_content_frame
-        
-        ttk.Label(f, text="事物描写库 - 生成各类描写", font=("", 11, "bold")).pack(anchor=tk.W, pady=5)
-        
-        cat_frame = ttk.Frame(f)
-        cat_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(cat_frame, text="类别:").pack(side=tk.LEFT)
-        self.desc_cat_var = tk.StringVar()
-        cats = self.desc_lib.get_categories()
-        ttk.Combobox(cat_frame, textvariable=self.desc_cat_var, values=cats, state="readonly", width=15).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Label(cat_frame, text="描写对象:").pack(side=tk.LEFT, padx=(10,0))
-        self.desc_subject = ttk.Entry(cat_frame, width=15)
-        self.desc_subject.pack(side=tk.LEFT, padx=5)
-        ttk.Button(cat_frame, text="生成描写", command=self._gen_description).pack(side=tk.LEFT, padx=5)
-        ttk.Label(cat_frame, text="|").pack(side=tk.LEFT, padx=3)
-        ttk.Label(cat_frame, text="自定义:").pack(side=tk.LEFT)
-        self.custom_desc_entry = ttk.Entry(cat_frame, width=10)
-        self.custom_desc_entry.pack(side=tk.LEFT, padx=2)
-        ttk.Button(cat_frame, text="添加", command=self._add_custom_description).pack(side=tk.LEFT)
-        
-        self.desc_result = scrolledtext.ScrolledText(f, height=10, wrap=tk.WORD, font=("微软雅黑", 10))
-        self.desc_result.pack(fill=tk.BOTH, expand=True, pady=3)
-        
-        if cats:
-            self.desc_cat_var.set(cats[0])
-    
-    def _gen_description(self):
-        if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
-            return
-        
-        def run():
-            try:
-                result = self.desc_lib.generate_description(
-                    self.ai_client, self.desc_subject.get() or "日出",
-                    self.desc_cat_var.get()
-                )
-                self.root.after(0, lambda: self._show_tool_result(self.desc_result, result))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
-        
-        threading.Thread(target=run, daemon=True).start()
-    
-    def _add_custom_description(self):
-        """添加自定义描写关键词"""
-        keyword = self.custom_desc_entry.get().strip()
-        if not keyword:
-            messagebox.showinfo("提示", "请输入描写关键词")
-            return
-        cat = self.desc_cat_var.get()
-        if not cat:
-            messagebox.showinfo("提示", "请先选择类别")
-            return
-        self.desc_lib.add_custom_item(cat, keyword)
-        self.custom_desc_entry.delete(0, tk.END)
-        self._log(f"添加自定义描写关键词: {keyword} (类别: {cat})")
-        messagebox.showinfo("成功", f"已添加自定义关键词: {keyword} 到 {cat}")
-    
-    def _build_dialogue_tool(self):
-        """对话推演界面"""
-        f = self.tool_content_frame
-        
-        ttk.Label(f, text="情景对话推演 - 角色互动对话生成", font=("", 11, "bold")).pack(anchor=tk.W, pady=5)
-        
-        ttk.Label(f, text="场景描述:").pack(anchor=tk.W)
-        self.dlg_scenario = ttk.Entry(f, width=60)
-        self.dlg_scenario.pack(fill=tk.X, pady=3)
-        self.dlg_scenario.insert(0, "两个老友多年后重逢，在咖啡馆聊天")
-        
-        btn_frame = ttk.Frame(f)
-        btn_frame.pack(fill=tk.X, pady=5)
-        ttk.Button(btn_frame, text="开始推演", command=self._start_dialogue).pack(side=tk.LEFT)
-        ttk.Button(btn_frame, text="继续推演", command=self._continue_dialogue).pack(side=tk.LEFT, padx=10)
-        ttk.Button(btn_frame, text="插入到章节", command=self._insert_dialogue).pack(side=tk.RIGHT)
-        
-        self.dlg_result = scrolledtext.ScrolledText(f, height=12, wrap=tk.WORD, font=("微软雅黑", 10))
-        self.dlg_result.pack(fill=tk.BOTH, expand=True, pady=5)
-    
-    def _start_dialogue(self):
-        if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
-            return
-        
-        self.dialogue_engine = DialogueEngine(self.ai_client)
-        
-        # 使用角色系统中的实际角色
-        characters = []
-        if self.character_system:
-            for name in self.character_system.get_character_names()[:4]:
-                char = self.character_system.characters.get(name)
-                if char:
-                    characters.append({"name": name, "personality": char.personality or "未知"})
-        if not characters and self.memory:
-            chars = self.memory.get_characters()
-            if chars:
-                for name, info in list(chars.items())[:4]:
-                    p = info.get("personality", "") if isinstance(info, dict) else ""
-                    characters.append({"name": name, "personality": p or "未知"})
-        if not characters:
-            characters = [{"name": "角色A", "personality": "开朗"}, {"name": "角色B", "personality": "内敛"}]
-        
-        def run():
-            try:
-                result = self.dialogue_engine.start_dialogue(
-                    self.dlg_scenario.get(), characters
-                )
-                text = self.dialogue_engine.export_text()
-                self.root.after(0, lambda: self._show_tool_result(self.dlg_result, text))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
-        
-        threading.Thread(target=run, daemon=True).start()
-    
-    def _continue_dialogue(self):
-        if not self.dialogue_engine:
-            messagebox.showinfo("提示", "请先开始推演")
-            return
-        
-        def run():
-            try:
-                self.dialogue_engine.continue_dialogue()
-                text = self.dialogue_engine.export_text()
-                self.root.after(0, lambda: self._show_tool_result(self.dlg_result, text))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
-        
-        threading.Thread(target=run, daemon=True).start()
-    
-    def _insert_dialogue(self):
-        content = self.dlg_result.get("1.0", tk.END).strip()
-        if content:
-            self.content_text.insert(tk.INSERT, "\n\n" + content)
-    
-    def _build_story_flow_tool(self):
-        """故事流推演界面"""
-        C = UIStyle.COLORS
-        f = self.tool_content_frame
-        
-        tk.Label(f, text="故事流推演 - 4种模式", font=("", 11, "bold"),
-                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=5)
-        
-        self.sf_mode_var = tk.IntVar(value=1)
-        modes = [
-            (1, "正向推演", "背景+事件→推演过程"),
-            (2, "桥接推演", "开端+结局→推演中间"),
-            (3, "分支推演", "当前故事→多个走向"),
-            (4, "冲突升级", "当前局面→逐步升级"),
-        ]
-        mode_frame = tk.Frame(f, bg=C['bg_dark'])
-        mode_frame.pack(fill=tk.X, pady=3)
-        for val, name, desc in modes:
-            tk.Radiobutton(mode_frame, text=f"{name}", variable=self.sf_mode_var, value=val,
-                          font=('微软雅黑', 9), bg=C['bg_dark'], fg=C['text_secondary'],
-                          selectcolor=C['accent']).pack(side=tk.LEFT, padx=5)
-        
-        # 提示文字
-        self.sf_hint = tk.Label(f, text="模式1: 输入背景和事件，推演故事发展过程", 
-                               font=('微软雅黑', 8), bg=C['bg_dark'], fg=C['text_muted'])
-        self.sf_hint.pack(anchor=tk.W, pady=2)
-        
-        # 模式切换时更新提示
-        def update_hint(*args):
-            hints = {1: "模式1: 输入背景和事件，推演故事发展过程",
-                    2: "模式2: 第一行写开端，最后一行写结局，推演中间过程",
-                    3: "模式3: 输入当前故事，生成多个可能走向分支",
-                    4: "模式4: 输入当前局面，推演冲突逐步升级的过程"}
-            self.sf_hint.config(text=hints.get(self.sf_mode_var.get(), ""))
-        
-        self.sf_mode_var.trace_add('write', update_hint)
-        
-        tk.Label(f, text="输入内容:", font=('微软雅黑', 9),
-                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=3)
-        self.sf_input = tk.Text(f, height=5, wrap=tk.WORD, font=('微软雅黑', 10),
-                               bg=C['input_bg'], fg=C['text_primary'])
-        self.sf_input.pack(fill=tk.X, pady=3)
-        
-        btn_frame = tk.Frame(f, bg=C['bg_dark'])
-        btn_frame.pack(fill=tk.X, pady=5)
-        tk.Button(btn_frame, text="开始推演", font=('微软雅黑', 9),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=10,
-                 command=self._run_story_flow).pack(side=tk.LEFT)
-        tk.Button(btn_frame, text="插入到章节", font=('微软雅黑', 9),
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=10,
-                 command=lambda: self._insert_to_chapter(self.sf_result)).pack(side=tk.RIGHT)
-        
-        self.sf_result = tk.Text(f, height=10, wrap=tk.WORD, font=('微软雅黑', 10),
-                                bg=C['bg_card'], fg=C['text_primary'])
-        self.sf_result.pack(fill=tk.BOTH, expand=True, pady=5)
-    
-    def _run_story_flow(self):
-        if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
-            return
-        
-        self.story_flow_engine = StoryFlowEngine(self.ai_client)
-        input_text = self.sf_input.get("1.0", tk.END).strip()
-        
-        if not input_text:
-            messagebox.showinfo("提示", "请输入内容")
-            return
-        
-        mode = self.sf_mode_var.get()
-        
-        def run():
-            try:
-                if mode == 1:
-                    result = self.story_flow_engine.mode1_forward(input_text, "主角", input_text)
-                elif mode == 2:
-                    lines = input_text.split("\n")
-                    beginning = lines[0] if lines else ""
-                    ending = lines[-1] if len(lines) > 1 else "结局待定"
-                    result = self.story_flow_engine.mode2_bridge(beginning, ending)
-                elif mode == 3:
-                    result = self.story_flow_engine.mode3_branch(input_text, 3)
-                elif mode == 4:
-                    result = self.story_flow_engine.mode4_conflict_escalation(input_text)
-                else:
-                    result = "请选择推演模式"
-                
-                self.root.after(0, lambda: self._show_tool_result(self.sf_result, result))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
-        
-        threading.Thread(target=run, daemon=True).start()
-    
-    def _build_style_tool(self):
-        """风格转换界面"""
-        f = self.tool_content_frame
-        
-        ttk.Label(f, text="风格转换 - 仿写、改写、风格调整", font=("", 11, "bold")).pack(anchor=tk.W, pady=5)
-        
-        style_frame = ttk.Frame(f)
-        style_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(style_frame, text="目标风格:").pack(side=tk.LEFT)
-        self.style_var = tk.StringVar(value="热血爽文")
-        styles = list(StyleTransferEngine.STYLES.keys())
-        ttk.Combobox(style_frame, textvariable=self.style_var, values=styles, state="readonly", width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(style_frame, text="转换当前章节风格", command=self._convert_style).pack(side=tk.LEFT, padx=10)
-        
-        self.style_result = scrolledtext.ScrolledText(f, height=12, wrap=tk.WORD, font=("微软雅黑", 10))
-        self.style_result.pack(fill=tk.BOTH, expand=True, pady=5)
-    
-    def _convert_style(self):
-        if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
-            return
-        
-        current_text = self.content_text.get("1.0", tk.END).strip()
-        if not current_text:
-            messagebox.showinfo("提示", "没有可转换的内容")
-            return
-        
-        self.style_engine = StyleTransferEngine(self.ai_client)
-        
-        def run():
-            try:
-                result = self.style_engine.convert_style(current_text, self.style_var.get())
-                self.root.after(0, lambda: self._show_tool_result(self.style_result, result))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
-        
-        threading.Thread(target=run, daemon=True).start()
-    
-    def _build_adapt_tool(self):
-        """智能改编界面"""
-        f = self.tool_content_frame
-        
-        ttk.Label(f, text="智能改编 - 圈定截取改编，显示匹配率", font=("", 11, "bold")).pack(anchor=tk.W, pady=5)
-        
-        ttk.Label(f, text="改编指示:").pack(anchor=tk.W)
-        self.adapt_instr = ttk.Entry(f, width=60)
-        self.adapt_instr.pack(fill=tk.X, pady=3)
-        self.adapt_instr.insert(0, "改写为更紧张的氛围")
-        
-        btn_frame = ttk.Frame(f)
-        btn_frame.pack(fill=tk.X, pady=5)
-        ttk.Button(btn_frame, text="改编选中文本", command=self._adapt_selected).pack(side=tk.LEFT)
-        ttk.Button(btn_frame, text="随机抽取改编", command=self._adapt_random).pack(side=tk.LEFT, padx=10)
-        ttk.Button(btn_frame, text="替换原文", command=self._replace_with_adapted).pack(side=tk.RIGHT)
-        
-        self.adapt_result = scrolledtext.ScrolledText(f, height=10, wrap=tk.WORD, font=("微软雅黑", 10))
-        self.adapt_result.pack(fill=tk.BOTH, expand=True, pady=5)
-    
-    def _adapt_selected(self):
-        if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
-            return
-        
-        try:
-            selected = self.content_text.get(tk.SEL_FIRST, tk.SEL_LAST)
-        except:
-            selected = self.content_text.get("1.0", tk.END).strip()[:500]
-        
-        if not selected:
-            messagebox.showinfo("提示", "请先选择要改编的文本")
-            return
-        
-        self.adapt_engine = AdaptEngine(self.ai_client)
-        
-        def run():
-            try:
-                result = self.adapt_engine.adapt_segment(selected, self.adapt_instr.get())
-                text = f"【匹配率: {result['match_rate']}%】\n\n{result['adapted']}"
-                self.root.after(0, lambda: self._show_tool_result(self.adapt_result, text))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
-        
-        threading.Thread(target=run, daemon=True).start()
-    
-    def _adapt_random(self):
-        if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
-            return
-        
-        current_text = self.content_text.get("1.0", tk.END).strip()
-        if not current_text:
-            messagebox.showinfo("提示", "没有可改编的内容")
-            return
-        
-        self.adapt_engine = AdaptEngine(self.ai_client)
-        
-        def run():
-            try:
-                results = self.adapt_engine.random_adapt(current_text, 2)
-                text = ""
-                for i, r in enumerate(results):
-                    text += f"=== 片段{i+1} (匹配率: {r['match_rate']}%) ===\n"
-                    text += f"{r['adapted']}\n\n"
-                self.root.after(0, lambda: self._show_tool_result(self.adapt_result, text))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
-        
-        threading.Thread(target=run, daemon=True).start()
-    
-    def _replace_with_adapted(self):
-        adapted = self.adapt_result.get("1.0", tk.END).strip()
-        if adapted:
-            # 去掉匹配率行
-            lines = adapted.split("\n")
-            content = "\n".join(l for l in lines if not l.startswith("【匹配率"))
-            try:
-                self.content_text.delete(tk.SEL_FIRST, tk.SEL_LAST)
-            except:
-                pass
-            self.content_text.insert(tk.INSERT, content.strip())
-    
-    def _insert_to_chapter(self, text_widget):
-        content = text_widget.get("1.0", tk.END).strip()
-        if content:
-            self.content_text.insert(tk.INSERT, "\n\n" + content)
     
     def _show_tool_result(self, widget, text):
         widget.delete("1.0", tk.END)
         widget.insert("1.0", text)
     
-    def _build_websearch_tool(self):
-        """热点改编界面"""
-        C = UIStyle.COLORS
-        f = self.tool_content_frame
-        
-        tk.Label(f, text="联网搜索热点改编 - 将网络热点改编为小说桥段", font=("", 11, "bold"),
-                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=5)
-        
-        # 分类选择
-        cat_frame = tk.Frame(f, bg=C['bg_dark'])
-        cat_frame.pack(fill=tk.X, pady=3)
-        
-        self.ws_category_var = tk.StringVar(value="热梗改编")
-        self.web_search_engine = WebSearchAdaptEngine(self.ai_client)
-        cats = self.web_search_engine.get_categories()
-        
-        for i, cat in enumerate(cats):
-            tk.Radiobutton(cat_frame, text=cat, variable=self.ws_category_var, value=cat,
-                          font=('微软雅黑', 9), bg=C['bg_dark'], fg=C['text_secondary'],
-                          selectcolor=C['accent'], command=self._refresh_ws_list).pack(side=tk.LEFT, padx=5)
-        
-        # 搜索输入
-        search_frame = tk.Frame(f, bg=C['bg_dark'])
-        search_frame.pack(fill=tk.X, pady=5)
-        self.ws_search_entry = tk.Entry(search_frame, font=('微软雅黑', 10), width=40,
-                                       bg=C['input_bg'], fg=C['text_primary'])
-        self.ws_search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-        self.ws_search_entry.insert(0, "输入热点关键词或梗，AI自动改编...")
-        
-        tk.Button(search_frame, text="AI搜索改编", font=('微软雅黑', 9),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=10,
-                 command=self._ws_adapt).pack(side=tk.LEFT, padx=5)
-        
-        # 随机按钮
-        tk.Button(f, text="随机来一个热点", font=('微软雅黑', 9),
-                 bg=C['success'], fg='white', relief=tk.FLAT, padx=10,
-                 command=self._ws_random).pack(pady=5)
-        
-        # 内置热点列表
-        tk.Label(f, text="内置热点（点击直接生成）：", font=('微软雅黑', 9, 'bold'),
-                bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W, pady=(10, 3))
-        
-        items = self.web_search_engine.get_items(self.ws_category_var.get())
-        list_frame = tk.Frame(f, bg=C['bg_dark'])
-        list_frame.pack(fill=tk.X)
-        self.ws_listbox = tk.Listbox(list_frame, bg=C['bg_card'], fg=C['text_secondary'],
-                                     font=('微软雅黑', 9), height=8,
-                                     selectbackground=C['accent'], relief=tk.FLAT)
-        for item in items:
-            self.ws_listbox.insert(tk.END, f"{item.get('name','')}: {item.get('desc','')}")
-        scrollbar = tk.Scrollbar(list_frame, command=self.ws_listbox.yview)
-        self.ws_listbox.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.ws_listbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.ws_listbox.bind('<Double-Button-1>', self._ws_generate_from_list)
-        
-        # 生成按钮
-        tk.Button(f, text="改编选中热点为小说桥段", font=('微软雅黑', 9, 'bold'),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=10,
-                 command=self._ws_generate_from_list).pack(pady=5)
-        
-        # 自定义添加按钮区
-        add_btn_frame = tk.Frame(f, bg=C['bg_dark'])
-        add_btn_frame.pack(fill=tk.X, pady=5)
-        tk.Button(add_btn_frame, text="+ 添加自定义热点", font=('微软雅黑', 9),
-                 bg=C['success'], fg='white', relief=tk.FLAT, padx=10,
-                 command=self._ws_add_custom).pack(side=tk.LEFT, padx=5)
-        tk.Button(add_btn_frame, text="删除自定义", font=('微软雅黑', 9),
-                 bg=C['error'], fg='white', relief=tk.FLAT, padx=10,
-                 command=self._ws_delete_custom).pack(side=tk.LEFT, padx=5)
-        
-        # 结果展示
-        self.ws_result = tk.Text(f, height=12, wrap=tk.WORD, font=('微软雅黑', 10),
-                                bg=C['bg_card'], fg=C['text_primary'],
-                                relief=tk.FLAT, padx=15, pady=15)
-        self.ws_result.pack(fill=tk.BOTH, expand=True, pady=5)
-        
-        tk.Button(f, text="插入到章节", font=('微软雅黑', 9),
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=10,
-                 command=lambda: self._insert_to_chapter(self.ws_result)).pack(pady=5)
-    
-    def _ws_random(self):
-        """随机获取一个热点改编"""
-        if not self.web_search_engine:
-            self.web_search_engine = WebSearchAdaptEngine(self.ai_client)
-        result = self.web_search_engine.random_meme()
-        self._show_tool_result(self.ws_result, result)
-    
-    def _ws_adapt(self):
-        """AI搜索改编"""
-        query = self.ws_search_entry.get().strip()
-        if not query or query == "输入热点关键词或梗，AI自动改编...":
-            messagebox.showinfo("提示", "请输入关键词")
+    def _insert_to_chapter(self, text_widget):
+        """将工具结果智能插入到当前章节（AI润色衔接）"""
+        content = text_widget.get("1.0", tk.END).strip()
+        if not content:
             return
+        
+        # 获取当前章节内容作为上下文
+        current_text = self.content_text.get("1.0", tk.END).strip()
+        
         if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
+            # 无AI配置时直接插入
+            self.content_text.insert(tk.INSERT, "\n\n" + content)
+            self._log("内容已直接插入（未配置AI润色）")
             return
         
+        # 使用AI润色使内容衔接更自然
         def run():
             try:
-                engine = WebSearchAdaptEngine(self.ai_client)
-                result = engine.search_and_adapt(query)
-                self.root.after(0, lambda: self._show_tool_result(self.ws_result, result))
+                self._log("正在AI润色插入内容...")
+                
+                # 获取当前章节上下文（取最后500字作为衔接参考）
+                context = current_text[-500:] if len(current_text) > 500 else current_text
+                
+                system = """你是专业小说编辑。任务是将新内容自然地融入现有文章中。
+要求：
+1. 保持原文风格和语气
+2. 添加自然的过渡语句
+3. 确保上下文逻辑连贯
+4. 不要重复已有内容
+5. 直接输出修改后的内容，不要添加解释"""
+                
+                prompt = f"""现有文章（末尾部分）：
+---
+{context}
+---
+
+需要插入的新内容：
+---
+{content}
+---
+
+请将新内容自然地融入到现有文章末尾，确保衔接流畅。"""
+                
+                result = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
+                
+                # 在主线程中插入润色后的内容
+                self.root.after(0, lambda: self._insert_polished_content(result))
+                self._log("AI润色完成，内容已插入")
+                
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+                # 润色失败时直接插入原内容
+                self.root.after(0, lambda: self.content_text.insert(tk.INSERT, "\n\n" + content))
+                self._log(f"AI润色失败，直接插入原内容: {e}")
         
         threading.Thread(target=run, daemon=True).start()
     
-    def _ws_generate_from_list(self, event=None):
-        """从列表生成改编"""
-        sel = self.ws_listbox.curselection()
-        if not sel:
-            return
-        category = self.ws_category_var.get()
-        if not self.web_search_engine:
-            self.web_search_engine = WebSearchAdaptEngine(self.ai_client, self.current_novel_dir)
-        
-        items = self.web_search_engine.get_items(category)
-        idx = sel[0]
-        if idx < len(items):
-            item = items[idx]
-            template = item.get("adapt", item.get("template", ""))
-            result = self.web_search_engine._fill_template(template)
-            self._show_tool_result(self.ws_result, result)
-    
-    def _ws_add_custom(self):
-        """用户添加自定义热点"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title("添加自定义热点")
-        dialog.geometry("500x400")
-        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
-        C = UIStyle.COLORS
-        
-        ttk.Label(dialog, text="分类:").pack(anchor=tk.W, padx=20, pady=(15,3))
-        cat_var = tk.StringVar(value=self.ws_category_var.get())
-        cats = WebSearchAdaptEngine(self.ai_client).get_categories()
-        ttk.Combobox(dialog, textvariable=cat_var, values=cats, state="readonly", width=47).pack(padx=20)
-        
-        ttk.Label(dialog, text="热点名称:").pack(anchor=tk.W, padx=20, pady=(10,3))
-        name_entry = ttk.Entry(dialog, width=50)
-        name_entry.pack(padx=20)
-        
-        ttk.Label(dialog, text="描述（一句话说明）:").pack(anchor=tk.W, padx=20, pady=(10,3))
-        desc_entry = ttk.Entry(dialog, width=50)
-        desc_entry.pack(padx=20)
-        
-        ttk.Label(dialog, text="改编模板（用{name}等变量）:").pack(anchor=tk.W, padx=20, pady=(10,3))
-        template_text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, height=6)
-        template_text.pack(padx=20, fill=tk.X)
-        template_text.insert("1.0", "{name}是一个普通{职业}，直到那天{事件}...")
-        
-        def save():
-            name = name_entry.get().strip()
-            desc = desc_entry.get().strip()
-            tmpl = template_text.get("1.0", tk.END).strip()
-            if not name or not tmpl:
-                messagebox.showwarning("提示", "请填写名称和模板")
-                return
-            if not self.web_search_engine:
-                self.web_search_engine = WebSearchAdaptEngine(self.ai_client, self.current_novel_dir)
-            self.web_search_engine.add_custom_meme(cat_var.get(), name, desc, tmpl)
-            self._log(f"已添加自定义热点: {name}")
-            dialog.destroy()
-            # 刷新列表
-            self._refresh_ws_list()
-            messagebox.showinfo("成功", f"已保存自定义热点「{name}」")
-        
-        ttk.Button(dialog, text="保存", command=save).pack(pady=15)
-    
-    def _ws_delete_custom(self):
-        """删除自定义热点"""
-        sel = self.ws_listbox.curselection()
-        if not sel:
-            messagebox.showinfo("提示", "请先选择要删除的热点")
-            return
-        if not self.web_search_engine:
-            self.web_search_engine = WebSearchAdaptEngine(self.ai_client, self.current_novel_dir)
-        category = self.ws_category_var.get()
-        items = self.web_search_engine.get_items(category)
-        idx = sel[0]
-        if idx < len(items):
-            if not items[idx].get("custom"):
-                messagebox.showinfo("提示", "只能删除自定义添加的热点")
-                return
-            if messagebox.askyesno("确认", f"确定删除「{items[idx].get('name','')}」？"):
-                # 直接从列表中移除并持久化
-                removed = items.pop(idx)
-                self.web_search_engine._save_custom(category, items)
-                self._refresh_ws_list()
-                self._log(f"已删除自定义热点: {removed.get('name','')}")
-    
-    def _refresh_ws_list(self):
-        """刷新热点列表"""
-        self.ws_listbox.delete(0, tk.END)
-        if not self.web_search_engine:
-            self.web_search_engine = WebSearchAdaptEngine(self.ai_client, self.current_novel_dir)
-        items = self.web_search_engine.get_items(self.ws_category_var.get())
-        for item in items:
-            marker = "[自定义]" if item.get("custom") else ""
-            self.ws_listbox.insert(tk.END, f"{marker}{item.get('name','')}: {item.get('desc','')}")
-    
-    # ===== 记忆系统可视化工具 =====
-    
-    def _build_memory_viz_tool(self):
-        """记忆系统可视化 - 查看记忆状态"""
-        C = UIStyle.COLORS
-        f = self.tool_content_frame
-        
-        tk.Label(f, text="记忆系统可视化", font=("", 11, "bold"),
-                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=5)
-        
-        if not self.current_novel_dir:
-            tk.Label(f, text="请先新建或打开小说", font=("", 10),
-                    bg=C['bg_dark'], fg=C['text_muted']).pack(pady=20)
-            return
-        
-        # 记忆统计
-        stats_frame = tk.Frame(f, bg=C['bg_dark'])
-        stats_frame.pack(fill=tk.X, pady=5)
-        
-        report = self.memory.health_check()
-        
-        stats_text = f"""记忆系统状态:
-- 章节数: {report.get('total_chapters', 0)}
-- 卷数: {report.get('total_volumes', 0)}
-- 角色数: {report.get('total_characters', 0)}
-- 弧线数: {report.get('total_arcs', 0)}
-- 记忆块: {report.get('total_chunks', 0)}
-- 衰减记忆: {len(report.get('stale_chunks', []))}"""
-        
-        tk.Label(stats_frame, text=stats_text, font=("微软雅黑", 10),
-                bg=C['bg_dark'], fg=C['text_primary'], justify=tk.LEFT).pack(anchor=tk.W, padx=10)
-        
-        # 建议
-        if report.get('recommendations'):
-            tk.Label(f, text="建议:", font=("", 10, "bold"),
-                    bg=C['bg_dark'], fg=C['warning']).pack(anchor=tk.W, pady=(10, 3))
-            for rec in report['recommendations']:
-                tk.Label(f, text=f"  - {rec}", font=("微软雅黑", 9),
-                        bg=C['bg_dark'], fg=C['text_secondary']).pack(anchor=tk.W)
-        
-        # 操作按钮
-        btn_frame = tk.Frame(f, bg=C['bg_dark'])
-        btn_frame.pack(fill=tk.X, pady=10)
-        tk.Button(btn_frame, text="刷新", font=('微软雅黑', 9),
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT,
-                 command=self._build_memory_viz_tool).pack(side=tk.LEFT, padx=5)
-    
-    # ===== 卷级摘要管理工具 =====
-    
-    def _build_summary_mgmt_tool(self):
-        """卷级摘要管理 - 查看和编辑摘要"""
-        C = UIStyle.COLORS
-        f = self.tool_content_frame
-        
-        tk.Label(f, text="分层摘要管理", font=("", 11, "bold"),
-                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=5)
-        
-        if not self.current_novel_dir:
-            tk.Label(f, text="请先新建或打开小说", font=("", 10),
-                    bg=C['bg_dark'], fg=C['text_muted']).pack(pady=20)
-            return
-        
-        # 全局摘要
-        tk.Label(f, text="全局摘要:", font=("", 10, "bold"),
-                bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W, pady=(5, 2))
-        global_text = tk.Text(f, height=3, wrap=tk.WORD, font=("微软雅黑", 9),
-                             bg=C['bg_card'], fg=C['text_primary'], relief=tk.FLAT)
-        global_text.pack(fill=tk.X, pady=2)
-        gs = self.memory.get_global_summary()
-        if gs:
-            global_text.insert("1.0", gs)
-        
-        def save_global():
-            content = global_text.get("1.0", tk.END).strip()
-            if content:
-                self.memory.save_global_summary(content)
-                self._log("全局摘要已保存")
-        
-        tk.Button(f, text="保存全局摘要", font=('微软雅黑', 9),
-                 bg=C['accent'], fg='white', relief=tk.FLAT,
-                 command=save_global).pack(anchor=tk.W, pady=3)
-        
-        # 卷级摘要列表
-        tk.Label(f, text="卷级摘要:", font=("", 10, "bold"),
-                bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W, pady=(10, 2))
-        
-        vol_frame = tk.Frame(f, bg=C['bg_dark'])
-        vol_frame.pack(fill=tk.BOTH, expand=True)
-        
-        vol_listbox = tk.Listbox(vol_frame, bg=C['bg_card'], fg=C['text_secondary'],
-                                font=('微软雅黑', 9), height=6, relief=tk.FLAT)
-        vol_listbox.pack(fill=tk.X, pady=3)
-        
-        # 加载卷级摘要
-        volumes_dir = self.memory.volumes_dir
-        if volumes_dir.exists():
-            for vf in sorted(volumes_dir.glob("volume_*.txt")):
-                vol_num = vf.stem.split("_")[1]
-                vol_listbox.insert(tk.END, f"第{vol_num}卷")
-        
-        # 卷摘要预览
-        vol_preview = tk.Text(f, height=3, wrap=tk.WORD, font=("微软雅黑", 9),
-                             bg=C['bg_card'], fg=C['text_primary'], relief=tk.FLAT)
-        vol_preview.pack(fill=tk.X, pady=3)
-        
-        def on_vol_select(event):
-            sel = vol_listbox.curselection()
-            if sel:
-                vol_num = int(vol_listbox.get(sel[0]).replace("第", "").replace("卷", ""))
-                summary = self.memory.get_volume_summary(vol_num)
-                vol_preview.delete("1.0", tk.END)
-                vol_preview.insert("1.0", summary)
-        
-        vol_listbox.bind('<<ListboxSelect>>', on_vol_select)
-        
-        # 弧线摘要
-        tk.Label(f, text="弧线摘要:", font=("", 10, "bold"),
-                bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W, pady=(10, 2))
-        
-        arc_listbox = tk.Listbox(f, bg=C['bg_card'], fg=C['text_secondary'],
-                                font=('微软雅黑', 9), height=4, relief=tk.FLAT)
-        arc_listbox.pack(fill=tk.X, pady=3)
-        
-        arcs = self.memory.get_all_arcs()
-        for arc in arcs:
-            arc_listbox.insert(tk.END, arc.get('name', ''))
-    
-    # ===== 批量操作工具 =====
-    
-    def _build_batch_ops_tool(self):
-        """批量操作 - 批量导入导出"""
-        C = UIStyle.COLORS
-        f = self.tool_content_frame
-        
-        tk.Label(f, text="批量操作", font=("", 11, "bold"),
-                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=5)
-        
-        if not self.current_novel_dir:
-            tk.Label(f, text="请先新建或打开小说", font=("", 10),
-                    bg=C['bg_dark'], fg=C['text_muted']).pack(pady=20)
-            return
-        
-        # 批量导入
-        import_frame = tk.LabelFrame(f, text="批量导入", padx=10, pady=10,
-                                     bg=C['bg_dark'], fg=C['text_primary'])
-        import_frame.pack(fill=tk.X, pady=5)
-        
-        tk.Label(import_frame, text="从文件夹批量导入章节文件（支持txt/md格式）",
-                font=("微软雅黑", 9), bg=C['bg_dark'], fg=C['text_secondary']).pack(anchor=tk.W)
-        
-        def batch_import():
-            folder = filedialog.askdirectory(title="选择包含章节文件的文件夹")
-            if not folder:
-                return
-            folder_path = Path(folder)
-            text_files = sorted(list(folder_path.glob("*.txt")) + list(folder_path.glob("*.md")))
-            if not text_files:
-                messagebox.showinfo("提示", "该文件夹中没有txt/md文件")
-                return
-            
-            chapters_dir = self.current_novel_dir / "chapters"
-            chapters_dir.mkdir(exist_ok=True)
-            existing = sorted(chapters_dir.glob("chapter_*.txt"))
-            next_num = len(existing) + 1
-            
-            imported = 0
-            for src in text_files:
-                try:
-                    content = src.read_text(encoding='utf-8')
-                except:
-                    try:
-                        content = src.read_text(encoding='gbk')
-                    except:
-                        continue
-                dest = chapters_dir / f"chapter_{next_num:05d}.txt"
-                dest.write_text(content, encoding='utf-8')
-                next_num += 1
-                imported += 1
-            
-            self._log(f"批量导入 {imported} 个章节文件")
-            messagebox.showinfo("成功", f"已导入 {imported} 个章节文件")
-        
-        tk.Button(import_frame, text="选择文件夹批量导入", font=('微软雅黑', 9),
-                 bg=C['accent'], fg='white', relief=tk.FLAT,
-                 command=batch_import).pack(anchor=tk.W, pady=5)
-        
-        # 批量导出
-        export_frame = tk.LabelFrame(f, text="批量导出", padx=10, pady=10,
-                                     bg=C['bg_dark'], fg=C['text_primary'])
-        export_frame.pack(fill=tk.X, pady=5)
-        
-        tk.Label(export_frame, text="导出所有章节到指定文件夹",
-                font=("微软雅黑", 9), bg=C['bg_dark'], fg=C['text_secondary']).pack(anchor=tk.W)
-        
-        def batch_export():
-            if not self.current_novel_dir:
-                return
-            folder = filedialog.askdirectory(title="选择导出目标文件夹")
-            if not folder:
-                return
-            
-            chapters_dir = self.current_novel_dir / "chapters"
-            if not chapters_dir.exists():
-                messagebox.showinfo("提示", "没有章节文件")
-                return
-            
-            chapter_files = sorted(chapters_dir.glob("chapter_*.txt"))
-            exported = 0
-            for cf in chapter_files:
-                dest = Path(folder) / cf.name
-                dest.write_text(cf.read_text(encoding='utf-8'), encoding='utf-8')
-                exported += 1
-            
-            self._log(f"批量导出 {exported} 个章节文件")
-            messagebox.showinfo("成功", f"已导出 {exported} 个章节文件到 {folder}")
-        
-        tk.Button(export_frame, text="导出所有章节", font=('微软雅黑', 9),
-                 bg=C['success'], fg='white', relief=tk.FLAT,
-                 command=batch_export).pack(anchor=tk.W, pady=5)
-        
-        # 批量生成摘要
-        summary_frame = tk.LabelFrame(f, text="批量生成摘要", padx=10, pady=10,
-                                      bg=C['bg_dark'], fg=C['text_primary'])
-        summary_frame.pack(fill=tk.X, pady=5)
-        
-        tk.Label(summary_frame, text="为所有卷自动生成摘要（需AI配置）",
-                font=("微软雅黑", 9), bg=C['bg_dark'], fg=C['text_secondary']).pack(anchor=tk.W)
-        
-        def batch_summary():
-            if not self.ai_client.is_configured():
-                messagebox.showwarning("提示", "请先配置AI")
-                return
-            
-            chapters_dir = self.current_novel_dir / "chapters"
-            if not chapters_dir.exists():
-                return
-            
-            total_chapters = len(list(chapters_dir.glob("chapter_*.txt")))
-            total_volumes = (total_chapters - 1) // 100 + 1
-            
-            def run():
-                for vol in range(1, total_volumes + 1):
-                    self.memory.auto_generate_volume_summary(vol)
-                    self.root.after(0, lambda v=vol: self._log(f"第{v}卷摘要已生成"))
-                self.root.after(0, lambda: messagebox.showinfo("完成", f"已生成 {total_volumes} 个卷级摘要"))
-            
-            threading.Thread(target=run, daemon=True).start()
-        
-        tk.Button(summary_frame, text="批量生成卷级摘要", font=('微软雅黑', 9),
-                 bg=C['warning'], fg='white', relief=tk.FLAT,
-                 command=batch_summary).pack(anchor=tk.W, pady=5)
-    
-    # ===== 章节分析工具 =====
-    
-    def _build_chapter_analysis_tool(self):
-        """章节文件浏览+智能推荐"""
-        C = UIStyle.COLORS
-        f = self.tool_content_frame
-        
-        tk.Label(f, text="章节文件分析 - 浏览章节并推荐适用工具", font=("", 11, "bold"),
-                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=5)
-        
-        if not self.current_novel_dir:
-            tk.Label(f, text="请先新建或打开小说", font=("", 10),
-                    bg=C['bg_dark'], fg=C['text_muted']).pack(pady=20)
-            return
-        
-        chapters_dir = self.current_novel_dir / "chapters"
-        
-        # 章节文件列表
-        list_frame = tk.Frame(f, bg=C['bg_dark'])
-        list_frame.pack(fill=tk.X, pady=5)
-        
-        tk.Label(list_frame, text="章节文件:", font=('微软雅黑', 9, 'bold'),
-                bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W)
-        
-        self.ch_file_listbox = tk.Listbox(list_frame, bg=C['bg_card'], fg=C['text_secondary'],
-                                          font=('微软雅黑', 9), height=8,
-                                          selectbackground=C['accent'], relief=tk.FLAT)
-        self.ch_file_listbox.pack(fill=tk.X, pady=3)
-        self.ch_file_listbox.bind('<<ListboxSelect>>', self._on_chapter_file_select)
-        
-        # 刷新章节列表
-        self._refresh_chapter_files()
-        
-        # 章节内容预览
-        tk.Label(f, text="章节内容预览:", font=('微软雅黑', 9, 'bold'),
-                bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W, pady=(10, 3))
-        
-        self.ch_preview = tk.Text(f, height=6, wrap=tk.WORD, font=('微软雅黑', 9),
-                                 bg=C['bg_card'], fg=C['text_primary'],
-                                 relief=tk.FLAT, padx=10, pady=10, state=tk.DISABLED)
-        self.ch_preview.pack(fill=tk.X, pady=3)
-        
-        # 智能推荐区
-        tk.Label(f, text="智能推荐 - 本章适用的创作工具:", font=('微软雅黑', 9, 'bold'),
-                bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W, pady=(10, 3))
-        
-        self.ch_recommend = tk.Text(f, height=10, wrap=tk.WORD, font=('微软雅黑', 9),
-                                   bg=C['bg_card'], fg=C['text_primary'],
-                                   relief=tk.FLAT, padx=10, pady=10, state=tk.DISABLED)
-        self.ch_recommend.pack(fill=tk.BOTH, expand=True, pady=3)
-        
-        # 操作按钮
-        btn_frame = tk.Frame(f, bg=C['bg_dark'])
-        btn_frame.pack(fill=tk.X, pady=5)
-        tk.Button(btn_frame, text="刷新列表", font=('微软雅黑', 9),
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=10,
-                 command=self._refresh_chapter_files).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="导入章节文件", font=('微软雅黑', 9),
-                 bg=C['warning'], fg='white', relief=tk.FLAT, padx=10,
-                 command=self._import_chapter_files).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="选择文件夹", font=('微软雅黑', 9),
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=10,
-                 command=self._browse_chapter_folder).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="分析当前章节", font=('微软雅黑', 9),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=10,
-                 command=self._analyze_current_chapter).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="加载到编辑区", font=('微软雅黑', 9),
-                 bg=C['success'], fg='white', relief=tk.FLAT, padx=10,
-                 command=self._load_chapter_to_editor).pack(side=tk.RIGHT, padx=5)
-    
-    def _refresh_chapter_files(self):
-        """刷新章节文件列表"""
-        self.ch_file_listbox.delete(0, tk.END)
-        if not self.current_novel_dir:
-            return
-        
-        chapters_dir = self.current_novel_dir / "chapters"
-        if not chapters_dir.exists():
-            return
-        
-        chapter_files = sorted(chapters_dir.glob("chapter_*.txt"))
-        for f in chapter_files:
-            size = f.stat().st_size
-            size_kb = size / 1024
-            name = f.stem.replace("chapter_", "第") + "章"
-            self.ch_file_listbox.insert(tk.END, f"{name} ({size_kb:.1f}KB)")
-    
-    def _import_chapter_files(self):
-        """从任意文件夹导入章节文件"""
-        if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先新建或打开小说")
-            return
-        
-        file_paths = filedialog.askopenfilenames(
-            title="选择章节文件",
-            filetypes=[
-                ("文本文件", "*.txt"),
-                ("Markdown文件", "*.md"),
-                ("所有文件", "*.*")
-            ]
-        )
-        
-        if not file_paths:
-            return
-        
-        chapters_dir = self.current_novel_dir / "chapters"
-        chapters_dir.mkdir(exist_ok=True)
-        
-        # 获取当前最大章节号
-        existing = sorted(chapters_dir.glob("chapter_*.txt"))
-        next_num = len(existing) + 1
-        
-        imported = 0
-        for src in file_paths:
-            src_path = Path(src)
-            # 读取源文件
-            try:
-                with open(src_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-            except UnicodeDecodeError:
-                try:
-                    with open(src_path, 'r', encoding='gbk') as f:
-                        content = f.read()
-                except:
-                    self._log(f"无法读取文件: {src_path.name}")
-                    continue
-            
-            # 保存到章节目录
-            dest = chapters_dir / f"chapter_{next_num:04d}.txt"
-            with open(dest, 'w', encoding='utf-8') as f:
-                f.write(content)
-            
-            next_num += 1
-            imported += 1
-        
-        self._refresh_chapter_files()
-        self._log(f"成功导入 {imported} 个章节文件")
-        messagebox.showinfo("成功", f"已导入 {imported} 个章节文件")
-    
-    def _browse_chapter_folder(self):
-        """选择文件夹浏览章节"""
-        folder_path = filedialog.askdirectory(title="选择包含章节文件的文件夹")
-        
-        if not folder_path:
-            return
-        
-        folder = Path(folder_path)
-        
-        # 扫描文件夹中的文本文件
-        text_files = []
-        for ext in ['*.txt', '*.md']:
-            text_files.extend(folder.glob(ext))
-        
-        if not text_files:
-            messagebox.showinfo("提示", "该文件夹中没有找到文本文件")
-            return
-        
-        # 显示找到的文件
-        text_files = sorted(text_files)
-        
-        # 创建选择对话框
-        dialog = tk.Toplevel(self.root)
-        dialog.title(f"选择章节 - {folder.name}")
-        dialog.geometry("500x400")
-        dialog.transient(self.root)
-        dialog.grab_set()
-        
-        tk.Label(dialog, text=f"找到 {len(text_files)} 个文本文件:", 
-                font=('微软雅黑', 10, 'bold')).pack(pady=10)
-        
-        # 文件列表（可多选）
-        listbox = tk.Listbox(dialog, selectmode=tk.MULTIPLE, font=('微软雅黑', 9))
-        listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        for f in text_files:
-            size_kb = f.stat().st_size / 1024
-            listbox.insert(tk.END, f"{f.name} ({size_kb:.1f}KB)")
-        
-        def import_selected():
-            selected = listbox.curselection()
-            if not selected:
-                messagebox.showwarning("提示", "请选择要导入的文件")
-                return
-            
-            if not self.current_novel_dir:
-                messagebox.showwarning("提示", "请先新建或打开小说")
-                dialog.destroy()
-                return
-            
-            chapters_dir = self.current_novel_dir / "chapters"
-            chapters_dir.mkdir(exist_ok=True)
-            
-            existing = sorted(chapters_dir.glob("chapter_*.txt"))
-            next_num = len(existing) + 1
-            
-            imported = 0
-            for idx in selected:
-                src_path = text_files[idx]
-                try:
-                    with open(src_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                except UnicodeDecodeError:
-                    try:
-                        with open(src_path, 'r', encoding='gbk') as f:
-                            content = f.read()
-                    except:
-                        continue
-                
-                dest = chapters_dir / f"chapter_{next_num:04d}.txt"
-                with open(dest, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                
-                next_num += 1
-                imported += 1
-            
-            self._refresh_chapter_files()
-            self._log(f"从文件夹导入 {imported} 个章节文件")
-            messagebox.showinfo("成功", f"已导入 {imported} 个章节文件")
-            dialog.destroy()
-        
-        btn_frame = tk.Frame(dialog)
-        btn_frame.pack(pady=10)
-        tk.Button(btn_frame, text="全选", command=lambda: listbox.select_set(0, tk.END)).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="导入选中", command=import_selected, bg='#10b981', fg='white').pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
-    
-    def _on_chapter_file_select(self, event=None):
-        """章节文件选中"""
-        sel = self.ch_file_listbox.curselection()
-        if not sel or not self.current_novel_dir:
-            return
-        
-        chapters_dir = self.current_novel_dir / "chapters"
-        chapter_files = sorted(chapters_dir.glob("chapter_*.txt"))
-        idx = sel[0]
-        
-        if idx < len(chapter_files):
-            filepath = chapter_files[idx]
-            try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
-                # 显示预览（前500字）
-                preview = content[:500] + ("..." if len(content) > 500 else "")
-                self.ch_preview.config(state=tk.NORMAL)
-                self.ch_preview.delete("1.0", tk.END)
-                self.ch_preview.insert("1.0", preview)
-                self.ch_preview.config(state=tk.DISABLED)
-                
-                # 智能分析并推荐
-                recommendations = self._analyze_chapter_content(content)
-                self.ch_recommend.config(state=tk.NORMAL)
-                self.ch_recommend.delete("1.0", tk.END)
-                self.ch_recommend.insert("1.0", recommendations)
-                self.ch_recommend.config(state=tk.DISABLED)
-                
-            except Exception as e:
-                self._log(f"读取章节失败: {e}")
-    
-    def _analyze_chapter_content(self, content: str) -> str:
-        """分析章节内容，推荐适用的创作工具"""
-        recommendations = []
-        
-        # 战斗场景检测
-        battle_keywords = ["战", "斗", "杀", "剑", "刀", "拳", "攻", "击", "斩", "劈", "刺"]
-        battle_count = sum(1 for kw in battle_keywords if kw in content)
-        if battle_count >= 3:
-            recommendations.append("【桥段库 → 角色对战】检测到战斗场景，可使用「角色对战」桥段模板优化战斗描写。")
-            recommendations.append("【描写库 → 战斗场景】建议使用「战斗场景」描写增强画面感。")
-        
-        # 情感场景检测
-        emotion_keywords = ["爱", "恨", "泪", "笑", "心", "情", "思念", "牵挂", "拥抱", "吻"]
-        emotion_count = sum(1 for kw in emotion_keywords if kw in content)
-        if emotion_count >= 3:
-            recommendations.append("【桥段库 → 情侣互动】检测到情感描写，可使用「情侣互动」「情侣对话」模板。")
-            recommendations.append("【描写库 → 情感心理】建议使用「情感心理」描写增强感染力。")
-        
-        # 修炼/突破检测
-        cultivate_keywords = ["修炼", "突破", "境界", "灵气", "丹田", "功法", "渡劫", "元婴"]
-        cultivate_count = sum(1 for kw in cultivate_keywords if kw in content)
-        if cultivate_count >= 2:
-            recommendations.append("【桥段库 → 角色修炼】检测到修炼场景，可使用「角色修炼」桥段模板。")
-            recommendations.append("【元素库 → 修炼体系】可参考「修炼体系」元素丰富设定。")
-        
-        # 登场/退场检测
-        entrance_keywords = ["登场", "出场", "降临", "出现", "走来", "降临", "离开", "消失", "死去"]
-        entrance_count = sum(1 for kw in entrance_keywords if kw in content)
-        if entrance_count >= 2:
-            recommendations.append("【桥段库 → 角色登场/退场】检测到角色出场或离场，可使用对应桥段模板。")
-        
-        # 对话检测
-        dialogue_count = content.count('"') + content.count('"') + content.count('「') + content.count('」')
-        if dialogue_count >= 10:
-            recommendations.append("【对话推演】本章对话较多，可使用「情景对话推演」继续扩展对话。")
-        
-        # 描写场景检测
-        scene_keywords = ["山", "水", "城", "宫", "殿", "天空", "大地", "森林", "海洋", "星空"]
-        scene_count = sum(1 for kw in scene_keywords if kw in content)
-        if scene_count >= 3:
-            recommendations.append("【描写库 → 自然景观/建筑描写】检测到场景描写，可使用「自然景观」或「建筑描写」增强氛围。")
-        
-        # 角色外貌检测
-        appearance_keywords = ["容貌", "美貌", "英俊", "潇洒", "绝美", "倾城", "飘逸", "冷峻"]
-        appearance_count = sum(1 for kw in appearance_keywords if kw in content)
-        if appearance_count >= 2:
-            recommendations.append("【描写库 → 人物外貌】检测到外貌描写，可使用「人物外貌」描写模板。")
-        
-        # 追逐检测
-        chase_keywords = ["追", "逃", "跑", "奔", "闪", "躲", "避"]
-        chase_count = sum(1 for kw in chase_keywords if kw in content)
-        if chase_count >= 3:
-            recommendations.append("【桥段库 → 角色追逐】检测到追逐场景，可使用「角色追逐」桥段模板。")
-        
-        # 风格建议
-        word_count = len(content)
-        if word_count < 1500:
-            recommendations.append("【风格转换】本章较短（{0}字），可使用「AI扩写」或「风格转换」丰富内容。".format(word_count))
-        elif word_count > 5000:
-            recommendations.append("【智能改编】本章较长（{0}字），可使用「AI简写」精简或「智能改编」优化节奏。".format(word_count))
-        
-        # 热点改编建议
-        if "搞笑" in content or "幽默" in content or "哈哈" in content:
-            recommendations.append("【热点改编】本章有幽默元素，可使用「热点改编→冷笑话」增加笑点。")
-        
-        if not recommendations:
-            recommendations.append("本章暂无明显特征，可尝试使用以下工具：")
-            recommendations.append("• 风格转换 - 调整文风")
-            recommendations.append("• AI润色 - 优化语言表达")
-            recommendations.append("• 描写库 - 增加细节描写")
-            recommendations.append("• 桥段库 - 添加经典桥段")
-        
-        return "\n\n".join(recommendations)
-    
-    def _analyze_current_chapter(self):
-        """分析当前编辑区的章节"""
-        content = self.content_text.get("1.0", tk.END).strip()
-        if not content:
-            messagebox.showinfo("提示", "编辑区没有内容")
-            return
-        
-        recommendations = self._analyze_chapter_content(content)
-        self.ch_recommend.config(state=tk.NORMAL)
-        self.ch_recommend.delete("1.0", tk.END)
-        self.ch_recommend.insert("1.0", recommendations)
-        self.ch_recommend.config(state=tk.DISABLED)
-    
-    def _load_chapter_to_editor(self):
-        """加载选中章节到编辑区"""
-        sel = self.ch_file_listbox.curselection()
-        if not sel or not self.current_novel_dir:
-            messagebox.showinfo("提示", "请先选择一个章节文件")
-            return
-        
-        chapters_dir = self.current_novel_dir / "chapters"
-        chapter_files = sorted(chapters_dir.glob("chapter_*.txt"))
-        idx = sel[0]
-        
-        if idx < len(chapter_files):
-            filepath = chapter_files[idx]
-            try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
-                self.content_text.delete("1.0", tk.END)
-                self.content_text.insert("1.0", content)
-                self.word_count_var.set(str(len(content)))
-                
-                # 更新当前章节号
-                chapter_num = int(filepath.stem.split("_")[1])
-                self.current_chapter = chapter_num
-                self.chapter_title_var.set(f"第{chapter_num}章")
-                
-                self._log(f"已加载第{chapter_num}章到编辑区")
-            except Exception as e:
-                self._log(f"加载章节失败: {e}")
+    def _insert_polished_content(self, content):
+        """插入润色后的内容"""
+        self.content_text.insert(tk.INSERT, "\n\n" + content)
+        # 更新字数统计
+        full_text = self.content_text.get("1.0", tk.END).strip()
+        self.word_count_var.set(f"字数: {len(full_text)}")
     
     def _display_review(self, review_json: str):
         """显示审校结果（主线程调用）"""

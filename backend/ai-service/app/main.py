@@ -11,6 +11,7 @@ import uvicorn
 from datetime import datetime
 import asyncio
 from enum import Enum
+from loguru import logger
 
 # 导入自定义模块
 from .core.config import settings
@@ -44,6 +45,10 @@ model_manager = ModelManager()
 
 # 初始化推理引擎
 inference_engine = InferenceEngine(model_manager)
+
+def get_inference_engine():
+    """获取推理引擎实例（用于依赖注入）"""
+    return inference_engine
 
 class ModelType(str, Enum):
     LOCAL = "local"
@@ -280,7 +285,7 @@ def ensure_romance_emotion(content: str) -> str:
 @app.on_event("startup")
 async def startup_event():
     """应用启动事件"""
-    print("AI模型服务启动中...")
+    logger.info("AI模型服务启动中...")
     
     # 初始化模型管理器
     await model_manager.initialize()
@@ -288,21 +293,21 @@ async def startup_event():
     # 加载默认模型
     try:
         await model_manager.load_default_models()
-        print("默认模型加载完成")
+        logger.info("默认模型加载完成")
     except Exception as e:
-        print(f"默认模型加载失败: {e}")
+        logger.error(f"默认模型加载失败: {e}")
     
-    print("AI模型服务启动完成")
+    logger.info("AI模型服务启动完成")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """应用关闭事件"""
-    print("AI模型服务关闭中...")
+    logger.info("AI模型服务关闭中...")
     
     # 卸载所有模型
     await model_manager.unload_all_models()
     
-    print("AI模型服务已关闭")
+    logger.info("AI模型服务已关闭")
 
 if __name__ == "__main__":
     uvicorn.run(

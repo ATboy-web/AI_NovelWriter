@@ -3,8 +3,10 @@ AI模型服务配置文件
 """
 
 from pydantic_settings import BaseSettings
+from pydantic import Field
 from typing import List, Optional
 import os
+from loguru import logger
 
 class Settings(BaseSettings):
     """应用配置"""
@@ -12,10 +14,15 @@ class Settings(BaseSettings):
     # 基础配置
     APP_NAME: str = "AI模型服务"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = True
+    DEBUG: bool = Field(default=False, env="DEBUG")
+    ENV: str = Field(default="development", env="APP_ENV")
     HOST: str = "0.0.0.0"
     PORT: int = 8001
     WORKERS: int = 1
+    
+    @property
+    def is_production(self) -> bool:
+        return self.ENV == "production"
     
     # CORS配置
     CORS_ORIGINS: List[str] = ["*"]
@@ -56,7 +63,7 @@ class Settings(BaseSettings):
     LOG_FILE: str = "./logs/ai-service.log"
     
     # 安全配置
-    SECRET_KEY: str = "your-secret-key-here"
+    SECRET_KEY: str = Field(default="", env="SECRET_KEY")
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 30
     
@@ -86,7 +93,7 @@ def validate_settings():
     
     # 检查API密钥
     if not settings.OPENAI_API_KEY and not settings.CLAUDE_API_KEY:
-        print("警告: 未配置云端API密钥，只能使用本地模型")
+        logger.warning("未配置云端API密钥，只能使用本地模型")
     
     return errors
 
@@ -94,4 +101,4 @@ def validate_settings():
 validation_errors = validate_settings()
 if validation_errors:
     for error in validation_errors:
-        print(f"配置错误: {error}")
+        logger.error(f"配置错误: {error}")

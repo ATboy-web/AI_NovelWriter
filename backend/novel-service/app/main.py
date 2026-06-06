@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import uvicorn
 from datetime import datetime
-from enum import Enum
 
 # 导入自定义模块
 from .core.config import settings
@@ -47,12 +46,6 @@ app.include_router(api_router, prefix="/api/v1")
 if HAS_NEW_FEATURES and new_features_router:
     app.include_router(new_features_router, prefix="/api/v1")
 
-class NovelType(str, Enum):
-    SCIFI = "scifi"
-    MYSTERY = "mystery"
-    ROMANCE = "romance"
-    FANTASY = "fantasy"
-    URBAN = "urban"
 
 class NovelRequest(BaseModel):
     """小说生成请求"""

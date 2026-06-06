@@ -3,7 +3,7 @@
 **开源的AI辅助小说创作软件** | **免费 · 无需注册 · 无需付费**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.5.0-blue.svg)](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.5.0)
+[![Version](https://img.shields.io/badge/Version-2.6.0-blue.svg)](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.6.0)
 [![Python](https://img.shields.io/badge/Python-3.11+-green.svg)](https://python.org)
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/ATboy-web/AI_NovelWriter/ci.yml?label=CI)](https://github.com/ATboy-web/AI_NovelWriter/actions)
 
@@ -11,7 +11,7 @@
 
 ---
 
-## ✨ 功能特性（v2.5.0）
+## ✨ 功能特性（v2.6.0）
 
 ### 📖 15种小说类型
 | 类型 | 说明 | 类型 | 说明 |
@@ -24,6 +24,17 @@
 | 游戏小说 | 游戏系统、升级打怪 | 体育小说 | 竞技比赛、热血拼搏 |
 | 穿越小说 | 时空穿越、改变历史 | 系统流 | 金手指、逆袭打脸 |
 | 末日小说 | 末世生存、人性考验 | | |
+
+### 🆕 v2.6.0 新增功能
+- **小说模板系统** - 5种快速模板（穿越异世/重生归来/系统流/都市异能/修仙问道）
+- **智能内容插入** - AI润色使上下文衔接更自然
+- **文档导入分析** - 支持TXT/DOCX/MD导入，AI分析给出创作建议
+- **风格优化** - 一键优化章节文学性和可读性
+- **多类型大纲** - 整体大纲/章节大纲/故事大纲三种类型
+- **角色故事线** - 为每个角色添加独立故事线
+- **断点续写** - 自动跳过已完成章节，从未完成处继续
+- **章节导航** - 上一章/下一章快速切换，自动保存
+- **UI设计系统** - 全新深色主题，更舒适的创作环境
 
 ### 🤖 AI智能创作（参考AutoGen多智能体架构）
 - **多智能体协作** - Writer（作家）/ Reviewer（审校）/ Editor（质量门）三角色分工

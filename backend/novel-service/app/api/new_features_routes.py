@@ -343,7 +343,7 @@ class BranchingScenariosRequest(BaseModel):
     current_situation: str = Field(..., description="当前情境")
     num_branches: int = Field(3, description="分支数量")
     events_per_branch: int = Field(4, description="每分支事件数")
-    setting: Optional[Dict[str, Any]]] = Field(None, description="世界观设定")
+    setting: Optional[Dict[str, Any]] = Field(None, description="世界观设定")
     characters: Optional[Dict[str, Dict[str, Any]]] = Field(None, description="角色信息")
 
 @router.post("/story-flow/branching", tags=["故事流推演"])
@@ -695,49 +695,49 @@ async def new_features_health_check():
         try:
             from ..vector_store import get_vector_store_manager
             modules_status["vector_store"] = "available"
-        except:
+        except ImportError:
             modules_status["vector_store"] = "unavailable"
         
         try:
             from ..consistency_checker import get_consistency_checker
             modules_status["consistency_checker"] = "available"
-        except:
+        except ImportError:
             modules_status["consistency_checker"] = "unavailable"
         
         try:
             from ..finalization import get_finalization_manager
             modules_status["finalization"] = "available"
-        except:
+        except ImportError:
             modules_status["finalization"] = "unavailable"
         
         try:
             from ..dialogue import get_dialogue_manager
             modules_status["dialogue"] = "available"
-        except:
+        except ImportError:
             modules_status["dialogue"] = "unavailable"
         
         try:
             from ..story_flow import get_story_flow_manager
             modules_status["story_flow"] = "available"
-        except:
+        except ImportError:
             modules_status["story_flow"] = "unavailable"
         
         try:
             from ..style_transfer import get_style_transfer_manager
             modules_status["style_transfer"] = "available"
-        except:
+        except ImportError:
             modules_status["style_transfer"] = "unavailable"
         
         try:
             from ..description_library import get_description_manager
             modules_status["description_library"] = "available"
-        except:
+        except ImportError:
             modules_status["description_library"] = "unavailable"
         
         try:
             from ..bridge_library import get_bridge_manager
             modules_status["bridge_library"] = "available"
-        except:
+        except ImportError:
             modules_status["bridge_library"] = "unavailable"
         
         return {

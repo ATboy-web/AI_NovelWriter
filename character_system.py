@@ -268,7 +268,7 @@ class CharacterSystem:
                     data = json.load(fp)
                 name = data.get("name", f.stem)
                 self.characters[name] = CharacterProfile(data=data)
-            except:
+            except Exception:
                 pass
         
         # 兼容旧版单文件
@@ -282,7 +282,7 @@ class CharacterSystem:
                     self.characters[name] = CharacterProfile(data=data)
                     self.save_character(name)
                 old_file.unlink()  # 删除旧文件
-            except:
+            except Exception:
                 pass
         
         # 设置活跃角色
@@ -434,7 +434,7 @@ class CharacterSystem:
                     data = json.load(f)
                 self.custom_weapons = data.get("weapons", [])
                 self.custom_skills = data.get("skills", [])
-            except:
+            except Exception:
                 pass
     
     def _save_custom(self):

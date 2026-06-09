@@ -1,5 +1,10 @@
 """
-小说创作智能体模块 - 参考AutoGen多智能体协作架构
+小说创作智能体模块 - 参考AutoGen多智能体协作架构 v2.0
+
+改进：
+- 使用 PromptManager 管理提示词
+- 使用 AgentOrchestrator 并行执行
+- 使用 AIMetrics 监控性能
 """
 
 import json
@@ -8,7 +13,8 @@ import time
 from typing import Dict, List, Any
 from datetime import datetime
 
-from .ai_client import AIClient
+from .ai_client import AIClient, PromptManager
+from .agent_orchestrator import ContextOptimizer
 from .memory_manager import MemoryManager
 from .config import AppConfig
 
@@ -406,8 +412,15 @@ class NovelAgent:
         self.memory.save_settings(settings)
         return settings
     
-    def generate_characters(self, genre: str, title: str, count: int = 5) -> dict:
-        """生成角色"""
+    def generate_characters(self, genre: str, title: str, count: int = None) -> dict:
+        """生成角色 - 根据小说规模智能确定角色数量"""
+        if count is None:
+            # 根据章节数智能计算：10-20章=3个，20-50章=5个，50+章=8个
+            chapter_count = self.memory.get_meta("chapter_count", 20)
+            if chapter_count <= 20: count = 3
+            elif chapter_count <= 50: count = 5
+            else: count = 8
+        
         self.log(f"[智能体] 正在生成{count}个角色...")
         settings = self.memory.get_settings()
         system = f"你是专业角色设计师。世界观：{json.dumps(settings, ensure_ascii=False)[:500]}\n输出JSON：{{'角色名': {{...}}}}"
@@ -471,6 +484,88 @@ class NovelAgent:
         self.memory.add_event(chapter_num, summary, "story")
         
         self.log(f"[智能体] 第{chapter_num}章定稿完成")
+    
+    # ===== 风格模仿 =====
+    
+    def analyze_style(self, text: str, author_name: str = "未知作者") -> dict:
+        """分析一段文字的写作风格"""
+        self.log(f"[智能体] 正在分析 {author_name} 的写作风格...")
+        
+        system = """你是专业的文学风格分析师。分析给定文本的写作风格，输出JSON格式。
+分析维度：
+1. 句式特点（长短句比例、句式结构）
+2. 用词习惯（词汇偏好、用语特点）
+3. 叙事视角（第一/第三人称、视角切换）
+4. 描写手法（环境描写、人物描写、心理描写的特点）
+5. 对话风格（对话比例、对话方式）
+6. 节奏感（快慢节奏、紧张舒缓）
+7. 情感基调（整体情感氛围）
+8. 独特特征（该作者最具辨识度的写作特点）
+9. 模仿要点（模仿该风格需要注意的关键点）
+
+输出格式：
+{
+  "author": "作者名",
+  "sentence_style": "句式特点",
+  "word_choice": "用词习惯",
+  "narrative_perspective": "叙事视角",
+  "description_technique": "描写手法",
+  "dialogue_style": "对话风格",
+  "rhythm": "节奏感",
+  "emotional_tone": "情感基调",
+  "unique_features": "独特特征",
+  "imitation_tips": "模仿要点"
+}"""
+        
+        prompt = f"请分析以下文本的写作风格（作者：{author_name}）：\n\n{text[:3000]}"
+        
+        result = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
+        style = self._parse_json_response(result, {"author": author_name, "raw": result})
+        
+        self.log(f"[智能体] {author_name} 风格分析完成")
+        return style
+    
+    def generate_with_style(self, prompt: str, style: dict, word_count: int = 3000) -> str:
+        """使用指定风格生成文本"""
+        style_desc = json.dumps(style, ensure_ascii=False, indent=2) if isinstance(style, dict) else str(style)
+        
+        system = f"""你是专业小说作家。请严格按照以下写作风格创作：
+
+风格特征：
+{style_desc}
+
+创作要求：
+1. 严格遵循上述风格特征
+2. 保持句式、用词、叙事方式与原风格一致
+3. 内容要自然流畅，不要刻意模仿痕迹
+4. 直接输出创作内容，不要添加解释"""
+        
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=word_count * 2)
+        return response
+    
+    def blend_styles(self, styles: List[dict], prompt: str, word_count: int = 3000) -> str:
+        """融合多个作者的风格生成文本"""
+        styles_desc = ""
+        for i, style in enumerate(styles):
+            author = style.get("author", f"风格{i+1}")
+            styles_desc += f"\n--- {author} ---\n"
+            styles_desc += f"句式: {style.get('sentence_style', '')}\n"
+            styles_desc += f"用词: {style.get('word_choice', '')}\n"
+            styles_desc += f"描写: {style.get('description_technique', '')}\n"
+            styles_desc += f"独特特征: {style.get('unique_features', '')}\n"
+        
+        system = f"""你是专业小说作家。请融合以下多位作者的写作风格进行创作：
+
+{styles_desc}
+
+融合要求：
+1. 吸收每位作者的独特优点
+2. 创造出自然融合的新风格
+3. 不要生硬拼凑，要有机融合
+4. 直接输出创作内容，不要添加解释"""
+        
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=word_count * 2)
+        return response
     
     # ===== 工具方法 =====
     

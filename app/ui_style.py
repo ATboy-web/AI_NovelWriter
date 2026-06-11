@@ -14,22 +14,23 @@ class UIStyle:
     # 设计令牌 (Design Tokens)
     # ═══════════════════════════════════════════
     
-    # 颜色系统 - 深色主题
+    # 颜色系统 - 深色主题 v3.0
     COLORS = {
         # 背景色阶
-        'bg_dark': '#1a1a2e',        # 主背景 - 深邃蓝黑
-        'bg_medium': '#252542',      # 次背景 - 面板
-        'bg_light': '#2f2f4a',       # 浅背景 - 悬停
-        'bg_card': '#1e1e36',        # 卡片背景
+        'bg_dark': '#0f0f1a',        # 主背景 - 最深
+        'bg_medium': '#16162a',      # 次背景 - 面板
+        'bg_light': '#1e1e38',       # 浅背景 - 卡片
+        'bg_card': '#1e1e38',        # 卡片背景
+        'bg_hover': '#252540',       # 悬停状态
         
-        # 主色调 - 紫色系 (创意/灵感)
-        'accent': '#7c3aed',         # 主色调
+        # 主色调 - 紫色系
+        'accent': '#534ab7',         # 主色调
         'accent_light': '#a78bfa',   # 浅紫色
-        'accent_hover': '#6d28d9',   # 悬停色
+        'accent_hover': '#6a62d0',   # 悬停色
         'accent_bg': '#2d1b69',      # 紫色背景
         
         # 语义色
-        'success': '#10b981',        # 成功绿
+        'success': '#0f6e56',        # 成功绿
         'success_bg': '#064e3b',     # 成功背景
         'warning': '#f59e0b',        # 警告黄
         'warning_bg': '#78350f',     # 警告背景
@@ -39,19 +40,19 @@ class UIStyle:
         'info_bg': '#1e3a5f',        # 信息背景
         
         # 文字色阶
-        'text_primary': '#f1f5f9',   # 主文字 - 纯白偏蓝
-        'text_secondary': '#94a3b8', # 次文字 - 灰蓝
-        'text_muted': '#64748b',     # 弱文字
-        'text_inverse': '#1a1a2e',   # 反色文字
+        'text_primary': '#e0e0f0',   # 主文字
+        'text_secondary': '#a0a0b0', # 次文字
+        'text_muted': '#606080',     # 弱文字
+        'text_inverse': '#ffffff',   # 反色文字
         
         # 边框色
-        'border': '#334155',         # 默认边框
-        'border_light': '#475569',   # 浅边框
-        'border_focus': '#7c3aed',   # 聚焦边框
+        'border': '#2a2a40',         # 默认边框
+        'border_light': '#3a3a55',   # 浅边框
+        'border_focus': '#534ab7',   # 聚焦边框
         
         # 悬停背景
-        'hover': '#2f2f4a',          # 悬停背景
-        'hover_light': '#383858',    # 浅悬停
+        'hover': '#252540',          # 悬停背景
+        'hover_light': '#2a2a45',    # 浅悬停
     }
     
     # 字体系统

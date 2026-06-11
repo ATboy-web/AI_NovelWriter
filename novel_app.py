@@ -187,10 +187,31 @@ class NovelWriterApp(
         main_container = tk.Frame(self.root, bg=C['bg_dark'])
         main_container.pack(fill=tk.BOTH, expand=True)
         
-        # 左侧面板
-        left_panel = tk.Frame(main_container, bg=C['bg_medium'], width=280)
-        left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
-        left_panel.pack_propagate(False)
+        # 左侧面板 - 可滚动
+        left_container = tk.Frame(main_container, bg=C['bg_dark'], width=280)
+        left_container.pack(side=tk.LEFT, fill=tk.BOTH, padx=0, pady=0)
+        left_container.pack_propagate(False)
+        
+        # 左侧滚动画布
+        left_canvas = tk.Canvas(left_container, bg=C['bg_medium'], highlightthickness=0, bd=0, width=280)
+        left_scrollbar = tk.Scrollbar(left_container, orient=tk.VERTICAL, command=left_canvas.yview)
+        left_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        left_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        left_canvas.configure(yscrollcommand=left_scrollbar.set)
+        
+        left_panel = tk.Frame(left_canvas, bg=C['bg_medium'])
+        left_canvas.create_window((0, 0), window=left_panel, anchor=tk.NW)
+        
+        def on_left_canvas_configure(event):
+            left_canvas.itemconfig(1, width=event.width)
+        left_canvas.bind("<Configure>", on_left_canvas_configure)
+        
+        # 鼠标滚轮绑定
+        def on_left_scroll(event):
+            left_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        left_canvas.bind("<MouseWheel>", on_left_scroll)
+        left_panel.bind("<MouseWheel>", on_left_scroll)
+        left_scrollbar.bind("<MouseWheel>", on_left_scroll)
         
         # 左侧 - 小说信息卡片
         info_card = tk.Frame(left_panel, bg=C['bg_card'], padx=15, pady=15)
@@ -218,28 +239,39 @@ class NovelWriterApp(
         tk.Label(mode_frame, text="创作模式", font=('微软雅黑', 10, 'bold'),
                 bg=C['bg_medium'], fg=C['accent_light']).pack(anchor=tk.W, pady=(0, 5))
         
-        # 自动创作按钮
-        self.auto_btn = tk.Button(mode_frame, text="自动创作", font=('微软雅黑', 10),
+        # 自动创作 + 停止 同一行
+        btn_row = tk.Frame(mode_frame, bg=C['bg_medium'])
+        btn_row.pack(fill=tk.X, pady=2)
+        
+        self.auto_btn = tk.Button(btn_row, text="自动创作", font=('微软雅黑', 10),
                                  bg=C['accent'], fg='white', relief=tk.FLAT,
-                                 padx=10, pady=8, cursor='hand2', width=14,
+                                 padx=10, pady=6, cursor='hand2',
                                  activebackground=C['accent_hover'],
                                  command=self._auto_generate)
-        self.auto_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=2, padx=(0, 1))
+        self.auto_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
         
-        self.stop_btn = tk.Button(mode_frame, text="停止", font=('微软雅黑', 10),
+        self.stop_btn = tk.Button(btn_row, text="停止", font=('微软雅黑', 10),
                                  bg=C['error'], fg='white', relief=tk.FLAT,
-                                 padx=6, pady=8, cursor='hand2', width=6,
+                                 padx=10, pady=6, cursor='hand2',
                                  activebackground='#dc2626',
                                  command=self._stop_generate)
-        self.stop_btn.pack(side=tk.RIGHT, pady=2)
+        self.stop_btn.pack(side=tk.RIGHT)
         
         # AI辅助写作按钮
         self.assist_btn = tk.Button(mode_frame, text="AI辅助写作 (F11)", font=('微软雅黑', 10),
                                    bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT,
-                                   padx=10, pady=8, cursor='hand2', width=20,
+                                   padx=10, pady=6, cursor='hand2',
                                    activebackground=C['hover'],
                                    command=self._open_fullscreen_writer)
         self.assist_btn.pack(fill=tk.X, pady=2)
+        
+        # 续写按钮
+        self.continue_btn = tk.Button(mode_frame, text="续写新章", font=('微软雅黑', 10),
+                                     bg=C['success'], fg='white', relief=tk.FLAT,
+                                     padx=10, pady=6, cursor='hand2',
+                                     activebackground='#059669',
+                                     command=self._continue_novel)
+        self.continue_btn.pack(fill=tk.X, pady=2)
         
         # 左侧 - 智能体步骤
         agent_frame = tk.Frame(left_panel, bg=C['bg_medium'], padx=10, pady=5)
@@ -304,46 +336,6 @@ class NovelWriterApp(
                           activebackground=C['hover'],
                           command=cmd)
             btn.pack(fill=tk.X, pady=1)
-        
-        # 左侧 - 角色面板
-        char_frame = tk.Frame(left_panel, bg=C['bg_medium'], padx=10, pady=5)
-        char_frame.pack(fill=tk.X, padx=10, pady=(5, 0))
-        
-        tk.Label(char_frame, text="角色面板", font=('微软雅黑', 10, 'bold'),
-                bg=C['bg_medium'], fg=C['accent_light']).pack(anchor=tk.W, pady=(0, 3))
-        
-        # 角色选择下拉框
-        char_select_frame = tk.Frame(char_frame, bg=C['bg_medium'])
-        char_select_frame.pack(fill=tk.X, pady=2)
-        self.char_select_var = tk.StringVar(value="无角色")
-        self.char_select_combo = ttk.Combobox(char_select_frame, textvariable=self.char_select_var, 
-                                              state="readonly", width=15)
-        self.char_select_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.char_select_combo.bind('<<ComboboxSelected>>', self._on_char_select)
-        
-        # 角色信息显示
-        self.char_summary = tk.Label(char_frame, text="未创建角色", font=('微软雅黑', 8),
-                                    bg=C['bg_medium'], fg=C['text_secondary'], justify=tk.LEFT, anchor=tk.W)
-        self.char_summary.pack(fill=tk.X, pady=3)
-        
-        # 角色操作按钮
-        char_btn_frame = tk.Frame(char_frame, bg=C['bg_medium'])
-        char_btn_frame.pack(fill=tk.X, pady=3)
-        tk.Button(char_btn_frame, text="新建", font=('微软雅黑', 8),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=4,
-                 command=self._create_character_dialog).pack(side=tk.LEFT, padx=1)
-        tk.Button(char_btn_frame, text="AI创建", font=('微软雅黑', 8),
-                 bg=C['success'], fg='white', relief=tk.FLAT, padx=4,
-                 command=self._ai_create_character).pack(side=tk.LEFT, padx=1)
-        tk.Button(char_btn_frame, text="武器", font=('微软雅黑', 8),
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=4,
-                 command=self._equip_weapon).pack(side=tk.LEFT, padx=1)
-        tk.Button(char_btn_frame, text="技能", font=('微软雅黑', 8),
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=4,
-                 command=self._learn_skill).pack(side=tk.LEFT, padx=1)
-        tk.Button(char_btn_frame, text="详情", font=('微软雅黑', 8),
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=4,
-                 command=self._show_char_detail).pack(side=tk.RIGHT, padx=1)
         
         # 左侧 - 大纲列表
         outline_frame = tk.Frame(left_panel, bg=C['bg_medium'], padx=10, pady=5)
@@ -461,15 +453,71 @@ class NovelWriterApp(
         
         # 绑定文本变化事件
         self.content_text.bind('<KeyRelease>', self._on_text_change)
+        self.content_text.bind('<Button-3>', self._show_editor_context_menu)
         
         # === 日志页 ===
         log_frame = tk.Frame(self.notebook, bg=C['bg_dark'])
-        self.notebook.add(log_frame, text=" 运行日志 ")
+        self.notebook.add(log_frame, text=" 运行日志 & 角色 ")
         
+        # 左侧 - 角色面板（在日志左边）
+        char_frame = tk.Frame(log_frame, bg=C['bg_medium'], width=240)
+        char_frame.pack(side=tk.LEFT, fill=tk.BOTH, padx=(10, 5), pady=10)
+        char_frame.pack_propagate(False)
+        
+        tk.Label(char_frame, text="角色面板", font=('微软雅黑', 10, 'bold'),
+                bg=C['bg_medium'], fg=C['accent_light']).pack(anchor=tk.W, pady=(5, 5), padx=5)
+        
+        # 角色选择下拉框
+        char_select_frame = tk.Frame(char_frame, bg=C['bg_medium'])
+        char_select_frame.pack(fill=tk.X, padx=5, pady=2)
+        self.char_select_var = tk.StringVar(value="无角色")
+        self.char_select_combo = ttk.Combobox(char_select_frame, textvariable=self.char_select_var, 
+                                              state="readonly", width=16)
+        self.char_select_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.char_select_combo.bind('<<ComboboxSelected>>', self._on_char_select)
+        
+        # 传记按钮
+        tk.Button(char_select_frame, text="传", font=('微软雅黑', 8),
+                 bg=C['success'], fg='white', relief=tk.FLAT, padx=5,
+                 command=self._gen_char_biography).pack(side=tk.RIGHT, padx=2)
+        
+        # 角色信息滚动显示
+        char_canvas = tk.Canvas(char_frame, bg=C['bg_medium'], highlightthickness=0, bd=0)
+        char_scrollbar = tk.Scrollbar(char_frame, orient=tk.VERTICAL, command=char_canvas.yview)
+        char_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        char_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        char_canvas.configure(yscrollcommand=char_scrollbar.set)
+        
+        self.char_detail_frame = tk.Frame(char_canvas, bg=C['bg_medium'])
+        char_canvas.create_window((0, 0), window=self.char_detail_frame, anchor=tk.NW)
+        
+        def on_char_canvas_configure(event):
+            char_canvas.itemconfig(1, width=event.width)
+        char_canvas.bind("<Configure>", on_char_canvas_configure)
+        for w in [char_canvas, self.char_detail_frame, char_scrollbar]:
+            w.bind("<MouseWheel>", lambda e: char_canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        
+        # 角色操作按钮
+        char_btn_frame = tk.Frame(char_frame, bg=C['bg_medium'])
+        char_btn_frame.pack(fill=tk.X, padx=5, pady=5)
+        tk.Button(char_btn_frame, text="新建", font=('微软雅黑', 8),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=5,
+                 command=self._create_character_dialog).pack(side=tk.LEFT, padx=1)
+        tk.Button(char_btn_frame, text="AI", font=('微软雅黑', 8),
+                 bg=C['success'], fg='white', relief=tk.FLAT, padx=5,
+                 command=self._ai_create_character).pack(side=tk.LEFT, padx=1)
+        tk.Button(char_btn_frame, text="武器", font=('微软雅黑', 8),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=5,
+                 command=self._equip_weapon).pack(side=tk.LEFT, padx=1)
+        tk.Button(char_btn_frame, text="技能", font=('微软雅黑', 8),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=5,
+                 command=self._learn_skill).pack(side=tk.LEFT, padx=1)
+        
+        # 右侧 - 日志
         self.log_text = tk.Text(log_frame, wrap=tk.WORD, font=('Consolas', 10),
                                bg=C['bg_card'], fg=C['text_muted'],
                                relief=tk.FLAT, padx=15, pady=15, state=tk.DISABLED)
-        self.log_text.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10), pady=10)
         
         # === 审校结果页 ===
         review_frame = tk.Frame(self.notebook, bg=C['bg_dark'])
@@ -554,6 +602,10 @@ class NovelWriterApp(
         
         # 初始化工具集界面
         self._refresh_toolkit()
+        
+        # 更新左侧面板滚动区域
+        left_panel.update_idletasks()
+        left_canvas.configure(scrollregion=left_canvas.bbox("all"))
         
         # === 阅读管理器页 ===
         reader_frame = tk.Frame(self.notebook, bg=C['bg_dark'])
@@ -902,6 +954,73 @@ class NovelWriterApp(
         content = self.content_text.get("1.0", tk.END).strip()
         self.word_count_var.set(str(len(content)))
         self.is_modified = True
+    
+    def _show_editor_context_menu(self, event):
+        """编辑器右键菜单 - 用选中文字跳转到创作工具"""
+        menu = tk.Menu(self.root, tearoff=0, bg=UIStyle.COLORS['bg_card'], 
+                      fg=UIStyle.COLORS['text_primary'])
+        
+        try:
+            selected = self.content_text.selection_get()
+        except tk.TclError:
+            selected = ""
+        
+        if not selected.strip():
+            selected = self.content_text.get("1.0", tk.END).strip()[:500]
+            menu.add_command(label="使用全文内容", state=tk.DISABLED)
+        else:
+            menu.add_command(label=f"已选中 {len(selected)} 字", state=tk.DISABLED)
+        
+        menu.add_separator()
+        menu.add_command(label="事物描写库",
+                        command=lambda: self._open_tool_with_text("description", selected))
+        menu.add_command(label="角色桥段库",
+                        command=lambda: self._open_tool_with_text("bridge", selected))
+        menu.add_command(label="情景对话推演",
+                        command=lambda: self._open_tool_with_text("dialogue", selected))
+        menu.add_command(label="用选中内容仿写",
+                        command=lambda: self._style_imitation_with_text(selected))
+        menu.add_command(label="生成图片提示词",
+                        command=lambda: self._gen_prompt_from_text(selected))
+        
+        menu.post(event.x_root, event.y_root)
+    
+    def _open_tool_with_text(self, tool_type: str, text: str):
+        """用选中文字跳转到创作工具"""
+        self._selected_context_text = text
+        tab_mapping = {"description": "创作工具 & 描写", "bridge": "创作工具 & 描写",
+                       "dialogue": "情景对话推演"}
+        tab_name = tab_mapping.get(tool_type, "创作工具 & 描写")
+        
+        for i in range(self.notebook.index("end")):
+            if self.notebook.tab(i, "text") == tab_name:
+                self.notebook.select(i)
+                break
+        
+        self._log(f"已跳转到 {tab_name}，选中 {len(text)} 字作为上下文")
+    
+    def _style_imitation_with_text(self, text: str):
+        """用选中文字进行仿写"""
+        self._log("已获取选中内容作为仿写参考")
+        self._style_imitation()
+    
+    def _gen_prompt_from_text(self, text: str):
+        """从选中文字生成图片提示词"""
+        if not self.current_novel_dir:
+            messagebox.showinfo("提示", "请先打开小说")
+            return
+        scenes = SceneDetector.detect(text)
+        if not scenes:
+            messagebox.showinfo("提示", "未检测到适合生成图片的场景")
+            return
+        img_dir = self.current_novel_dir / "scene_prompts"
+        img_dir.mkdir(exist_ok=True)
+        ts = int(time.time())
+        for i, scene in enumerate(scenes):
+            f = img_dir / f"manual_{ts}_{i+1}_prompt.txt"
+            f.write_text(f"场景: {scene.get('text','')[:200]}\n\n提示词:\n{scene.get('prompt','')}", encoding='utf-8')
+        self._log(f"已保存 {len(scenes)} 个手动提示词到 scene_prompts/")
+        messagebox.showinfo("成功", f"已生成 {len(scenes)} 个提示词\n保存到 scene_prompts/")
     
     def _log(self, message: str):
         """添加日志（线程安全）"""
@@ -1385,8 +1504,72 @@ class NovelWriterApp(
                 msg += "3. 在编辑器中手动编写"
                 self.root.after(500, lambda: messagebox.showinfo("继续创作", msg))
             elif completed_chapters >= total_chapters:
-                self.root.after(500, lambda: messagebox.showinfo("已完成", 
-                    f"小说《{meta.get('title')}》已全部完成！共 {completed_chapters} 章。"))
+                result = messagebox.askyesno("已完成",
+                    f"小说《{meta.get('title')}》已全部完成！共 {completed_chapters} 章。\n\n"
+                    "是否续写新章？")
+                if result:
+                    self._continue_novel()
+    
+    def _continue_novel(self):
+        """续写已完成的小说 - 扩展大纲和新章节"""
+        if not self.current_novel_dir:
+            return
+        
+        # 计算当前总章数
+        chapters_dir = self.current_novel_dir / "chapters"
+        existing = sorted(chapters_dir.glob("chapter_*.txt")) if chapters_dir.exists() else []
+        current_count = len(existing)
+        
+        # 询问续写多少章
+        add_count = simpledialog.askinteger("续写", 
+            f"当前已完成 {current_count} 章\n输入要续写的章数（10-50）:",
+            minvalue=1, maxvalue=100, initialvalue=10)
+        
+        if not add_count:
+            return
+        
+        self._log(f"开始续写 {add_count} 章...")
+        
+        # 扩展大纲
+        if not self.outline:
+            self.outline = []
+        
+        meta = self._get_meta()
+        title = meta.get("title", "小说")
+        genre = meta.get("genre", "未知")
+        
+        # 生成新的大纲章节
+        try:
+            context = self.memory.get_global_summary() if self.memory else ""
+            new_chapters = self.agent.generate_outline_continuation(
+                genre, title, add_count, context, current_count
+            )
+            self.outline.extend(new_chapters)
+            
+            # 保存更新后的大纲
+            with open(self.current_novel_dir / "outline.json", 'w', encoding='utf-8') as f:
+                json.dump(self.outline, f, indent=2, ensure_ascii=False)
+            
+            # 更新meta
+            meta_file = self.current_novel_dir / "meta.json"
+            if meta_file.exists():
+                with open(meta_file, 'w', encoding='utf-8') as f:
+                    meta['chapter_count'] = len(self.outline)
+                    json.dump(meta, f, indent=2, ensure_ascii=False)
+            
+            self.current_chapter = current_count
+            self._refresh_outline_list()
+            self.chapter_var.set(f"{current_count}/{len(self.outline)}")
+            self._log(f"大纲已扩展到 {len(self.outline)} 章，可以继续创作了")
+            
+            messagebox.showinfo("续写", 
+                f"已添加 {add_count} 章新大纲\n"
+                f"总章数: {len(self.outline)}\n\n"
+                "点击「自动创作」或「生成下一章」继续写作")
+            
+        except Exception as e:
+            self._log(f"续写大纲生成失败: {e}")
+            messagebox.showerror("错误", f"续写失败: {e}")
     
     def _create_sequel(self):
         """基于当前小说创建续集（第二部）"""
@@ -3724,15 +3907,19 @@ class NovelWriterApp(
             self.chapter_var.set(f"{self.current_chapter}/{total}")
     
     def _detect_and_prompt_image(self, content: str, chapter_num: int):
-        """检测名场面并提醒生成图片/保存提示词"""
+        """检测名场面并生成电影级AI提示词"""
         scenes = SceneDetector.detect(content)
         if not scenes:
             return
         
         has_api = self.image_gen.is_configured()
-        self._log(f"[名场面检测] 发现 {len(scenes)} 个适合生成插图的场景")
+        self._log(f"[名场面检测] 发现 {len(scenes)} 个场景")
         
-        scene_type_cn = {"battle": "战斗场面", "beauty": "人物特写", "emotion": "情感场景", "epic": "震撼场面"}
+        scene_type_cn = {
+            "battle": "战斗场面", "beauty": "人物特写", "emotion": "情感场景",
+            "epic_scene": "震撼场面", "character_closeup": "角色特写",
+            "landscape": "风景全景", "confrontation": "对峙场面", "sacrifice": "牺牲时刻"
+        }
         
         img_dir = self.current_novel_dir / "scene_prompts"
         img_dir.mkdir(exist_ok=True)
@@ -3741,49 +3928,82 @@ class NovelWriterApp(
             type_name = scene_type_cn.get(scene["type"], "名场面")
             prompt_text = scene.get("prompt", "")
             scene_text = scene.get("text", "")[:200]
+            aspect_ratio = scene.get("aspect_ratio", "16:9")
+            size = scene.get("size", "1024x576")
+            shot_type = scene.get("shot_type", "")
+            composition = scene.get("composition", "")
+            style = scene.get("style", "")
             
-            # 构建提示词内容
             purpose_text = {
-                "battle": "增强战斗场面的视觉冲击力，让读者更直观感受战斗的激烈",
-                "beauty": "展现角色的外形特征和精神面貌，帮助读者形成清晰的人物形象",
-                "emotion": "捕捉情感高潮瞬间，增强读者的情感代入",
-                "epic": "渲染宏大的世界观和场景氛围，提升小说的史诗感"
-            }.get(scene["type"], "可视化关键场景，增强读者阅读体验")
+                "battle": "增强战斗场面的视觉冲击力",
+                "beauty": "展现角色外形特征和精神面貌",
+                "emotion": "捕捉情感高潮，增强读者代入",
+                "epic_scene": "渲染宏大世界观和场景氛围",
+                "character_closeup": "刻画角色细节表情",
+                "landscape": "展示世界观和环境氛围",
+                "confrontation": "表现角色对峙的张力",
+                "sacrifice": "定格感动人心的瞬间",
+            }.get(scene["type"], "可视化关键场景")
             
             # 保存提示词
             safe_type = scene["type"]
             prompt_file = img_dir / f"ch{chapter_num:04d}_{safe_type}_{i+1}_prompt.txt"
-            prompt_file.write_text(f"章节: 第{chapter_num}章\n类型: {type_name}\n场景: {scene_text}\n\n图片提示词:\n{prompt_text}", encoding='utf-8')
+            prompt_content = (
+                f"章节: 第{chapter_num}章\n"
+                f"类型: {type_name}\n"
+                f"场景: {scene_text}\n\n"
+                f"画面比例: {aspect_ratio} ({size})\n"
+                f"镜头: {shot_type}\n"
+                f"构图: {composition}\n"
+                f"质感: {style}\n\n"
+                f"AI提示词:\n{prompt_text}"
+            )
+            prompt_file.write_text(prompt_content, encoding='utf-8')
             
             if has_api:
-                self._show_image_prompt_dialog(chapter_num, i, type_name, scene_text, prompt_text, purpose_text, scene, img_dir)
+                self._show_image_prompt_dialog(chapter_num, i, type_name, scene_text, 
+                    prompt_text, purpose_text, scene, img_dir)
             else:
-                # 无API时直接保存提示词，不弹窗
-                self._log(f"[提示词] 第{chapter_num}章 {type_name} 提示词已保存: scene_prompts/{prompt_file.name}")
+                self._log(f"[提示词] 第{chapter_num}章 {type_name} 已保存: scene_prompts/{prompt_file.name}")
     
     def _show_image_prompt_dialog(self, chapter_num, idx, type_name, scene_text, prompt_text, purpose_text, scene, img_dir):
-        """显示图片生成提醒对话框（有API时）"""
+        """显示电影级图片生成提醒对话框"""
         C = UIStyle.COLORS
         dialog = tk.Toplevel(self.root)
         dialog.title(f"名场面插图 - 第{chapter_num}章")
-        dialog.geometry("600x420")
+        dialog.geometry("650x520")
         dialog.configure(bg=C['bg_dark'])
         dialog.grab_set()
         
         tk.Label(dialog, text=f"第{chapter_num}章 检测到【{type_name}】", font=('微软雅黑', 14, 'bold'),
                 bg=C['bg_dark'], fg=C['accent_light']).pack(pady=(15, 5))
         
-        chapter_label = tk.Label(dialog, text=f"章节: 第{chapter_num}章", font=('微软雅黑', 10),
-                                bg=C['accent_bg'], fg=C['accent_light'], padx=15, pady=4)
-        chapter_label.pack(pady=(5, 10))
+        # 电影级参数
+        aspect_ratio = scene.get("aspect_ratio", "16:9")
+        size = scene.get("size", "1024x576")
+        shot_type = scene.get("shot_type", "")
+        composition = scene.get("composition", "")
+        style = scene.get("style", "")
+        
+        cinematic_frame = tk.Frame(dialog, bg=C['bg_card'])
+        cinematic_frame.pack(fill=tk.X, padx=20, pady=5)
+        
+        cinematic_info = (
+            f"画面比例: {aspect_ratio} ({size})  |  "
+            f"镜头: {shot_type[:30]}...\n"
+            f"构图: {composition[:30]}...  |  "
+            f"质感: {style[:30]}..."
+        )
+        tk.Label(cinematic_frame, text=cinematic_info, font=('微软雅黑', 9),
+                bg=C['bg_card'], fg=C['accent_light'], wraplength=600, justify=tk.LEFT).pack(padx=10, pady=5)
         
         info_frame = tk.Frame(dialog, bg=C['bg_card'])
         info_frame.pack(fill=tk.X, padx=20, pady=5)
-        tk.Label(info_frame, text=f"场景内容:\n{scene_text}", font=('微软雅黑', 10),
-                bg=C['bg_card'], fg=C['text_primary'], wraplength=550, justify=tk.LEFT).pack(padx=10, pady=5)
+        tk.Label(info_frame, text=f"场景: {scene_text}", font=('微软雅黑', 10),
+                bg=C['bg_card'], fg=C['text_primary'], wraplength=600, justify=tk.LEFT).pack(padx=10, pady=5)
         
-        tk.Label(dialog, text=f"为什么生成：{purpose_text}", font=('微软雅黑', 9),
-                bg=C['bg_dark'], fg=C['text_secondary'], wraplength=550).pack(padx=20, pady=5)
+        tk.Label(dialog, text=f"目的: {purpose_text}", font=('微软雅黑', 9),
+                bg=C['bg_dark'], fg=C['text_secondary'], wraplength=600).pack(padx=20, pady=3)
         
         timer_var = tk.StringVar(value="30秒后自动生成提示词")
         tk.Label(dialog, textvariable=timer_var, font=('微软雅黑', 9),
@@ -3893,26 +4113,108 @@ class NovelWriterApp(
     
     def _update_char_display(self):
         """更新角色面板显示"""
+        # 清除旧的详情
+        for w in self.char_detail_frame.winfo_children():
+            w.destroy()
+        
         if not self.character_system:
-            self.char_summary.config(text="未创建角色")
+            tk.Label(self.char_detail_frame, text="未创建角色", font=('微软雅黑', 9),
+                    bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=2)
             self.char_select_combo['values'] = []
             return
         
         names = self.character_system.get_character_names()
         self.char_select_combo['values'] = names
         
-        if self.character_system.character:
-            char = self.character_system.character
-            self.char_select_var.set(char.name)
-            summary = f"【{char.title}】Lv.{char.level}\n"
-            summary += f"HP:{char.hp}/{char.max_hp} MP:{char.mp}/{char.max_mp}\n"
-            summary += f"EXP:{char.exp}/{char.exp_to_next}\n"
-            w = char.weapon.get('name', '无') if char.weapon else '无'
-            summary += f"武器:{w} | 技能:{len(char.skills)}个"
-            self.char_summary.config(text=summary)
-        else:
+        if not self.character_system.character:
             self.char_select_var.set("无角色")
-            self.char_summary.config(text="未创建角色")
+            tk.Label(self.char_detail_frame, text="请选择角色", font=('微软雅黑', 9),
+                    bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=2)
+            return
+        
+        char = self.character_system.character
+        C = UIStyle.COLORS
+        
+        # 基本信息
+        tk.Label(self.char_detail_frame, text=f"「{char.name}」{char.title}", 
+                font=('微软雅黑', 10, 'bold'), bg=C['bg_medium'], fg=C['accent_light']).pack(anchor=tk.W, pady=2)
+        tk.Label(self.char_detail_frame, text=f"等级: Lv.{char.level}  |  EXP: {char.exp}/{char.exp_to_next}", 
+                font=('微软雅黑', 9), bg=C['bg_medium'], fg=C['text_primary']).pack(anchor=tk.W)
+        
+        # 属性
+        tk.Label(self.char_detail_frame, text="─ 属性 ─", font=('微软雅黑', 9, 'bold'),
+                bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=(5, 2))
+        attrs_frame = tk.Frame(self.char_detail_frame, bg=C['bg_medium'])
+        attrs_frame.pack(fill=tk.X)
+        for attr_name, attr_val in [("HP", f"{char.hp}/{char.max_hp}"), ("MP", f"{char.mp}/{char.max_mp}"),
+                                    ("攻击", getattr(char, 'attack', '?')), ("防御", getattr(char, 'defense', '?')),
+                                    ("速度", getattr(char, 'speed', '?')), ("智力", getattr(char, 'intelligence', '?'))]:
+            tk.Label(attrs_frame, text=f"{attr_name}: {attr_val}", font=('微软雅黑', 8),
+                    bg=C['bg_medium'], fg=C['text_primary']).pack(side=tk.LEFT, padx=3)
+        
+        # 武器
+        tk.Label(self.char_detail_frame, text="─ 武器 ─", font=('微软雅黑', 9, 'bold'),
+                bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=(5, 2))
+        if char.weapon:
+            w = char.weapon
+            w_name = w.get('name', '无')
+            w_quality = w.get('quality', '普通')
+            w_attrs = ', '.join([f"{k}:{v}" for k, v in w.items() if k not in ['name', 'quality'] and v])
+            tk.Label(self.char_detail_frame, text=f"⚔ {w_name} [{w_quality}]", font=('微软雅黑', 9),
+                    bg=C['bg_medium'], fg=C['accent_light']).pack(anchor=tk.W)
+            if w_attrs:
+                tk.Label(self.char_detail_frame, text=w_attrs, font=('微软雅黑', 8),
+                        bg=C['bg_medium'], fg=C['text_primary']).pack(anchor=tk.W)
+        else:
+            tk.Label(self.char_detail_frame, text="未装备武器", font=('微软雅黑', 8),
+                    bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W)
+        
+        # 技能
+        tk.Label(self.char_detail_frame, text="─ 技能 ─", font=('微软雅黑', 9, 'bold'),
+                bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=(5, 2))
+        if char.skills:
+            for skill in char.skills[:5]:
+                s_name = skill.get('name', '未知')
+                s_lv = skill.get('level', 1)
+                tk.Label(self.char_detail_frame, text=f"✦ {s_name} Lv.{s_lv}", font=('微软雅黑', 8),
+                        bg=C['bg_medium'], fg=C['text_primary']).pack(anchor=tk.W)
+        else:
+            tk.Label(self.char_detail_frame, text="未学习技能", font=('微软雅黑', 8),
+                    bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W)
+        
+        # 性格/背景
+        tk.Label(self.char_detail_frame, text="─ 性格/背景 ─", font=('微软雅黑', 9, 'bold'),
+                bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=(5, 2))
+        personality = getattr(char, 'personality', '')
+        backstory = getattr(char, 'backstory', '')
+        appearance = getattr(char, 'appearance', '')
+        if personality:
+            tk.Label(self.char_detail_frame, text=f"性格: {str(personality)[:100]}", font=('微软雅黑', 8),
+                    bg=C['bg_medium'], fg=C['text_primary'], wraplength=200).pack(anchor=tk.W)
+        if backstory:
+            tk.Label(self.char_detail_frame, text=f"背景: {str(backstory)[:100]}", font=('微软雅黑', 8),
+                    bg=C['bg_medium'], fg=C['text_primary'], wraplength=200).pack(anchor=tk.W)
+        if appearance:
+            tk.Label(self.char_detail_frame, text=f"外貌: {str(appearance)[:80]}", font=('微软雅黑', 8),
+                    bg=C['bg_medium'], fg=C['text_primary'], wraplength=200).pack(anchor=tk.W)
+        
+        self.char_detail_frame.update_idletasks()
+        # Update scroll region
+        canvas = self.char_detail_frame.master
+        canvas.configure(scrollregion=canvas.bbox("all"))
+    
+    def _gen_char_biography(self):
+        """从角色面板按钮生成选中角色个人传"""
+        name = self.char_select_var.get()
+        if not name or name == "无角色":
+            messagebox.showwarning("提示", "请先选择一个角色")
+            return
+        
+        if not self._check_ready(silent=True):
+            return
+        
+        # 直接生成传记（跳过角色选择对话框）
+        self._generate_character_biography(name)
     
     def _on_char_select(self, event=None):
         """切换活跃角色"""
@@ -3923,25 +4225,37 @@ class NovelWriterApp(
             self._log(f"切换到角色: {name}")
     
     def _create_character_dialog(self):
-        """创建角色对话框"""
+        """创建角色对话框 - 完善版"""
         dialog = tk.Toplevel(self.root)
         dialog.title("创建角色")
-        dialog.geometry("400x350")
+        dialog.geometry("450x500")
         dialog.configure(bg=UIStyle.COLORS['bg_dark'])
         C = UIStyle.COLORS
         
         fields = {}
-        for label, key, default in [("角色名称:", "name", "主角"), ("性格特点:", "personality", ""), 
-                                    ("外貌描述:", "appearance", ""), ("背景故事:", "backstory", "")]:
+        field_list = [
+            ("角色名称:", "name", ""),
+            ("称号:", "title", ""),
+            ("等级:", "level", "1"),
+            ("性格特点:", "personality", ""),
+            ("外貌描述:", "appearance", ""),
+            ("背景故事:", "backstory", ""),
+        ]
+        
+        for label, key, default in field_list:
             tk.Label(dialog, text=label, font=('微软雅黑', 10),
-                    bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=20, pady=(10, 2))
-            entry = tk.Entry(dialog, width=40, font=('微软雅黑', 10))
-            entry.insert(0, default)
-            entry.pack(padx=20)
+                    bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=20, pady=(8, 2))
+            if key in ("backstory",):
+                entry = tk.Text(dialog, width=40, height=4, font=('微软雅黑', 10), bg=C['bg_card'], fg=C['text_primary'])
+                entry.pack(padx=20)
+            else:
+                entry = tk.Entry(dialog, width=40, font=('微软雅黑', 10), bg=C['bg_card'], fg=C['text_primary'])
+                entry.insert(0, default)
+                entry.pack(padx=20)
             fields[key] = entry
         
         def create():
-            name = fields["name"].get().strip()
+            name = fields["name"].get().strip() if isinstance(fields["name"], tk.Entry) else fields["name"].get("1.0", tk.END).strip()
             if not name:
                 messagebox.showwarning("提示", "请输入角色名称")
                 return
@@ -3952,11 +4266,19 @@ class NovelWriterApp(
                 messagebox.showwarning("提示", "角色名已存在")
                 return
             
+            def get_val(key):
+                widget = fields[key]
+                if isinstance(widget, tk.Text):
+                    return widget.get("1.0", tk.END).strip()
+                return widget.get().strip()
+            
             self.character_system.create_character(
                 name=name,
-                backstory=fields["backstory"].get().strip(),
-                personality=fields["personality"].get().strip(),
-                appearance=fields["appearance"].get().strip(),
+                title=get_val("title"),
+                level=int(get_val("level") or "1"),
+                backstory=get_val("backstory"),
+                personality=get_val("personality"),
+                appearance=get_val("appearance"),
             )
             self._update_char_display()
             self._log(f"角色「{name}」创建成功")

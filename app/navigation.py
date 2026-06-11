@@ -23,6 +23,7 @@ class NavigationManager:
         file_menu.add_command(label="新建小说", command=self.app._new_novel)
         file_menu.add_command(label="打开小说", command=self.app._open_novel)
         file_menu.add_separator()
+        file_menu.add_command(label="续写当前小说", command=self.app._continue_novel)
         file_menu.add_command(label="续写第二部", command=self.app._create_sequel)
         file_menu.add_command(label="衍生同人作品", command=self.app._create_spinoff)
         file_menu.add_separator()

@@ -456,6 +456,29 @@ class NovelAgent:
             outline = [{"chapter": i+1, "title": f"第{i+1}章", "summary": "待规划"} for i in range(chapter_count)]
         return outline
     
+    def generate_outline_continuation(self, genre: str, title: str, 
+                                      add_count: int, global_context: str,
+                                      current_count: int) -> list:
+        """续写大纲 - 在已有章节基础上生成新章"""
+        self.log(f"[智能体] 基于已有{current_count}章，续写{add_count}章大纲...")
+        
+        context = global_context[:1000] if global_context else ""
+        system = (
+            f"你是专业小说大纲规划师。已有{current_count}章内容。\n"
+            f"历史摘要：{context}\n\n"
+            f"请在已有章节基础上，规划{add_count}章新内容实现故事续写。\n"
+            f"章节从第{current_count+1}章开始编号。\n"
+            f"必须延续已有剧情、保持风格。\n"
+            f"输出JSON数组：[{{'chapter':{current_count+1},'title':'','summary':'','key_events':[],'characters_involved':[]}}]"
+        )
+        prompt = f"小说类型：{genre}\n标题：{title}\n续写{add_count}章，从第{current_count+1}章开始"
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
+        outline = self._parse_json_response(response, [], is_list=True)
+        if not outline:
+            outline = [{"chapter": current_count+i+1, "title": f"第{current_count+i+1}章", 
+                       "summary": "待规划"} for i in range(add_count)]
+        return outline
+    
     def finalize_chapter(self, chapter_num: int, content: str):
         """定稿章节 + 更新记忆"""
         # 章节摘要

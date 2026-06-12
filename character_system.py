@@ -298,6 +298,10 @@ class CharacterSystem:
     def get_character_names(self) -> List[str]:
         return list(self.characters.keys())
     
+    def get_character(self, name: str) -> Optional[CharacterProfile]:
+        """获取指定名称的角色"""
+        return self.characters.get(name)
+    
     def set_active(self, name: str) -> bool:
         if name in self.characters:
             self.active_name = name

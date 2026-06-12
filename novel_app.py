@@ -3370,6 +3370,33 @@ class NovelWriterApp(
         self.word_count_var.set(f"字数: {len(content)}")
         meta = self._get_meta()
         self.chapter_var.set(f"{self.current_chapter}/{meta.get('chapter_count', '?')}")
+        
+        # 自动保存章节摘要
+        self._save_chapter_summary(num, title, content)
+    
+    def _save_chapter_summary(self, chapter_num: int, title: str, content: str):
+        """保存章节摘要到文件"""
+        if not self.current_novel_dir:
+            return
+        
+        try:
+            # 创建摘要目录
+            summary_dir = self.current_novel_dir / "summaries"
+            summary_dir.mkdir(exist_ok=True)
+            
+            # 提取前500字作为摘要
+            summary_text = content[:500]
+            if len(content) > 500:
+                summary_text += "..."
+            
+            # 保存摘要文件
+            summary_file = summary_dir / f"chapter_{chapter_num:04d}_summary.txt"
+            summary_content = f"章节: 第{chapter_num}章 {title}\n字数: {len(content)}\n\n摘要:\n{summary_text}"
+            summary_file.write_text(summary_content, encoding='utf-8')
+            
+            self._log(f"[摘要] 已保存第{chapter_num}章摘要")
+        except Exception as e:
+            self._log(f"[摘要] 保存失败: {e}")
     
     def _save_chapter(self):
         """保存当前章节"""

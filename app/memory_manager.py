@@ -727,8 +727,39 @@ class MemoryManager:
         return {}
     
     def save_settings(self, settings: dict):
+        """保存世界观设定 - 同时保存JSON和Markdown两个版本"""
+        # 保存JSON版本（给AI看）
         with open(self.settings_file, 'w', encoding='utf-8') as f:
             json.dump(settings, f, indent=2, ensure_ascii=False)
+        
+        # 保存Markdown版本（给用户看）
+        md_file = self.settings_file.parent / "settings.md"
+        try:
+            with open(md_file, 'w', encoding='utf-8') as f:
+                f.write("# 世界观设定\n\n")
+                f.write(self._format_settings_md(settings))
+        except Exception as e:
+            print(f"保存Markdown版本失败: {e}")
+    
+    def _format_settings_md(self, settings: dict, level: int = 0) -> str:
+        """将settings字典格式化为Markdown"""
+        lines = []
+        for key, value in settings.items():
+            if isinstance(value, dict):
+                lines.append(f"{'#' * (level + 2)} {key}\n")
+                lines.append(self._format_settings_md(value, level + 1))
+            elif isinstance(value, list):
+                lines.append(f"**{key}:**\n")
+                for item in value:
+                    if isinstance(item, dict):
+                        for k, v in item.items():
+                            lines.append(f"- **{k}:** {v}")
+                    else:
+                        lines.append(f"- {item}")
+                lines.append("")
+            else:
+                lines.append(f"**{key}:** {value}\n")
+        return "\n".join(lines)
     
     def update_index(self, chapter_num: int, keywords: List[str]):
         index = self._load_index()

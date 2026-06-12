@@ -1486,15 +1486,92 @@ class NovelWriterApp(
                  bg=C['accent'], fg='white', relief=tk.FLAT, padx=20, pady=3).pack(side=tk.RIGHT)
     
     def _open_novel(self):
-        """打开小说"""
-        novel_dir = filedialog.askdirectory(
-            title="选择小说目录",
-            initialdir=str(self.config.novels_dir)
-        )
-        if not novel_dir:
-            return
+        """打开小说 - 支持从列表选择或浏览目录"""
+        C = UIStyle.COLORS
         
-        novel_dir = Path(novel_dir)
+        # 创建选择对话框
+        dialog = tk.Toplevel(self.root)
+        dialog.title("打开小说")
+        dialog.geometry("500x400")
+        dialog.configure(bg=C['bg_dark'])
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        tk.Label(dialog, text="选择小说", font=('微软雅黑', 14, 'bold'),
+                bg=C['bg_dark'], fg=C['accent_light']).pack(pady=15)
+        
+        # 小说列表
+        list_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        # 获取已有小说列表
+        novels_dir = self.config.novels_dir
+        novel_list = []
+        
+        if novels_dir.exists():
+            for d in sorted(novels_dir.iterdir(), reverse=True):
+                if d.is_dir():
+                    meta_file = d / 'meta.json'
+                    if meta_file.exists():
+                        try:
+                            with open(meta_file, 'r', encoding='utf-8') as f:
+                                meta = json.load(f)
+                            novel_list.append({
+                                'dir': d,
+                                'title': meta.get('title', d.name),
+                                'genre': meta.get('genre', '未知'),
+                                'chapters': len(list((d / 'chapters').glob('chapter_*.txt'))) if (d / 'chapters').exists() else 0,
+                            })
+                        except:
+                            pass
+        
+        if novel_list:
+            tk.Label(dialog, text="已有小说:", font=('微软雅黑', 10),
+                    bg=C['bg_dark'], fg=C['text_secondary']).pack(anchor=tk.W, padx=20)
+            
+            # 列表框
+            listbox = tk.Listbox(list_frame, bg=C['bg_card'], fg=C['text_primary'],
+                               font=('微软雅黑', 10), selectbackground=C['accent'],
+                               selectforeground='white', relief=tk.FLAT)
+            scrollbar = tk.Scrollbar(list_frame, command=listbox.yview)
+            listbox.configure(yscrollcommand=scrollbar.set)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            listbox.pack(fill=tk.BOTH, expand=True)
+            
+            for novel in novel_list:
+                listbox.insert(tk.END, f"{novel['title']} - {novel['genre']} ({novel['chapters']}章)")
+            
+            # 选择按钮
+            def open_selected():
+                selection = listbox.curselection()
+                if selection:
+                    idx = selection[0]
+                    novel = novel_list[idx]
+                    dialog.destroy()
+                    self._load_novel(novel['dir'])
+                else:
+                    messagebox.showwarning("提示", "请先选择一个小说")
+            
+            tk.Button(dialog, text="打开选中", command=open_selected,
+                     bg=C['accent'], fg='white', font=('微软雅黑', 10),
+                     relief=tk.FLAT, padx=20, pady=5).pack(pady=10)
+        
+        # 浏览按钮
+        def browse_dir():
+            dialog.destroy()
+            novel_dir = filedialog.askdirectory(
+                title="选择小说目录",
+                initialdir=str(self.config.novels_dir)
+            )
+            if novel_dir:
+                self._load_novel(Path(novel_dir))
+        
+        tk.Button(dialog, text="浏览目录...", command=browse_dir,
+                 bg=C['bg_light'], fg=C['text_primary'], font=('微软雅黑', 10),
+                 relief=tk.FLAT, padx=20, pady=5).pack(pady=5)
+    
+    def _load_novel(self, novel_dir: Path):
+        """加载小说数据"""
         meta_file = novel_dir / "meta.json"
         
         if not meta_file.exists():
@@ -1537,9 +1614,7 @@ class NovelWriterApp(
                     content = last_chapter_file.read_text(encoding='utf-8')
                     self.content_text.delete("1.0", tk.END)
                     self.content_text.insert("1.0", content)
-                    # 更新字数统计
                     self.word_count_var.set(f"字数: {len(content)}")
-                    # 从文件名提取章节号
                     chapter_num = int(last_chapter_file.stem.split('_')[-1])
                     if self.outline and chapter_num <= len(self.outline):
                         chapter_title = self.outline[chapter_num - 1].get('title', f'第{chapter_num}章')

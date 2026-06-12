@@ -4141,7 +4141,7 @@ class NovelWriterApp(
         C = UIStyle.COLORS
         dialog = tk.Toplevel(self.root)
         dialog.title(f"名场面插图 - 第{chapter_num}章")
-        dialog.geometry("650x520")
+        dialog.geometry("650x550")
         dialog.configure(bg=C['bg_dark'])
         dialog.grab_set()
         
@@ -4172,31 +4172,44 @@ class NovelWriterApp(
         tk.Label(info_frame, text=f"场景: {scene_text}", font=('微软雅黑', 10),
                 bg=C['bg_card'], fg=C['text_primary'], wraplength=600, justify=tk.LEFT).pack(padx=10, pady=5)
         
-        tk.Label(dialog, text=f"目的: {purpose_text}", font=('微软雅黑', 9),
-                bg=C['bg_dark'], fg=C['text_secondary'], wraplength=600).pack(padx=20, pady=3)
+        # 说明为什么要生成图片
+        tk.Label(dialog, text=f"推荐理由: {purpose_text}", font=('微软雅黑', 10, 'bold'),
+                bg=C['bg_dark'], fg=C['warning'], wraplength=600).pack(padx=20, pady=5)
         
-        timer_var = tk.StringVar(value="30秒后自动生成提示词")
-        tk.Label(dialog, textvariable=timer_var, font=('微软雅黑', 9),
-                bg=C['bg_dark'], fg=C['warning']).pack(pady=5)
+        # 倒计时 - 10秒
+        timer_var = tk.StringVar(value="10秒后自动生成AI提示词")
+        timer_label = tk.Label(dialog, textvariable=timer_var, font=('微软雅黑', 10),
+                bg=C['bg_dark'], fg=C['error'])
+        timer_label.pack(pady=5)
         
         prompt_file = img_dir / f"ch{chapter_num:04d}_{scene['type']}_{idx+1}_prompt.txt"
         
-        def countdown(remaining=30):
+        def countdown(remaining=10):
             if not dialog.winfo_exists():
                 return
             if remaining <= 0:
                 do_save_prompt()
                 return
-            timer_var.set(f"{remaining}秒后自动生成提示词")
+            timer_var.set(f"{remaining}秒后自动生成AI提示词")
             dialog.after(1000, lambda: countdown(remaining - 1))
         
         def do_save_prompt():
+            """保存AI提示词"""
             dialog.destroy()
-            self._log(f"提示词已保存: {prompt_file.name}")
-            self.root.after(0, lambda: messagebox.showinfo("已保存", f"插图提示词已保存到:\n{img_dir.name}/{prompt_file.name}"))
+            # 保存提示词到文件
+            prompt_content = f"章节: 第{chapter_num}章\n类型: {type_name}\n场景: {scene_text}\n\nAI提示词:\n{prompt_text}"
+            prompt_file.write_text(prompt_content, encoding='utf-8')
+            self._log(f"[提示词] 已保存: {prompt_file.name}")
+            self.root.after(0, lambda: messagebox.showinfo("已保存", f"AI提示词已保存到:\n{img_dir.name}/{prompt_file.name}"))
         
         def do_generate():
+            """生成图片"""
             dialog.destroy()
+            # 先保存提示词
+            prompt_content = f"章节: 第{chapter_num}章\n类型: {type_name}\n场景: {scene_text}\n\nAI提示词:\n{prompt_text}"
+            prompt_file.write_text(prompt_content, encoding='utf-8')
+            self._log(f"[提示词] 已保存: {prompt_file.name}")
+            
             def gen_img():
                 self._log(f"[文生图] 正在生成: {type_name}...")
                 img_data = self.image_gen.generate(
@@ -4212,12 +4225,23 @@ class NovelWriterApp(
                     self.root.after(0, lambda: messagebox.showinfo("成功", f"插图已保存:\n{filepath}"))
             threading.Thread(target=gen_img, daemon=True).start()
         
+        def do_skip():
+            """跳过 - 仍然保存提示词"""
+            do_save_prompt()
+        
         btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
         btn_frame.pack(pady=15)
-        tk.Button(btn_frame, text="生成插图", command=do_generate,
-                 bg=C['success'], fg='white', font=('微软雅黑', 10, 'bold'), padx=20, pady=5).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="生成提示词", command=do_save_prompt,
+        
+        # 如果有API才显示生成图片按钮
+        if self.image_gen.is_configured():
+            tk.Button(btn_frame, text="生成插图", command=do_generate,
+                     bg=C['success'], fg='white', font=('微软雅黑', 10, 'bold'), padx=20, pady=5).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(btn_frame, text="仅保存提示词", command=do_save_prompt,
                  bg=C['accent'], fg='white', font=('微软雅黑', 10), padx=20, pady=5).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(btn_frame, text="跳过", command=do_skip,
+                 bg=C['bg_light'], fg=C['text_primary'], font=('微软雅黑', 10), padx=20, pady=5).pack(side=tk.LEFT, padx=5)
         
         countdown()
     

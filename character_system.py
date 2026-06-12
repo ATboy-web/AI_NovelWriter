@@ -13,6 +13,83 @@ from datetime import datetime
 class CharacterProfile:
     """角色档案"""
     
+    # 角色分类系统
+    CATEGORIES = {
+        # 核心角色
+        "主角": {"color": "#f59e0b", "priority": 10, "desc": "故事的核心人物"},
+        "女主": {"color": "#ec4899", "priority": 10, "desc": "女主角"},
+        "第二主角": {"color": "#f97316", "priority": 9, "desc": "重要的第二主角"},
+        
+        # 关键人物
+        "关键人物": {"color": "#8b5cf6", "priority": 8, "desc": "对剧情有重大影响"},
+        "导师": {"color": "#6366f1", "priority": 8, "desc": "主角的老师或引路人"},
+        "宿敌": {"color": "#ef4444", "priority": 8, "desc": "主角的主要对手"},
+        "大反派": {"color": "#dc2626", "priority": 8, "desc": "最终BOSS"},
+        
+        # 重要配角
+        "主角朋友": {"color": "#3b82f6", "priority": 7, "desc": "主角的好友"},
+        "主角女友": {"color": "#ec4899", "priority": 7, "desc": "主角的恋人"},
+        "主角妻子": {"color": "#db2777", "priority": 7, "desc": "主角的妻子"},
+        "红颜知己": {"color": "#f472b6", "priority": 7, "desc": "理解主角的女性"},
+        "兄弟": {"color": "#2563eb", "priority": 7, "desc": "主角的结拜兄弟"},
+        "姐妹": {"color": "#a855f7", "priority": 7, "desc": "主角的姐妹"},
+        
+        # 反派阵营
+        "反派": {"color": "#ef4444", "priority": 6, "desc": "反派角色"},
+        "反派手下": {"color": "#b91c1c", "priority": 5, "desc": "反派的部下"},
+        "叛徒": {"color": "#991b1b", "priority": 6, "desc": "背叛者"},
+        "阴谋家": {"color": "#7f1d1d", "priority": 6, "desc": "幕后策划者"},
+        
+        # 势力人物
+        "宗主": {"color": "#d97706", "priority": 7, "desc": "宗门领袖"},
+        "长老": {"color": "#b45309", "priority": 6, "desc": "宗门长老"},
+        "门主": {"color": "#92400e", "priority": 6, "desc": "门派掌门"},
+        "国王": {"color": "#f59e0b", "priority": 7, "desc": "国家统治者"},
+        "将军": {"color": "#78350f", "priority": 6, "desc": "军事领袖"},
+        "城主": {"color": "#a16207", "priority": 5, "desc": "城市管理者"},
+        
+        # 特殊身份
+        "天才": {"color": "#10b981", "priority": 6, "desc": "天赋异禀之人"},
+        "神秘人": {"color": "#6b7280", "priority": 6, "desc": "身份不明"},
+        "转世者": {"color": "#8b5cf6", "priority": 7, "desc": "转世重生"},
+        "穿越者": {"color": "#7c3aed", "priority": 7, "desc": "穿越而来"},
+        "系统持有者": {"color": "#2563eb", "priority": 7, "desc": "拥有系统"},
+        
+        # 普通角色
+        "同门": {"color": "#6b7280", "priority": 4, "desc": "同门师兄弟"},
+        "商人": {"color": "#9ca3af", "priority": 3, "desc": "商人"},
+        "村民": {"color": "#9ca3af", "priority": 2, "desc": "普通村民"},
+        "仆人": {"color": "#d1d5db", "priority": 2, "desc": "仆从"},
+        "士兵": {"color": "#6b7280", "priority": 3, "desc": "普通士兵"},
+        "路人": {"color": "#9ca3af", "priority": 1, "desc": "路人甲乙丙"},
+        
+        # 无名小卒
+        "无名小卒": {"color": "#4b5563", "priority": 1, "desc": "不重要的小角色"},
+        "炮灰": {"color": "#374151", "priority": 1, "desc": "即将领便当"},
+    }
+    
+    # 阵营系统
+    FACTIONS = {
+        "正派": {"color": "#3b82f6", "desc": "正义一方"},
+        "反派": {"color": "#ef4444", "desc": "邪恶一方"},
+        "中立": {"color": "#6b7280", "desc": "不偏不倚"},
+        "亦正亦邪": {"color": "#f59e0b", "desc": "亦正亦邪"},
+        "隐藏反派": {"color": "#991b1b", "desc": "表面正派实则反派"},
+    }
+    
+    # 状态系统
+    STATUSES = {
+        "存活": {"color": "#10b981", "desc": "正常存活"},
+        "死亡": {"color": "#ef4444", "desc": "已死亡"},
+        "失踪": {"color": "#f59e0b", "desc": "下落不明"},
+        "复活": {"color": "#8b5cf6", "desc": "已复活"},
+        "重伤": {"color": "#f97316", "desc": "重伤状态"},
+        "被俘": {"color": "#dc2626", "desc": "被敌人俘虏"},
+        "隐居": {"color": "#6b7280", "desc": "隐居状态"},
+        "转世": {"color": "#7c3aed", "desc": "已转世"},
+        "化尸": {"color": "#4b5563", "desc": "尸体被操控"},
+    }
+    
     DEFAULT_ATTRIBUTES = {
         "力量": {"value": 10, "max": 999, "desc": "物理攻击力"},
         "敏捷": {"value": 10, "max": 999, "desc": "速度与闪避"},

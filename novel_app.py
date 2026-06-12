@@ -3277,7 +3277,7 @@ class NovelWriterApp(
         self._log("已请求停止自动创作，正在完成当前章节...")
     
     def _auto_generate(self):
-        """自动创作全流程"""
+        """自动创作全流程 - 优化版本，支持大量章节"""
         # 防重复点击
         if hasattr(self, '_auto_running') and self._auto_running:
             self._log("自动创作正在进行中，请勿重复点击")
@@ -3294,6 +3294,7 @@ class NovelWriterApp(
         def run():
             try:
                 self._log("=== 开始自动创作 ===")
+                self._log(f"[优化] 已启用内存优化模式，每10章自动清理缓存")
                 
                 # 1. 生成世界观（如果不存在）
                 settings_file = self.current_novel_dir / "memory" / "settings.json"
@@ -3351,6 +3352,7 @@ class NovelWriterApp(
                 skipped = 0
                 generated = 0
                 failed = 0
+                batch_count = 0
                 
                 for i, chapter_info in enumerate(outline_snapshot):
                     ch_num = i + 1
@@ -3383,10 +3385,22 @@ class NovelWriterApp(
                         # 定稿
                         self.agent.finalize_chapter(ch_num, content)
 
-                        # 更新UI
-                        self.root.after(0, lambda c=content, n=ch_num, t=chapter_info.get("title", ""): self._display_chapter(n, t, c))
-                        self._log(f"第{ch_num}章创作完成")
+                        # 更新UI（每5章更新一次，避免频繁刷新）
+                        batch_count += 1
+                        if batch_count % 5 == 0 or ch_num == total:
+                            self.root.after(0, lambda c=content, n=ch_num, t=chapter_info.get("title", ""): self._display_chapter(n, t, c))
+                            self._log(f"第{ch_num}章创作完成 (进度: {generated+1}/{total-skipped})")
+                        else:
+                            self._log(f"第{ch_num}章创作完成")
+                        
                         generated += 1
+                        
+                        # 每10章释放一次内存
+                        if generated % 10 == 0:
+                            import gc
+                            gc.collect()
+                            self._log(f"[内存] 已释放内存 (已完成{generated}章)")
+                            
                     except Exception as e:
                         self._log(f"第{ch_num}章创作失败，继续下一章: {e}")
                         failed += 1

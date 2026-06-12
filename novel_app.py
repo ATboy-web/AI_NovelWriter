@@ -4318,31 +4318,62 @@ class NovelWriterApp(
     def _create_char_card(self, name):
         """创建单个角色卡片"""
         C = UIStyle.COLORS
-        card = tk.Frame(self.char_cards_container, bg=C['bg_card'], padx=8, pady=6)
+        char = self.character_system.get_character(name)
+        if not char:
+            return
+        
+        # 根据状态决定卡片颜色
+        status = getattr(char, 'status', '存活')
+        if status == '死亡':
+            card_bg = '#3d1f1f'  # 暗红色背景
+            text_color = '#808080'
+        else:
+            card_bg = C['bg_card']
+            text_color = C['text_primary']
+        
+        card = tk.Frame(self.char_cards_container, bg=card_bg, padx=8, pady=6)
         card.pack(fill=tk.X, pady=2)
         
-        # 头像 (首字母)
-        avatar_colors = ['#534ab7', '#0f6e56', '#3b82f6', '#ef4444', '#f59e0b']
-        color_idx = hash(name) % len(avatar_colors)
+        # 头像 (首字母) - 根据分类和状态决定颜色
+        category = getattr(char, 'category', '无名小卒')
+        faction = getattr(char, 'faction', '中立')
+        
+        if status == '死亡':
+            avatar_bg = '#666666'
+        elif category == '关键人物':
+            avatar_bg = '#f59e0b'  # 金色
+        elif category == '主角朋友':
+            avatar_bg = '#3b82f6'  # 蓝色
+        elif category == '女友':
+            avatar_bg = '#ec4899'  # 粉色
+        elif category == '反派':
+            avatar_bg = '#ef4444'  # 红色
+        else:
+            avatar_bg = '#6b7280'  # 灰色
         
         avatar = tk.Label(card, text=name[0], font=('微软雅黑', 10, 'bold'),
-                         bg=avatar_colors[color_idx], fg='white', width=2, height=1)
+                         bg=avatar_bg, fg='white', width=2, height=1)
         avatar.pack(side=tk.LEFT, padx=(0, 8))
         
         # 角色信息
-        info_frame = tk.Frame(card, bg=C['bg_card'])
+        info_frame = tk.Frame(card, bg=card_bg)
         info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        tk.Label(info_frame, text=name, font=('微软雅黑', 10, 'bold'),
-                bg=C['bg_card'], fg=C['text_primary']).pack(anchor=tk.W)
+        # 名称和状态
+        name_text = name
+        if status == '死亡':
+            name_text = f"†{name}"  # 添加死亡标记
+        elif status == '复活':
+            name_text = f"♻{name}"  # 添加复活标记
         
-        # 获取角色详情
-        char = self.character_system.get_character(name)
-        if char:
-            level = getattr(char, 'level', 1)
-            title = getattr(char, 'title', '无称号')
-            tk.Label(info_frame, text=f"Lv.{level} | {title}", font=('微软雅黑', 8),
-                    bg=C['bg_card'], fg=C['text_muted']).pack(anchor=tk.W)
+        tk.Label(info_frame, text=name_text, font=('微软雅黑', 10, 'bold'),
+                bg=card_bg, fg=text_color).pack(anchor=tk.W)
+        
+        # 分类和等级
+        level = getattr(char, 'level', 1)
+        title = getattr(char, 'title', '无称号')
+        tk.Label(info_frame, text=f"[{category}] Lv.{level} | {title}", font=('微软雅黑', 8),
+                bg=card_bg, fg=C['text_muted']).pack(anchor=tk.W)
         
         # 点击事件
         def select_char(n=name):

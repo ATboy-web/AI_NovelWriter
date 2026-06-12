@@ -1551,15 +1551,35 @@ class NovelWriterApp(
                 last_chapter_file = chapter_files[-1]
                 try:
                     content = last_chapter_file.read_text(encoding='utf-8')
+                    self._log(f"读取章节内容: {len(content)} 字符")
+                    
+                    # 清空并插入内容
                     self.content_text.delete("1.0", tk.END)
                     self.content_text.insert("1.0", content)
+                    
+                    # 强制更新UI
                     self.content_text.update_idletasks()
+                    self.root.update_idletasks()
+                    
                     self.word_count_var.set(f"字数: {len(content)}")
                     chapter_num = int(last_chapter_file.stem.split('_')[-1])
                     self.chapter_select_var.set(f"第{chapter_num}章")
-                    self._log(f"已加载第{chapter_num}章内容")
+                    self._log(f"已加载第{chapter_num}章内容到编辑器")
                 except Exception as e:
                     self._log(f"加载最后一章失败: {e}")
+        
+        # 切换到章节内容标签页
+        try:
+            for i in range(self.notebook.index("end")):
+                tab_text = self.notebook.tab(i, "text").strip()
+                if tab_text == "章节内容":
+                    self.notebook.select(i)
+                    self._log(f"已切换到标签页: {tab_text}")
+                    break
+        except Exception as e:
+            self._log(f"切换标签页失败: {e}")
+        
+        self._log(f"已打开小说《{meta.get('title', '未知')}》")
         
         # 切换到章节内容标签页
         try:

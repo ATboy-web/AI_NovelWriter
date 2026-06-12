@@ -5190,13 +5190,15 @@ class NovelWriterApp(
         self.review_text.insert("1.0", review_json)
         self.notebook.select(2)
     
-    def _check_ready(self) -> bool:
+    def _check_ready(self, silent=False) -> bool:
         """检查是否就绪"""
         if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI API（设置 → AI配置）")
+            if not silent:
+                messagebox.showwarning("提示", "请先配置AI API（设置 → AI配置）")
             return False
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先创建或打开小说")
+            if not silent:
+                messagebox.showwarning("提示", "请先创建或打开小说")
             return False
         return True
     

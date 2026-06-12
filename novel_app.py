@@ -1549,8 +1549,11 @@ class NovelWriterApp(
                     novel = novel_list[idx]
                     novel_dir = novel['dir']
                     dialog.destroy()
+                    # 恢复主窗口焦点
+                    self.root.focus_force()
+                    self.root.update()
                     # 延迟执行加载，确保对话框关闭后再加载
-                    self.root.after(100, lambda: self._load_novel(novel_dir))
+                    self.root.after(200, lambda: self._load_novel(novel_dir))
                 else:
                     messagebox.showwarning("提示", "请先选择一个小说")
             
@@ -1629,6 +1632,7 @@ class NovelWriterApp(
                     content = last_chapter_file.read_text(encoding='utf-8')
                     self.content_text.delete("1.0", tk.END)
                     self.content_text.insert("1.0", content)
+                    self.content_text.update_idletasks()
                     self.word_count_var.set(f"字数: {len(content)}")
                     chapter_num = int(last_chapter_file.stem.split('_')[-1])
                     self.chapter_select_var.set(f"第{chapter_num}章")

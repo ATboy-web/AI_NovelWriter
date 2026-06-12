@@ -183,11 +183,44 @@ class NovelWriterApp(
                                         font=('微软雅黑', 9), bg=C['accent'], fg='#ffd700')
         self.status_indicator.pack(side=tk.RIGHT, padx=10)
         
-        # ===== 主内容区 =====
+        # ===== 主内容区 - 三栏布局 =====
         main_container = tk.Frame(self.root, bg=C['bg_dark'])
         main_container.pack(fill=tk.BOTH, expand=True)
         
-        # 左侧面板 - 可滚动
+        # 快速操作工具栏 (顶部)
+        toolbar = tk.Frame(main_container, bg=C['bg_medium'], height=48)
+        toolbar.pack(fill=tk.X, padx=0, pady=0)
+        toolbar.pack_propagate(False)
+        
+        # 工具栏左侧 - 标题
+        tk.Label(toolbar, text="AI小说创作工坊", font=('微软雅黑', 12, 'bold'),
+                bg=C['bg_medium'], fg=C['accent_light']).pack(side=tk.LEFT, padx=15)
+        
+        # 工具栏中间 - 快速操作按钮
+        quick_btn_frame = tk.Frame(toolbar, bg=C['bg_medium'])
+        quick_btn_frame.pack(side=tk.LEFT, padx=20)
+        
+        for text, cmd, color in [
+            ("新建小说", self._new_novel, C['accent']),
+            ("打开小说", self._open_novel, C['bg_light']),
+            ("续写新章", self._continue_novel, C['success']),
+        ]:
+            btn = tk.Button(quick_btn_frame, text=text, font=('微软雅黑', 9),
+                          bg=color, fg='white' if color == C['accent'] else C['text_primary'],
+                          relief=tk.FLAT, padx=12, pady=4, cursor='hand2',
+                          activebackground=C['accent_hover'],
+                          command=cmd)
+            btn.pack(side=tk.LEFT, padx=3)
+        
+        # 工具栏右侧 - 状态信息
+        status_frame = tk.Frame(toolbar, bg=C['bg_medium'])
+        status_frame.pack(side=tk.RIGHT, padx=15)
+        
+        self.status_indicator = tk.Label(status_frame, text="未连接AI", font=('微软雅黑', 9),
+                                        bg=C['bg_medium'], fg=C['warning'])
+        self.status_indicator.pack(side=tk.RIGHT, padx=10)
+        
+        # 左侧面板 - 可滚动 (280px)
         left_container = tk.Frame(main_container, bg=C['bg_dark'], width=280)
         left_container.pack(side=tk.LEFT, fill=tk.BOTH, padx=0, pady=0)
         left_container.pack_propagate(False)
@@ -386,6 +419,30 @@ class NovelWriterApp(
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.outline_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.outline_list.bind('<<ListboxSelect>>', self._on_outline_select)
+        
+        # 左侧 - 角色卡片 (新增)
+        char_cards_frame = tk.Frame(left_panel, bg=C['bg_medium'], padx=10, pady=5)
+        char_cards_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        
+        tk.Label(char_cards_frame, text="角色", font=('微软雅黑', 10, 'bold'),
+                bg=C['bg_medium'], fg=C['accent_light']).pack(anchor=tk.W, pady=(0, 5))
+        
+        # 角色卡片容器
+        self.char_cards_container = tk.Frame(char_cards_frame, bg=C['bg_medium'])
+        self.char_cards_container.pack(fill=tk.X)
+        
+        # 角色操作按钮
+        char_btn_frame = tk.Frame(char_cards_frame, bg=C['bg_medium'])
+        char_btn_frame.pack(fill=tk.X, pady=5)
+        tk.Button(char_btn_frame, text="新建", font=('微软雅黑', 8),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=6,
+                 command=self._create_character_dialog).pack(side=tk.LEFT, padx=1)
+        tk.Button(char_btn_frame, text="AI生成", font=('微软雅黑', 8),
+                 bg=C['success'], fg='white', relief=tk.FLAT, padx=6,
+                 command=self._ai_create_character).pack(side=tk.LEFT, padx=1)
+        tk.Button(char_btn_frame, text="传记", font=('微软雅黑', 8),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=6,
+                 command=self._gen_char_biography).pack(side=tk.LEFT, padx=1)
         
         # ===== 右侧主内容区 =====
         right_panel = tk.Frame(main_container, bg=C['bg_dark'])
@@ -4112,27 +4169,78 @@ class NovelWriterApp(
             self.image_manager = ImageManager(self.current_novel_dir)
     
     def _update_char_display(self):
-        """更新角色面板显示"""
-        # 清除旧的详情
-        for w in self.char_detail_frame.winfo_children():
+        """更新角色面板显示 - 同时更新左侧角色卡片"""
+        C = UIStyle.COLORS
+        
+        # 更新左侧角色卡片
+        for w in self.char_cards_container.winfo_children():
             w.destroy()
         
         if not self.character_system:
-            tk.Label(self.char_detail_frame, text="未创建角色", font=('微软雅黑', 9),
-                    bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=2)
+            tk.Label(self.char_cards_container, text="未创建角色", font=('微软雅黑', 9),
+                    bg=C['bg_medium'], fg=C['text_muted']).pack(anchor=tk.W)
             self.char_select_combo['values'] = []
             return
         
         names = self.character_system.get_character_names()
         self.char_select_combo['values'] = names
         
-        if not self.character_system.character:
-            self.char_select_var.set("无角色")
-            tk.Label(self.char_detail_frame, text="请选择角色", font=('微软雅黑', 9),
-                    bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=2)
-            return
+        # 生成角色卡片
+        for name in names[:5]:  # 最多显示5个角色
+            self._create_char_card(name)
         
-        char = self.character_system.character
+        # 更新日志页的角色详情
+        if hasattr(self, 'char_detail_frame'):
+            for w in self.char_detail_frame.winfo_children():
+                w.destroy()
+            
+            if not self.character_system.character:
+                tk.Label(self.char_detail_frame, text="请选择角色", font=('微软雅黑', 9),
+                        bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=2)
+                return
+            
+            char = self.character_system.character
+            self._display_char_details(char)
+    
+    def _create_char_card(self, name):
+        """创建单个角色卡片"""
+        C = UIStyle.COLORS
+        card = tk.Frame(self.char_cards_container, bg=C['bg_card'], padx=8, pady=6)
+        card.pack(fill=tk.X, pady=2)
+        
+        # 头像 (首字母)
+        avatar_colors = ['#534ab7', '#0f6e56', '#3b82f6', '#ef4444', '#f59e0b']
+        color_idx = hash(name) % len(avatar_colors)
+        
+        avatar = tk.Label(card, text=name[0], font=('微软雅黑', 10, 'bold'),
+                         bg=avatar_colors[color_idx], fg='white', width=2, height=1)
+        avatar.pack(side=tk.LEFT, padx=(0, 8))
+        
+        # 角色信息
+        info_frame = tk.Frame(card, bg=C['bg_card'])
+        info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        tk.Label(info_frame, text=name, font=('微软雅黑', 10, 'bold'),
+                bg=C['bg_card'], fg=C['text_primary']).pack(anchor=tk.W)
+        
+        # 获取角色详情
+        char = self.character_system.get_character(name)
+        if char:
+            level = getattr(char, 'level', 1)
+            title = getattr(char, 'title', '无称号')
+            tk.Label(info_frame, text=f"Lv.{level} | {title}", font=('微软雅黑', 8),
+                    bg=C['bg_card'], fg=C['text_muted']).pack(anchor=tk.W)
+        
+        # 点击事件
+        def select_char(n=name):
+            self.char_select_var.set(n)
+            self._on_char_select()
+        
+        card.bind('<Button-1>', lambda e: select_char())
+        avatar.bind('<Button-1>', lambda e: select_char())
+    
+    def _display_char_details(self, char):
+        """显示角色详细信息"""
         C = UIStyle.COLORS
         
         # 基本信息
@@ -4159,12 +4267,8 @@ class NovelWriterApp(
             w = char.weapon
             w_name = w.get('name', '无')
             w_quality = w.get('quality', '普通')
-            w_attrs = ', '.join([f"{k}:{v}" for k, v in w.items() if k not in ['name', 'quality'] and v])
             tk.Label(self.char_detail_frame, text=f"⚔ {w_name} [{w_quality}]", font=('微软雅黑', 9),
                     bg=C['bg_medium'], fg=C['accent_light']).pack(anchor=tk.W)
-            if w_attrs:
-                tk.Label(self.char_detail_frame, text=w_attrs, font=('微软雅黑', 8),
-                        bg=C['bg_medium'], fg=C['text_primary']).pack(anchor=tk.W)
         else:
             tk.Label(self.char_detail_frame, text="未装备武器", font=('微软雅黑', 8),
                     bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W)

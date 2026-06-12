@@ -1509,17 +1509,52 @@ class NovelWriterApp(
         try:
             with open(meta_file, 'r', encoding='utf-8') as f:
                 meta = json.load(f)
+            self._log(f"读取meta.json成功: {meta.get('title')}")
         except Exception as e:
             messagebox.showerror("错误", f"读取meta.json失败: {e}")
             return
         
-        self.current_novel_dir = novel_dir
-        self.memory = MemoryManager(novel_dir)
-        self.agent = NovelAgent(self.ai_client, self.memory, log_callback=self._log, config=self.config)
-        self.note_manager = NoteManager(novel_dir=novel_dir, config=self.config)
-        self._init_character_system()
-        self.title_var.set(meta.get("title", "未知"))
-        self.genre_var.set(meta.get("genre", "未知"))
+        try:
+            self.current_novel_dir = novel_dir
+            self._log("设置current_novel_dir成功")
+        except Exception as e:
+            self._log(f"设置current_novel_dir失败: {e}")
+            return
+        
+        try:
+            self.memory = MemoryManager(novel_dir)
+            self._log("MemoryManager初始化成功")
+        except Exception as e:
+            self._log(f"MemoryManager初始化失败: {e}")
+            return
+        
+        try:
+            self.agent = NovelAgent(self.ai_client, self.memory, log_callback=self._log, config=self.config)
+            self._log("NovelAgent初始化成功")
+        except Exception as e:
+            self._log(f"NovelAgent初始化失败: {e}")
+            return
+        
+        try:
+            self.note_manager = NoteManager(novel_dir=novel_dir, config=self.config)
+            self._log("NoteManager初始化成功")
+        except Exception as e:
+            self._log(f"NoteManager初始化失败: {e}")
+            return
+        
+        try:
+            self._init_character_system()
+            self._log("角色系统初始化成功")
+        except Exception as e:
+            self._log(f"角色系统初始化失败: {e}")
+            return
+        
+        try:
+            self.title_var.set(meta.get("title", "未知"))
+            self.genre_var.set(meta.get("genre", "未知"))
+            self._log("标题和类型设置成功")
+        except Exception as e:
+            self._log(f"标题设置失败: {e}")
         
         # 加载大纲
         outline_file = novel_dir / "outline.json"
@@ -1533,7 +1568,11 @@ class NovelWriterApp(
                 self._log(f"加载大纲失败: {e}")
         
         # 更新章节选择器
-        self._update_chapter_selector()
+        try:
+            self._update_chapter_selector()
+            self._log("章节选择器更新成功")
+        except Exception as e:
+            self._log(f"章节选择器更新失败: {e}")
         
         # 计算进度
         chapters_dir = novel_dir / "chapters"
@@ -1545,6 +1584,7 @@ class NovelWriterApp(
             completed_chapters = len(chapter_files)
             self.current_chapter = completed_chapters
             self.chapter_var.set(f"{completed_chapters}/{total_chapters or '?'}")
+            self._log(f"章节数量: {completed_chapters}")
             
             # 加载最后一章内容到编辑器
             if chapter_files:
@@ -1567,6 +1607,19 @@ class NovelWriterApp(
                     self._log(f"已加载第{chapter_num}章内容到编辑器")
                 except Exception as e:
                     self._log(f"加载最后一章失败: {e}")
+        
+        # 切换到章节内容标签页
+        try:
+            for i in range(self.notebook.index("end")):
+                tab_text = self.notebook.tab(i, "text").strip()
+                if tab_text == "章节内容":
+                    self.notebook.select(i)
+                    self._log(f"已切换到标签页: {tab_text}")
+                    break
+        except Exception as e:
+            self._log(f"切换标签页失败: {e}")
+        
+        self._log(f"已打开小说《{meta.get('title', '未知')}》")
         
         # 切换到章节内容标签页
         try:

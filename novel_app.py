@@ -1486,94 +1486,15 @@ class NovelWriterApp(
                  bg=C['accent'], fg='white', relief=tk.FLAT, padx=20, pady=3).pack(side=tk.RIGHT)
     
     def _open_novel(self):
-        """打开小说 - 支持从列表选择或浏览目录"""
-        C = UIStyle.COLORS
+        """打开小说 - 直接使用文件对话框"""
+        novel_dir = filedialog.askdirectory(
+            title="选择小说目录",
+            initialdir=str(self.config.novels_dir)
+        )
+        if not novel_dir:
+            return
         
-        # 创建选择对话框
-        dialog = tk.Toplevel(self.root)
-        dialog.title("打开小说")
-        dialog.geometry("500x400")
-        dialog.configure(bg=C['bg_dark'])
-        dialog.transient(self.root)
-        dialog.grab_set()
-        
-        tk.Label(dialog, text="选择小说", font=('微软雅黑', 14, 'bold'),
-                bg=C['bg_dark'], fg=C['accent_light']).pack(pady=15)
-        
-        # 小说列表
-        list_frame = tk.Frame(dialog, bg=C['bg_dark'])
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
-        
-        # 获取已有小说列表
-        novels_dir = self.config.novels_dir
-        novel_list = []
-        
-        if novels_dir.exists():
-            for d in sorted(novels_dir.iterdir(), reverse=True):
-                if d.is_dir():
-                    meta_file = d / 'meta.json'
-                    if meta_file.exists():
-                        try:
-                            with open(meta_file, 'r', encoding='utf-8') as f:
-                                meta = json.load(f)
-                            novel_list.append({
-                                'dir': d,
-                                'title': meta.get('title', d.name),
-                                'genre': meta.get('genre', '未知'),
-                                'chapters': len(list((d / 'chapters').glob('chapter_*.txt'))) if (d / 'chapters').exists() else 0,
-                            })
-                        except:
-                            pass
-        
-        if novel_list:
-            tk.Label(dialog, text="已有小说:", font=('微软雅黑', 10),
-                    bg=C['bg_dark'], fg=C['text_secondary']).pack(anchor=tk.W, padx=20)
-            
-            # 列表框
-            listbox = tk.Listbox(list_frame, bg=C['bg_card'], fg=C['text_primary'],
-                               font=('微软雅黑', 10), selectbackground=C['accent'],
-                               selectforeground='white', relief=tk.FLAT)
-            scrollbar = tk.Scrollbar(list_frame, command=listbox.yview)
-            listbox.configure(yscrollcommand=scrollbar.set)
-            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-            listbox.pack(fill=tk.BOTH, expand=True)
-            
-            for novel in novel_list:
-                listbox.insert(tk.END, f"{novel['title']} - {novel['genre']} ({novel['chapters']}章)")
-            
-            # 选择按钮
-            def open_selected():
-                selection = listbox.curselection()
-                if selection:
-                    idx = selection[0]
-                    novel = novel_list[idx]
-                    novel_dir = novel['dir']
-                    dialog.destroy()
-                    # 恢复主窗口焦点
-                    self.root.focus_force()
-                    self.root.update()
-                    # 延迟执行加载，确保对话框关闭后再加载
-                    self.root.after(200, lambda: self._load_novel(novel_dir))
-                else:
-                    messagebox.showwarning("提示", "请先选择一个小说")
-            
-            tk.Button(dialog, text="打开选中", command=open_selected,
-                     bg=C['accent'], fg='white', font=('微软雅黑', 10),
-                     relief=tk.FLAT, padx=20, pady=5).pack(pady=10)
-        
-        # 浏览按钮
-        def browse_dir():
-            dialog.destroy()
-            novel_dir = filedialog.askdirectory(
-                title="选择小说目录",
-                initialdir=str(self.config.novels_dir)
-            )
-            if novel_dir:
-                self._load_novel(Path(novel_dir))
-        
-        tk.Button(dialog, text="浏览目录...", command=browse_dir,
-                 bg=C['bg_light'], fg=C['text_primary'], font=('微软雅黑', 10),
-                 relief=tk.FLAT, padx=20, pady=5).pack(pady=5)
+        self._load_novel(Path(novel_dir))
     
     def _load_novel(self, novel_dir: Path):
         """加载小说数据"""

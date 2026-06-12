@@ -2504,7 +2504,7 @@ class NovelWriterApp(
                 
                 prompt = f"请优化以下章节内容：\n\n{content[:3000]}"
                 
-                result = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
+                result = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
                 
                 self.root.after(0, lambda: self._display_optimized(result))
                 self._log("风格优化完成")
@@ -2844,12 +2844,16 @@ class NovelWriterApp(
         word_combo.pack(anchor=tk.W, padx=30, pady=5)
         
         include_mental = tk.BooleanVar(value=True)
-        tk.Checkbutton(word_dialog, text="包含心理历程", variable=include_mental,
-                      bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=30, pady=3)
+        mental_btn = tk.Checkbutton(word_dialog, text="包含心理历程", variable=include_mental,
+                      bg=C['bg_dark'], fg=C['text_primary'], selectcolor=C['bg_card'],
+                      activebackground=C['bg_dark'], activeforeground=C['text_primary'])
+        mental_btn.pack(anchor=tk.W, padx=30, pady=3)
         
         include_contrast = tk.BooleanVar(value=True)
-        tk.Checkbutton(word_dialog, text="分析性格反差", variable=include_contrast,
-                      bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=30, pady=3)
+        contrast_btn = tk.Checkbutton(word_dialog, text="分析性格反差", variable=include_contrast,
+                      bg=C['bg_dark'], fg=C['text_primary'], selectcolor=C['bg_card'],
+                      activebackground=C['bg_dark'], activeforeground=C['text_primary'])
+        contrast_btn.pack(anchor=tk.W, padx=30, pady=3)
         
         def start_generate():
             word_count = int(word_var.get())
@@ -2893,7 +2897,7 @@ class NovelWriterApp(
                     
                     prompt = f"请为「{char_name}」撰写个人传记。大纲参考：{json.dumps(outline[:5], ensure_ascii=False)}"
                     
-                    result = self.ai.chat([{"role": "user", "content": prompt}], 
+                    result = self.ai_client.chat([{"role": "user", "content": prompt}], 
                                          system=system, max_tokens=word_count * 2)
                     
                     # 保存传记
@@ -2982,7 +2986,7 @@ class NovelWriterApp(
 
 请生成书籍简介。"""
                 
-                result = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=1000)
+                result = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=1000)
                 
                 # 保存简介
                 synopsis_file = self.current_novel_dir / "synopsis.txt"
@@ -3160,7 +3164,7 @@ class NovelWriterApp(
 
 请分析以上内容并给出创作建议。"""
                 
-                result = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
+                result = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
                 
                 self.root.after(0, lambda: self._display_analysis_result(result, filename))
                 self._log("AI分析完成")
@@ -4128,11 +4132,9 @@ class NovelWriterApp(
             )
             prompt_file.write_text(prompt_content, encoding='utf-8')
             
-            if has_api:
-                self._show_image_prompt_dialog(chapter_num, i, type_name, scene_text, 
-                    prompt_text, purpose_text, scene, img_dir)
-            else:
-                self._log(f"[提示词] 第{chapter_num}章 {type_name} 已保存: scene_prompts/{prompt_file.name}")
+            # 总是弹出窗口让用户选择
+            self._show_image_prompt_dialog(chapter_num, i, type_name, scene_text, 
+                prompt_text, purpose_text, scene, img_dir)
     
     def _show_image_prompt_dialog(self, chapter_num, idx, type_name, scene_text, prompt_text, purpose_text, scene, img_dir):
         """显示电影级图片生成提醒对话框"""
@@ -5164,7 +5166,7 @@ class NovelWriterApp(
 
 请将新内容自然地融入到现有文章末尾，确保衔接流畅。"""
                 
-                result = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
+                result = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
                 
                 # 在主线程中插入润色后的内容
                 self.root.after(0, lambda: self._insert_polished_content(result))

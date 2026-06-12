@@ -1596,6 +1596,9 @@ class NovelWriterApp(
                 self.outline = json.load(f)
             self._refresh_outline_list()
         
+        # 更新章节选择器
+        self._update_chapter_selector()
+        
         # 计算进度
         chapters_dir = novel_dir / "chapters"
         total_chapters = meta.get('chapter_count', 0)
@@ -1616,11 +1619,20 @@ class NovelWriterApp(
                     self.content_text.insert("1.0", content)
                     self.word_count_var.set(f"字数: {len(content)}")
                     chapter_num = int(last_chapter_file.stem.split('_')[-1])
+                    self.chapter_select_var.set(f"第{chapter_num}章")
                     if self.outline and chapter_num <= len(self.outline):
                         chapter_title = self.outline[chapter_num - 1].get('title', f'第{chapter_num}章')
                         self.chapter_title_var.set(f"第{chapter_num}章: {chapter_title}")
                 except Exception as e:
                     self._log(f"加载最后一章失败: {e}")
+        
+        # 切换到章节内容标签页
+        for i in range(self.notebook.index("end")):
+            if self.notebook.tab(i, "text").strip() == "章节内容":
+                self.notebook.select(i)
+                break
+        
+        self._log(f"已打开小说《{meta.get('title', '未知')}》")
         
         self._log(f"已打开小说《{meta.get('title', '未知')}》")
         
@@ -3433,6 +3445,21 @@ class NovelWriterApp(
         
         # 更新进度显示
         self.chapter_var.set(f"{ch_num}/{len(self.outline)}")
+    
+    def _update_chapter_selector(self):
+        """更新章节选择器"""
+        if not self.outline:
+            self.chapter_select['values'] = []
+            return
+        
+        chapters = [f"第{i+1}章" for i in range(len(self.outline))]
+        self.chapter_select['values'] = chapters
+        
+        # 设置当前章节
+        if self.current_chapter > 0 and self.current_chapter <= len(chapters):
+            self.chapter_select_var.set(chapters[self.current_chapter - 1])
+        elif chapters:
+            self.chapter_select_var.set(chapters[0])
     
     def _on_chapter_select(self, event):
         """章节选择器回调 - 跳转到指定章节"""

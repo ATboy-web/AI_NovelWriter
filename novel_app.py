@@ -201,9 +201,9 @@ class NovelWriterApp(
         quick_btn_frame.pack(side=tk.LEFT, padx=20)
         
         for text, cmd, color in [
-            ("新建小说", self._new_novel, C['accent']),
-            ("打开小说", self._open_novel, C['bg_light']),
-            ("续写新章", self._continue_novel, C['success']),
+            ("新建小说", lambda: self._new_novel(), C['accent']),
+            ("打开小说", lambda: self._open_novel(), C['bg_light']),
+            ("续写新章", lambda: self._continue_novel(), C['success']),
         ]:
             btn = tk.Button(quick_btn_frame, text=text, font=('微软雅黑', 9),
                           bg=color, fg='white' if color == C['accent'] else C['text_primary'],

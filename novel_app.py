@@ -1045,16 +1045,17 @@ class NovelWriterApp(
     def _open_tool_with_text(self, tool_type: str, text: str):
         """用选中文字跳转到创作工具"""
         self._selected_context_text = text
-        tab_mapping = {"description": "创作工具 & 描写", "bridge": "创作工具 & 描写",
-                       "dialogue": "情景对话推演"}
-        tab_name = tab_mapping.get(tool_type, "创作工具 & 描写")
+        tab_mapping = {"description": " 创作工具 ", "bridge": " 创作工具 ",
+                       "dialogue": " 创作工具 "}
+        tab_name = tab_mapping.get(tool_type, " 创作工具 ")
         
         for i in range(self.notebook.index("end")):
             if self.notebook.tab(i, "text") == tab_name:
                 self.notebook.select(i)
                 break
         
-        self._log(f"已跳转到 {tab_name}，选中 {len(text)} 字作为上下文")
+        self._log(f"已跳转到 {tab_name.strip()}，选中 {len(text)} 字作为上下文")
+        messagebox.showinfo("已跳转", f"已选中 {len(text)} 字内容\n请在「创作工具」标签页使用对应功能")
     
     def _style_imitation_with_text(self, text: str):
         """用选中文字进行仿写"""
@@ -2364,39 +2365,93 @@ class NovelWriterApp(
         threading.Thread(target=run, daemon=True).start()
     
     def _gen_outline(self):
-        """生成大纲"""
+        """生成大纲 - 根据当前选择的类型"""
         if not self._check_ready():
             return
         if hasattr(self, '_gen_running') and self._gen_running:
             self._log("生成任务正在进行中，请勿重复点击")
             return
         
+        outline_type = self.outline_type_var.get()
         self._gen_running = True
         
         def run():
             try:
                 meta = self._get_meta()
-                new_outline = self.agent.generate_outline(
-                    meta["genre"], meta["title"], meta["chapter_count"]
-                )
                 
-                # 使用锁保护共享状态
-                with self._state_lock:
-                    self.outline = new_outline
-                
-                # 保存大纲
-                with open(self.current_novel_dir / "outline.json", 'w', encoding='utf-8') as f:
-                    json.dump(new_outline, f, indent=2, ensure_ascii=False)
+                if outline_type == "章节大纲":
+                    # 生成章节大纲
+                    new_outline = self.agent.generate_outline(
+                        meta["genre"], meta["title"], meta["chapter_count"]
+                    )
+                    with self._state_lock:
+                        self.outline = new_outline
+                    with open(self.current_novel_dir / "outline.json", 'w', encoding='utf-8') as f:
+                        json.dump(new_outline, f, indent=2, ensure_ascii=False)
+                    self._log("章节大纲已保存到 outline.json")
+                    
+                elif outline_type == "整体大纲":
+                    # 生成整体大纲
+                    self._log("正在生成整体大纲...")
+                    overall = self._generate_overall_outline(meta)
+                    self._save_overall_outline(overall)
+                    self._log("整体大纲已保存到 outlines/overall.json")
+                    
+                elif outline_type == "故事大纲":
+                    # 生成故事大纲
+                    self._log("正在生成故事大纲...")
+                    stories = self._generate_story_outlines(meta)
+                    outline_dir = self.current_novel_dir / "outlines"
+                    outline_dir.mkdir(exist_ok=True)
+                    with open(outline_dir / "stories.json", 'w', encoding='utf-8') as f:
+                        json.dump(stories, f, indent=2, ensure_ascii=False)
+                    self._log("故事大纲已保存到 outlines/stories.json")
                 
                 # GUI操作在主线程
                 self.root.after(0, self._refresh_outline_list)
-                self._log("大纲已保存到 outline.json")
             except Exception as e:
                 self._log(f"生成失败: {e}")
             finally:
                 self._gen_running = False
         
         threading.Thread(target=run, daemon=True).start()
+    
+    def _generate_overall_outline(self, meta: dict) -> list:
+        """生成整体大纲"""
+        system = """你是专业小说大纲规划师。请生成整体大纲，包含：
+1. 故事主线
+2. 主要冲突
+3. 高潮节点
+4. 结局走向
+
+输出JSON数组：[{"title": "", "description": "", "chapter_range": ""}]"""
+        prompt = f"小说类型：{meta['genre']}\n标题：{meta['title']}\n章节数：{meta['chapter_count']}"
+        response = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
+        return self._parse_json_response(response, [])
+    
+    def _generate_story_outlines(self, meta: dict) -> dict:
+        """生成故事大纲"""
+        system = """你是专业小说大纲规划师。请生成故事大纲，包含多条故事线：
+1. 主线故事
+2. 副线故事（可选）
+3. 感情线（可选）
+
+输出JSON：{"主线": {"title": "", "summary": "", "key_events": []}, "副线": {...}}"""
+        prompt = f"小说类型：{meta['genre']}\n标题：{meta['title']}\n章节数：{meta['chapter_count']}"
+        response = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
+        return self._parse_json_response(response, {})
+    
+    def _parse_json_response(self, response: str, default):
+        """解析JSON响应"""
+        try:
+            # 尝试提取JSON
+            import re
+            json_match = re.search(r'\{[\s\S]*\}|\[[\s\S]*\]', response)
+            if json_match:
+                return json.loads(json_match.group())
+            return default
+        except:
+            return default
     
     def _gen_chapter(self):
         """生成下一章"""

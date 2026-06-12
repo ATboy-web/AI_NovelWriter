@@ -64,6 +64,14 @@ class CharacterProfile:
             "总伤害": 0, "总治疗": 0, "击杀数": 0,
             "最高等级": 1, "创作字数": 0, "生成章节数": 0,
         }
+        # 新增字段
+        self.category = "无名小卒"  # 分类：无名小卒、关键人物、主角朋友、女友、反派等
+        self.status = "存活"  # 状态：存活、死亡、失踪、复活
+        self.faction = "中立"  # 阵营：正派、反派、中立
+        self.importance = 1  # 重要性：1-10
+        self.first_appearance = 0  # 首次出现章节
+        self.death_chapter = 0  # 死亡章节
+        self.revival_chapter = 0  # 复活章节
     
     def _load_from_dict(self, data: Dict):
         self.name = data.get("name", "无名")
@@ -87,6 +95,14 @@ class CharacterProfile:
         self.appearance = data.get("appearance", "")
         self.stats = data.get("stats", {})
         self.created_at = data.get("created_at", datetime.now().isoformat())
+        # 新增字段
+        self.category = data.get("category", "无名小卒")
+        self.status = data.get("status", "存活")
+        self.faction = data.get("faction", "中立")
+        self.importance = data.get("importance", 1)
+        self.first_appearance = data.get("first_appearance", 0)
+        self.death_chapter = data.get("death_chapter", 0)
+        self.revival_chapter = data.get("revival_chapter", 0)
     
     def to_dict(self) -> Dict:
         return {
@@ -98,6 +114,9 @@ class CharacterProfile:
             "skills": self.skills, "inventory": self.inventory, "achievements": self.achievements,
             "backstory": self.backstory, "personality": self.personality, "appearance": self.appearance,
             "stats": self.stats, "created_at": self.created_at,
+            "category": self.category, "status": self.status, "faction": self.faction,
+            "importance": self.importance, "first_appearance": self.first_appearance,
+            "death_chapter": self.death_chapter, "revival_chapter": self.revival_chapter,
         }
     
     def add_exp(self, amount: int) -> Dict:
@@ -309,15 +328,76 @@ class CharacterSystem:
         return False
     
     def create_character(self, name: str, backstory: str = "", personality: str = "", 
-                        appearance: str = "") -> CharacterProfile:
+                        appearance: str = "", category: str = "无名小卒", 
+                        faction: str = "中立", importance: int = 1,
+                        first_appearance: int = 0) -> CharacterProfile:
         char = CharacterProfile(name)
         char.backstory = backstory
         char.personality = personality
         char.appearance = appearance
+        char.category = category
+        char.faction = faction
+        char.importance = importance
+        char.first_appearance = first_appearance
         self.characters[name] = char
         self.active_name = name
         self.save_character(name)
         return char
+    
+    def mark_death(self, name: str, chapter: int) -> bool:
+        """标记角色死亡"""
+        if name in self.characters:
+            self.characters[name].status = "死亡"
+            self.characters[name].death_chapter = chapter
+            self.save_character(name)
+            return True
+        return False
+    
+    def mark_revival(self, name: str, chapter: int) -> bool:
+        """标记角色复活"""
+        if name in self.characters:
+            self.characters[name].status = "存活"
+            self.characters[name].revival_chapter = chapter
+            self.save_character(name)
+            return True
+        return False
+    
+    def promote_character(self, name: str, new_category: str, new_importance: int = None) -> bool:
+        """提升角色分类"""
+        if name in self.characters:
+            self.characters[name].category = new_category
+            if new_importance:
+                self.characters[name].importance = new_importance
+            self.save_character(name)
+            return True
+        return False
+    
+    def get_characters_by_category(self, category: str) -> List[str]:
+        """按分类获取角色"""
+        return [name for name, char in self.characters.items() if char.category == category]
+    
+    def get_alive_characters(self) -> List[str]:
+        """获取存活角色"""
+        return [name for name, char in self.characters.items() if char.status == "存活"]
+    
+    def get_dead_characters(self) -> List[str]:
+        """获取死亡角色"""
+        return [name for name, char in self.characters.items() if char.status == "死亡"]
+    
+    def get_characters_by_faction(self, faction: str) -> List[str]:
+        """按阵营获取角色"""
+        return [name for name, char in self.characters.items() if char.faction == faction]
+    
+    def random_promote_minor(self, chapter: int) -> Optional[str]:
+        """随机提升一个无名小卒为关键人物"""
+        minors = [name for name, char in self.characters.items() 
+                 if char.category == "无名小卒" and char.status == "存活"]
+        if minors:
+            name = random.choice(minors)
+            self.promote_character(name, "关键人物", importance=5)
+            self.characters[name].faction = random.choice(["正派", "反派"])
+            return name
+        return None
     
     def delete_character(self, name: str) -> bool:
         if name in self.characters:

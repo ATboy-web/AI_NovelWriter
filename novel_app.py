@@ -1547,8 +1547,10 @@ class NovelWriterApp(
                 if selection:
                     idx = selection[0]
                     novel = novel_list[idx]
+                    novel_dir = novel['dir']
                     dialog.destroy()
-                    self._load_novel(novel['dir'])
+                    # 延迟执行加载，确保对话框关闭后再加载
+                    self.root.after(100, lambda: self._load_novel(novel_dir))
                 else:
                     messagebox.showwarning("提示", "请先选择一个小说")
             
@@ -1572,14 +1574,20 @@ class NovelWriterApp(
     
     def _load_novel(self, novel_dir: Path):
         """加载小说数据"""
+        self._log(f"正在加载小说: {novel_dir}")
+        
         meta_file = novel_dir / "meta.json"
         
         if not meta_file.exists():
             messagebox.showerror("错误", "该目录不是有效的小说目录")
             return
         
-        with open(meta_file, 'r', encoding='utf-8') as f:
-            meta = json.load(f)
+        try:
+            with open(meta_file, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+        except Exception as e:
+            messagebox.showerror("错误", f"读取meta.json失败: {e}")
+            return
         
         self.current_novel_dir = novel_dir
         self.memory = MemoryManager(novel_dir)
@@ -1592,9 +1600,13 @@ class NovelWriterApp(
         # 加载大纲
         outline_file = novel_dir / "outline.json"
         if outline_file.exists():
-            with open(outline_file, 'r', encoding='utf-8') as f:
-                self.outline = json.load(f)
-            self._refresh_outline_list()
+            try:
+                with open(outline_file, 'r', encoding='utf-8') as f:
+                    self.outline = json.load(f)
+                self._refresh_outline_list()
+                self._log(f"已加载大纲: {len(self.outline)} 章")
+            except Exception as e:
+                self._log(f"加载大纲失败: {e}")
         
         # 更新章节选择器
         self._update_chapter_selector()
@@ -1620,19 +1632,18 @@ class NovelWriterApp(
                     self.word_count_var.set(f"字数: {len(content)}")
                     chapter_num = int(last_chapter_file.stem.split('_')[-1])
                     self.chapter_select_var.set(f"第{chapter_num}章")
-                    if self.outline and chapter_num <= len(self.outline):
-                        chapter_title = self.outline[chapter_num - 1].get('title', f'第{chapter_num}章')
-                        self.chapter_title_var.set(f"第{chapter_num}章: {chapter_title}")
+                    self._log(f"已加载第{chapter_num}章内容")
                 except Exception as e:
                     self._log(f"加载最后一章失败: {e}")
         
         # 切换到章节内容标签页
-        for i in range(self.notebook.index("end")):
-            if self.notebook.tab(i, "text").strip() == "章节内容":
-                self.notebook.select(i)
-                break
-        
-        self._log(f"已打开小说《{meta.get('title', '未知')}》")
+        try:
+            for i in range(self.notebook.index("end")):
+                if self.notebook.tab(i, "text").strip() == "章节内容":
+                    self.notebook.select(i)
+                    break
+        except Exception as e:
+            self._log(f"切换标签页失败: {e}")
         
         self._log(f"已打开小说《{meta.get('title', '未知')}》")
         

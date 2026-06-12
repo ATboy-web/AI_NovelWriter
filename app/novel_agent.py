@@ -402,11 +402,28 @@ class NovelAgent:
         return self._reviewer_evaluate(chapter_num, content)
     
     def generate_settings(self, genre: str, title: str, concept: str) -> dict:
-        """生成世界观"""
+        """生成世界观 - 留有扩展空间"""
         self.log(f"[智能体] 正在生成世界观...")
-        system = """你是一位专业的小说世界观设定师。请生成详细的世界观设定。
-以JSON格式输出：world/rules/factions/history/technology/geography/culture"""
-        prompt = f"小说类型：{genre}\n标题：{title}\n概念：{concept}"
+        system = """你是一位专业的小说世界观设定师。请生成世界观设定。
+
+## 重要原则
+1. **留有扩展空间**：不要把所有设定都写死，要留下未解之谜和模糊地带
+2. **灵活多变**：世界观应该可以随着故事发展而扩展和深化
+3. **层次分明**：分为已知、未知、传说三个层次
+4. **自洽但有漏洞**：整体逻辑自洽，但要有一些"矛盾"或"未解之谜"供后续扩展
+
+## 输出格式（JSON）
+{
+  "world": {"name": "", "type": "", "已知区域": [], "未知区域": [], "传说": []},
+  "rules": {"基本规则": [], "特殊情况": [], "未解之谜": []},
+  "factions": {"主要势力": [], "隐藏势力": [], "历史势力": []},
+  "history": {"重要事件": [], "失落的历史": [], "争议事件": []},
+  "magic_system": {"基本原理": [], "高级奥秘": [], "禁忌": []},
+  "technology": {"常见": [], "稀有": [], "失传": []},
+  "geography": {"已知": [], "未探索": [], "传说之地": []},
+  "扩展提示": ["后续可以发展的方向1", "后续可以发展的方向2"]
+}"""
+        prompt = f"小说类型：{genre}\n标题：{title}\n概念：{concept}\n\n请生成一个灵活、可扩展的世界观。"
         response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
         settings = self._parse_json_response(response, {"raw": response})
         self.memory.save_settings(settings)

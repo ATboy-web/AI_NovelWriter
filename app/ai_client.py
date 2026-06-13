@@ -401,7 +401,7 @@ class AIClient:
         temperature = kwargs.get("temperature", 0.8)
         
         # DeepSeek思考模式参数
-        thinking_enabled = kwargs.get("thinking_enabled", self.config.get("thinking_enabled", False))
+        thinking_enabled = kwargs.get("thinking_enabled", self.config.get("thinking_enabled", True))
         reasoning_effort = kwargs.get("reasoning_effort", self.config.get("reasoning_effort", "high"))
         
         start = time.time()

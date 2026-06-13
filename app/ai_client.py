@@ -400,6 +400,10 @@ class AIClient:
         max_tokens = kwargs.get("max_tokens", 4096)
         temperature = kwargs.get("temperature", 0.8)
         
+        # DeepSeek思考模式参数
+        thinking_enabled = kwargs.get("thinking_enabled", self.config.get("thinking_enabled", False))
+        reasoning_effort = kwargs.get("reasoning_effort", self.config.get("reasoning_effort", "high"))
+        
         start = time.time()
         error = False
         
@@ -408,6 +412,9 @@ class AIClient:
                 result = self._chat_ollama(messages, system, model, max_tokens, temperature)
             elif provider == "claude":
                 result = self._chat_claude(messages, system, model, max_tokens, temperature)
+            elif provider == "deepseek":
+                result = self._chat_deepseek(messages, system, model, max_tokens, temperature, 
+                                            thinking_enabled, reasoning_effort)
             else:
                 result = self._chat_openai(messages, system, model, max_tokens, temperature)
             
@@ -504,8 +511,68 @@ class AIClient:
         return response.json()["message"]["content"]
     
     def _chat_claude(self, messages, system, model, max_tokens, temperature) -> str:
-        response = self.client.messages.create(
-            model=model, max_tokens=max_tokens, temperature=temperature,
-            system=system or "", messages=messages
+        """Anthropic Claude API调用"""
+        headers = {
+            "x-api-key": self.config.get("api_key", ""),
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        
+        # 构建Anthropic格式的请求
+        anthropic_messages = []
+        for msg in messages:
+            anthropic_messages.append({"role": msg["role"], "content": msg["content"]})
+        
+        payload = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": system or "",
+            "messages": anthropic_messages
+        }
+        
+        response = self.client.post(
+            "https://api.anthropic.com/v1/messages",
+            json=payload,
+            headers=headers
         )
-        return response.content[0].text
+        response.raise_for_status()
+        return response.json()["content"][0]["text"]
+    
+    def _chat_deepseek(self, messages, system, model, max_tokens, temperature, 
+                       thinking_enabled=False, reasoning_effort="high") -> str:
+        """DeepSeek API调用 - 支持思考模式"""
+        full_messages = [{"role": "system", "content": system}] if system else []
+        full_messages.extend(messages)
+        
+        payload = {
+            "model": model,
+            "messages": full_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature
+        }
+        
+        # 添加思考模式参数
+        if thinking_enabled:
+            payload["extra_body"] = {"thinking": {"type": "enabled"}}
+            payload["reasoning_effort"] = reasoning_effort
+            # 思考模式下不支持temperature
+            del payload["temperature"]
+        
+        response = self.client.post("/chat/completions", json=payload)
+        response.raise_for_status()
+        
+        result = response.json()
+        content = result["choices"][0]["message"]["content"]
+        
+        # 如果有思考内容，记录到日志
+        reasoning = result["choices"][0]["message"].get("reasoning_content")
+        if reasoning:
+            self._log_thinking(reasoning)
+        
+        return content
+    
+    def _log_thinking(self, reasoning: str):
+        """记录思考过程"""
+        # 截取前500字记录
+        preview = reasoning[:500] + "..." if len(reasoning) > 500 else reasoning
+        print(f"[思考过程] {preview}")

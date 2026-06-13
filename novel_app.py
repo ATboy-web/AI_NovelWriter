@@ -1420,9 +1420,9 @@ class NovelWriterApp(
                   font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_primary']).pack(side=tk.LEFT, padx=5)
         
         tk.Label(action_row, text="每章字数:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(side=tk.LEFT, padx=(15, 0))
-        word_count_var = tk.StringVar(value="3000")
+        word_count_var = tk.StringVar(value="10000")
         word_count_combo = ttk.Combobox(action_row, textvariable=word_count_var, width=8, font=('微软雅黑', 9))
-        word_count_combo['values'] = ["1000", "2000", "3000", "5000", "8000", "10000"]
+        word_count_combo['values'] = ["1000", "2000", "3000", "5000", "8000", "10000", "15000", "20000"]
         word_count_combo.pack(side=tk.LEFT, padx=5)
         
         def confirm():

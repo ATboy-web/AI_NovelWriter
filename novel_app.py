@@ -1155,7 +1155,7 @@ class NovelWriterApp(
         
         # 模板变量输入区域
         template_vars_frame = tk.Frame(top, bg=C['bg_dark'])
-        template_vars_frame.grid(row=2, column=0, columnspan=2, sticky=tk.EW, pady=3)
+        template_vars_frame.grid(row=3, column=0, columnspan=2, sticky=tk.EW, pady=3)
         
         template_entries = {}
         
@@ -1237,10 +1237,10 @@ class NovelWriterApp(
         
         template_combo.bind('<<ComboboxSelected>>', on_template_change)
         
-        tk.Label(top, text="小说频道:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=3, column=0, sticky=tk.W, pady=3)
+        tk.Label(top, text="小说频道:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=4, column=0, sticky=tk.W, pady=3)
         channel_var = tk.StringVar(value="male")
         ch_frame = tk.Frame(top, bg=C['bg_dark'])
-        ch_frame.grid(row=3, column=1, sticky=tk.W, padx=(5, 0), pady=3)
+        ch_frame.grid(row=4, column=1, sticky=tk.W, padx=(5, 0), pady=3)
         
         # 男女频类型列表
         MALE_GENRES = [
@@ -1269,10 +1269,10 @@ class NovelWriterApp(
             "短篇-短篇言情", "短篇-微小说", "短篇-轻小说",
         ]
         
-        tk.Label(top, text="小说类型:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=4, column=0, sticky=tk.W, pady=3)
+        tk.Label(top, text="小说类型:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=5, column=0, sticky=tk.W, pady=3)
         genre_var = tk.StringVar(value=MALE_GENRES[0])
         genre_combo = ttk.Combobox(top, textvariable=genre_var, values=MALE_GENRES, state="readonly", width=35)
-        genre_combo.grid(row=4, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
+        genre_combo.grid(row=5, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
         top.columnconfigure(1, weight=1)
         
         # 男生标签（8类 80+标签）

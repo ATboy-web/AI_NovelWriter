@@ -1298,26 +1298,36 @@ class NovelWriterApp(
         }
         
         # ===== 中间可滚动标签区域 =====
-        tag_outer = tk.LabelFrame(dialog, text=" 附加标签（可多选，滚动查看） ", padx=5, pady=5,
+        tag_outer = tk.LabelFrame(dialog, text=" 附加标签（可多选，滚轮上下/左右移动） ", padx=5, pady=5,
                                   bg=C['bg_dark'], fg=C['accent_light'], font=('微软雅黑', 9))
         tag_outer.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
         
         tag_canvas = tk.Canvas(tag_outer, bg=C['bg_dark'], highlightthickness=0, bd=0, height=200)
-        tag_scrollbar = tk.Scrollbar(tag_outer, orient=tk.VERTICAL, command=tag_canvas.yview)
-        tag_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        tag_scrollbar_y = tk.Scrollbar(tag_outer, orient=tk.VERTICAL, command=tag_canvas.yview)
+        tag_scrollbar_x = tk.Scrollbar(tag_outer, orient=tk.HORIZONTAL, command=tag_canvas.xview)
+        tag_scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+        tag_scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
         tag_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        tag_canvas.configure(yscrollcommand=tag_scrollbar.set)
+        tag_canvas.configure(yscrollcommand=tag_scrollbar_y.set, xscrollcommand=tag_scrollbar_x.set)
         
         tags_container = tk.Frame(tag_canvas, bg=C['bg_dark'])
         tag_canvas_window = tag_canvas.create_window((0, 0), window=tags_container, anchor=tk.NW)
         
-        # 鼠标滚轮滚动标签
+        # 鼠标滚轮滚动标签 - 支持上下和左右
         def on_tag_mousewheel(event):
+            # 垂直滚动
             tag_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        
+        def on_tag_shift_mousewheel(event):
+            # Shift+滚轮 = 水平滚动
+            tag_canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+        
         tag_canvas.bind("<MouseWheel>", on_tag_mousewheel)
+        tag_canvas.bind("<Shift-MouseWheel>", on_tag_shift_mousewheel)
         tags_container.bind("<MouseWheel>", on_tag_mousewheel)
+        tags_container.bind("<Shift-MouseWheel>", on_tag_shift_mousewheel)
         tag_outer.bind("<MouseWheel>", on_tag_mousewheel)
-        tag_scrollbar.bind("<MouseWheel>", on_tag_mousewheel)
+        tag_outer.bind("<Shift-MouseWheel>", on_tag_shift_mousewheel)
         
         # 使tags_container宽度跟随canvas
         def on_canvas_configure(event):

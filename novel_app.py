@@ -1108,7 +1108,7 @@ class NovelWriterApp(
             self.status_indicator.config(text="未配置AI", fg='#ffd700')
     
     def _new_novel(self):
-        """新建小说"""
+        """新建小说 - 支持用户输入想法"""
         dialog = tk.Toplevel(self.root)
         dialog.title("新建小说")
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
@@ -1130,12 +1130,28 @@ class NovelWriterApp(
         title_entry = tk.Entry(top, font=('微软雅黑', 10), bg=C['bg_card'], fg=C['text_primary'], insertbackground=C['text_primary'], relief=tk.FLAT, width=40)
         title_entry.grid(row=0, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
         
+        # 用户想法输入框
+        tk.Label(top, text="你的想法:", bg=C['bg_dark'], fg=C['warning'], font=('微软雅黑', 9, 'bold')).grid(row=1, column=0, sticky=tk.NW, pady=3)
+        idea_frame = tk.Frame(top, bg=C['bg_dark'])
+        idea_frame.grid(row=1, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
+        
+        idea_text = tk.Text(idea_frame, font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_primary'], 
+                           insertbackground=C['text_primary'], relief=tk.FLAT, height=4, wrap=tk.WORD)
+        idea_text.pack(fill=tk.X)
+        idea_text.insert("1.0", "例如：一个现代程序员穿越到修仙世界，用编程思维修炼...")
+        
+        # 点击时清空提示文字
+        def clear_placeholder(event):
+            if idea_text.get("1.0", tk.END).strip() == "例如：一个现代程序员穿越到修仙世界，用编程思维修炼...":
+                idea_text.delete("1.0", tk.END)
+        idea_text.bind('<FocusIn>', clear_placeholder)
+        
         # 快速模板
-        tk.Label(top, text="快速模板:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=1, column=0, sticky=tk.W, pady=3)
+        tk.Label(top, text="快速模板:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=2, column=0, sticky=tk.W, pady=3)
         template_var = tk.StringVar(value="无")
         template_combo = ttk.Combobox(top, textvariable=template_var, state="readonly", width=35)
         template_combo['values'] = ["无", "穿越异世", "重生归来", "系统流", "都市异能", "修仙问道"]
-        template_combo.grid(row=1, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
+        template_combo.grid(row=2, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
         
         # 模板变量输入区域
         template_vars_frame = tk.Frame(top, bg=C['bg_dark'])
@@ -1419,7 +1435,13 @@ class NovelWriterApp(
             genre = genre_full[0] if len(genre_full) > 0 else ""
             sub_genre = genre_full[1] if len(genre_full) > 1 else ""
             chapters = int(chapters_var.get())
-            concept = ""
+            
+            # 获取用户想法
+            user_idea = idea_text.get("1.0", tk.END).strip()
+            if user_idea == "例如：一个现代程序员穿越到修仙世界，用编程思维修炼...":
+                user_idea = ""
+            
+            concept = user_idea  # 优先使用用户想法
             
             # 收集选中的标签
             selected_tags = [tag for tag, var in self.tag_vars.items() if var.get()]

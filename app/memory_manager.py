@@ -85,16 +85,6 @@ class MemoryManager:
     def _save_inverted_index(self):
         self.inverted_index_file.write_text(json.dumps(self._inverted_index, ensure_ascii=False), encoding='utf-8')
     
-    def _load_scores(self) -> Dict:
-        if self.scores_file.exists():
-            try:
-                return json.loads(self.scores_file.read_text(encoding='utf-8'))
-            except (json.JSONDecodeError, FileNotFoundError): pass
-        return {}
-    
-    def _save_scores(self):
-        self.scores_file.write_text(json.dumps(self._scores, ensure_ascii=False), encoding='utf-8')
-    
     def _load_character_activity(self) -> Dict:
         if self.character_activity_file.exists():
             try:
@@ -477,7 +467,7 @@ class MemoryManager:
                 if not chunk_keywords:
                     continue
                 overlap = len(content_keywords & chunk_keywords)
-                similarity = overlap / min(len(content_keywords), len(chunk_keywords))
+                similarity = overlap / max(min(len(content_keywords), len(chunk_keywords)), 1)
                 if similarity > threshold:
                     return chunk
         return None
@@ -499,20 +489,6 @@ class MemoryManager:
                     self._save_chunks_page(page, page_chunks)
                     return
         self._save_inverted_index()
-    
-    def _update_score(self, doc_id: str, doc_type: str, importance: int = 5):
-        """更新记忆评分"""
-        if doc_id not in self._scores:
-            self._scores[doc_id] = {"type": doc_type, "importance": importance, "references": 0, "created": datetime.now().isoformat()}
-        else:
-            self._scores[doc_id]["importance"] = max(self._scores[doc_id].get("importance", 5), importance)
-        self._save_scores()
-    
-    def _increment_reference(self, doc_id: str):
-        """增加引用计数"""
-        if doc_id not in self._scores:
-            self._scores[doc_id] = {"references": 0}
-        self._scores[doc_id]["references"] = self._scores[doc_id].get("references", 0) + 1
     
     # ===== 事件时间线（分页存储）=====
     

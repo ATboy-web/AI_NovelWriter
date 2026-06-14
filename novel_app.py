@@ -2054,7 +2054,7 @@ class NovelWriterApp(
         """显示设置对话框"""
         dialog = tk.Toplevel(self.root)
         dialog.title("系统配置")
-        dialog.geometry("580x520")
+        dialog.geometry("600x480")
         dialog.resizable(False, False)
         dialog.transient(self.root)
         dialog.grab_set()

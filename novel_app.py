@@ -216,9 +216,9 @@ class NovelWriterApp(
         status_frame = tk.Frame(toolbar, bg=C['bg_medium'])
         status_frame.pack(side=tk.RIGHT, padx=15)
         
-        self.status_indicator = tk.Label(status_frame, text="未连接AI", font=('微软雅黑', 9),
+        self.ai_status_label = tk.Label(status_frame, text="未连接AI", font=('微软雅黑', 9),
                                         bg=C['bg_medium'], fg=C['warning'])
-        self.status_indicator.pack(side=tk.RIGHT, padx=10)
+        self.ai_status_label.pack(side=tk.RIGHT, padx=10)
         
         # 左侧面板 - 可滚动 (280px)
         left_container = tk.Frame(main_container, bg=C['bg_dark'], width=280)
@@ -1027,9 +1027,12 @@ class NovelWriterApp(
     
     def _on_text_change(self, event=None):
         """文本变化事件 - 更新字数统计"""
-        content = self.content_text.get("1.0", tk.END).strip()
-        self.word_count_var.set(str(len(content)))
-        self.is_modified = True
+        try:
+            content = self.content_text.get("1.0", tk.END).strip()
+            self.word_count_var.set(str(len(content)))
+            self.is_modified = True
+        except tk.TclError:
+            pass  # 窗口关闭中的事件忽略
     
     def _show_editor_context_menu(self, event):
         """编辑器右键菜单 - 用选中文字跳转到创作工具"""
@@ -1123,9 +1126,14 @@ class NovelWriterApp(
             provider = self.config.get("api_provider", "ollama")
             model = self.config.get("model", "")
             img_status = " + 文生图" if self.image_gen.is_configured() else ""
-            self.status_indicator.config(text=f"{provider}/{model}{img_status}", fg='#10b981')
+            text = f"{provider}/{model}{img_status}"
+            self.status_indicator.config(text=text, fg='#10b981')
+            if hasattr(self, 'ai_status_label'):
+                self.ai_status_label.config(text=text, fg=C['success'] if hasattr(self, 'C') else '#10b981')
         else:
             self.status_indicator.config(text="未配置AI", fg='#ffd700')
+            if hasattr(self, 'ai_status_label'):
+                self.ai_status_label.config(text="未连接AI", fg='#f59e0b')
     
     def _new_novel(self):
         """新建小说 - 支持用户输入想法"""
@@ -3643,8 +3651,10 @@ class NovelWriterApp(
         meta = self._get_meta()
         self.chapter_var.set(f"{self.current_chapter}/{meta.get('chapter_count', '?')}")
         
-        # 自动保存章节摘要
-        self._save_chapter_summary(num, title, content)
+        # 后台线程保存摘要（避免UI线程I/O）
+        if hasattr(self, 'current_novel_dir') and self.current_novel_dir:
+            threading.Thread(target=self._save_chapter_summary, 
+                           args=(num, title, content), daemon=True).start()
     
     def _save_chapter_summary(self, chapter_num: int, title: str, content: str):
         """保存章节摘要到文件"""

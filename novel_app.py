@@ -2060,7 +2060,7 @@ class NovelWriterApp(
         dialog.grab_set()
         
         notebook = ttk.Notebook(dialog)
-        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 0))
         
         # ===== Tab 1: AI模型配置 =====
         ai_frame = ttk.Frame(notebook)
@@ -2382,7 +2382,7 @@ class NovelWriterApp(
             dialog.destroy()
             self._log("配置已保存")
         
-        ttk.Button(dialog, text="保存配置", command=save).pack(pady=10)
+        ttk.Button(dialog, text="保存配置", command=save).pack(side=tk.BOTTOM, pady=8)
     
     def _gen_settings(self):
         """生成世界观"""

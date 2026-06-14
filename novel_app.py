@@ -2413,12 +2413,12 @@ class NovelWriterApp(
             dialog.destroy()
             self._log("配置已保存")
         
-        ttk.Button(btn_frame, text="保存配置", command=save).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
-        
         # 底部按钮区
         btn_frame = tk.Frame(content_frame)
         btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=5)
+        
+        ttk.Button(btn_frame, text="保存配置", command=save).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
     
     def _gen_settings(self):
         """生成世界观"""

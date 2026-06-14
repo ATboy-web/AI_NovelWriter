@@ -2059,6 +2059,10 @@ class NovelWriterApp(
         dialog.transient(self.root)
         dialog.grab_set()
         
+        # 底部按钮区 - 先pack确保可见
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=5)
+        
         notebook = ttk.Notebook(dialog)
         notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 0))
         
@@ -2382,7 +2386,8 @@ class NovelWriterApp(
             dialog.destroy()
             self._log("配置已保存")
         
-        ttk.Button(dialog, text="保存配置", command=save).pack(side=tk.BOTTOM, pady=8)
+        ttk.Button(btn_frame, text="保存配置", command=save).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
     
     def _gen_settings(self):
         """生成世界观"""

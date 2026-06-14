@@ -3400,7 +3400,10 @@ class NovelWriterApp(
                 settings_file = self.current_novel_dir / "memory" / "settings.json"
                 if not settings_file.exists():
                     try:
-                        self.agent.generate_settings(meta["genre"], meta["title"], meta.get("concept", ""))
+                        concept = meta.get("concept", "")
+                        self.agent.generate_settings(meta["genre"], meta["title"], concept)
+                        if concept:
+                            self._log(f"[世界观] 已基于用户想法生成世界观")
                     except Exception as e:
                         self._log(f"世界观生成失败，跳过: {e}")
                 else:
@@ -3411,6 +3414,7 @@ class NovelWriterApp(
                 if not characters_dir.exists() or not list(characters_dir.glob("*.json")):
                     try:
                         self.agent.generate_characters(meta["genre"], meta["title"])
+                        self._log("角色生成完成")
                     except Exception as e:
                         self._log(f"角色生成失败，跳过: {e}")
                 else:
@@ -3420,19 +3424,22 @@ class NovelWriterApp(
                 outline_file = self.current_novel_dir / "outline.json"
                 if not outline_file.exists() or not self.outline:
                     try:
+                        concept = meta.get("concept", "")
                         with self._state_lock:
-                            self.outline = self.agent.generate_outline(meta["genre"], meta["title"], meta["chapter_count"])
+                            self.outline = self.agent.generate_outline(
+                                meta["genre"], meta["title"], meta["chapter_count"], concept)
                         with open(outline_file, 'w', encoding='utf-8') as f:
                             with self._state_lock:
                                 json.dump(self.outline, f, indent=2, ensure_ascii=False)
                         self.root.after(0, self._refresh_outline_list)
+                        self._log(f"大纲已生成: {len(self.outline)}章")
                     except Exception as e:
                         self._log(f"大纲生成失败: {e}")
                         self._auto_running = False
                         self.root.after(0, lambda: self.auto_btn.config(state=tk.NORMAL, text="自动创作"))
                         return
                 else:
-                    self._log("大纲已存在，跳过生成")
+                    self._log(f"大纲已存在: {len(self.outline)}章，跳过生成")
 
                 # 4. 逐章生成（从已完成的下一章开始）
                 chapters_dir = self.current_novel_dir / "chapters"

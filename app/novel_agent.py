@@ -461,16 +461,42 @@ class NovelAgent:
         
         return chars
     
-    def generate_outline(self, genre: str, title: str, chapter_count: int) -> list:
-        """生成大纲"""
-        self.log(f"[智能体] 正在生成{chapter_count}章大纲...")
+    def generate_outline(self, genre: str, title: str, chapter_count: int, concept: str = "") -> list:
+        """生成大纲 - 支持大量章节分批生成"""
+        max_batch = 50  # 每批最多生成50章大纲
+        
+        if chapter_count <= max_batch:
+            return self._generate_outline_batch(genre, title, chapter_count, 1, concept)
+        
+        # 大量章节分批生成
+        self.log(f"[智能体] 共{chapter_count}章，分批生成大纲（每批{max_batch}章）...")
+        all_outline = []
+        
+        for start_ch in range(1, chapter_count + 1, max_batch):
+            batch_count = min(max_batch, chapter_count - start_ch + 1)
+            self.log(f"[大纲] 生成第{start_ch}-{start_ch+batch_count-1}章大纲...")
+            batch_outline = self._generate_outline_batch(genre, title, batch_count, start_ch, concept)
+            all_outline.extend(batch_outline)
+            
+            # 更新上下文
+            if all_outline:
+                last_summary = all_outline[-1].get("summary", "")
+                concept = f"已规划{len(all_outline)}章。上一章摘要：{last_summary}"
+        
+        return all_outline
+    
+    def _generate_outline_batch(self, genre: str, title: str, count: int, start_num: int, concept: str = "") -> list:
+        """生成一批大纲"""
         context = self._build_context(0)
-        system = f"你是专业小说大纲规划师。\n{context}\n输出JSON数组：[{{'chapter':1,'title':'','summary':'','key_events':[],'characters_involved':[]}}]"
-        prompt = f"小说类型：{genre}\n标题：{title}\n章节数：{chapter_count}"
+        system = f"你是专业小说大纲规划师。\n{context}\n输出JSON数组：[{{'chapter':{start_num},'title':'','summary':'','key_events':[],'characters_involved':[]}}]"
+        prompt = f"小说类型：{genre}\n标题：{title}\n章节数：{count}章（从第{start_num}章开始）"
+        if concept:
+            prompt += f"\n用户想法：{concept}\n请基于用户的想法来规划大纲"
         response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
         outline = self._parse_json_response(response, [], is_list=True)
         if not outline:
-            outline = [{"chapter": i+1, "title": f"第{i+1}章", "summary": "待规划"} for i in range(chapter_count)]
+            outline = [{"chapter": start_num+i, "title": f"第{start_num+i}章", "summary": concept if concept else "待规划"} 
+                      for i in range(count)]
         return outline
     
     def generate_outline_continuation(self, genre: str, title: str, 

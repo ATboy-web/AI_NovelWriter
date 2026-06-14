@@ -741,6 +741,17 @@ class MemoryManager:
         except Exception as e:
             print(f"保存Markdown版本失败: {e}")
     
+    def get_meta(self, key: str = None, default=None):
+        """获取小说元数据"""
+        meta_file = self.novel_dir / "meta.json"
+        if meta_file.exists():
+            with open(meta_file, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+            if key:
+                return meta.get(key, default)
+            return meta
+        return default if key else {}
+    
     def _format_settings_md(self, settings: dict, level: int = 0) -> str:
         """将settings字典格式化为Markdown"""
         lines = []

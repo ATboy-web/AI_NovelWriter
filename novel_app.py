@@ -956,7 +956,8 @@ class NovelWriterApp(
     
     def _export_bookmarks(self):
         """导出书签"""
-        if not self.reading_manager.bookmarks:
+        bm_list = self.reading_manager.get_bookmarks()
+        if not bm_list:
             messagebox.showinfo("提示", "没有可导出的书签")
             return
         
@@ -970,9 +971,9 @@ class NovelWriterApp(
         
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(self.reading_manager.bookmarks, f, indent=2, ensure_ascii=False)
-            self._log(f"已导出 {len(self.reading_manager.bookmarks)} 个书签")
-            messagebox.showinfo("成功", f"已导出 {len(self.reading_manager.bookmarks)} 个书签")
+                json.dump(bm_list, f, indent=2, ensure_ascii=False)
+            self._log(f"已导出 {len(bm_list)} 个书签")
+            messagebox.showinfo("成功", f"已导出 {len(bm_list)} 个书签")
         except Exception as e:
             messagebox.showerror("错误", f"导出失败: {str(e)}")
     
@@ -1059,7 +1060,8 @@ class NovelWriterApp(
     
     def _style_imitation_with_text(self, text: str):
         """用选中文字进行仿写"""
-        self._log("已获取选中内容作为仿写参考")
+        self._selected_context_text = text
+        self._log(f"已获取选中内容作为仿写参考 ({len(text)}字)")
         self._style_imitation()
     
     def _gen_prompt_from_text(self, text: str):
@@ -1661,17 +1663,6 @@ class NovelWriterApp(
                 if tab_text == "章节内容":
                     self.notebook.select(i)
                     self._log(f"已切换到标签页: {tab_text}")
-                    break
-        except Exception as e:
-            self._log(f"切换标签页失败: {e}")
-        
-        self._log(f"已打开小说《{meta.get('title', '未知')}》")
-        
-        # 切换到章节内容标签页
-        try:
-            for i in range(self.notebook.index("end")):
-                if self.notebook.tab(i, "text").strip() == "章节内容":
-                    self.notebook.select(i)
                     break
         except Exception as e:
             self._log(f"切换标签页失败: {e}")
@@ -3360,7 +3351,7 @@ class NovelWriterApp(
         
         def use_as_reference():
             if self.note_manager:
-                self.note_manager.add_note("AI分析参考", analysis)
+                self.note_manager.add_project_note("AI分析参考", analysis)
                 self._log("分析结果已保存到笔记")
             dialog.destroy()
         

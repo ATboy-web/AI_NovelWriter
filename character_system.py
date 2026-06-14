@@ -474,7 +474,7 @@ class CharacterSystem:
         if minors:
             name = random.choice(minors)
             self.promote_character(name, "关键人物", importance=5)
-            self.characters[name].faction = random.choice(["正派", "反派"])
+            self.characters[name].faction = random.choice(["主角阵营", "敌对阵营", "中立"])
             return name
         return None
     

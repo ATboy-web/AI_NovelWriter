@@ -429,9 +429,22 @@ class AIClient:
             
             fallback_model = self.FALLBACK_CHAIN.get(model)
             if fallback_model:
-                self.config.set("model", fallback_model)
+                self._log(f"模型降级: {model} -> {fallback_model}")
+                model = fallback_model
                 self._init_client()
-                return self.chat(messages, system, **kwargs)
+                # 重试时不递归，直接调用对应方法
+                if provider == "ollama":
+                    result = self._chat_ollama(messages, system, model, max_tokens, temperature)
+                elif provider == "claude":
+                    result = self._chat_claude(messages, system, model, max_tokens, temperature)
+                elif provider == "deepseek":
+                    result = self._chat_deepseek(messages, system, model, max_tokens, temperature,
+                                                thinking_enabled, reasoning_effort)
+                else:
+                    result = self._chat_openai(messages, system, model, max_tokens, temperature)
+                latency = time.time() - start
+                self.metrics.record(len(result), latency)
+                return result
             
             raise
     

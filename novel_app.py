@@ -306,6 +306,24 @@ class NovelWriterApp(
                                      command=self._continue_novel)
         self.continue_btn.pack(fill=tk.X, pady=2)
         
+        # 重新创作按钮
+        regen_row = tk.Frame(mode_frame, bg=C['bg_medium'])
+        regen_row.pack(fill=tk.X, pady=2)
+        
+        self.regen_chapter_btn = tk.Button(regen_row, text="重新创作本章", font=('微软雅黑', 9),
+                                          bg=C['warning'], fg='white', relief=tk.FLAT,
+                                          padx=8, pady=4, cursor='hand2',
+                                          activebackground='#d97706',
+                                          command=self._regen_current_chapter)
+        self.regen_chapter_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
+        
+        self.regen_all_btn = tk.Button(regen_row, text="全部重新创作", font=('微软雅黑', 9),
+                                      bg=C['error'], fg='white', relief=tk.FLAT,
+                                      padx=8, pady=4, cursor='hand2',
+                                      activebackground='#dc2626',
+                                      command=self._regen_all_chapters)
+        self.regen_all_btn.pack(side=tk.RIGHT)
+        
         # 左侧 - 智能体步骤
         agent_frame = tk.Frame(left_panel, bg=C['bg_medium'], padx=10, pady=5)
         agent_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
@@ -3366,6 +3384,93 @@ class NovelWriterApp(
         """停止自动创作"""
         self._auto_running = False
         self._log("已请求停止自动创作，正在完成当前章节...")
+    
+    def _regen_current_chapter(self):
+        """重新创作当前章节"""
+        if not self._check_ready(silent=True):
+            return
+        if not self.current_novel_dir:
+            messagebox.showwarning("提示", "请先打开小说")
+            return
+        
+        # 获取当前章节
+        current_ch = self.current_chapter
+        if current_ch <= 0:
+            messagebox.showwarning("提示", "没有当前章节")
+            return
+        
+        result = messagebox.askyesno("重新创作", 
+            f"确定要重新创作第{current_ch}章吗？\n当前内容将被覆盖。")
+        if not result:
+            return
+        
+        self._log(f"正在重新创作第{current_ch}章...")
+        
+        def run():
+            try:
+                meta = self._get_meta()
+                chapter_info = {}
+                if self.outline and current_ch <= len(self.outline):
+                    chapter_info = self.outline[current_ch - 1]
+                
+                content = self.agent.generate_chapter(
+                    current_ch,
+                    chapter_info.get("title", f"第{current_ch}章"),
+                    chapter_info.get("summary", ""),
+                    word_count=meta.get("word_count_per_chapter", 10000)
+                )
+                
+                # 保存
+                chapters_dir = self.current_novel_dir / "chapters"
+                chapters_dir.mkdir(exist_ok=True)
+                with open(chapters_dir / f"chapter_{current_ch:04d}.txt", 'w', encoding='utf-8') as f:
+                    f.write(content)
+                
+                # 更新显示
+                self.root.after(0, lambda c=content, n=current_ch, t=chapter_info.get("title", ""): 
+                               self._display_chapter(n, t, c))
+                self._log(f"第{current_ch}章重新创作完成")
+                
+            except Exception as e:
+                self._log(f"重新创作失败: {e}")
+        
+        threading.Thread(target=run, daemon=True).start()
+    
+    def _regen_all_chapters(self):
+        """全部重新创作"""
+        if not self._check_ready(silent=True):
+            return
+        if not self.current_novel_dir:
+            messagebox.showwarning("提示", "请先打开小说")
+            return
+        
+        result = messagebox.askyesno("全部重新创作", 
+            "⚠️ 确定要重新创作所有章节吗？\n\n所有已生成的章节内容将被覆盖！\n此操作不可撤销！")
+        if not result:
+            return
+        
+        # 确认删除现有章节
+        confirm = messagebox.askyesno("再次确认",
+            "⚠️ 此操作将删除所有已生成的章节并重新创作。\n确定继续？")
+        if not confirm:
+            return
+        
+        self._log("开始全部重新创作...")
+        
+        # 删除旧章节
+        chapters_dir = self.current_novel_dir / "chapters"
+        if chapters_dir.exists():
+            for f in chapters_dir.glob("chapter_*.txt"):
+                f.unlink()
+            self._log("已清除所有旧章节")
+        
+        # 重置进度
+        self.current_chapter = 0
+        self.chapter_var.set(f"0/{self._get_meta().get('chapter_count', '?')}")
+        self.content_text.delete("1.0", tk.END)
+        
+        # 启动自动创作
+        self._auto_generate()
     
     def _auto_generate(self):
         """自动创作全流程 - 优化版本，支持大量章节"""

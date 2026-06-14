@@ -2065,23 +2065,56 @@ class NovelWriterApp(
         ai_frame = ttk.Frame(notebook)
         notebook.add(ai_frame, text="AI模型")
         
-        ttk.Label(ai_frame, text="AI服务商:").pack(anchor=tk.W, padx=20, pady=(15,3))
+        # 提示信息
+        tip_frame = tk.Frame(ai_frame, bg="#2d3748")
+        tip_frame.pack(fill=tk.X, padx=15, pady=(10, 5))
+        tk.Label(tip_frame, text="💡 自定义API设置：选择服务商 → 填写API地址 → 填写API密钥 → 填写模型名称 → 点击底部「保存配置」", 
+                bg="#2d3748", fg="#90cdf4", font=('微软雅黑', 9), wraplength=480).pack(padx=10, pady=5)
+        
+        ttk.Label(ai_frame, text="AI服务商:", font=('微软雅黑', 10, 'bold')).pack(anchor=tk.W, padx=20, pady=(10,3))
         provider_var = tk.StringVar(value=self.config.get("api_provider", "ollama"))
         provider_combo = ttk.Combobox(ai_frame, textvariable=provider_var, 
             values=["ollama", "openai", "deepseek", "claude", "custom"], state="readonly", width=50)
         provider_combo.pack(padx=20, pady=3)
         
-        ttk.Label(ai_frame, text="API地址 (Ollama默认 http://localhost:11434):").pack(anchor=tk.W, padx=20, pady=(10,3))
+        # 服务商说明
+        provider_info = {
+            "ollama": "本地部署，无需API密钥",
+            "openai": "GPT-4o等模型，需要API密钥",
+            "deepseek": "深度求索，支持思考模式",
+            "claude": "Anthropic Claude，需要API密钥",
+            "custom": "自定义OpenAI兼容API"
+        }
+        provider_tip = tk.Label(ai_frame, text="", fg="gray", font=('微软雅黑', 8))
+        provider_tip.pack(anchor=tk.W, padx=20)
+        
+        def on_provider_change(event=None):
+            p = provider_var.get()
+            provider_tip.config(text=provider_info.get(p, ""))
+        provider_combo.bind('<<ComboboxSelected>>', on_provider_change)
+        on_provider_change()  # 初始化
+        
+        ttk.Label(ai_frame, text="API地址:", font=('微软雅黑', 10, 'bold')).pack(anchor=tk.W, padx=20, pady=(10,3))
+        ttk.Label(ai_frame, text="Ollama: http://localhost:11434 | OpenAI: https://api.openai.com/v1", 
+                fg="gray", font=('微软雅黑', 8)).pack(anchor=tk.W, padx=20)
+        ttk.Label(ai_frame, text="DeepSeek: https://api.deepseek.com | Claude: https://api.anthropic.com", 
+                fg="gray", font=('微软雅黑', 8)).pack(anchor=tk.W, padx=20)
         base_entry = ttk.Entry(ai_frame, width=52)
         base_entry.insert(0, self.config.get("api_base", "http://localhost:11434"))
         base_entry.pack(padx=20, pady=3)
         
-        ttk.Label(ai_frame, text="API密钥 (Ollama不需要):").pack(anchor=tk.W, padx=20, pady=(10,3))
+        ttk.Label(ai_frame, text="API密钥:", font=('微软雅黑', 10, 'bold')).pack(anchor=tk.W, padx=20, pady=(10,3))
+        ttk.Label(ai_frame, text="Ollama不需要密钥，其他服务商需要填写", 
+                fg="gray", font=('微软雅黑', 8)).pack(anchor=tk.W, padx=20)
         key_entry = ttk.Entry(ai_frame, width=52, show="*")
         key_entry.insert(0, self.config.get("api_key", ""))
         key_entry.pack(padx=20, pady=3)
         
-        ttk.Label(ai_frame, text="模型名称:").pack(anchor=tk.W, padx=20, pady=(10,3))
+        ttk.Label(ai_frame, text="模型名称:", font=('微软雅黑', 10, 'bold')).pack(anchor=tk.W, padx=20, pady=(10,3))
+        ttk.Label(ai_frame, text="Ollama: qwen2.5:14b | OpenAI: gpt-4o | DeepSeek: deepseek-chat", 
+                fg="gray", font=('微软雅黑', 8)).pack(anchor=tk.W, padx=20)
+        ttk.Label(ai_frame, text="Claude: claude-3-5-sonnet-20241022", 
+                fg="gray", font=('微软雅黑', 8)).pack(anchor=tk.W, padx=20)
         model_frame = ttk.Frame(ai_frame)
         model_frame.pack(fill=tk.X, padx=20, pady=3)
         model_var = tk.StringVar(value=self.config.get("model", "qwen2.5:14b"))

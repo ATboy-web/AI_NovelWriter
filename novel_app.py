@@ -2066,38 +2066,82 @@ class NovelWriterApp(
         ai_frame = ttk.Frame(notebook)
         notebook.add(ai_frame, text="AI模型")
         
-        ttk.Label(ai_frame, text="AI服务商:", font=('微软雅黑', 10)).pack(anchor=tk.W, padx=20, pady=(10,3))
+        ttk.Label(ai_frame, text="AI服务商:", font=('微软雅黑', 10, 'bold')).pack(anchor=tk.W, padx=20, pady=(10,3))
         provider_var = tk.StringVar(value=self.config.get("api_provider", "ollama"))
         provider_combo = ttk.Combobox(ai_frame, textvariable=provider_var, 
-            values=["ollama", "openai", "deepseek", "claude", "custom"], state="readonly", width=40)
+            values=["ollama", "openai", "deepseek", "claude", "custom", "siliconflow", "together", "groq", "dashscope"],
+            state="readonly", width=40)
         provider_combo.pack(padx=20, pady=2)
         
-        ttk.Label(ai_frame, text="API地址:", font=('微软雅黑', 10)).pack(anchor=tk.W, padx=20, pady=(8,2))
+        # 预设模型列表
+        MODEL_PRESETS = {
+            "ollama": ["qwen3:latest", "qwen2.5:14b", "qwen2.5:32b", "llama3.1:8b", "llama3.1:70b", "deepseek-r1:8b", "deepseek-r1:32b", "mistral:7b", "yi:34b", "phi3:14b"],
+            "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o3-mini"],
+            "deepseek": ["deepseek-chat", "deepseek-reasoner", "deepseek-v3", "deepseek-r1"],
+            "claude": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-haiku-20240307", "claude-3-sonnet-20240229"],
+            "custom": ["custom-model"],
+            "siliconflow": ["Qwen/Qwen2.5-72B-Instruct", "deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-7B-Instruct", "THUDM/glm-4-9b-chat"],
+            "together": ["meta-llama/Llama-3.3-70B-Instruct-Turbo", "Qwen/Qwen2.5-72B-Instruct-Turbo", "deepseek-ai/DeepSeek-V3"],
+            "groq": ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"],
+            "dashscope": ["qwen-max", "qwen-plus", "qwen-turbo", "qwen2.5-72b-instruct", "qwen2.5-32b-instruct"],
+        }
+        
+        API_PRESETS = {
+            "ollama": "http://localhost:11434",
+            "openai": "https://api.openai.com/v1",
+            "deepseek": "https://api.deepseek.com",
+            "claude": "https://api.anthropic.com",
+            "siliconflow": "https://api.siliconflow.cn/v1",
+            "together": "https://api.together.xyz/v1",
+            "groq": "https://api.groq.com/openai/v1",
+            "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "custom": "https://your-api.com/v1",
+        }
+        
+        def on_provider_change(event=None):
+            p = provider_var.get()
+            # 自动填充API地址
+            base_entry.delete(0, tk.END)
+            base_entry.insert(0, API_PRESETS.get(p, "https://your-api.com/v1"))
+            # 自动填充模型列表
+            models = MODEL_PRESETS.get(p, ["custom-model"])
+            model_combo['values'] = models
+            if models:
+                model_var.set(models[0])
+        
+        provider_combo.bind('<<ComboboxSelected>>', on_provider_change)
+        
+        ttk.Label(ai_frame, text="API地址:", font=('微软雅黑', 10, 'bold')).pack(anchor=tk.W, padx=20, pady=(8,2))
         base_entry = ttk.Entry(ai_frame, width=45)
         base_entry.insert(0, self.config.get("api_base", "http://localhost:11434"))
         base_entry.pack(padx=20, pady=2)
         
-        ttk.Label(ai_frame, text="API密钥:", font=('微软雅黑', 10)).pack(anchor=tk.W, padx=20, pady=(8,2))
+        ttk.Label(ai_frame, text="API密钥:", font=('微软雅黑', 10, 'bold')).pack(anchor=tk.W, padx=20, pady=(8,2))
         key_entry = ttk.Entry(ai_frame, width=45, show="*")
         key_entry.insert(0, self.config.get("api_key", ""))
         key_entry.pack(padx=20, pady=2)
         
-        ttk.Label(ai_frame, text="模型名称:", font=('微软雅黑', 10)).pack(anchor=tk.W, padx=20, pady=(8,2))
+        ttk.Label(ai_frame, text="模型名称:", font=('微软雅黑', 10, 'bold')).pack(anchor=tk.W, padx=20, pady=(8,2))
         model_var = tk.StringVar(value=self.config.get("model", "qwen2.5:14b"))
         model_combo = ttk.Combobox(ai_frame, textvariable=model_var, width=38)
         model_combo.pack(padx=20, pady=2)
+        # 初始化模型列表
+        provider = self.config.get("api_provider", "ollama")
+        model_combo['values'] = MODEL_PRESETS.get(provider, ["custom-model"])
+        
+        ttk.Label(ai_frame, text="温度 (0-1):", font=('微软雅黑', 10, 'bold')).pack(anchor=tk.W, padx=20, pady=(8,2))
+        temp_var = tk.StringVar(value=str(self.config.get("temperature", 0.8)))
+        ttk.Spinbox(ai_frame, from_=0, to=1, increment=0.1, textvariable=temp_var, width=10).pack(anchor=tk.W, padx=20, pady=2)
         
         ttk.Label(ai_frame, text="温度 (0-1):", font=('微软雅黑', 10)).pack(anchor=tk.W, padx=20, pady=(8,2))
         temp_var = tk.StringVar(value=str(self.config.get("temperature", 0.8)))
         ttk.Spinbox(ai_frame, from_=0, to=1, increment=0.1, textvariable=temp_var, width=10).pack(anchor=tk.W, padx=20, pady=2)
         
-        ttk.Label(ai_frame, text="上下文窗口 (字符数，影响长记忆):").pack(anchor=tk.W, padx=20, pady=(10,3))
+        ttk.Label(ai_frame, text="上下文窗口:", font=('微软雅黑', 10, 'bold')).pack(anchor=tk.W, padx=20, pady=(8,2))
         ctx_var = tk.StringVar(value=str(self.config.get("context_window", 32000)))
         ctx_combo = ttk.Combobox(ai_frame, textvariable=ctx_var, 
             values=["8000", "16000", "32000", "64000", "128000"], width=10)
-        ctx_combo.pack(anchor=tk.W, padx=20, pady=3)
-        ttk.Label(ai_frame, text="Ollama模型取决于显存，建议8K-32K；云端API可用更大窗口", 
-                  foreground="gray").pack(anchor=tk.W, padx=20)
+        ctx_combo.pack(anchor=tk.W, padx=20, pady=2)
         
         # ===== Tab 2: 文生图配置 =====
         img_frame = ttk.Frame(notebook)

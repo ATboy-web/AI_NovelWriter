@@ -2054,11 +2054,35 @@ class NovelWriterApp(
         """显示设置对话框"""
         dialog = tk.Toplevel(self.root)
         dialog.title("系统配置")
-        dialog.geometry("550x650")
+        dialog.geometry("600x750")
         dialog.transient(self.root)
         dialog.grab_set()
         
-        notebook = ttk.Notebook(dialog)
+        # 创建主框架和滚动条
+        main_frame = tk.Frame(dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        canvas = tk.Canvas(main_frame)
+        scrollbar = ttk.Scrollbar(main_frame, orient=tk.VERTICAL, command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor=tk.NW)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # 鼠标滚轮滚动
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        
+        notebook = ttk.Notebook(scrollable_frame)
         notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # ===== Tab 1: AI模型配置 =====

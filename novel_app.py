@@ -2051,19 +2051,46 @@ class NovelWriterApp(
                  font=('微软雅黑', 11, 'bold'), padx=30, pady=8).pack(pady=15)
     
     def _show_settings(self):
-        """显示设置对话框"""
+        """显示设置对话框 - 带滚动支持"""
         dialog = tk.Toplevel(self.root)
         dialog.title("系统配置")
-        dialog.geometry("600x480")
-        dialog.resizable(False, False)
+        dialog.geometry("600x520")
         dialog.transient(self.root)
         dialog.grab_set()
         
-        # 底部按钮区 - 先pack确保可见
-        btn_frame = tk.Frame(dialog)
-        btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=5)
+        # 创建Canvas和滚动条
+        canvas = tk.Canvas(dialog, highlightthickness=0)
+        h_scrollbar = ttk.Scrollbar(dialog, orient=tk.HORIZONTAL, command=canvas.xview)
+        v_scrollbar = ttk.Scrollbar(dialog, orient=tk.VERTICAL, command=canvas.yview)
         
-        notebook = ttk.Notebook(dialog)
+        canvas.configure(xscrollcommand=h_scrollbar.set, yscrollcommand=v_scrollbar.set)
+        
+        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # 创建内容框架
+        content_frame = tk.Frame(canvas)
+        canvas_window = canvas.create_window((0, 0), window=content_frame, anchor=tk.NW)
+        
+        # 更新滚动区域
+        def update_scrollregion(event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfig(canvas_window, width=canvas.winfo_width())
+        
+        content_frame.bind("<Configure>", update_scrollregion)
+        canvas.bind("<Configure>", update_scrollregion)
+        
+        # 鼠标滚轮支持
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        def on_shift_mousewheel(event):
+            canvas.xview_scroll(int(-1*(event.delta/120)), "units")
+        
+        canvas.bind("<MouseWheel>", on_mousewheel)
+        canvas.bind("<Shift-MouseWheel>", on_shift_mousewheel)
+        
+        notebook = ttk.Notebook(content_frame)
         notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 0))
         
         # ===== Tab 1: AI模型配置 =====
@@ -2388,6 +2415,10 @@ class NovelWriterApp(
         
         ttk.Button(btn_frame, text="保存配置", command=save).pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        
+        # 底部按钮区
+        btn_frame = tk.Frame(content_frame)
+        btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=5)
     
     def _gen_settings(self):
         """生成世界观"""

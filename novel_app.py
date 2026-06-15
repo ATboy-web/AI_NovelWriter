@@ -3393,6 +3393,51 @@ class NovelWriterApp(
         self._auto_running = False
         self._log("已请求停止自动创作，正在完成当前章节...")
     
+    def _auto_detect_characters(self, chapter_num: int, content: str):
+        """自动检测新角色并创建"""
+        try:
+            if not self.ai_client or not self.ai_client.is_configured():
+                return
+            
+            existing = self.memory.get_characters() if self.memory else {}
+            existing_names = list(existing.keys()) if existing else []
+            existing_str = ", ".join(existing_names[:10]) if existing_names else "空"
+            
+            system = f"""检测文本中出现的所有新角色名称。
+已有角色: {existing_str}
+只输出JSON数组，如["新角色名1","新角色名2"]
+如果没有新角色,输出[]"""
+            
+            response = self.ai_client.chat(
+                [{"role": "user", "content": f"第{chapter_num}章内容:\n{content[:2000]}"}],
+                system=system, max_tokens=500
+            )
+            
+            import re
+            match = re.search(r'\[[\s\S]*\]', response)
+            if not match:
+                return
+            new_names = json.loads(match.group())
+            
+            if new_names:
+                characters = existing.copy() if existing else {}
+                added = []
+                for name in new_names:
+                    if name and name not in characters:
+                        characters[name] = {
+                            "first_appearance": chapter_num,
+                            "category": "无名小卒",
+                            "faction": "中立",
+                            "auto_created": True
+                        }
+                        added.append(name)
+                
+                if added:
+                    self.memory.save_characters(characters)
+                    self._log(f"[角色] 自动创建{len(added)}个新角色: {', '.join(added[:5])}")
+        except Exception:
+            pass  # 静默失败不影响主流程
+    
     def _regen_current_chapter(self):
         """重新创作当前章节"""
         if not self._check_ready(silent=True):
@@ -3595,6 +3640,13 @@ class NovelWriterApp(
 
                         # 定稿
                         self.agent.finalize_chapter(ch_num, content)
+                        
+                        # 自动检测新角色
+                        self._auto_detect_characters(ch_num, content)
+                        
+                        # 名场面检测
+                        if self.config.get("auto_detect_scene", True):
+                            self._detect_and_prompt_image(content, ch_num)
 
                         # 更新UI（每5章更新一次，避免频繁刷新）
                         batch_count += 1

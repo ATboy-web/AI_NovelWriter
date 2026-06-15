@@ -393,72 +393,73 @@ class NovelAgent:
     
     def generate_chapter(self, chapter_num: int, chapter_title: str, 
                          chapter_outline: str, word_count: int = 3000) -> str:
-        """生成章节 - 使用多智能体协作，带重复检测"""
+        """生成章节 - 带重复检测与修复"""
+        max_retries = 3
         content = self.generate_with_collaboration(chapter_num, chapter_title, 
                                                     chapter_outline, word_count)
-        # 重复检测与修复
-        if self._has_excessive_repetition(content, word_count):
-            self.log(f"[重复检测] 第{chapter_num}章存在内容重复，尝试修复...")
-            content = self._deduplicate_and_fix(chapter_num, content, word_count)
+        
+        for retry in range(max_retries):
+            has_rep, actual_words = self._has_excessive_repetition(content, word_count)
+            if not has_rep:
+                self.log(f"第{chapter_num}章质量检测通过 ({actual_words}字)")
+                return content
+            
+            self.log(f"[重试{retry+1}/{max_retries}] 第{chapter_num}章重复问题: 当前{actual_words}字→目标{word_count}字")
+            
+            # 用更强的防重复提示重新生成本章
+            strict_system = f"""你是专业小说作家。请根据大纲创作第{chapter_num}章。
+【核心要求】
+1. 目标字数{word_count}字，必须达标
+2. 绝不允许重复内容。每300字推进一次剧情
+3. 用{word_count//1000}个不同的场景段落来写
+4. 每个场景换地点、换人物、换冲突
+5. 按时间顺序推进，不要倒叙重复
+
+第{chapter_num}章大纲: {chapter_outline}
+
+直接输出小说正文，不要解释。"""
+            
+            content = self.ai.chat(
+                [{"role": "user", "content": f"创作第{chapter_num}章：{chapter_title}，{word_count}字"}],
+                system=strict_system, max_tokens=word_count * 3
+            )
+        
+        self.log(f"第{chapter_num}章生成完成 ({len(content)}字)")
         return content
     
-    def _has_excessive_repetition(self, content: str, target_words: int) -> bool:
-        """检测是否存在过度重复"""
+    def _has_excessive_repetition(self, content: str, target_words: int) -> tuple:
+        """检测是否存在过度重复，返回 (has_repetition, actual_word_count)"""
         paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
-        if len(paragraphs) < 3:
-            return False
+        actual_chars = len(content)
+        actual_words = actual_chars  # 中文字符数=字数
         
-        # 1. 检测相似段落
+        # 字数严重不达标
+        if actual_words < target_words * 0.3:
+            return (True, actual_words)
+        
+        if len(paragraphs) < 3:
+            return (actual_words < target_words * 0.6, actual_words)
+        
+        # 检测相似段落
         similar_count = 0
         for i in range(len(paragraphs)):
-            for j in range(i + 1, len(paragraphs)):
+            for j in range(i + 1, min(i + 8, len(paragraphs))):
                 if len(paragraphs[i]) > 50 and len(paragraphs[j]) > 50:
-                    # 使用简单相似度比较
-                    words_i = set(paragraphs[i].split())
-                    words_j = set(paragraphs[j].split())
+                    words_i = set(paragraphs[i][:100].split())
+                    words_j = set(paragraphs[j][:100].split())
                     if words_i and words_j:
-                        overlap = len(words_i & words_j) / max(len(words_i), len(words_j))
-                        if overlap > 0.5:
+                        overlap = len(words_i & words_j) / min(len(words_i), len(words_j))
+                        if overlap > 0.6:
                             similar_count += 1
         
-        # 2. 检测短段落占比
-        short_paras = sum(1 for p in paragraphs if len(p) < 100)
-        short_ratio = short_paras / len(paragraphs) if paragraphs else 0
+        # 短段落占比
+        short_paras = sum(1 for p in paragraphs if len(p) < 80)
+        short_ratio = short_paras / len(paragraphs)
         
-        # 3. 检测实际字数与目标差距
-        total_chars = len(content)
-        expected_chars = target_words * 2
+        self.log(f"[质量检测] 相似段落对:{similar_count}, 短段落比:{short_ratio:.2f}, 字数:{actual_words}/{target_words}")
         
-        self.log(f"[重复检测] 相似段落:{similar_count}, 短段落比:{short_ratio:.2f}, "
-                f"字数:{total_chars}/{expected_chars}")
-        
-        return similar_count > 3 or short_ratio > 0.3 or total_chars < expected_chars * 0.5
-    
-    def _deduplicate_and_fix(self, chapter_num: int, content: str, target_words: int) -> str:
-        """去除重复内容并补充新内容"""
-        try:
-            outline = ""
-            if hasattr(self.memory, 'get_recent_summaries'):
-                summaries = self.memory.get_recent_summaries(3)
-                if summaries:
-                    outline = summaries[-1][:500]
-            
-            system = """你是小说修复专家。下面的章节存在内容重复问题。
-请做以下修复：
-1. 删除所有重复的段落和句子
-2. 保留独特的情节推进内容
-3. 补充新的剧情发展使章节丰满
-4. 保持文风一致，不要改变人物设定
-
-直接输出修复后的完整章节。"""
-            
-            prompt = f"原章节:\n{content[:3000]}\n\n请修复重复问题，确保内容充实、剧情推进。"
-            fixed = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=target_words * 2)
-            self.log(f"[重复修复] 第{chapter_num}章已修复")
-            return fixed
-        except Exception as e:
-            self.log(f"[重复修复] 失败: {e}，返回原内容")
-            return content
+        has_rep = (similar_count > 5 or short_ratio > 0.4 or actual_words < target_words * 0.5)
+        return (has_rep, actual_words)
     
     def review_chapter(self, chapter_num: int, content: str) -> dict:
         """审校章节"""

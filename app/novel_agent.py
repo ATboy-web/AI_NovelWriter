@@ -404,6 +404,10 @@ class NovelAgent:
         content = self.generate_with_collaboration(chapter_num, chapter_title, 
                                                     chapter_outline, word_count)
         
+        if not content:
+            self.log(f"第{chapter_num}章生成失败，返回空内容")
+            return f"# 第{chapter_num}章 {chapter_title}\n\n（内容生成失败，请重试）"
+        
         for retry in range(max_retries):
             has_rep, actual_words = self._has_excessive_repetition(content, word_count)
             if not has_rep:
@@ -412,12 +416,11 @@ class NovelAgent:
             
             self.log(f"[重试{retry+1}/{max_retries}] 第{chapter_num}章重复问题: 当前{actual_words}字→目标{word_count}字")
             
-            # 用更强的防重复提示重新生成本章
             strict_system = f"""你是专业小说作家。请根据大纲创作第{chapter_num}章。
 【核心要求】
 1. 目标字数{word_count}字，必须达标
 2. 绝不允许重复内容。每300字推进一次剧情
-3. 用{word_count//1000}个不同的场景段落来写
+3. 用{max(word_count//1000, 1)}个不同的场景段落来写
 4. 每个场景换地点、换人物、换冲突
 5. 按时间顺序推进，不要倒叙重复
 
@@ -425,12 +428,15 @@ class NovelAgent:
 
 直接输出小说正文，不要解释。"""
             
-            content = self.ai.chat(
+            new_content = self.ai.chat(
                 [{"role": "user", "content": f"创作第{chapter_num}章：{chapter_title}，{word_count}字"}],
                 system=strict_system, max_tokens=word_count * 3
             )
+            if new_content:
+                content = new_content
         
-        self.log(f"第{chapter_num}章生成完成 ({len(content)}字)")
+        self.log(f"第{chapter_num}章生成完成 ({len(content) if content else 0}字)")
+        return content or f"# 第{chapter_num}章 {chapter_title}\n\n（内容生成失败，请重试）"
         return content
     
     def _has_excessive_repetition(self, content: str, target_words: int) -> tuple:
@@ -727,6 +733,7 @@ class NovelAgent:
             self.log(f"[Writer] 第{chapter_num}章 第{i+1}/{part_count}段...")
             part_prompt = f"创作第{chapter_num}章：{chapter_title}\n大纲：{chapter_outline}\n已有：{''.join(parts[-2:]) or '（开头）'}\n请创作约3000字："
             response = self.ai.chat([{"role": "user", "content": part_prompt}],
-                                   system=f"专业小说作家。\n{context[:1000]}", max_tokens=4096)
-            parts.append(response)
-        return "\n\n".join(parts)
+                                   system=f"专业小说作家。\n{context[:1000] if context else ''}", max_tokens=4096)
+            if response:
+                parts.append(response)
+        return "\n\n".join(parts) if parts else ""

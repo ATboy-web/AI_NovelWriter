@@ -144,6 +144,7 @@ class NovelAgent:
         result = ContextOptimizer.optimize(
             {"内容": "\n\n".join(parts)}, max_chars
         ) if parts else ""
+        return result
     
     def _compress_active_characters(self, chars: dict, active_names: List[str], budget: int) -> str:
         """压缩活跃角色信息"""

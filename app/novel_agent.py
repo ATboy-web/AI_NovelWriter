@@ -14,7 +14,7 @@ from typing import Dict, List, Any
 from datetime import datetime
 
 from .ai_client import AIClient, PromptManager
-from .agent_orchestrator import ContextOptimizer
+from .agent_orchestrator import ContextOptimizer, PromptOptimizer, AgentOrchestrator
 from .memory_manager import MemoryManager
 from .config import AppConfig
 
@@ -56,6 +56,12 @@ class NovelAgent:
 
         # 线程锁保护共享列表
         self._log_lock = threading.Lock()
+        
+        # 启用优化器模块
+        self.orchestrator = AgentOrchestrator(ai_client, log_callback)
+        self.context_optimizer = ContextOptimizer
+        self.prompt_optimizer = PromptOptimizer
+        self.log("[智能体] 已启用智能体编排器、上下文优化器和提示词优化器")
     
     def _record_conversation(self, agent: str, action: str, content: str):
         """记录智能体对话（参考AutoGen的消息历史）"""
@@ -135,10 +141,9 @@ class NovelAgent:
         if extra_context and used < max_chars:
             parts.append(f"【补充】\n{extra_context[:300]}")
         
-        result = "\n\n".join(parts)
-        if len(result) > max_chars:
-            return result[:max_chars] + "\n...(已压缩)"
-        return result
+        result = ContextOptimizer.optimize(
+            {"内容": "\n\n".join(parts)}, max_chars
+        ) if parts else ""
     
     def _compress_active_characters(self, chars: dict, active_names: List[str], budget: int) -> str:
         """压缩活跃角色信息"""

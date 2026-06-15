@@ -3412,9 +3412,31 @@ class NovelWriterApp(
                 
                 if added:
                     self.memory.save_characters(characters)
+                    # 同时同步到CharacterSystem
+                    self._sync_characters_to_system(added, chapter_num)
                     self._log(f"[角色] 自动创建{len(added)}个新角色: {', '.join(added[:5])}")
         except Exception:
             pass  # 静默失败不影响主流程
+    
+    def _sync_characters_to_system(self, names: list, chapter_num: int):
+        """同步角色到CharacterSystem"""
+        if not self.character_system:
+            if self.current_novel_dir:
+                self.character_system = CharacterSystem(self.current_novel_dir)
+                self.character_system.load()
+            else:
+                return
+        for name in names:
+            if not self.character_system.get_character(name):
+                self.character_system.create_character(
+                    name=name,
+                    category="无名小卒",
+                    faction="中立",
+                    first_appearance=chapter_num
+                )
+                self.character_system.save_character(name)
+        if names:
+            self._update_char_display()
     
     def _regen_current_chapter(self):
         """重新创作当前章节"""

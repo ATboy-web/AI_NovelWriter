@@ -512,7 +512,6 @@ class NovelAgent:
     def generate_characters(self, genre: str, title: str, count: int = None) -> dict:
         """生成角色 - 根据小说规模智能确定角色数量"""
         if count is None:
-            # 根据章节数智能计算：10-20章=3个，20-50章=5个，50+章=8个
             chapter_count = self.memory.get_meta("chapter_count", 20)
             if chapter_count <= 20: count = 3
             elif chapter_count <= 50: count = 5
@@ -520,9 +519,40 @@ class NovelAgent:
         
         self.log(f"[智能体] 正在生成{count}个角色...")
         settings = self.memory.get_settings()
-        system = f"你是专业角色设计师。世界观：{json.dumps(settings, ensure_ascii=False)[:500]}\n输出JSON：{{'角色名': {{...}}}}"
-        prompt = f"小说类型：{genre}\n标题：{title}\n创建{count}个角色"
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
+        
+        system = f"""你是专业角色设计师。世界观：{json.dumps(settings, ensure_ascii=False)[:500]}
+请为小说《{title}》创建{count}个角色。必须输出JSON格式：
+
+{{
+  "角色名": {{
+    "gender": "男/女/未知",
+    "age": 25,
+    "category": "主角/关键人物/配角/无名小卒",
+    "faction": "中立/主角阵营/敌对阵营/第三方势力",
+    "personality": "性格描述（50字以上，具体、有特点、有弱点）",
+    "background": "背景故事（100字以上，包括出身、经历、动机）",
+    "appearance": "外貌描述",
+    "weapon": {{"name": "武器名", "quality": "普通/精良/稀有/史诗/传说", "desc": "描述"}},
+    "skill_suggestions": ["技能1", "技能2"],
+    "attributes": {{
+      "力量": 随机值,
+      "敏捷": 随机值,
+      "智力": 随机值,
+      "体力": 随机值,
+      "魅力": 随机值
+    }},
+    "relationship_to_main": "与主角的关系",
+    "goal": "角色目标"
+  }}
+}}
+
+要求：
+- 每个角色必须有独特的人格和背景
+- 武器和技能必须符合世界观
+- 属性值合理分布（不是所有角色同属性）"""
+        
+        prompt = f"小说类型：{genre}\n标题：{title}\n创建{count}个角色，每个角色有完整的性格、背景、武器、技能"
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
         chars = self._parse_json_response(response, {"raw": response})
         self.memory.save_characters(chars)
         

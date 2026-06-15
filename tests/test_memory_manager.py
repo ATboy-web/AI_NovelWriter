@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 from datetime import datetime
 
 # 导入被测模块
-from novel_app import MemoryManager
+from app.memory_manager import MemoryManager
 
 
 class TestMemoryManager(unittest.TestCase):

@@ -419,18 +419,19 @@ class NovelAgent:
             strict_system = f"""你是专业小说作家。请根据大纲创作第{chapter_num}章。
 【核心要求】
 1. 目标字数{word_count}字，必须达标
-2. 绝不允许重复内容。每300字推进一次剧情
-3. 用{max(word_count//1000, 1)}个不同的场景段落来写
+2. 绝不允许重复内容。每500字推进一次剧情
+3. 用{max(word_count//2000, 1)}个不同的场景段落来写
 4. 每个场景换地点、换人物、换冲突
-5. 按时间顺序推进，不要倒叙重复
 
 第{chapter_num}章大纲: {chapter_outline}
 
 直接输出小说正文，不要解释。"""
             
+            # 限制max_tokens避免超时(中文字约1.5token/字)
+            retry_tokens = min(word_count * 2, 16384)
             new_content = self.ai.chat(
                 [{"role": "user", "content": f"创作第{chapter_num}章：{chapter_title}，{word_count}字"}],
-                system=strict_system, max_tokens=word_count * 3
+                system=strict_system, max_tokens=retry_tokens
             )
             if new_content:
                 content = new_content
@@ -455,22 +456,25 @@ class NovelAgent:
         # 检测相似段落
         similar_count = 0
         for i in range(len(paragraphs)):
-            for j in range(i + 1, min(i + 8, len(paragraphs))):
-                if len(paragraphs[i]) > 50 and len(paragraphs[j]) > 50:
-                    words_i = set(paragraphs[i][:100].split())
-                    words_j = set(paragraphs[j][:100].split())
+            for j in range(i + 1, min(i + 5, len(paragraphs))):
+                if len(paragraphs[i]) > 80 and len(paragraphs[j]) > 80:
+                    words_i = set(paragraphs[i][:80].split())
+                    words_j = set(paragraphs[j][:80].split())
                     if words_i and words_j:
                         overlap = len(words_i & words_j) / min(len(words_i), len(words_j))
-                        if overlap > 0.6:
+                        if overlap > 0.7:  # 提高阈值减少误判
                             similar_count += 1
         
-        # 短段落占比
-        short_paras = sum(1 for p in paragraphs if len(p) < 80)
+        # 短段落占比检查 - 中文网文短段落是正常的，阈值放高
+        short_paras = sum(1 for p in paragraphs if len(p) < 30)
         short_ratio = short_paras / len(paragraphs)
         
         self.log(f"[质量检测] 相似段落对:{similar_count}, 短段落比:{short_ratio:.2f}, 字数:{actual_words}/{target_words}")
         
-        has_rep = (similar_count > 5 or short_ratio > 0.4 or actual_words < target_words * 0.5)
+        # 只有同时满足多个条件才判定为重复
+        has_rep = (similar_count > 10 or 
+                  (actual_words < target_words * 0.4 and short_ratio > 0.5) or
+                  (similar_count > 3 and short_ratio > 0.7))
         return (has_rep, actual_words)
     
     def review_chapter(self, chapter_num: int, content: str) -> dict:

@@ -3626,9 +3626,9 @@ class NovelWriterApp(
                         if self.config.get("auto_detect_scene", True):
                             self._detect_and_prompt_image(content, ch_num)
 
-                        # 更新UI（每5章更新一次，避免频繁刷新）
+                        # 更新UI（第一章立即显示，之后每5章显示）
                         batch_count += 1
-                        if batch_count % 5 == 0 or ch_num == total:
+                        if generated == 1 or batch_count % 5 == 0 or ch_num == total:
                             self.root.after(0, lambda c=content, n=ch_num, t=chapter_info.get("title", ""): self._display_chapter(n, t, c))
                             self._log(f"第{ch_num}章创作完成 (进度: {generated+1}/{total-skipped})")
                         else:

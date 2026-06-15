@@ -15,30 +15,8 @@ from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 
-# HTTP客户端
-import httpx
-
 # 结构化日志
 from loguru import logger
-
-# 文件格式支持（条件导入）
-try:
-    from ebooklib import epub
-    EPUB_SUPPORT = True
-except ImportError:
-    EPUB_SUPPORT = False
-
-try:
-    import PyPDF2
-    PDF_SUPPORT = True
-except ImportError:
-    PDF_SUPPORT = False
-
-try:
-    from docx import Document
-    DOCX_SUPPORT = True
-except ImportError:
-    DOCX_SUPPORT = False
 
 # 小说工具集
 from novel_toolkit import (ElementLibrary, BridgeLibrary, DescriptionLibrary,

@@ -760,14 +760,32 @@ class NovelAgent:
         return default
     
     def _generate_long_chapter(self, chapter_num, chapter_title, chapter_outline, word_count, context) -> str:
-        """分段生成长章节"""
+        """分段生成长章节 - 优化速度"""
+        seg_size = 2000  # 每段2000字，减少API响应时间
+        part_count = max((word_count + seg_size - 1) // seg_size, 1)
+        # 限制最多5段，避免超时
+        part_count = min(part_count, 5)
+        
         parts = []
-        part_count = max((word_count + 2999) // 3000, 1)
         for i in range(part_count):
+            seg_words = min(seg_size, word_count - sum(len(p) for p in parts))
             self.log(f"[Writer] 第{chapter_num}章 第{i+1}/{part_count}段...")
-            part_prompt = f"创作第{chapter_num}章：{chapter_title}\n大纲：{chapter_outline}\n已有：{''.join(parts[-2:]) or '（开头）'}\n请创作约3000字："
-            response = self.ai.chat([{"role": "user", "content": part_prompt}],
-                                   system=f"专业小说作家。\n{context[:1000] if context else ''}", max_tokens=4096)
-            if response:
-                parts.append(response)
+            part_prompt = f"创作第{chapter_num}章：{chapter_title}\n大纲：{chapter_outline}\n已有：{''.join(parts[-2:]) or '（开头）'}\n请创作约{seg_words}字："
+            
+            # 重试3次避免超时
+            for attempt in range(3):
+                try:
+                    response = self.ai.chat(
+                        [{"role": "user", "content": part_prompt}],
+                        system=f"专业小说作家。\n{context[:800] if context else ''}", 
+                        max_tokens=2048  # 降低token数加速响应
+                    )
+                    if response:
+                        parts.append(response)
+                        break
+                except Exception as e:
+                    self.log(f"[Writer] 第{chapter_num}章第{i+1}段 重试{attempt+1}: {e}")
+                    if attempt == 2:
+                        return "\n\n".join(parts) if parts else ""
+        
         return "\n\n".join(parts) if parts else ""

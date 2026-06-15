@@ -3605,12 +3605,21 @@ class NovelWriterApp(
                         self.current_chapter = ch_num
                     
                     try:
-                        content = self.agent.generate_chapter(
-                            ch_num,
-                            chapter_info.get("title", f"第{ch_num}章"),
-                            chapter_info.get("summary", ""),
-                            word_count=meta.get("word_count_per_chapter", 3000)
-                        )
+                        # 超时重试3次
+                        for attempt in range(3):
+                            try:
+                                content = self.agent.generate_chapter(
+                                    ch_num,
+                                    chapter_info.get("title", f"第{ch_num}章"),
+                                    chapter_info.get("summary", ""),
+                                    word_count=meta.get("word_count_per_chapter", 6000)
+                                )
+                                break
+                            except Exception as te:
+                                if "time" in str(te).lower() and attempt < 2:
+                                    self._log(f"第{ch_num}章超时，重试{attempt+1}/3...")
+                                else:
+                                    raise
 
                         # 保存
                         with open(chapters_dir / f"chapter_{ch_num:04d}.txt", 'w', encoding='utf-8') as f:

@@ -672,23 +672,51 @@ class NovelAgent:
             if not chars:
                 return
             
-            existing_names = ", ".join(list(chars.keys())[:10])
-            system = f"""分析第{chapter_num}章中的角色变化。已有角色: {existing_names}
+            # 构建角色列表（含更多上下文）
+            char_list = []
+            for name, info in list(chars.items())[:20]:
+                if isinstance(info, dict):
+                    role = info.get("category", info.get("role", "未知"))
+                    faction = info.get("faction", "未知")
+                    char_list.append(f"{name}({role}/{faction})")
+                else:
+                    char_list.append(name)
+            existing_names = ", ".join(char_list)
+            
+            system = f"""分析第{chapter_num}章中所有角色的变化（主角、配角、反派、路人等都算）。
+当前角色: {existing_names}
+
+【重要】检测本章中所有角色（不只主角）的：
+- 战斗成长（属性提升）
+- 关系变化（盟友/敌人）  
+- 物品得失（宝物/武器/装备）
+- 技能领悟
+- 角色死亡或重伤
+
 输出JSON:
 {{
   "updates": [
-    {{"name": "角色名", "change": "+属性名+数值", "reason": "原因"}}
+    {{"name": "角色名", "change": "+力量+3 或 +智力+2", "reason": "战斗中突破极限"}}
+  ],
+  "relationship_changes": [
+    {{"name1": "角色A", "name2": "角色B", "old": "朋友", "new": "敌人", "reason": "背叛"}}
   ],
   "items_gained": [
-    {{"name": "角色名", "item": "物品名", "quality": "品质"}}
+    {{"name": "角色名", "item": "物品名", "quality": "普通/精良/稀有/史诗/传说", "from": "来源"}}
   ],
   "items_lost": [
-    {{"name": "角色名", "item": "物品名", "reason": "原因"}}
+    {{"name": "角色名", "item": "物品名", "reason": "战斗中毁坏"}}
+  ],
+  "skills_learned": [
+    {{"name": "角色名", "skill": "技能名", "type": "攻击/防御/辅助", "how": "如何学会"}}
   ],
   "deaths": ["死亡角色名"],
-  "level_ups": [{{"name": "角色名", "old_level": 1, "new_level": 2, "reason": "原因"}}]
+  "new_allies": ["新盟友名"],
+  "new_enemies": ["新敌人名"]
 }}
-如果没有变化，输出{{}}"""
+
+变化包括正面和负面的。没有变化就输出{{}}。
+**必须检测所有出现的角色，不止主角。**"""
             
             response = self.ai.chat(
                 [{"role": "user", "content": f"章节摘要: {summary}\n内容片段: {content[:1500]}"}],
@@ -701,32 +729,69 @@ class NovelAgent:
                 data = json.loads(match.group())
                 
                 # 保存到记忆
+                changes = 0
                 if data.get("updates"):
                     for u in data["updates"]:
                         self.memory.add_event(chapter_num, 
-                            f"角色变化: {u['name']} {u['change']} ({u['reason']})",
+                            f"角色变化: {u['name']} {u['change']} ({u.get('reason','')})",
                             "character_growth")
+                        changes += 1
                 
-                if data.get("items_gained") or data.get("items_lost"):
-                    for item in data.get("items_gained", []):
+                if data.get("skills_learned"):
+                    for s in data["skills_learned"]:
+                        self.memory.add_event(chapter_num,
+                            f"技能领悟: {s['name']} 学会 {s['skill']}",
+                            "skill_learn")
+                        changes += 1
+                
+                if data.get("relationship_changes"):
+                    for r in data["relationship_changes"]:
+                        self.memory.add_event(chapter_num,
+                            f"关系变化: {r['name1']}与{r['name2']} {r['old']}→{r['new']}",
+                            "relationship_change")
+                        changes += 1
+                
+                if data.get("items_gained"):
+                    for item in data["items_gained"]:
                         self.memory.add_event(chapter_num,
                             f"获得物品: {item['name']} 获得 {item['item']}",
                             "item_gain")
-                    for item in data.get("items_lost", []):
+                
+                if data.get("items_lost"):
+                    for item in data["items_lost"]:
                         self.memory.add_event(chapter_num,
-                            f"失去物品: {item['name']} 失去 {item['item']} ({item['reason']})",
+                            f"失去物品: {item['name']} 失去 {item['item']}",
                             "item_loss")
+                
+                if data.get("new_allies"):
+                    for name in data["new_allies"]:
+                        self.memory.add_event(chapter_num,
+                            f"新盟友: {name}", "new_ally")
+                
+                if data.get("new_enemies"):
+                    for name in data["new_enemies"]:
+                        self.memory.add_event(chapter_num,
+                            f"新敌人: {name}", "new_enemy")
                 
                 if data.get("deaths"):
                     for name in data["deaths"]:
                         self.memory.add_event(chapter_num,
-                            f"角色死亡: {name}",
-                            "character_death")
+                            f"角色死亡: {name}", "character_death")
                         self.memory.update_character(name, {"status": "死亡", "death_chapter": chapter_num})
                 
-                self.log(f"[角色成长] 检测到{len(data.get('updates', []))}个变化, "
-                        f"{len(data.get('items_gained', []))}个获得, "
-                        f"{len(data.get('items_lost', []))}个失去")
+                # 统计日志
+                summary_parts = []
+                if changes: summary_parts.append(f"{changes}个成长")
+                if data.get("items_gained"): summary_parts.append(f"{len(data['items_gained'])}个获得")
+                if data.get("items_lost"): summary_parts.append(f"{len(data['items_lost'])}个失去")
+                if data.get("skills_learned"): summary_parts.append(f"{len(data['skills_learned'])}个技能")
+                if data.get("relationship_changes"): summary_parts.append(f"{len(data['relationship_changes'])}个关系")
+                if data.get("deaths"): summary_parts.append(f"{len(data['deaths'])}个死亡")
+                if data.get("new_allies"): summary_parts.append(f"{len(data['new_allies'])}个新盟友")
+                if data.get("new_enemies"): summary_parts.append(f"{len(data['new_enemies'])}个新敌人")
+                
+                if summary_parts:
+                    self.log(f"[角色成长] 第{chapter_num}章: {', '.join(summary_parts)}")
         except Exception as e:
             self.log(f"[角色成长] 检测跳过: {e}")
     

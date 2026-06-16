@@ -1448,6 +1448,18 @@ class NovelWriterApp(
         word_count_combo['values'] = ["1000", "2000", "3000", "5000", "8000", "10000", "15000", "20000"]
         word_count_combo.pack(side=tk.LEFT, padx=5)
         
+        # 预览模式
+        preview_frame = tk.Frame(bottom, bg=C['bg_dark'])
+        preview_frame.pack(fill=tk.X, pady=2)
+        preview_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(preview_frame, text="预览模式：先生成前", bg=C['bg_dark'], fg=C['text_primary'],
+                      font=('微软雅黑', 9), variable=preview_var).pack(side=tk.LEFT)
+        preview_count_var = tk.StringVar(value="10")
+        tk.Spinbox(preview_frame, from_=1, to=50, textvariable=preview_count_var, width=4,
+                  font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_primary']).pack(side=tk.LEFT, padx=5)
+        tk.Label(preview_frame, text="章 → 看效果再决定继续", bg=C['bg_dark'], fg=C['text_secondary'],
+                font=('微软雅黑', 9)).pack(side=tk.LEFT)
+        
         def confirm():
             title = title_entry.get().strip()
             if not title:
@@ -1457,7 +1469,16 @@ class NovelWriterApp(
             genre_full = genre_var.get().split("-")
             genre = genre_full[0] if len(genre_full) > 0 else ""
             sub_genre = genre_full[1] if len(genre_full) > 1 else ""
-            chapters = int(chapters_var.get())
+            total_chapters = int(chapters_var.get())
+            
+            # 预览模式：先生成预览章节数
+            if preview_var.get():
+                preview_n = int(preview_count_var.get())
+                preview_chapters = min(preview_n, total_chapters)
+                self._log(f"预览模式：先生成{preview_chapters}章，之后可继续创作")
+            else:
+                preview_chapters = total_chapters
+            chapters = preview_chapters
             
             # 获取用户想法
             user_idea = idea_text.get("1.0", tk.END).strip()
@@ -1504,7 +1525,8 @@ class NovelWriterApp(
                 "channel": channel_var.get(),
                 "tags": selected_tags,
                 "concept": concept,
-                "chapter_count": chapters,
+                "chapter_count": chapters,  # 当前要生成的章节数
+                "total_chapters": total_chapters,  # 用户期望的总章节数（预览模式下用）
                 "word_count_per_chapter": int(word_count_var.get()),
                 "created_at": datetime.now().isoformat(),
                 "template": template_name if template_name != "无" else None,

@@ -760,10 +760,12 @@ class NovelAgent:
         return default
     
     def _generate_long_chapter(self, chapter_num, chapter_title, chapter_outline, word_count, context) -> str:
-        """分段生成长章节 - 逐段续写不重复"""
+        """分段生成长章节 - 逐段续写不重复，自动加标题"""
         seg_size = 2000
         part_count = max((word_count + seg_size - 1) // seg_size, 1)
         part_count = min(part_count, 5)
+        
+        title_line = f"# 第{chapter_num}章：{chapter_title}\n\n" if chapter_title and chapter_title != f"第{chapter_num}章" else f"# 第{chapter_num}章\n\n"
         
         parts = []
         for i in range(part_count):
@@ -771,26 +773,27 @@ class NovelAgent:
             
             prev_text = ''.join(parts)
             if i == 0:
-                # 第一段：从开头创作
-                part_prompt = f"创作第{chapter_num}章：{chapter_title}\n大纲：{chapter_outline}\n请创作约{seg_size}字的小说正文，直接开始写，不要写章节标题："
+                part_prompt = f"创作第{chapter_num}章：{chapter_title}\n大纲：{chapter_outline}\n请创作约{seg_size}字的小说正文："
             else:
-                # 后续段：接上文续写，严禁重复
                 last_200 = prev_text[-200:] if len(prev_text) > 200 else prev_text
-                part_prompt = f"紧接上文继续写。上文结尾：{last_200}\n要求：继续推进剧情约{seg_size}字，严禁重复上文内容，从新事件开始。"
+                part_prompt = f"紧接上文继续写。上文结尾：{last_200}\n要求：继续推进剧情约{seg_size}字，严禁重复。"
             
             for attempt in range(3):
                 try:
                     response = self.ai.chat(
                         [{"role": "user", "content": part_prompt}],
-                        system=f"严密续写上文，绝不重复已写内容。\n{context[:500] if context else ''}", 
+                        system=f"严密续写，绝不重复。\n{context[:500] if context else ''}", 
                         max_tokens=2048
                     )
                     if response and len(response) > 100:
+                        # 去掉AI可能自己加的标题
+                        if i > 0 and response.startswith('#'):
+                            response = response.split('\n', 1)[-1] if '\n' in response else response
                         parts.append(response)
                         break
                 except Exception as e:
                     self.log(f"[Writer] 第{chapter_num}章第{i+1}段 重试{attempt+1}: {e}")
                     if attempt == 2:
-                        return "\n\n".join(parts) if parts else ""
+                        return title_line + ("\n\n".join(parts) if parts else "（生成失败）")
         
-        return "\n\n".join(parts) if parts else ""
+        return title_line + ("\n\n".join(parts) if parts else "（生成失败）")

@@ -4449,13 +4449,30 @@ class NovelWriterApp(
             self.chapter_var.set(f"{self.current_chapter}/{total}")
     
     def _detect_and_prompt_image(self, content: str, chapter_num: int):
-        """检测名场面并生成电影级AI提示词"""
-        scenes = SceneDetector.detect(content)
+        """检测名场面 - 只保留质量最高的2个"""
+        all_scenes = SceneDetector.detect(content)
+        if not all_scenes:
+            return
+        
+        # 只取质量最高的前2个名场面，减少垃圾
+        scored_scenes = []
+        for s in all_scenes:
+            text_len = len(s.get("text", ""))
+            prompt_len = len(s.get("prompt", ""))
+            # 评分：场景描述越长>越具体；提示词越长>越详细
+            score = (text_len * 0.3 + prompt_len * 0.7) if prompt_len > 50 else 0
+            scored_scenes.append((score, s))
+        
+        scored_scenes.sort(key=lambda x: x[0], reverse=True)
+        scenes = [s for score, s in scored_scenes[:2] if score > 30]  # 质量阈值
+        
         if not scenes:
             return
         
-        has_api = self.image_gen.is_configured()
-        self._log(f"[名场面检测] 发现 {len(scenes)} 个场景")
+        self._log(f"[名场面] 第{chapter_num}章 检测到{len(scenes)}个高质量场景")
+        
+        img_dir = self.current_novel_dir / "scene_prompts"
+        img_dir.mkdir(exist_ok=True)
         
         scene_type_cn = {
             "battle": "战斗场面", "beauty": "人物特写", "emotion": "情感场景",
@@ -4463,18 +4480,36 @@ class NovelWriterApp(
             "landscape": "风景全景", "confrontation": "对峙场面", "sacrifice": "牺牲时刻"
         }
         
-        img_dir = self.current_novel_dir / "scene_prompts"
-        img_dir.mkdir(exist_ok=True)
-        
         for i, scene in enumerate(scenes):
             type_name = scene_type_cn.get(scene["type"], "名场面")
             prompt_text = scene.get("prompt", "")
-            scene_text = scene.get("text", "")[:200]
+            scene_text = scene.get("text", "")[:300]
             aspect_ratio = scene.get("aspect_ratio", "16:9")
             size = scene.get("size", "1024x576")
             shot_type = scene.get("shot_type", "")
             composition = scene.get("composition", "")
             style = scene.get("style", "")
+            characters_in = scene.get("characters", [])
+            
+            # 包含人物描写
+            char_desc = ""
+            if characters_in:
+                char_desc = "人物: " + ", ".join(str(c) for c in characters_in[:5])
+            
+            prompt_file = img_dir / f"ch{chapter_num:04d}_{scene['type']}_{i+1}_prompt.txt"
+            prompt_content = (
+                f"章节: 第{chapter_num}章\n"
+                f"类型: {type_name}\n"
+                f"场景: {scene_text}\n"
+                f"{char_desc}\n\n"
+                f"画面比例: {aspect_ratio} ({size})\n"
+                f"镜头: {shot_type}\n"
+                f"构图: {composition}\n"
+                f"质感: {style}\n\n"
+                f"AI提示词:\n{prompt_text}"
+            )
+            prompt_file.write_text(prompt_content, encoding='utf-8')
+            self._log(f"[提示词] 已保存: {prompt_file.name}")
             
             purpose_text = {
                 "battle": "增强战斗场面的视觉冲击力",

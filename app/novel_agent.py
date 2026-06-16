@@ -633,7 +633,7 @@ class NovelAgent:
         return outline
     
     def finalize_chapter(self, chapter_num: int, content: str):
-        """定稿章节 + 更新记忆"""
+        """定稿章节 + 更新记忆 + 角色属性变化"""
         # 章节摘要
         summary = self.ai.chat(
             [{"role": "user", "content": f"请生成摘要（100-200字）：\n{content[:2000]}"}],
@@ -652,14 +652,83 @@ class NovelAgent:
         # 关键词索引
         kw = self.ai.chat([{"role": "user", "content": f"提取10个关键词，逗号分隔：\n{content[:1000]}"}],
                          system="提取关键词。", max_tokens=200)
-        self.memory.update_index(chapter_num, [k.strip() for k in kw.split(",") if k.strip()])
+        keywords = [k.strip() for k in kw.split(",") if k.strip()]
+        self.memory.update_index(chapter_num, keywords)
         
         # 添加记忆块
         self.memory.add_chunk("plot", summary, importance=8, 
-                             tags=kw.split(",")[:5] if kw else [])
+                             tags=keywords[:5] if keywords else [])
         self.memory.add_event(chapter_num, summary, "story")
         
+        # 角色属性变化检测
+        self._update_character_progression(chapter_num, content, summary)
+        
         self.log(f"[智能体] 第{chapter_num}章定稿完成")
+    
+    def _update_character_progression(self, chapter_num: int, content: str, summary: str):
+        """检测角色成长变化并更新属性"""
+        try:
+            chars = self.memory.get_characters()
+            if not chars:
+                return
+            
+            existing_names = ", ".join(list(chars.keys())[:10])
+            system = f"""分析第{chapter_num}章中的角色变化。已有角色: {existing_names}
+输出JSON:
+{{
+  "updates": [
+    {{"name": "角色名", "change": "+属性名+数值", "reason": "原因"}}
+  ],
+  "items_gained": [
+    {{"name": "角色名", "item": "物品名", "quality": "品质"}}
+  ],
+  "items_lost": [
+    {{"name": "角色名", "item": "物品名", "reason": "原因"}}
+  ],
+  "deaths": ["死亡角色名"],
+  "level_ups": [{{"name": "角色名", "old_level": 1, "new_level": 2, "reason": "原因"}}]
+}}
+如果没有变化，输出{{}}"""
+            
+            response = self.ai.chat(
+                [{"role": "user", "content": f"章节摘要: {summary}\n内容片段: {content[:1500]}"}],
+                system=system, max_tokens=800
+            )
+            
+            import re
+            match = re.search(r'\{[\s\S]*\}', response)
+            if match:
+                data = json.loads(match.group())
+                
+                # 保存到记忆
+                if data.get("updates"):
+                    for u in data["updates"]:
+                        self.memory.add_event(chapter_num, 
+                            f"角色变化: {u['name']} {u['change']} ({u['reason']})",
+                            "character_growth")
+                
+                if data.get("items_gained") or data.get("items_lost"):
+                    for item in data.get("items_gained", []):
+                        self.memory.add_event(chapter_num,
+                            f"获得物品: {item['name']} 获得 {item['item']}",
+                            "item_gain")
+                    for item in data.get("items_lost", []):
+                        self.memory.add_event(chapter_num,
+                            f"失去物品: {item['name']} 失去 {item['item']} ({item['reason']})",
+                            "item_loss")
+                
+                if data.get("deaths"):
+                    for name in data["deaths"]:
+                        self.memory.add_event(chapter_num,
+                            f"角色死亡: {name}",
+                            "character_death")
+                        self.memory.update_character(name, {"status": "死亡", "death_chapter": chapter_num})
+                
+                self.log(f"[角色成长] 检测到{len(data.get('updates', []))}个变化, "
+                        f"{len(data.get('items_gained', []))}个获得, "
+                        f"{len(data.get('items_lost', []))}个失去")
+        except Exception as e:
+            self.log(f"[角色成长] 检测跳过: {e}")
     
     # ===== 风格模仿 =====
     

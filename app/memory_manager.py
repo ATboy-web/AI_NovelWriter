@@ -184,6 +184,14 @@ class MemoryManager:
         file = self.chapters_dir / f"chapter_{chapter_num:05d}.txt"
         with open(file, 'w', encoding='utf-8') as f:
             f.write(summary)
+        
+        # 同时保存到 summaries/ 目录（给用户查看）
+        summary_dir = self.novel_dir / "summaries"
+        summary_dir.mkdir(exist_ok=True)
+        summary_file = summary_dir / f"chapter_{chapter_num:05d}_summary.txt"
+        with open(summary_file, 'w', encoding='utf-8') as f:
+            f.write(f"第{chapter_num}章摘要\n\n{summary}")
+        
         # 更新倒排索引
         self._update_inverted_index(f"chapter_{chapter_num:05d}", summary)
         # 更新记忆评分

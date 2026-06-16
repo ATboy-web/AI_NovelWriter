@@ -302,6 +302,13 @@ class NovelWriterApp(
                                       command=self._regen_all_chapters)
         self.regen_all_btn.pack(side=tk.RIGHT)
         
+        # 章节回顾按钮
+        self.review_btn = tk.Button(mode_frame, text="章节回顾 (F12)", font=('微软雅黑', 10),
+                                   bg=C['info'] if 'info' in C else '#3b82f6', fg='white', relief=tk.FLAT,
+                                   padx=10, pady=6, cursor='hand2',
+                                   command=self._chapter_review)
+        self.review_btn.pack(fill=tk.X, pady=2)
+        
         # 左侧 - 智能体步骤
         agent_frame = tk.Frame(left_panel, bg=C['bg_medium'], padx=10, pady=5)
         agent_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
@@ -3703,6 +3710,52 @@ class NovelWriterApp(
         
         threading.Thread(target=run, daemon=True).start()
     
+    def _chapter_review(self):
+        """章节回顾 - AI生成最近章节摘要"""
+        if not self.current_novel_dir:
+            messagebox.showwarning("提示", "请先打开小说")
+            return
+        
+        meta = self._get_meta()
+        total = meta.get("chapter_count", 0) or len(self.outline)
+        if total == 0:
+            messagebox.showwarning("提示", "还没有章节")
+            return
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title("章节回顾")
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        w, h = min(700, sw - 60), int(sh * 0.7)
+        x, y = (sw - w) // 2, (sh - h) // 2
+        dialog.geometry(f"{w}x{h}+{x}+{y}")
+        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        C = UIStyle.COLORS
+        
+        tk.Label(dialog, text=f"📖《{meta.get('title', '小说')}》章节回顾",
+                font=('微软雅黑', 12, 'bold'), bg=C['bg_dark'], fg=C['accent']).pack(pady=10)
+        
+        review_text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, font=('微软雅黑', 10),
+                                                bg=C['bg_card'], fg=C['text_primary'],
+                                                relief=tk.FLAT, padx=15, pady=15)
+        review_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+        
+        # 读取最近5章摘要
+        summaries = []
+        for n in range(max(1, total - 4), total + 1):
+            summary_file = self.current_novel_dir / "summaries" / f"chapter_{n:05d}_summary.txt"
+            if summary_file.exists():
+                summaries.append(summary_file.read_text(encoding='utf-8'))
+        
+        if summaries:
+            review_text.insert("1.0", "\n\n---\n\n".join(summaries))
+        else:
+            review_text.insert("1.0", "暂无章节摘要，请先使用自动创作生成内容。")
+        
+        review_text.config(state=tk.DISABLED)
+        
+        tk.Button(dialog, text="关闭", font=('微软雅黑', 10), padx=20,
+                 bg=C['bg_light'], fg=C['text_primary'], command=dialog.destroy).pack(pady=10)
+    
     def _display_chapter(self, num, title, content):
         """显示章节内容（线程安全）"""
         self.content_text.delete("1.0", tk.END)
@@ -4879,6 +4932,30 @@ class NovelWriterApp(
         if appearance:
             tk.Label(self.char_detail_frame, text=f"外貌: {str(appearance)[:80]}", font=('微软雅黑', 8),
                     bg=C['bg_medium'], fg=C['text_primary'], wraplength=200).pack(anchor=tk.W)
+        
+        # 角色成长日志
+        tk.Label(self.char_detail_frame, text="─ 成长日志 ─", font=('微软雅黑', 9, 'bold'),
+                bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=(5, 2))
+        
+        try:
+            if self.memory and self.agent:
+                events = self.memory.get_events() if hasattr(self.memory, 'get_events') else []
+                char_events = []
+                for ev in (events[-50:] if events else []):
+                    ev_text = ev.get("event", "") if isinstance(ev, dict) else str(ev)
+                    if char.name in ev_text:
+                        chapter = ev.get("chapter", "?") if isinstance(ev, dict) else "?"
+                        char_events.append(f"第{chapter}章: {ev_text[:60]}")
+                
+                if char_events:
+                    for ev_text in char_events[-8:]:  # 显示最近8条
+                        tk.Label(self.char_detail_frame, text=f"• {ev_text}", font=('微软雅黑', 7),
+                                bg=C['bg_medium'], fg=C['text_secondary'], wraplength=200).pack(anchor=tk.W)
+                else:
+                    tk.Label(self.char_detail_frame, text="暂无成长记录", font=('微软雅黑', 7),
+                            bg=C['bg_medium'], fg=C['text_muted']).pack(anchor=tk.W)
+        except Exception:
+            pass
         
         self.char_detail_frame.update_idletasks()
         # Update scroll region

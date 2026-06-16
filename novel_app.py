@@ -4554,14 +4554,19 @@ class NovelWriterApp(
         
         prompt_file = img_dir / f"ch{chapter_num:04d}_{scene['type']}_{idx+1}_prompt.txt"
         
-        def countdown(remaining=10):
-            if not dialog.winfo_exists():
-                return
-            if remaining <= 0:
-                do_save_prompt()
-                return
-            timer_var.set(f"{remaining}秒后自动生成AI提示词")
-            dialog.after(1000, lambda: countdown(remaining - 1))
+        def start_countdown(remaining=10):
+            """避免递归的倒计时"""
+            def tick():
+                nonlocal remaining
+                if not dialog.winfo_exists():
+                    return
+                if remaining <= 0:
+                    do_save_prompt()
+                    return
+                timer_var.set(f"{remaining}秒后自动生成AI提示词")
+                remaining -= 1
+                dialog.after(1000, tick)
+            tick()
         
         def do_save_prompt():
             """保存AI提示词"""
@@ -4613,7 +4618,7 @@ class NovelWriterApp(
         tk.Button(btn_frame, text="跳过", command=do_skip,
                  bg=C['bg_light'], fg=C['text_primary'], font=('微软雅黑', 10), padx=20, pady=5).pack(side=tk.LEFT, padx=5)
         
-        countdown()
+        start_countdown()
     
     def _open_fullscreen_writer(self):
         """打开全屏写作模式 - 与自动写作共享上下文"""

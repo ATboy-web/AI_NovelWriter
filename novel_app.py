@@ -309,6 +309,12 @@ class NovelWriterApp(
                                    command=self._chapter_review)
         self.review_btn.pack(fill=tk.X, pady=2)
         
+        self.cover_btn = tk.Button(mode_frame, text="生成封面", font=('微软雅黑', 10),
+                                   bg=C['accent'], fg='white', relief=tk.FLAT,
+                                   padx=10, pady=6, cursor='hand2',
+                                   command=self._generate_cover)
+        self.cover_btn.pack(fill=tk.X, pady=2)
+        
         # 左侧 - 智能体步骤
         agent_frame = tk.Frame(left_panel, bg=C['bg_medium'], padx=10, pady=5)
         agent_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
@@ -3771,6 +3777,70 @@ class NovelWriterApp(
         
         tk.Button(dialog, text="关闭", font=('微软雅黑', 10), padx=20,
                  bg=C['bg_light'], fg=C['text_primary'], command=dialog.destroy).pack(pady=10)
+    
+    def _generate_cover(self):
+        """AI生成小说封面"""
+        if not self.current_novel_dir:
+            messagebox.showwarning("提示", "请先打开小说")
+            return
+        
+        meta = self._get_meta()
+        title = meta.get("title", "未命名")
+        genre = meta.get("genre", "玄幻")
+        concept = meta.get("concept", "")
+        
+        # 读取一些章节内容获取风格参考
+        content_sample = ""
+        chapters_dir = self.current_novel_dir / "chapters"
+        chapter_files = sorted(chapters_dir.glob("chapter_*.txt"))[:3]
+        for cf in chapter_files:
+            content_sample += cf.read_text(encoding='utf-8')[:500] + "\n"
+        
+        def run():
+            try:
+                self._log("[封面] 正在生成封面提示词...")
+                prompt = self.ai_client.chat(
+                    [{"role": "user", "content": f"书名：{title}\n类型：{genre}\n概念：{concept}\n内容片段：{content_sample[:1000]}\n\n请为这本小说生成一个精美的封面AI绘图提示词(英文，适合Midjourney/Stable Diffusion)，包含风格描述、画面构图、色彩方案、氛围。"}],
+                    system="你是专业封面设计师。生成AI绘图提示词。只输出英文提示词。",
+                    max_tokens=500
+                )
+                
+                # 保存封面提示词
+                cover_dir = self.current_novel_dir / "cover"
+                cover_dir.mkdir(exist_ok=True)
+                cover_file = cover_dir / "cover_prompt.txt"
+                cover_content = f"书名: {title}\n类型: {genre}\n\n封面AI提示词:\n{prompt}"
+                cover_file.write_text(cover_content, encoding='utf-8')
+                
+                # 生成简单HTML封面预览
+                html = self._build_cover_html(title, genre, meta.get("tags", []), concept)
+                (cover_dir / "cover_preview.html").write_text(html, encoding='utf-8')
+                
+                self._log(f"[封面] 已保存到 cover/ 目录")
+                self.root.after(0, lambda: messagebox.showinfo("完成", 
+                    f"封面已生成:\n- 提示词: cover/cover_prompt.txt\n- 预览: cover/cover_preview.html\n\n将提示词复制到Midjourney/SD即可生成封面图"))
+            except Exception as e:
+                self._log(f"[封面] 失败: {e}")
+                self.root.after(0, lambda: messagebox.showerror("失败", str(e)))
+        
+        threading.Thread(target=run, daemon=True).start()
+    
+    def _build_cover_html(self, title, genre, tags, concept):
+        """生成简单封面HTML预览"""
+        colors = {"玄幻": ("#1a1a2e", "#e94560"), "都市": ("#2d3436", "#00b894"),
+                  "科幻": ("#0a0a23", "#00d2ff"), "悬疑": ("#1a1a1a", "#c0392b"),
+                  "言情": ("#2d1810", "#e74c3c"), "历史": ("#3e2723", "#ffb300"),
+                  "游戏": ("#1b2838", "#66c0f4")}
+        bg, accent = colors.get(genre, ("#1a1a2e", "#e94560"))
+        tag_str = " · ".join(tags[:3]) if tags else genre
+        concept_str = concept[:100] if concept else "AI智能创造的故事"
+        
+        return f'''<!DOCTYPE html><html><head><meta charset="utf-8"><title>{title}</title>
+<style>\nbody{{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:{bg}}}
+.cover{{width:300px;height:450px;background:linear-gradient(135deg,{bg},{accent}33);border:2px solid {accent};border-radius:12px;text-align:center;padding:40px 20px;color:white;font-family:sans-serif;}}
+h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;margin:5px 0;}}
+.line{{width:80px;height:2px;background:{accent};margin:20px auto;}}</style></head><body>
+<div class=cover><div class=line></div><h1>{title}</h1><p>{tag_str}</p><div class=line></div><p>{concept_str}</p><p style=margin-top:30px;font-size:10px>AI NovelWriter</p></div></body></html>'''
     
     def _display_chapter(self, num, title, content):
         """显示章节内容（线程安全）"""

@@ -3454,10 +3454,10 @@ class NovelWriterApp(
                 )
                 main_data.setdefault("branches", []).append({
                     "chapter": chapter_num,
-                    "name": f"分支: 如果{d['alternative'][:15]}",
                     "decision": d['desc'][:100],
                     "chosen": d['chosen'][:50],
                     "alternative": d['alternative'][:50],
+                    "story": "",  # 分支故事，初始为空
                 })
             
             main_data.setdefault("chapters", []).append(chapter_num)
@@ -3970,49 +3970,89 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         paned.add(left_frame, width=w//2)
         paned.add(right_frame, width=w//2)
         
-        # 左侧 - 时间线可视化
-        tk.Label(left_frame, text="时间线", font=('微软雅黑', 10, 'bold'),
+        # 左侧 - 决策点列表（直接显示，无需生成）
+        tk.Label(left_frame, text="决策点列表", font=('微软雅黑', 10, 'bold'),
                 bg=C['bg_card'], fg=C['accent']).pack(anchor=tk.W, padx=10, pady=5)
         
-        timeline_text = tk.Text(left_frame, wrap=tk.WORD, font=('微软雅黑', 9),
+        decision_list = tk.Text(left_frame, wrap=tk.WORD, font=('微软雅黑', 9),
                                bg=C['bg_medium'], fg=C['text_primary'],
-                               height=20, relief=tk.FLAT, padx=10, pady=10)
-        timeline_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+                               height=20, relief=tk.FLAT, padx=10, pady=10,
+                               cursor='arrow')
+        decision_list.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # 右侧 - 分支选项
-        tk.Label(right_frame, text="分支世界线", font=('微软雅黑', 10, 'bold'),
+        # 右侧 - 分支故事详情
+        tk.Label(right_frame, text="分支故事", font=('微软雅黑', 10, 'bold'),
                 bg=C['bg_card'], fg=C['warning']).pack(anchor=tk.W, padx=10, pady=5)
         
-        branch_frame = tk.Frame(right_frame, bg=C['bg_card'])
-        branch_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        branch_content = tk.Text(right_frame, wrap=tk.WORD, font=('微软雅黑', 10),
+                              bg=C['bg_medium'], fg=C['text_primary'],
+                              height=20, relief=tk.FLAT, padx=10, pady=10)
+        branch_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        branch_text = tk.Text(branch_frame, wrap=tk.WORD, font=('微软雅黑', 9),
-                             bg=C['bg_medium'], fg=C['text_primary'],
-                             height=15, relief=tk.FLAT, padx=10, pady=10)
-        branch_text.pack(fill=tk.BOTH, expand=True)
+        # 存储决策点数据
+        all_branches = []
+        
+        def show_branch(idx):
+            """点击决策点时显示右侧详情"""
+            if idx < 0 or idx >= len(all_branches):
+                return
+            br = all_branches[idx]
+            branch_content.delete("1.0", tk.END)
+            
+            # 高亮选中
+            decision_list.tag_remove("selected", "1.0", tk.END)
+            start = f"{idx+1}.0"
+            end = f"{idx+1}.end+1c"
+            decision_list.tag_add("selected", start, end)
+            decision_list.tag_config("selected", background=C['accent'], foreground='white')
+            
+            branch_content.insert("1.0", f"决策: {br.get('decision','')}\n\n")
+            branch_content.insert(tk.END, f"✅ 已选择: {br.get('chosen','')}\n\n")
+            branch_content.insert(tk.END, f"❓ 另一种可能: {br.get('alternative','')}\n\n")
+            
+            story = br.get("story", "")
+            if story:
+                branch_content.insert(tk.END, f"━━ 分支故事 ━━\n{story}")
+            else:
+                branch_content.insert(tk.END, "（点击「生成此分支」查看 what-if 故事）")
         
         def refresh_timeline(name=None):
             name = name or tl_var.get()
-            target = next((t for t in timelines if t.get("name") == name), None)
-            timeline_text.delete("1.0", tk.END)
-            branch_text.delete("1.0", tk.END)
+            all_branches.clear()
+            decision_list.delete("1.0", tk.END)
+            branch_content.delete("1.0", tk.END)
             
-            if target:
-                events = target.get("events", [])
-                chapters = target.get("chapters", [])
-                timeline_text.insert("1.0", f"【{name}】\n\n")
-                timeline_text.insert(tk.END, f"涉及章节: {chapters}\n\n")
-                for ev in events[-20:]:
-                    timeline_text.insert(tk.END, f"• {ev}\n")
-                
-                branches = target.get("branches", [])
-                if branches:
-                    for br in branches:
-                        branch_text.insert(tk.END, f"━━ 分支: {br.get('name','')} ━━\n")
-                        branch_text.insert(tk.END, f"决策: {br.get('decision','')}\n")
-                        branch_text.insert(tk.END, f"后果: {br.get('consequence','')}\n\n")
-                else:
-                    branch_text.insert(tk.END, "暂无分支世界线\n\n可点击下方按钮生成")
+            target = next((t for t in timelines if t.get("name") == name), None)
+            if not target:
+                return
+            
+            decision_list.insert("1.0", f"【{name}】 已记录 {len(target.get('chapters',[]))} 章\n\n")
+            
+            branches = target.get("branches", [])
+            if branches:
+                for i, br in enumerate(branches):
+                    all_branches.append(br)
+                    ch = br.get("chapter", "?")
+                    desc = br.get("decision", "")[:60]
+                    chosen = br.get("chosen", "")[:30]
+                    alt = br.get("alternative", "")[:20]
+                    has_story = "📖" if br.get("story") else "  "
+                    
+                    line = f"{has_story} 第{ch}章: {desc}\n    ✅ 选: {chosen}  |  ❓ 另: {alt}\n\n"
+                    decision_list.insert(tk.END, line)
+            else:
+                decision_list.insert(tk.END, "暂未检测到决策点\n\n每章创作完成后会自动记录。")
+            
+            # 点击事件
+            def on_click(event):
+                idx = decision_list.index(f"@{event.x},{event.y}")
+                if idx:
+                    line_num = int(idx.split('.')[0])
+                    # 每个决策点占3行：标题、选择、空行 → 从第2行开始，每3行一个
+                    branch_idx = (line_num - 2) // 3
+                    if 0 <= branch_idx < len(all_branches):
+                        show_branch(branch_idx)
+            decision_list.bind("<Button-1>", on_click)
         
         refresh_timeline("主线")
         
@@ -4024,153 +4064,126 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
             refresh_timeline()
         tl_combo.bind('<<ComboboxSelected>>', on_select)
         
-        tk.Label(btn_frame, text="决策点每章自动检测", font=('微软雅黑', 8),
+        tk.Label(btn_frame, text="点击左侧决策点查看详情", font=('微软雅黑', 8),
                 bg=C['bg_dark'], fg=C['text_muted']).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="生成分支世界线", font=('微软雅黑', 10), padx=15,
+        tk.Button(btn_frame, text="生成此分支", font=('微软雅黑', 10), padx=15,
                  bg=C['warning'], fg='white', relief=tk.FLAT,
-                 command=lambda: self._generate_branch_timeline(dialog, timeline_dir, timelines, refresh_timeline)).pack(side=tk.LEFT, padx=5)
+                 command=lambda: self._generate_branch_story(dialog, timeline_dir, timelines, all_branches, branch_content, refresh_timeline)).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="将分支设为主线", font=('微软雅黑', 10), padx=15,
+                 bg=C['accent'], fg='white', relief=tk.FLAT,
+                 command=lambda: self._promote_branch_to_main(dialog, timeline_dir, timelines, all_branches, refresh_timeline)).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="关闭", font=('微软雅黑', 10), padx=20,
                  bg=C['bg_light'], fg=C['text_primary'],
                  command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
     
-    def _detect_decision_points(self, dialog, timeline_dir, timelines, refresh_callback):
-        """AI检测当前章节的决策点"""
-        if not self.agent:
-            return
-        chapter_num = self.current_chapter
-        chapter_file = self.current_novel_dir / "chapters" / f"chapter_{chapter_num:04d}.txt"
-        if not chapter_file.exists():
-            messagebox.showwarning("提示", f"第{chapter_num}章未生成")
+    def _generate_branch_story(self, dialog, timeline_dir, timelines, all_branches, branch_content, refresh_callback):
+        """为当前选中的决策点生成分支故事"""
+        if not all_branches:
+            messagebox.showwarning("提示", "请先在左侧点击选择一个决策点")
             return
         
-        content = chapter_file.read_text(encoding='utf-8')[:3000]
-        system = "你是专业故事分析师。提取决策点，输出JSON: {\"decisions\": [{\"point\": \"决策描述\", \"chosen\": \"主角选择了什么\", \"alternative\": \"可能的另一种选择\", \"impact\": \"对故事的影响\"}]}"
+        # 找出当前选中的分支（通过检查 branch_content 中有无故事判断哪个是被选中的）
+        # 简单方案：选最近一个没有故事的决策点
+        br = None
+        for b in reversed(all_branches):
+            if not b.get("story"):
+                br = b
+                break
+        if not br:
+            br = all_branches[-1]  # 重新生成最后一个
+        
+        chapter_num = br["chapter"]
+        chapter_file = self.current_novel_dir / "chapters" / f"chapter_{chapter_num:04d}.txt"
         
         def run():
             try:
-                self._log(f"[世界线] 检测第{chapter_num}章决策点...")
+                content = chapter_file.read_text(encoding='utf-8')[:2000] if chapter_file.exists() else ""
+                system = "你是平行世界故事创作者。基于决策分支创作 what-if 故事。直接叙述故事，500-1000字。"
+                prompt = f"当时情况: {br['decision']}\n原选择: {br['chosen']}\n另一种选择: {br['alternative']}\n原文: {content[:500]}\n\n请创作如果主角选择了「{br['alternative']}」会发生什么。"
+                
                 response = self.ai_client.chat(
-                    [{"role": "user", "content": f"第{chapter_num}章内容:\n{content}"}],
-                    system=system, max_tokens=600
+                    [{"role": "user", "content": prompt}], system=system, max_tokens=1000
                 )
                 if not response:
                     return
                 
-                import re
-                match = re.search(r'\{[\s\S]*\}', response)
-                if not match:
-                    return
-                data = json.loads(match.group())
+                # 更新决策点的 story 字段
+                br["story"] = response
                 
-                # 更新主线时间线
+                # 保存到 main.json
                 main_file = timeline_dir / "main.json"
                 main_data = json.loads(main_file.read_text(encoding='utf-8'))
-                
-                for d in data.get("decisions", []):
-                    main_data["events"].append(
-                        f"第{chapter_num}章: {d['point']} → 选择了「{d['chosen']}」"
-                    )
-                    main_data.setdefault("branches", []).append({
-                        "chapter": chapter_num,
-                        "name": f"分支: {d['alternative'][:20]}",
-                        "decision": d['point'],
-                        "chosen": d['chosen'],
-                        "alternative": d['alternative'],
-                        "consequence": d.get('impact', ''),
-                    })
-                
-                if chapter_num not in main_data.get("chapters", []):
-                    main_data.setdefault("chapters", []).append(chapter_num)
-                
+                for mb in main_data["branches"]:
+                    if mb["chapter"] == br["chapter"] and mb["decision"] == br["decision"]:
+                        mb["story"] = response
+                        break
                 main_file.write_text(json.dumps(main_data, indent=2, ensure_ascii=False), encoding='utf-8')
-                self._log(f"[世界线] 发现{len(data.get('decisions', []))}个决策点")
                 
-                self.root.after(0, lambda: refresh_callback("主线"))
-                self.root.after(0, lambda: messagebox.showinfo("完成", f"发现{len(data.get('decisions',[]))}个决策点"))
+                self._log(f"[世界线] 分支故事已生成")
+                self.root.after(0, lambda: [
+                    branch_content.delete("1.0", tk.END),
+                    branch_content.insert("1.0", f"决策: {br['decision']}\n\n✅ 已选择: {br['chosen']}\n\n❓ 另一种可能: {br['alternative']}\n\n━━ 分支故事 ━━\n{response}"),
+                    refresh_callback()
+                ])
             except Exception as e:
                 self.root.after(0, lambda: messagebox.showerror("失败", str(e)))
         
         threading.Thread(target=run, daemon=True).start()
     
-    def _generate_branch_timeline(self, dialog, timeline_dir, timelines, refresh_callback):
-        """生成另一条世界线 - 如果主角做了不同选择"""
-        main_file = timeline_dir / "main.json"
-        if not main_file.exists():
-            messagebox.showwarning("提示", "暂无决策点\n\n每章创作完成后会自动检测决策点，\n请先创作一些章节后再来查看。")
+    def _promote_branch_to_main(self, dialog, timeline_dir, timelines, all_branches, refresh_callback):
+        """将分支故事设为主线"""
+        if not all_branches:
+            messagebox.showwarning("提示", "没有决策点")
             return
         
-        main_data = json.loads(main_file.read_text(encoding='utf-8'))
-        branches = main_data.get("branches", [])
-        if not branches:
-            messagebox.showwarning("提示", "暂无可生成的分支")
+        # 找有故事的决策点
+        with_story = [b for b in all_branches if b.get("story")]
+        if not with_story:
+            messagebox.showwarning("提示", "请先生成分支故事")
             return
         
-        # 列出分支让用户选择
+        # 让用户选择
         ask = tk.Toplevel(dialog)
-        ask.title("选择决策点")
+        ask.title("选择分支设为主线")
         ask.geometry("500x400")
         ask.configure(bg=UIStyle.COLORS['bg_dark'])
         C = UIStyle.COLORS
         
-        tk.Label(ask, text="选择一个决策点生成另一条世界线:", font=('微软雅黑', 10, 'bold'),
+        tk.Label(ask, text="选择哪个分支故事覆盖为主线:", font=('微软雅黑', 10, 'bold'),
                 bg=C['bg_dark'], fg=C['accent']).pack(pady=10)
         
-        lb = tk.Listbox(ask, bg=C['bg_card'], fg=C['text_primary'], font=('微软雅黑', 9),
-                        selectbackground=C['accent'], selectforeground='white')
+        lb = tk.Listbox(ask, bg=C['bg_card'], fg=C['text_primary'], font=('微软雅黑', 9))
         lb.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+        for b in with_story:
+            lb.insert(tk.END, f"第{b['chapter']}章: {b['alternative'][:40]}")
         
-        for i, br in enumerate(branches):
-            lb.insert(tk.END, f"第{br['chapter']}章: {br['decision'][:50]}")
-        
-        def generate():
+        def confirm():
             idx = lb.curselection()
             if not idx:
                 return
-            br = branches[idx[0]]
+            br = with_story[idx[0]]
             ask.destroy()
             
-            def run():
-                try:
-                    chapter_num = br["chapter"]
-                    chapter_file = self.current_novel_dir / "chapters" / f"chapter_{chapter_num:04d}.txt"
-                    content = chapter_file.read_text(encoding='utf-8')[:2000] if chapter_file.exists() else ""
-                    
-                    system = "你是平行世界故事创作者。基于决策分支生成另一条世界线: 如果主角做了不同选择会怎样。直接叙述故事。"
-                    prompt = f"原决策: {br['decision']}\n原本选择了: {br['chosen']}\n另一种可能: {br['alternative']}\n原故事: {content[:500]}\n\n请创作如果主角选择「{br['alternative']}」会发生什么。500字左右。"
-                    
-                    response = self.ai_client.chat(
-                        [{"role": "user", "content": prompt}], system=system, max_tokens=800
-                    )
-                    if not response:
-                        return
-                    
-                    # 保存为新世界线
-                    branch_name = f"分支: {br['alternative'][:15]}"
-                    branch_file = timeline_dir / f"branch_{len(timelines)}.json"
-                    branch_data = {
-                        "name": branch_name,
-                        "parent": "主线",
-                        "origin_chapter": chapter_num,
-                        "events": [response],
-                        "chapters": [chapter_num],
-                        "branches": [],
-                        "created_at": datetime.now().isoformat(),
-                    }
-                    branch_file.write_text(json.dumps(branch_data, indent=2, ensure_ascii=False), encoding='utf-8')
-                    
-                    self._log(f"[世界线] 已生成分支: {branch_name}")
-                    self.root.after(0, lambda: messagebox.showinfo("完成", f"世界线已生成:\n{branch_name}"))
-                    
-                    # 刷新 - 重新加载
-                    self.root.after(0, lambda: refresh_callback(branch_name))
-                except Exception as e:
-                    self.root.after(0, lambda: messagebox.showerror("失败", str(e)))
+            # 将分支故事保存到主线章节文件中
+            chapter_file = self.current_novel_dir / "chapters" / f"chapter_{br['chapter']:04d}.txt"
+            original = chapter_file.read_text(encoding='utf-8') if chapter_file.exists() else ""
             
-            threading.Thread(target=run, daemon=True).start()
+            # 备份原主线
+            backup_file = chapter_file.with_suffix(".txt.bak")
+            backup_file.write_text(original, encoding='utf-8')
+            
+            # 覆写
+            new_content = f"# 第{br['chapter']}章（来自分支世界线）\n\n"
+            new_content += f"原选择: {br['chosen']}\n分支选择: {br['alternative']}\n\n"
+            new_content += br['story']
+            chapter_file.write_text(new_content, encoding='utf-8')
+            
+            messagebox.showinfo("完成", f"第{br['chapter']}章已更新为分支故事\n原版本备份为 .txt.bak")
+            refresh_callback()
         
-        tk.Button(ask, text="生成这条世界线", font=('微软雅黑', 10), padx=15,
+        tk.Button(ask, text="确认覆盖", font=('微软雅黑', 10), padx=15,
                  bg=C['accent'], fg='white', relief=tk.FLAT,
-                 command=generate).pack(pady=10)
+                 command=confirm).pack(pady=10)
     
     def _display_chapter(self, num, title, content):
         """显示章节内容（线程安全）"""

@@ -3764,12 +3764,21 @@ class NovelWriterApp(
                         self.current_chapter = ch_num
                     
                     try:
-                        # 获取上一章结尾作为上下文
-                        prev_ending = ""
-                        prev_ch_file = chapters_dir / f"chapter_{ch_num - 1:04d}.txt"
-                        if prev_ch_file.exists():
-                            prev_content = prev_ch_file.read_text(encoding='utf-8')
-                            prev_ending = prev_content[-800:] if len(prev_content) > 800 else prev_content
+                        # 构建前几章上下文（内容+摘要）
+                        recent_context = []
+                        ch_count = min(ch_num - 1, 3)  # 最多前3章
+                        for offset in range(ch_count, 0, -1):
+                            prev_ch = ch_num - offset
+                            pf = chapters_dir / f"chapter_{prev_ch:04d}.txt"
+                            if pf.exists():
+                                text = pf.read_text(encoding='utf-8')
+                                content_sample = text[:800] if len(text) > 800 else text
+                                ending_sample = text[-500:] if len(text) > 1000 else ""
+                                recent_context.append(f"第{prev_ch}章开头: {content_sample}")
+                                if offset == 1:  # 最近一章包含结尾
+                                    recent_context.append(f"第{prev_ch}章结尾: {ending_sample}")
+                        
+                        prev_context = "\n---\n".join(recent_context)
                         
                         # 超时重试3次
                         for attempt in range(3):
@@ -3779,7 +3788,7 @@ class NovelWriterApp(
                                     chapter_info.get("title", f"第{ch_num}章"),
                                     chapter_info.get("summary", ""),
                                     word_count=meta.get("word_count_per_chapter", 6000),
-                                    prev_chapter_ending=prev_ending
+                                    prev_context=prev_context
                                 )
                                 break
                             except Exception as te:

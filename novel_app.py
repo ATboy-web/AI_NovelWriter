@@ -4605,10 +4605,7 @@ class NovelWriterApp(
                 f"AI提示词:\n{prompt_text}"
             )
             prompt_file.write_text(prompt_content, encoding='utf-8')
-            
-            # 总是弹出窗口让用户选择
-            self._show_image_prompt_dialog(chapter_num, i, type_name, scene_text, 
-                prompt_text, purpose_text, scene, img_dir)
+            self._log(f"[提示词] 已保存: {prompt_file.name}")
     
     def _show_image_prompt_dialog(self, chapter_num, idx, type_name, scene_text, prompt_text, purpose_text, scene, img_dir):
         """显示电影级图片生成提醒对话框"""

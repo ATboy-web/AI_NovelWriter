@@ -1,0 +1,66 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install pytest loguru
+    
+    - name: Run tests
+      run: python -m pytest tests/ -q
+    
+    - name: Build EXE
+      run: |
+        pip install pyinstaller
+        cd installer
+        pyinstaller novel_app.spec --clean --noconfirm
+    
+    - name: Upload EXE artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: AI_NovelWriter
+        path: installer/dist/AI_NovelWriter.exe
+        retention-days: 7
+
+  release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Build EXE
+      run: |
+        pip install pyinstaller loguru
+        cd installer
+        pyinstaller novel_app.spec --clean --noconfirm
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: installer/dist/AI_NovelWriter.exe
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

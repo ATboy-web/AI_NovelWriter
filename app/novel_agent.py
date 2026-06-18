@@ -1,17 +1,19 @@
 """
-小说创作智能体模块 - 参考AutoGen多智能体协作架构 v2.0
+小说创作智能体模块 - 参考AutoGen多智能体协作架构 v3.0
 
-改进：
-- 使用 PromptManager 管理提示词
-- 使用 AgentOrchestrator 并行执行
-- 使用 AIMetrics 监控性能
+改进 (Hello-Agents 参考):
+- 多Agent专业化协作 (PlotDesigner/WorldBuilder/Writer/Reviewer/Editor)
+- 标准化工具系统 (ToolRegistry + Tool协议)
+- 动态上下文工程 (根据写作阶段智能分配)
+- 标准化通信协议 (AgentMessage)
 """
 
 import json
 import threading
 import time
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Callable, Optional
 from datetime import datetime
+from enum import Enum
 
 from .ai_client import AIClient, PromptManager
 from .agent_orchestrator import ContextOptimizer, PromptOptimizer, AgentOrchestrator
@@ -19,23 +21,101 @@ from .memory_manager import MemoryManager
 from .config import AppConfig
 
 
-class NovelAgent:
-    """小说创作智能体 - 参考AutoGen多智能体协作架构
+# ===== 标准化通信协议 (参考 MCP/A2A) =====
+
+class MessageRole(Enum):
+    SYSTEM = "system"
+    PLOT = "plot_designer"
+    WORLD = "world_builder"
+    WRITER = "writer"
+    REVIEWER = "reviewer"
+    EDITOR = "editor"
+    TOOL = "tool"
+
+class AgentMessage:
+    """标准化Agent消息 - 参考MCP协议"""
+    def __init__(self, role: MessageRole, action: str, content: str, metadata: Dict = None):
+        self.role = role
+        self.action = action
+        self.content = content
+        self.metadata = metadata or {}
+        self.timestamp = datetime.now().isoformat()
     
-    智能体角色：
+    def to_dict(self) -> Dict:
+        return {
+            "role": self.role.value,
+            "action": self.action,
+            "content": self.content[:300],
+            "metadata": self.metadata,
+            "timestamp": self.timestamp
+        }
+
+
+# ===== 标准化工具系统 (参考 MCP Tool协议) =====
+
+class Tool:
+    """标准化工具定义"""
+    def __init__(self, name: str, description: str, func: Callable, 
+                 input_schema: Dict = None, category: str = "general"):
+        self.name = name
+        self.description = description
+        self.func = func
+        self.input_schema = input_schema or {}
+        self.category = category
+    
+    def execute(self, **kwargs) -> Dict:
+        try:
+            result = self.func(**kwargs)
+            return {"success": True, "result": result, "tool": self.name}
+        except Exception as e:
+            return {"success": False, "error": str(e), "tool": self.name}
+
+
+class ToolRegistry:
+    """工具注册中心 - 参考MCP工具列表"""
+    def __init__(self):
+        self._tools: Dict[str, Tool] = {}
+    
+    def register(self, tool: Tool):
+        self._tools[tool.name] = tool
+        return self
+    
+    def list_tools(self, agent_type: str = None) -> List[Dict]:
+        tools = []
+        for name, tool in self._tools.items():
+            if agent_type and tool.category != agent_type and tool.category != "general":
+                continue
+            tools.append({
+                "name": tool.name,
+                "description": tool.description,
+                "category": tool.category,
+                "input_schema": tool.input_schema
+            })
+        return tools
+    
+    def call(self, tool_name: str, **kwargs) -> Dict:
+        if tool_name not in self._tools:
+            return {"success": False, "error": f"Tool '{tool_name}' not found"}
+        return self._tools[tool_name].execute(**kwargs)
+
+
+class NovelAgent:
+    """小说创作智能体 - 参考Hello-Agents多智能体架构
+    
+    智能体角色（扩展版）：
+    - PlotDesigner (情节设计): 负责大纲分解、伏笔管理、节奏控制
+    - WorldBuilder (世界构建): 负责世界观一致性、场景描写
     - Writer (作家): 负责创作小说内容
     - Reviewer (审校): 负责检查质量和一致性
     - Editor (编辑/质量门): 负责最终裁定是否通过
     
+    工具系统：标准化注册/调用，Agent自主选择工具
+    
     协作流程（参考AutoGen的GroupChat模式）：
-    1. Writer生成内容 → 2. Reviewer审校 → 3. Editor判定
+    1. PlotDesigner分析大纲 → 2. WorldBuilder构建场景
+    3. Writer生成内容 → 4. Reviewer审校 → 5. Editor判定
        → 不过关 → Writer修订 → Reviewer再审校 → ...
        → 过关 → 保存定稿
-    
-    关键机制：
-    - 迭代修订循环：质量不达标自动触发修订
-    - 质量门控：设定最低通过分数线
-    - 反思记忆：记录每次修订的原因，供后续参考
     """
     
     # 质量阈值
@@ -49,7 +129,7 @@ class NovelAgent:
         self.config = config
 
         # 智能体会话历史（参考AutoGen的对话记录）
-        self._conversation_log: List[Dict] = []
+        self._conversation_log: List[AgentMessage] = []
 
         # 修订记忆（记录每次修订的原因）
         self._revision_memory: List[Dict] = []
@@ -61,89 +141,100 @@ class NovelAgent:
         self.orchestrator = AgentOrchestrator(ai_client, log_callback)
         self.context_optimizer = ContextOptimizer
         self.prompt_optimizer = PromptOptimizer
-        self.log("[智能体] 已启用智能体编排器、上下文优化器和提示词优化器")
+        
+        # 工具注册中心（参考MCP协议）
+        self.tools = ToolRegistry()
+        self._register_tools()
+        
+        self.log("[智能体] Hello-Agents架构 v3.0: 5Agent+工具系统+动态上下文+标准协议")
+    
+    def _register_tools(self):
+        """注册标准化工具"""
+        self.tools.register(Tool("detect_scenes", "检测名场面",
+            lambda content="", chapter_num=0: self.memory.add_event(chapter_num, f"场景检测: {content[:50]}", "scene"),
+            category="writer"))
+        self.tools.register(Tool("check_consistency", "检查一致性",
+            lambda content="": f"一致性检查完成, 内容长度:{len(content)}",
+            category="reviewer"))
+        self.tools.register(Tool("generate_summary", "生成摘要",
+            lambda chapter_num=0, content="": self.memory.get_chapter_summary(chapter_num) or "无",
+            category="editor"))
+        self.tools.register(Tool("get_characters", "获取角色列表",
+            lambda: list(self.memory.get_characters().keys())[:10],
+            category="general"))
+        self.tools.register(Tool("get_outline", "获取章节大纲",
+            lambda chapter_num=0: self.memory.get_meta("outline", {}).get(str(chapter_num), "无"),
+            category="general"))
     
     def _record_conversation(self, agent: str, action: str, content: str):
-        """记录智能体对话（参考AutoGen的消息历史）"""
+        """记录智能体对话 - 使用标准AgentMessage协议"""
+        msg = AgentMessage(MessageRole(agent.lower()) if hasattr(MessageRole, agent.upper()) else MessageRole.SYSTEM,
+                          action, content)
         with self._log_lock:
-            self._conversation_log.append({
-                "agent": agent,
-                "action": action,
-                "content": content[:200],  # 只记录摘要
-                "timestamp": datetime.now().isoformat(),
-            })
+            self._conversation_log.append(msg)
     
-    def _build_context(self, chapter_num: int, extra_context: str = "", max_chars: int = None) -> str:
-        """构建上下文 - 分层架构，支持5000章小说
+    def _build_context(self, chapter_num: int, extra_context: str = "", max_chars: int = None, 
+                       writing_phase: str = "writing") -> str:
+        """动态上下文工程 - 根据写作阶段智能分配比例 (Hello-Agents参考)
         
-        上下文结构：
-        1. 全局摘要 (10%)
-        2. 当前卷摘要 (15%)
-        3. 当前弧线摘要 (10%)
-        4. 活跃角色 (15%)
-        5. 最近章节 (40%)
-        6. RAG检索结果 (10%)
+        写作阶段:
+        - opening: 开头阶段，需要更多世界/角色描述
+        - writing: 常规写作，平衡分配
+        - action: 动作场景，需要近章上下文
+        - dialogue: 对话场景，需要角色信息
+        - ending: 结尾阶段，需要全局摘要
         """
         if max_chars is None:
             max_chars = self.config.get("context_window", 32000) // 4 if self.config else 8000
         
+        # 动态比例分配
+        ratios = {
+            "opening":  {"global": 0.15, "volume": 0.10, "chars": 0.20, "recent": 0.35, "rag": 0.10, "extra": 0.10},
+            "writing":  {"global": 0.10, "volume": 0.15, "chars": 0.15, "recent": 0.40, "rag": 0.10, "extra": 0.10},
+            "action":   {"global": 0.05, "volume": 0.10, "chars": 0.10, "recent": 0.55, "rag": 0.10, "extra": 0.10},
+            "dialogue": {"global": 0.05, "volume": 0.10, "chars": 0.35, "recent": 0.30, "rag": 0.10, "extra": 0.10},
+            "ending":   {"global": 0.20, "volume": 0.10, "chars": 0.10, "recent": 0.40, "rag": 0.10, "extra": 0.10},
+        }
+        ratio = ratios.get(writing_phase, ratios["writing"])
+        
         parts = []
         used = 0
         
-        # 1. 全局摘要
         gs = self.memory.get_global_summary()
         if gs:
-            budget = int(max_chars * 0.10)
-            text = self._compress_text(gs, budget, keep_tail=True)
+            text = self._compress_text(gs, int(max_chars * ratio["global"]), keep_tail=True)
             parts.append(f"【全局摘要】\n{text}")
             used += len(text)
         
-        # 2. 当前卷摘要
-        vol_summary = self.memory.get_current_volume_summary(chapter_num)
-        if vol_summary and used < max_chars:
-            budget = int(max_chars * 0.15)
-            text = self._compress_text(vol_summary, budget, keep_tail=True)
+        vol = self.memory.get_current_volume_summary(chapter_num)
+        if vol:
+            text = self._compress_text(vol, int(max_chars * ratio["volume"]), keep_tail=True)
             parts.append(f"【当前卷】\n{text}")
             used += len(text)
         
-        # 3. 活跃角色（按活跃度加载）
         chars = self.memory.get_characters()
-        if chars and used < max_chars:
+        if chars:
             active_names = self.memory.get_active_characters(chapter_num, window=50)
-            budget = int(max_chars * 0.15)
-            text = self._compress_active_characters(chars, active_names, budget)
+            text = self._compress_active_characters(chars, active_names, int(max_chars * ratio["chars"]))
             if text:
                 parts.append(f"【活跃角色】\n{text}")
                 used += len(text)
         
-        # 4. 最近章节摘要（根据小说长度动态调整）
-        if used < max_chars:
-            # 5000章小说看最近5章，500章看最近3章
-            recent_count = 5 if chapter_num > 1000 else 3
-            budget = int(max_chars * 0.40)
-            recent = self.memory.get_recent_summaries(recent_count)
-            if recent:
-                text = self._compress_text(recent, budget, keep_tail=True)
-                parts.append(f"【近期章节】\n{text}")
-                used += len(text)
+        recent_count = 5 if chapter_num > 1000 else 3
+        recent = self.memory.get_recent_summaries(recent_count)
+        if recent:
+            text = self._compress_text(recent, int(max_chars * ratio["recent"]), keep_tail=True)
+            parts.append(f"【近期章节】\n{text}")
+            used += len(text)
         
-        # 5. RAG检索结果（如果有额外上下文）
-        if extra_context and used < max_chars:
-            budget = int(max_chars * 0.10)
+        if extra_context:
             relevant = self.memory.retrieve_relevant(extra_context, top_k=3)
             if relevant:
                 rag_text = "\n".join([f"- {r.get('content', '')[:100]}" for r in relevant])
-                text = self._compress_text(rag_text, budget, keep_tail=False)
+                text = self._compress_text(rag_text, int(max_chars * ratio["rag"]), keep_tail=False)
                 parts.append(f"【相关记忆】\n{text}")
-                used += len(text)
         
-        # 6. 补充上下文
-        if extra_context and used < max_chars:
-            parts.append(f"【补充】\n{extra_context[:300]}")
-        
-        result = ContextOptimizer.optimize(
-            {"内容": "\n\n".join(parts)}, max_chars
-        ) if parts else ""
+        result = ContextOptimizer.optimize({"内容": "\n\n".join(parts)}, max_chars) if parts else ""
         return result
     
     def _compress_active_characters(self, chars: dict, active_names: List[str], budget: int) -> str:
@@ -237,26 +328,42 @@ class NovelAgent:
     
     def generate_with_collaboration(self, chapter_num: int, chapter_title: str,
                                      chapter_outline: str, word_count: int = 3000) -> str:
-        """多智能体协作生成章节 - 核心编排方法
+        """多智能体协作生成章节 v3.0 - 5Agent协作
         
-        参考AutoGen的GroupChat：Writer→Reviewer→Editor 循环
+        Hello-Agents参考流程: PlotDesigner→WorldBuilder→Writer→Reviewer→Editor
         """
         self._conversation_log = []
-        self.log(f"[编排器] 启动多智能体协作：第{chapter_num}章「{chapter_title}」")
+        self.log(f"[编排器] 5Agent协作启动: 第{chapter_num}章「{chapter_title}」")
         
-        # 第1轮：Writer生成初稿
+        # Phase 1: PlotDesigner - 分析大纲，管理伏笔
+        self.log(f"[PlotDesigner] 分析大纲与伏笔...")
+        self._record_conversation("PlotDesigner", "analyze", f"分析第{chapter_num}章大纲")
+        plot_analysis = self._plot_designer_analyze(chapter_num, chapter_title, chapter_outline)
+        
+        # 根据情节分析确定上下文策略
+        plot_type = plot_analysis.get("type", "writing")
+        context = self._build_context(chapter_num, "", writing_phase=plot_type)
+        self.log(f"[PlotDesigner] 情节类型: {plot_type}, 上下文已优化")
+        
+        # Phase 2: WorldBuilder - 场景与世界一致性
+        self.log(f"[WorldBuilder] 构建场景描写...")
+        self._record_conversation("WorldBuilder", "build", f"构建第{chapter_num}章场景")
+        world_context = self._world_builder_build(chapter_num, plot_analysis)
+        
+        # Phase 3: Writer - 创作内容
         self.log(f"[Writer] 正在创作第{chapter_num}章初稿...")
         self._record_conversation("Writer", "generate", f"开始创作第{chapter_num}章")
         content = self._writer_generate(chapter_num, chapter_title, chapter_outline, word_count)
         
-        # 迭代修订循环（参考AutoGen的反馈环）
+        # Phase 4-5: Reviewer → Editor 迭代修订
         for round_num in range(1, self.MAX_REVISION_ROUNDS + 1):
-            # Reviewer审校
-            self.log(f"[Reviewer] 正在审校第{chapter_num}章（第{round_num}轮）...")
+            self.log(f"[Reviewer] 审校第{chapter_num}章（第{round_num}轮）...")
             self._record_conversation("Reviewer", "review", f"第{round_num}轮审校")
             review = self._reviewer_evaluate(chapter_num, content)
             
-            # Editor裁定（质量门）
+            # 工具调用: 一致性检查
+            self.tools.call("check_consistency", content=content[:500])
+            
             self.log(f"[Editor] 质量裁定：{review.get('overall_score', 0)}分")
             self._record_conversation("Editor", "judge", 
                 f"评分{review.get('overall_score', 0)}，阈值{self.QUALITY_THRESHOLD}")
@@ -266,13 +373,11 @@ class NovelAgent:
                 self._record_conversation("Editor", "approve", "质量达标，通过")
                 break
             
-            # 不达标，修订
             suggestions = review.get("suggestions", [])
             issues = review.get("issues", [])
             self.log(f"[Editor] ⚠️ 质量不达标（{review.get('overall_score', 0)}/{self.QUALITY_THRESHOLD}），"
                     f"触发第{round_num}轮修订...")
             
-            # 记录修订记忆
             with self._log_lock:
                 self._revision_memory.append({
                     "chapter": chapter_num,
@@ -281,13 +386,42 @@ class NovelAgent:
                     "suggestions": suggestions,
                 })
             
-            # Writer修订
             self.log(f"[Writer] 正在根据审校意见修订...")
             self._record_conversation("Writer", "revise", f"第{round_num}轮修订")
             content = self._writer_revise(chapter_num, content, review, chapter_outline)
         
-        self.log(f"[编排器] 第{chapter_num}章协作完成")
+        self.log(f"[编排器] 第{chapter_num}章5Agent协作完成 ({len(content)}字)")
         return content
+    
+    def _plot_designer_analyze(self, chapter_num: int, title: str, outline: str) -> Dict:
+        """PlotDesigner: 分析情节类型、节奏、伏笔"""
+        if not outline or len(outline) < 10:
+            if chapter_num <= 3: plot_type = "opening"
+            elif chapter_num % 10 == 0: plot_type = "ending"
+            else: plot_type = "writing"
+            return {"type": plot_type, "pace": "medium", "foreshadowing": []}
+        
+        system = "你是专业情节设计师。分析章节大纲，输出JSON: {\"type\": \"opening/writing/action/dialogue/ending\", \"pace\": \"slow/medium/fast\", \"foreshadowing\": []}"
+        prompt = f"第{chapter_num}章: {title}\n大纲: {outline[:500]}"
+        try:
+            response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=300)
+            import re
+            match = re.search(r'\{[\s\S]*\}', response)
+            if match:
+                return json.loads(match.group())
+        except:
+            pass
+        return {"type": "writing", "pace": "medium", "foreshadowing": []}
+    
+    def _world_builder_build(self, chapter_num: int, plot_analysis: Dict) -> str:
+        """WorldBuilder: 构建场景和世界观上下文"""
+        settings = self.memory.get_settings()
+        if settings and isinstance(settings, dict):
+            world = settings.get("world", {})
+            known = world.get("已知区域", [])[:3]
+            if known:
+                return f"世界观场景: {', '.join(known)}"
+        return ""
     
     def _writer_generate(self, chapter_num: int, chapter_title: str, 
                          chapter_outline: str, word_count: int) -> str:

@@ -4071,9 +4071,9 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         tk.Button(btn_frame, text="生成此分支", font=('微软雅黑', 10), padx=15,
                  bg=C['warning'], fg='white', relief=tk.FLAT,
                  command=lambda: self._generate_branch_story(dialog, timeline_dir, timelines, all_branches, branch_content, refresh_timeline)).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="将分支设为主线", font=('微软雅黑', 10), padx=15,
+        tk.Button(btn_frame, text="开始分支创作", font=('微软雅黑', 10), padx=15,
                  bg=C['accent'], fg='white', relief=tk.FLAT,
-                 command=lambda: self._promote_branch_to_main(dialog, timeline_dir, timelines, all_branches, refresh_timeline)).pack(side=tk.LEFT, padx=5)
+                 command=lambda: self._start_branch_novel(dialog, timeline_dir, timelines, all_branches, refresh_timeline)).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="关闭", font=('微软雅黑', 10), padx=20,
                  bg=C['bg_light'], fg=C['text_primary'],
                  command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
@@ -4129,60 +4129,166 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         
         threading.Thread(target=run, daemon=True).start()
     
-    def _promote_branch_to_main(self, dialog, timeline_dir, timelines, all_branches, refresh_callback):
-        """将分支故事设为主线"""
+    def _start_branch_novel(self, dialog, timeline_dir, timelines, all_branches, refresh_callback):
+        """基于决策点创建独立分支世界线，可连续创作"""
         if not all_branches:
             messagebox.showwarning("提示", "没有决策点")
             return
         
-        # 找有故事的决策点
-        with_story = [b for b in all_branches if b.get("story")]
-        if not with_story:
-            messagebox.showwarning("提示", "请先生成分支故事")
-            return
-        
-        # 让用户选择
+        # 先让用户选择决策点
         ask = tk.Toplevel(dialog)
-        ask.title("选择分支设为主线")
-        ask.geometry("500x400")
+        ask.title("开始分支世界线创作")
+        ask.geometry("550x450")
         ask.configure(bg=UIStyle.COLORS['bg_dark'])
         C = UIStyle.COLORS
         
-        tk.Label(ask, text="选择哪个分支故事覆盖为主线:", font=('微软雅黑', 10, 'bold'),
+        tk.Label(ask, text="选择决策点创建分支世界线:", font=('微软雅黑', 10, 'bold'),
                 bg=C['bg_dark'], fg=C['accent']).pack(pady=10)
         
         lb = tk.Listbox(ask, bg=C['bg_card'], fg=C['text_primary'], font=('微软雅黑', 9))
         lb.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
-        for b in with_story:
-            lb.insert(tk.END, f"第{b['chapter']}章: {b['alternative'][:40]}")
+        for i, b in enumerate(all_branches):
+            has_story = "📖" if b.get("story") else "  "
+            lb.insert(tk.END, f"{has_story} 第{b['chapter']}章: {b.get('alternative','')[:40]}")
         
-        def confirm():
+        tk.Label(ask, text="生成长度:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(anchor=tk.W, padx=20, pady=(10,0))
+        count_frame = tk.Frame(ask, bg=C['bg_dark'])
+        count_frame.pack(fill=tk.X, padx=20)
+        chapter_count = tk.StringVar(value="10")
+        tk.Spinbox(count_frame, from_=1, to=500, textvariable=chapter_count, width=6,
+                  font=('微软雅黑', 9), bg=C['bg_card']).pack(side=tk.LEFT)
+        tk.Label(count_frame, text="章（从该决策点继续）", bg=C['bg_dark'], fg=C['text_secondary'],
+                font=('微软雅黑', 9)).pack(side=tk.LEFT, padx=5)
+        
+        def start():
             idx = lb.curselection()
             if not idx:
                 return
-            br = with_story[idx[0]]
+            br = all_branches[idx[0]]
+            n_chapters = int(chapter_count.get())
             ask.destroy()
             
-            # 将分支故事保存到主线章节文件中
-            chapter_file = self.current_novel_dir / "chapters" / f"chapter_{br['chapter']:04d}.txt"
-            original = chapter_file.read_text(encoding='utf-8') if chapter_file.exists() else ""
-            
-            # 备份原主线
-            backup_file = chapter_file.with_suffix(".txt.bak")
-            backup_file.write_text(original, encoding='utf-8')
-            
-            # 覆写
-            new_content = f"# 第{br['chapter']}章（来自分支世界线）\n\n"
-            new_content += f"原选择: {br['chosen']}\n分支选择: {br['alternative']}\n\n"
-            new_content += br['story']
-            chapter_file.write_text(new_content, encoding='utf-8')
-            
-            messagebox.showinfo("完成", f"第{br['chapter']}章已更新为分支故事\n原版本备份为 .txt.bak")
-            refresh_callback()
+            self._create_branch_novel(br, n_chapters)
         
-        tk.Button(ask, text="确认覆盖", font=('微软雅黑', 10), padx=15,
+        tk.Button(ask, text="开始分支世界线创作", font=('微软雅黑', 10), padx=15,
                  bg=C['accent'], fg='white', relief=tk.FLAT,
-                 command=confirm).pack(pady=10)
+                 command=start).pack(pady=10)
+    
+    def _create_branch_novel(self, decision_point: dict, n_chapters: int):
+        """创建分支世界线独立创作项目"""
+        br = decision_point
+        origin_ch = br["chapter"]
+        
+        # 创建分支目录
+        branch_id = len(list((self.current_novel_dir / "timelines").glob("branch_*")))
+        branch_dir = self.current_novel_dir / "timelines" / f"branch_{branch_id:03d}"
+        branch_dir.mkdir(parents=True, exist_ok=True)
+        (branch_dir / "chapters").mkdir(exist_ok=True)
+        (branch_dir / "summaries").mkdir(exist_ok=True)
+        
+        # 元数据
+        branch_meta = {
+            "name": f"分支: {br['alternative'][:30]}",
+            "origin_chapter": origin_ch,
+            "original_decision": br['decision'],
+            "original_choice": br['chosen'],
+            "branch_choice": br['alternative'],
+            "chapter_count": n_chapters,
+            "created_at": datetime.now().isoformat(),
+            "status": "pending",
+        }
+        (branch_dir / "meta.json").write_text(json.dumps(branch_meta, indent=2, ensure_ascii=False), encoding='utf-8')
+        
+        # 复制原章节内容作为起点上下文
+        origin_file = self.current_novel_dir / "chapters" / f"chapter_{origin_ch:04d}.txt"
+        context_text = origin_file.read_text(encoding='utf-8')[:2000] if origin_file.exists() else ""
+        
+        # 生成分支大纲
+        def run():
+            try:
+                self._log(f"[分支创作] 为「{br['alternative'][:20]}」生成{n_chapters}章大纲...")
+                
+                system = """你是有创意的故事策划师。基于决策分支重新规划故事走向。
+输出JSON格式: {"outline": [{"title": "章节标题", "summary": "内容概要(50字)"}, ...]}
+章节数等于指定数量，从决策点开始新故事线。"""
+                
+                prompt = f"""原文决策点: {br['decision']}
+原选择: {br['chosen']}
+新选择: {br['alternative']}
+原文上下文: {context_text[:1000]}
+请规划{n_chapters}章的独立故事线。"""
+                
+                response = self.ai_client.chat(
+                    [{"role": "user", "content": prompt}], system=system, max_tokens=1500
+                )
+                if not response:
+                    return
+                
+                import re
+                match = re.search(r'\{[\s\S]*\}', response)
+                if not match:
+                    return
+                outline_data = json.loads(match.group())
+                outline = outline_data.get("outline", [])
+                
+                # 保存大纲
+                (branch_dir / "outline.json").write_text(
+                    json.dumps(outline, indent=2, ensure_ascii=False), encoding='utf-8')
+                
+                self._log(f"[分支创作] 大纲生成完成: {len(outline)}章")
+                
+                # 逐章创作
+                meta = self._get_meta()
+                genre = meta.get("genre", "玄幻")
+                word_count = meta.get("word_count_per_chapter", 5000)
+                
+                for i, ch in enumerate(outline):
+                    ch_num = origin_ch + i
+                    title = ch.get("title", f"分支第{i+1}章")
+                    summary = ch.get("summary", "")
+                    
+                    self._log(f"[分支创作] 第{ch_num}章: {title}")
+                    
+                    ch_prompt = f"""基于决策分支继续创作。
+分支选择: {br['alternative']}
+原文: {context_text[:800]}
+章节大纲: {title}: {summary}
+请创作约{word_count}字的小说正文。"""
+                    
+                    content = self.ai_client.chat(
+                        [{"role": "user", "content": ch_prompt}],
+                        system=f"你是专业小说作家。从决策分支点继续故事。\n类型: {genre}",
+                        max_tokens=4096
+                    )
+                    if not content:
+                        content = f"（第{ch_num}章生成失败）"
+                    
+                    ch_file = branch_dir / "chapters" / f"chapter_{ch_num:04d}.txt"
+                    ch_file.write_text(f"# 分支第{i+1}章: {title}\n\n{content}", encoding='utf-8')
+                    
+                    # 保存摘要
+                    summary_text = content[:300]
+                    (branch_dir / "summaries" / f"chapter_{ch_num:04d}_summary.txt").write_text(
+                        f"分支第{i+1}章: {title}\n\n{summary_text}", encoding='utf-8')
+                    
+                    self._log(f"[分支创作] 第{ch_num}章完成 ({len(content)}字)")
+                    
+                    if self._stop_flag:
+                        break
+                
+                branch_meta["status"] = "completed"
+                (branch_dir / "meta.json").write_text(
+                    json.dumps(branch_meta, indent=2, ensure_ascii=False), encoding='utf-8')
+                
+                self._log(f"[分支创作] 分支世界线完成: {branch_dir.name}")
+                self.root.after(0, lambda: messagebox.showinfo("完成", 
+                    f"分支世界线创作完成！\n{branch_dir.name}/\n共{n_chapters}章"))
+                
+            except Exception as e:
+                self._log(f"[分支创作] 失败: {e}")
+                self.root.after(0, lambda: messagebox.showerror("失败", str(e)))
+        
+        threading.Thread(target=run, daemon=True).start()
     
     def _display_chapter(self, num, title, content):
         """显示章节内容（线程安全）"""

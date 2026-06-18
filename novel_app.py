@@ -4989,12 +4989,17 @@ class NovelWriterApp(
         self._generate_character_biography(name)
     
     def _on_char_select(self, event=None):
-        """切换活跃角色"""
+        """切换活跃角色 - 重新加载确保显示最新数据"""
         name = self.char_select_var.get()
         if self.character_system and name:
+            self.character_system.load()  # 重新加载角色文件
             self.character_system.set_active(name)
             self._update_char_display()
             self._log(f"切换到角色: {name}")
+        elif self.character_system:
+            # 如果选择了空，也刷新一下
+            self.character_system.load()
+            self._update_char_display()
     
     def _create_character_dialog(self):
         """创建角色对话框 - 完善版"""

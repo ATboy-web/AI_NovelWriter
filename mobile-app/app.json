@@ -2,7 +2,7 @@
   "expo": {
     "name": "AI小说创作工坊",
     "slug": "ai-novel-writer",
-    "version": "1.0.0",
+    "version": "2.10.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "assetBundlePatterns": ["**/*"],
@@ -12,6 +12,7 @@
     },
     "android": {
       "package": "com.ainovelwriter.app",
+      "versionCode": 20,
       "adaptiveIcon": {
         "backgroundColor": "#1e1e2e"
       }

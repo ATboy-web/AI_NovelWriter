@@ -3989,13 +3989,15 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                               height=20, relief=tk.FLAT, padx=10, pady=10)
         branch_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # 存储决策点数据
+        # 存储决策点数据和当前选中
         all_branches = []
+        selected_idx = [-1]  # 用列表包装以便闭包修改
         
         def show_branch(idx):
             """点击决策点时显示右侧详情"""
             if idx < 0 or idx >= len(all_branches):
                 return
+            selected_idx[0] = idx
             br = all_branches[idx]
             branch_content.delete("1.0", tk.END)
             
@@ -4082,15 +4084,12 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
             messagebox.showwarning("提示", "请先在左侧点击选择一个决策点")
             return
         
-        # 找出当前选中的分支（通过检查 branch_content 中有无故事判断哪个是被选中的）
-        # 简单方案：选最近一个没有故事的决策点
-        br = None
-        for b in reversed(all_branches):
-            if not b.get("story"):
-                br = b
-                break
-        if not br:
-            br = all_branches[-1]  # 重新生成最后一个
+        # 使用当前选中的决策点
+        idx = selected_idx[0]
+        if idx < 0 or idx >= len(all_branches):
+            messagebox.showwarning("提示", "请先在左侧点击选择一个决策点")
+            return
+        br = all_branches[idx]
         
         chapter_num = br["chapter"]
         chapter_file = self.current_novel_dir / "chapters" / f"chapter_{chapter_num:04d}.txt"

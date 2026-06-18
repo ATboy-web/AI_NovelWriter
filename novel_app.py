@@ -3406,6 +3406,67 @@ class NovelWriterApp(
         self._auto_running = False
         self._log("已请求停止自动创作，正在完成当前章节...")
     
+    def _auto_detect_decisions(self, chapter_num: int, content: str):
+        """自动检测决策点，记录到主世界线（不生成分支）"""
+        try:
+            # 只在有实质内容的章节检测
+            if len(content) < 500:
+                return
+            
+            timeline_dir = self.current_novel_dir / "timelines"
+            timeline_dir.mkdir(exist_ok=True)
+            main_file = timeline_dir / "main.json"
+            
+            # 读取或创建主世界线
+            if main_file.exists():
+                main_data = json.loads(main_file.read_text(encoding='utf-8'))
+            else:
+                main_data = {"name": "主线", "events": [], "chapters": [], "branches": []}
+            
+            # 只检测新章节，已检测过的不重复
+            if chapter_num in main_data.get("chapters", []):
+                return
+            
+            system = """你是专业故事分析师。提取本章的关键决策点，输出JSON:
+{"decisions": [{"desc": "当时的情况", "chosen": "主角选择了什么", "alternative": "可能的另一种选择"}]}
+如果没有明显的决策点，输出[]。只检测真正影响故事走向的选择。"""
+            
+            response = self.ai_client.chat(
+                [{"role": "user", "content": f"第{chapter_num}章:\n{content[:2000]}"}],
+                system=system, max_tokens=500
+            )
+            if not response:
+                return
+            
+            import re
+            match = re.search(r'\{[\s\S]*\}', response)
+            if not match:
+                return
+            
+            data = json.loads(match.group())
+            decisions = data.get("decisions", [])
+            if not decisions:
+                return
+            
+            for d in decisions:
+                main_data["events"].append(
+                    f"第{chapter_num}章: {d['desc'][:80]} → 选择了「{d['chosen'][:30]}」"
+                )
+                main_data.setdefault("branches", []).append({
+                    "chapter": chapter_num,
+                    "name": f"分支: 如果{d['alternative'][:15]}",
+                    "decision": d['desc'][:100],
+                    "chosen": d['chosen'][:50],
+                    "alternative": d['alternative'][:50],
+                })
+            
+            main_data.setdefault("chapters", []).append(chapter_num)
+            main_file.write_text(json.dumps(main_data, indent=2, ensure_ascii=False), encoding='utf-8')
+            self._log(f"[世界线] 第{chapter_num}章 记录{len(decisions)}个决策点")
+            
+        except Exception as e:
+            pass  # 静默失败，不影响主流程
+    
     def _auto_detect_characters(self, chapter_num: int, content: str):
         """自动检测新角色并创建"""
         try:
@@ -3687,6 +3748,9 @@ class NovelWriterApp(
                         # 定稿
                         self.agent.finalize_chapter(ch_num, content)
                         
+                        # 自动检测决策点（记录到主世界线）
+                        self._auto_detect_decisions(ch_num, content)
+                        
                         # 自动检测新角色
                         self._auto_detect_characters(ch_num, content)
                         
@@ -3960,9 +4024,8 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
             refresh_timeline()
         tl_combo.bind('<<ComboboxSelected>>', on_select)
         
-        tk.Button(btn_frame, text="检测决策点", font=('微软雅黑', 10), padx=15,
-                 bg=C['success'], fg='white', relief=tk.FLAT,
-                 command=lambda: self._detect_decision_points(dialog, timeline_dir, timelines, refresh_timeline)).pack(side=tk.LEFT, padx=5)
+        tk.Label(btn_frame, text="决策点每章自动检测", font=('微软雅黑', 8),
+                bg=C['bg_dark'], fg=C['text_muted']).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="生成分支世界线", font=('微软雅黑', 10), padx=15,
                  bg=C['warning'], fg='white', relief=tk.FLAT,
                  command=lambda: self._generate_branch_timeline(dialog, timeline_dir, timelines, refresh_timeline)).pack(side=tk.LEFT, padx=5)
@@ -4033,7 +4096,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         """生成另一条世界线 - 如果主角做了不同选择"""
         main_file = timeline_dir / "main.json"
         if not main_file.exists():
-            messagebox.showwarning("提示", "请先检测决策点")
+            messagebox.showwarning("提示", "暂无决策点\n\n每章创作完成后会自动检测决策点，\n请先创作一些章节后再来查看。")
             return
         
         main_data = json.loads(main_file.read_text(encoding='utf-8'))

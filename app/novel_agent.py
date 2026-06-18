@@ -1031,9 +1031,16 @@ class NovelAgent:
         """分段生成长章节 - 逐段续写不重复，自动加标题"""
         seg_size = 2000
         part_count = max((word_count + seg_size - 1) // seg_size, 1)
-        part_count = min(part_count, 5)
+        part_count = min(part_count, 8)
         
-        title_line = f"# 第{chapter_num}章：{chapter_title}\n\n" if chapter_title and chapter_title != f"第{chapter_num}章" else f"# 第{chapter_num}章\n\n"
+        # 标题处理：防止混乱的章节号
+        clean_title = chapter_title or ""
+        # 如果标题就是 "第X章" 格式，说明大纲错误，只用章节号
+        if clean_title.startswith("第") and "章" in clean_title[:6]:
+            clean_title = f"第{chapter_num}章"
+        else:
+            clean_title = f"第{chapter_num}章：{clean_title}"
+        title_line = f"# {clean_title}\n\n"
         
         parts = []
         for i in range(part_count):
@@ -1054,11 +1061,17 @@ class NovelAgent:
                         max_tokens=2048
                     )
                     if response and len(response) > 100:
-                        # 去掉AI可能自己加的标题（所有段）
-                        if response.startswith('#'):
-                            after_title = response.split('\n', 1)
-                            if len(after_title) > 1 and len(after_title[1].strip()) > 20:
-                                response = after_title[1].lstrip()
+                        # 去除AI自动生成的标题行（避免双标题）
+                        lines = response.split('\n', 2)
+                        clean = []
+                        for line in lines:
+                            stripped = line.strip()
+                            # 跳过以 # 开头的标题行、含"第"+"章"的标题行、空行（但保留第一个非标题行后的内容）
+                            if stripped.startswith('#') or (stripped.startswith('第') and '章' in stripped[:10]):
+                                if not clean:  # 只跳过开头的标题，中间的不跳
+                                    continue
+                            clean.append(line)
+                        response = '\n'.join(clean)
                         parts.append(response)
                         break
                 except Exception as e:

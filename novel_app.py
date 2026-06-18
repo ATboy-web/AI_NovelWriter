@@ -2486,13 +2486,52 @@ class NovelWriterApp(
             try:
                 meta = self._get_meta()
                 self.agent.generate_characters(meta["genre"], meta["title"])
-                self._log("角色档案已保存到 memory/characters.json")
+                self._log("角色档案已保存")
+                
+                # 同步到 charsystem 和 characters/ 目录
+                self._sync_memory_chars_to_dir()
             except Exception as e:
                 self._log(f"生成失败: {e}")
             finally:
                 self._gen_running = False
         
         threading.Thread(target=run, daemon=True).start()
+    
+    def _sync_memory_chars_to_dir(self):
+        """将 memory/characters.json 同步到 characters/ 目录"""
+        try:
+            import json as _j
+            mem_chars = self.current_novel_dir / "memory" / "characters.json"
+            if not mem_chars.exists():
+                return
+            data = _j.loads(mem_chars.read_text(encoding='utf-8'))
+            chars = data if isinstance(data, dict) else {}
+            
+            if not self.character_system:
+                from character_system import CharacterSystem
+                self.character_system = CharacterSystem(self.current_novel_dir)
+            
+            for name, info in chars.items():
+                if not self.character_system.get_character(name):
+                    info_dict = info if isinstance(info, dict) else {"description": str(info)}
+                    category = info_dict.get("role", info_dict.get("category", "配角"))
+                    faction = info_dict.get("faction", "中立")
+                    self.character_system.create_character(
+                        name=name, category=category, faction=faction,
+                        first_appearance=1
+                    )
+                    # 添加描述
+                    desc = info_dict.get("description", "") or info_dict.get("personality", "") or ""
+                    if desc:
+                        c = self.character_system.get_character(name)
+                        if c:
+                            c.personality = str(desc)[:200]
+                    self.character_system.save_character(name)
+            
+            self._log(f"[角色同步] {len(chars)}个角色已同步到characters/目录")
+            self.root.after(0, self._update_char_display)
+        except Exception as e:
+            self._log(f"[角色同步] 失败: {e}")
     
     def _gen_outline(self):
         """生成大纲 - 根据当前选择的类型"""

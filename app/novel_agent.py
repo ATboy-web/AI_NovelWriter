@@ -327,7 +327,8 @@ class NovelAgent:
     # ===== 多智能体协作核心 =====
     
     def generate_with_collaboration(self, chapter_num: int, chapter_title: str,
-                                     chapter_outline: str, word_count: int = 3000) -> str:
+                                     chapter_outline: str, word_count: int = 3000,
+                                     prev_chapter_ending: str = "") -> str:
         """多智能体协作生成章节 v3.0 - 5Agent协作
         
         Hello-Agents参考流程: PlotDesigner→WorldBuilder→Writer→Reviewer→Editor
@@ -340,10 +341,15 @@ class NovelAgent:
         self._record_conversation("PlotDesigner", "analyze", f"分析第{chapter_num}章大纲")
         plot_analysis = self._plot_designer_analyze(chapter_num, chapter_title, chapter_outline)
         
+        # 添加上一章结尾
+        extra = ""
+        if prev_chapter_ending:
+            extra = f"第{chapter_num-1}章结尾:\n{prev_chapter_ending}"
+        
         # 根据情节分析确定上下文策略
         plot_type = plot_analysis.get("type", "writing")
-        context = self._build_context(chapter_num, "", writing_phase=plot_type)
-        self.log(f"[PlotDesigner] 情节类型: {plot_type}, 上下文已优化")
+        context = self._build_context(chapter_num, extra, writing_phase=plot_type)
+        self.log(f"[PlotDesigner] 情节类型: {plot_type}, 上下文已优化(含上章结尾)")
         
         # Phase 2: WorldBuilder - 场景与世界一致性
         self.log(f"[WorldBuilder] 构建场景描写...")
@@ -441,7 +447,8 @@ class NovelAgent:
 4. 语言生动，有画面感
 5. 目标字数约{word_count}字
 6. 直接输出正文内容，不要添加额外说明
-7. 注意设置伏笔和悬念"""
+7. 注意设置伏笔和悬念
+8. 禁止使用Markdown格式（禁止**加粗**、*斜体*、#标题等标记），使用纯文本"""
         
         prompt = f"请创作第{chapter_num}章：{chapter_title}\n\n章节大纲：{chapter_outline}\n\n目标字数：{word_count}字\n\n请直接输出正文："
         
@@ -533,11 +540,13 @@ class NovelAgent:
     # ===== 传统方法（兼容旧接口）=====
     
     def generate_chapter(self, chapter_num: int, chapter_title: str, 
-                         chapter_outline: str, word_count: int = 3000) -> str:
+                         chapter_outline: str, word_count: int = 3000,
+                         prev_chapter_ending: str = "") -> str:
         """生成章节 - 带重复检测与修复"""
         max_retries = 3
         content = self.generate_with_collaboration(chapter_num, chapter_title, 
-                                                    chapter_outline, word_count)
+                                                    chapter_outline, word_count,
+                                                    prev_chapter_ending)
         
         if not content:
             self.log(f"第{chapter_num}章生成失败，返回空内容")
@@ -557,6 +566,7 @@ class NovelAgent:
 2. 绝不允许重复内容。每500字推进一次剧情
 3. 用{max(word_count//2000, 1)}个不同的场景段落来写
 4. 每个场景换地点、换人物、换冲突
+5. 禁止Markdown格式（禁止**加粗**、*斜体*等标记），纯文本输出
 
 第{chapter_num}章大纲: {chapter_outline}
 
@@ -1063,7 +1073,7 @@ class NovelAgent:
                 try:
                     response = self.ai.chat(
                         [{"role": "user", "content": part_prompt}],
-                        system=f"严密续写，绝不重复。每段给出自然结尾。\n{context[:500] if context else ''}", 
+                        system=f"严密续写，绝不重复。每段给出自然结尾。禁止Markdown格式。\n{context[:500] if context else ''}", 
                         max_tokens=4096
                     )
                     if response and len(response) > 100:

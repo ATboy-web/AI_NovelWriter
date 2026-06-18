@@ -3764,6 +3764,13 @@ class NovelWriterApp(
                         self.current_chapter = ch_num
                     
                     try:
+                        # 获取上一章结尾作为上下文
+                        prev_ending = ""
+                        prev_ch_file = chapters_dir / f"chapter_{ch_num - 1:04d}.txt"
+                        if prev_ch_file.exists():
+                            prev_content = prev_ch_file.read_text(encoding='utf-8')
+                            prev_ending = prev_content[-800:] if len(prev_content) > 800 else prev_content
+                        
                         # 超时重试3次
                         for attempt in range(3):
                             try:
@@ -3771,7 +3778,8 @@ class NovelWriterApp(
                                     ch_num,
                                     chapter_info.get("title", f"第{ch_num}章"),
                                     chapter_info.get("summary", ""),
-                                    word_count=meta.get("word_count_per_chapter", 6000)
+                                    word_count=meta.get("word_count_per_chapter", 6000),
+                                    prev_chapter_ending=prev_ending
                                 )
                                 break
                             except Exception as te:

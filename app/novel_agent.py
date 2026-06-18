@@ -920,9 +920,11 @@ class NovelAgent:
                         max_tokens=2048
                     )
                     if response and len(response) > 100:
-                        # 去掉AI可能自己加的标题
-                        if i > 0 and response.startswith('#'):
-                            response = response.split('\n', 1)[-1] if '\n' in response else response
+                        # 去掉AI可能自己加的标题（所有段）
+                        if response.startswith('#'):
+                            after_title = response.split('\n', 1)
+                            if len(after_title) > 1 and len(after_title[1].strip()) > 20:
+                                response = after_title[1].lstrip()
                         parts.append(response)
                         break
                 except Exception as e:

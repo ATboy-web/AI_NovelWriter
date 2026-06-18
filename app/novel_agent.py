@@ -328,7 +328,7 @@ class NovelAgent:
     
     def generate_with_collaboration(self, chapter_num: int, chapter_title: str,
                                      chapter_outline: str, word_count: int = 3000,
-                                     prev_chapter_ending: str = "") -> str:
+                                     prev_context: str = "") -> str:
         """多智能体协作生成章节 v3.0 - 5Agent协作
         
         Hello-Agents参考流程: PlotDesigner→WorldBuilder→Writer→Reviewer→Editor
@@ -341,15 +341,10 @@ class NovelAgent:
         self._record_conversation("PlotDesigner", "analyze", f"分析第{chapter_num}章大纲")
         plot_analysis = self._plot_designer_analyze(chapter_num, chapter_title, chapter_outline)
         
-        # 添加上一章结尾
-        extra = ""
-        if prev_chapter_ending:
-            extra = f"第{chapter_num-1}章结尾:\n{prev_chapter_ending}"
-        
-        # 根据情节分析确定上下文策略
+        # 注入前几章内容上下文
         plot_type = plot_analysis.get("type", "writing")
-        context = self._build_context(chapter_num, extra, writing_phase=plot_type)
-        self.log(f"[PlotDesigner] 情节类型: {plot_type}, 上下文已优化(含上章结尾)")
+        context = self._build_context(chapter_num, prev_context, writing_phase=plot_type)
+        self.log(f"[PlotDesigner] 情节类型: {plot_type}, 上下文含前3章内容节选")
         
         # Phase 2: WorldBuilder - 场景与世界一致性
         self.log(f"[WorldBuilder] 构建场景描写...")
@@ -541,12 +536,12 @@ class NovelAgent:
     
     def generate_chapter(self, chapter_num: int, chapter_title: str, 
                          chapter_outline: str, word_count: int = 3000,
-                         prev_chapter_ending: str = "") -> str:
+                         prev_context: str = "") -> str:
         """生成章节 - 带重复检测与修复"""
         max_retries = 3
         content = self.generate_with_collaboration(chapter_num, chapter_title, 
                                                     chapter_outline, word_count,
-                                                    prev_chapter_ending)
+                                                    prev_context)
         
         if not content:
             self.log(f"第{chapter_num}章生成失败，返回空内容")

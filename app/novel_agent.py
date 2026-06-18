@@ -1031,14 +1031,13 @@ class NovelAgent:
         return default
     
     def _generate_long_chapter(self, chapter_num, chapter_title, chapter_outline, word_count, context) -> str:
-        """分段生成长章节 - 逐段续写不重复，自动加标题"""
+        """分段生成长章节 - 确保每章结尾完整自然"""
         seg_size = 2000
         part_count = max((word_count + seg_size - 1) // seg_size, 1)
         part_count = min(part_count, 8)
         
-        # 标题处理：防止混乱的章节号
+        # 标题处理
         clean_title = chapter_title or ""
-        # 如果标题就是 "第X章" 格式，说明大纲错误，只用章节号
         if clean_title.startswith("第") and "章" in clean_title[:6]:
             clean_title = f"第{chapter_num}章"
         else:
@@ -1047,11 +1046,15 @@ class NovelAgent:
         
         parts = []
         for i in range(part_count):
+            is_last = (i == part_count - 1)
             self.log(f"[Writer] 第{chapter_num}章 第{i+1}/{part_count}段...")
             
             prev_text = ''.join(parts)
             if i == 0:
                 part_prompt = f"创作第{chapter_num}章：{chapter_title}\n大纲：{chapter_outline}\n请创作约{seg_size}字的小说正文："
+            elif is_last:
+                last_200 = prev_text[-200:] if len(prev_text) > 200 else prev_text
+                part_prompt = f"紧接上文继续写。上文结尾：{last_200}\n这是本章最后一段，请推进剧情约{seg_size}字并给出自然完整的段落结尾。严禁重复。"
             else:
                 last_200 = prev_text[-200:] if len(prev_text) > 200 else prev_text
                 part_prompt = f"紧接上文继续写。上文结尾：{last_200}\n要求：继续推进剧情约{seg_size}字，严禁重复。"
@@ -1060,19 +1063,17 @@ class NovelAgent:
                 try:
                     response = self.ai.chat(
                         [{"role": "user", "content": part_prompt}],
-                        system=f"严密续写，绝不重复。\n{context[:500] if context else ''}", 
-                        max_tokens=2048
+                        system=f"严密续写，绝不重复。每段给出自然结尾。\n{context[:500] if context else ''}", 
+                        max_tokens=4096
                     )
                     if response and len(response) > 100:
-                        # 去除AI自动生成的标题行（避免双标题）
+                        # 去除AI生成的标题
                         lines = response.split('\n', 2)
                         clean = []
                         for line in lines:
                             stripped = line.strip()
-                            # 跳过以 # 开头的标题行、含"第"+"章"的标题行、空行（但保留第一个非标题行后的内容）
-                            if stripped.startswith('#') or (stripped.startswith('第') and '章' in stripped[:10]):
-                                if not clean:  # 只跳过开头的标题，中间的不跳
-                                    continue
+                            if (stripped.startswith('#') or (stripped.startswith('第') and '章' in stripped[:10])) and not clean:
+                                continue
                             clean.append(line)
                         response = '\n'.join(clean)
                         parts.append(response)
@@ -1082,4 +1083,23 @@ class NovelAgent:
                     if attempt == 2:
                         return title_line + ("\n\n".join(parts) if parts else "（生成失败）")
         
-        return title_line + ("\n\n".join(parts) if parts else "（生成失败）")
+        result = title_line + ("\n\n".join(parts) if parts else "（生成失败）")
+        
+        # 末段完整性检查：如果结尾没有句号/感叹号/问号等，AI补全
+        if parts and len(result) > 500:
+            last_100 = result[-100:].strip()
+            endings = {'。', '！', '？', '…', '"', '」', '】', '—'}
+            if not any(e in last_100[-3:] for e in endings):
+                self.log(f"[Writer] 第{chapter_num}章末段不完整，尝试补全...")
+                try:
+                    completion = self.ai.chat(
+                        [{"role": "user", "content": f"请补充完整以下段落（30-80字）：\n{result[-300:]}"}],
+                        system="你是作家。给上面段落补充一个自然的收尾。只输出补全文字。",
+                        max_tokens=200
+                    )
+                    if completion and len(completion) > 5:
+                        result += completion
+                except:
+                    pass
+        
+        return result

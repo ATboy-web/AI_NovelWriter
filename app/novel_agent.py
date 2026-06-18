@@ -405,10 +405,11 @@ class NovelAgent:
         prompt = f"第{chapter_num}章: {title}\n大纲: {outline[:500]}"
         try:
             response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=300)
-            import re
-            match = re.search(r'\{[\s\S]*\}', response)
-            if match:
-                return json.loads(match.group())
+            if response:
+                import re
+                match = re.search(r'\{[\s\S]*\}', response)
+                if match:
+                    return json.loads(match.group())
         except:
             pass
         return {"type": "writing", "pace": "medium", "foreshadowing": []}
@@ -448,8 +449,8 @@ class NovelAgent:
             return self._generate_long_chapter(chapter_num, chapter_title, chapter_outline, word_count, context)
         
         response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4096)
-        self.log(f"[Writer] 第{chapter_num}章初稿完成，字数：{len(response)}")
-        return response
+        self.log(f"[Writer] 第{chapter_num}章初稿完成，字数：{len(response) if response else 0}")
+        return response or ""
     
     def _reviewer_evaluate(self, chapter_num: int, content: str, 
                            previous_feedback: str = "") -> dict:
@@ -487,7 +488,7 @@ class NovelAgent:
         response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
         
         try:
-            return self._parse_json_response(response, {"overall_score": 70, "issues": [], "suggestions": []})
+            return self._parse_json_response(response or "{}", {"overall_score": 70, "issues": [], "suggestions": []})
         except Exception:
             return {"overall_score": 70, "issues": [], "suggestions": [], "raw": response}
     
@@ -526,8 +527,8 @@ class NovelAgent:
 修订要求：请输出完整的修订后文本，直接输出正文："""
         
         response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4096)
-        self.log(f"[Writer] 修订完成，字数：{len(response)}")
-        return response
+        self.log(f"[Writer] 修订完成，字数：{len(response) if response else 0}")
+        return response or content
     
     # ===== 传统方法（兼容旧接口）=====
     
@@ -856,6 +857,8 @@ class NovelAgent:
                 [{"role": "user", "content": f"章节摘要: {summary}\n内容片段: {content[:1500]}"}],
                 system=system, max_tokens=800
             )
+            if not response:
+                return
             
             import re
             match = re.search(r'\{[\s\S]*\}', response)
@@ -985,7 +988,7 @@ class NovelAgent:
 4. 直接输出创作内容，不要添加解释"""
         
         response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=word_count * 2)
-        return response
+        return response or ""
     
     def blend_styles(self, styles: List[dict], prompt: str, word_count: int = 3000) -> str:
         """融合多个作者的风格生成文本"""

@@ -2551,7 +2551,7 @@ class NovelWriterApp(
 输出JSON数组：[{"title": "", "description": "", "chapter_range": ""}]"""
         prompt = f"小说类型：{meta['genre']}\n标题：{meta['title']}\n章节数：{meta['chapter_count']}"
         response = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
-        return self._parse_json_response(response, [])
+        return self._parse_json_response(response or "{}", [])
     
     def _generate_story_outlines(self, meta: dict) -> dict:
         """生成故事大纲"""
@@ -3419,6 +3419,8 @@ class NovelWriterApp(
                 [{"role": "user", "content": f"第{chapter_num}章内容:\n{content[:2000]}"}],
                 system=system, max_tokens=500
             )
+            if not response:
+                return
             
             import re
             match = re.search(r'\[[\s\S]*\]', response)

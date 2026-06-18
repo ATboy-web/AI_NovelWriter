@@ -4203,6 +4203,22 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         origin_file = self.current_novel_dir / "chapters" / f"chapter_{origin_ch:04d}.txt"
         context_text = origin_file.read_text(encoding='utf-8')[:2000] if origin_file.exists() else ""
         
+        # 复制角色系统到分支
+        src_chars_dir = self.current_novel_dir / "characters"
+        b_chars_dir = branch_dir / "characters"
+        if src_chars_dir.exists():
+            import shutil
+            shutil.copytree(src_chars_dir, b_chars_dir, dirs_exist_ok=True)
+        
+        # 复制世界观
+        src_memory = self.current_novel_dir / "memory"
+        b_memory = branch_dir / "memory"
+        b_memory.mkdir(exist_ok=True)
+        for fname in ["settings.json", "global_summary.txt"]:
+            sf = src_memory / fname
+            if sf.exists():
+                shutil.copy2(sf, b_memory / fname)
+        
         # 生成分支大纲
         def run():
             try:
@@ -4231,13 +4247,20 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 outline_data = json.loads(match.group())
                 outline = outline_data.get("outline", [])
                 
-                # 保存大纲
                 (branch_dir / "outline.json").write_text(
                     json.dumps(outline, indent=2, ensure_ascii=False), encoding='utf-8')
                 
                 self._log(f"[分支创作] 大纲生成完成: {len(outline)}章")
                 
-                # 逐章创作
+                # 初始化分支的CharacterSystem
+                from character_system import CharacterSystem
+                branch_chars = CharacterSystem(branch_dir)
+                branch_chars.load()
+                
+                # 初始化分支MemoryManager
+                from app.memory_manager import MemoryManager
+                branch_mem = MemoryManager(branch_dir)
+                
                 meta = self._get_meta()
                 genre = meta.get("genre", "玄幻")
                 word_count = meta.get("word_count_per_chapter", 5000)
@@ -4245,14 +4268,14 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 for i, ch in enumerate(outline):
                     ch_num = origin_ch + i
                     title = ch.get("title", f"分支第{i+1}章")
-                    summary = ch.get("summary", "")
+                    ch_summary = ch.get("summary", "")
                     
                     self._log(f"[分支创作] 第{ch_num}章: {title}")
                     
                     ch_prompt = f"""基于决策分支继续创作。
 分支选择: {br['alternative']}
 原文: {context_text[:800]}
-章节大纲: {title}: {summary}
+章节大纲: {title}: {ch_summary}
 请创作约{word_count}字的小说正文。"""
                     
                     content = self.ai_client.chat(
@@ -4266,10 +4289,38 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                     ch_file = branch_dir / "chapters" / f"chapter_{ch_num:04d}.txt"
                     ch_file.write_text(f"# 分支第{i+1}章: {title}\n\n{content}", encoding='utf-8')
                     
-                    # 保存摘要
-                    summary_text = content[:300]
-                    (branch_dir / "summaries" / f"chapter_{ch_num:04d}_summary.txt").write_text(
-                        f"分支第{i+1}章: {title}\n\n{summary_text}", encoding='utf-8')
+                    # 定稿流程：摘要 + 角色成长 + 角色检测
+                    if self.agent:
+                        try:
+                            ch_summary_text = self.ai_client.chat(
+                                [{"role": "user", "content": f"请生成摘要(50-100字):\n{content[:1500]}"}],
+                                system="生成精简摘要。", max_tokens=200
+                            )
+                            branch_mem.save_chapter_summary(ch_num, ch_summary_text or content[:200])
+                            (branch_dir / "summaries" / f"chapter_{ch_num:04d}_summary.txt").write_text(
+                                f"分支第{i+1}章: {title}\n\n{ch_summary_text or content[:200]}", encoding='utf-8')
+                        except:
+                            pass
+                    
+                    # 角色自动检测
+                    try:
+                        ch_detect_system = """提取新角色名(逗号分隔)，无则输出"无":"""
+                        ch_response = self.ai_client.chat(
+                            [{"role": "user", "content": f"第{ch_num}章:\n{content[:2000]}"}],
+                            system=ch_detect_system, max_tokens=300
+                        )
+                        if ch_response and ch_response.strip() != "无":
+                            names = [n.strip() for n in ch_response.split(",") if n.strip()]
+                            for name in names:
+                                if not branch_chars.get_character(name):
+                                    branch_chars.create_character(name=name, first_appearance=ch_num)
+                                    branch_chars.save_character(name)
+                                    self._log(f"[分支角色] 新增: {name}")
+                    except:
+                        pass
+                    
+                    # 更新上下文用于下一章
+                    context_text = content[-1500:] if len(content) > 1500 else content
                     
                     self._log(f"[分支创作] 第{ch_num}章完成 ({len(content)}字)")
                     
@@ -4279,6 +4330,10 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 branch_meta["status"] = "completed"
                 (branch_dir / "meta.json").write_text(
                     json.dumps(branch_meta, indent=2, ensure_ascii=False), encoding='utf-8')
+                
+                self._log(f"[分支创作] 分支世界线完成: {branch_dir.name}")
+                self.root.after(0, lambda: messagebox.showinfo("完成", 
+                    f"分支世界线创作完成！\n{branch_dir.name}/\n共{n_chapters}章\n\n角色系统/摘要均已生成"))
                 
                 self._log(f"[分支创作] 分支世界线完成: {branch_dir.name}")
                 self.root.after(0, lambda: messagebox.showinfo("完成", 

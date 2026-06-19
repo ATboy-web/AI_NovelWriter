@@ -1143,11 +1143,11 @@ class NovelWriterApp(
         dialog = tk.Toplevel(self.root)
         dialog.title("新建小说")
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-        w, h = min(720, sw - 60), int(sh * 0.85)
+        w, h = min(900, sw - 60), int(sh * 0.88)
         x, y = (sw - w) // 2, (sh - h) // 2
         dialog.geometry(f"{w}x{h}+{x}+{y}")
         dialog.resizable(True, True)
-        dialog.minsize(550, 600)
+        dialog.minsize(650, 700)
         dialog.transient(self.root)
         dialog.grab_set()
         
@@ -1557,10 +1557,10 @@ class NovelWriterApp(
             
             self.title_var.set(title)
             self.genre_var.set(f"{genre}-{sub_genre}")
-            self.chapter_var.set(f"0/{chapters}")
+            self.chapter_var.set(f"0/{total_chapters}")
             
             dialog.destroy()
-            self._log(f"新建小说《{title}》({sub_genre}) 创建成功，标签: {', '.join(selected_tags)}")
+            self._log(f"新建小说《{title}》({sub_genre}) 创建成功，目标{total_chapters}章，首先生成{chapters}章")
         
         tk.Button(action_row, text="创建小说", command=confirm, font=('微软雅黑', 10, 'bold'),
                  bg=C['accent'], fg='white', relief=tk.FLAT, padx=20, pady=3).pack(side=tk.RIGHT)
@@ -1656,7 +1656,7 @@ class NovelWriterApp(
         
         # 计算进度
         chapters_dir = novel_dir / "chapters"
-        total_chapters = meta.get('chapter_count', 0)
+        total_chapters = meta.get('total_chapters', meta.get('chapter_count', 0))
         completed_chapters = 0
         
         if chapters_dir.exists():
@@ -3662,7 +3662,9 @@ class NovelWriterApp(
         
         # 重置进度
         self.current_chapter = 0
-        self.chapter_var.set(f"0/{self._get_meta().get('chapter_count', '?')}")
+        meta = self._get_meta()
+        total = meta.get('total_chapters', meta.get('chapter_count', '?'))
+        self.chapter_var.set(f"0/{total}")
         self.content_text.delete("1.0", tk.END)
         
         # 启动自动创作
@@ -3925,7 +3927,7 @@ class NovelWriterApp(
             return
         
         meta = self._get_meta()
-        total = meta.get("chapter_count", 0) or len(self.outline)
+        total = meta.get('total_chapters', meta.get("chapter_count", 0)) or len(self.outline)
         if total == 0:
             messagebox.showwarning("提示", "还没有章节")
             return
@@ -4592,7 +4594,8 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         self.chapter_title_var.set(f"第{num}章: {title}")
         self.word_count_var.set(f"字数: {len(content)}")
         meta = self._get_meta()
-        self.chapter_var.set(f"{self.current_chapter}/{meta.get('chapter_count', '?')}")
+        total = meta.get('total_chapters', meta.get('chapter_count', '?'))
+        self.chapter_var.set(f"{self.current_chapter}/{total}")
         
         # 后台线程保存摘要（避免UI线程I/O）
         if hasattr(self, 'current_novel_dir') and self.current_novel_dir:

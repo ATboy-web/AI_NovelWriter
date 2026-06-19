@@ -3686,15 +3686,15 @@ class NovelWriterApp(
         # 构建选择对话框
         dlg = tk.Toplevel(self.root)
         dlg.title("全部重新创作")
-        dlg.geometry("440x380")
+        dlg.geometry("480x340")
         dlg.configure(bg=UIStyle.COLORS['bg_dark'])
         dlg.resizable(False, False)
         C = UIStyle.COLORS
         
-        tk.Label(dlg, text="⚠️ 全部重新创作", font=('微软雅黑', 14, 'bold'),
-                bg=C['bg_dark'], fg=C['accent']).pack(pady=(15, 5))
-        tk.Label(dlg, text="选择需要重新生成的内容：", font=('微软雅黑', 10),
-                bg=C['bg_dark'], fg=C['text_secondary']).pack(pady=(0, 10))
+        tk.Label(dlg, text="⚠️ 全部重新创作", font=('微软雅黑', 13, 'bold'),
+                bg=C['bg_dark'], fg=C['accent']).pack(pady=(12, 3))
+        tk.Label(dlg, text="选择需要重新生成的内容：", font=('微软雅黑', 9),
+                bg=C['bg_dark'], fg=C['text_secondary']).pack(pady=(0, 8))
         
         # 勾选框
         var_world = tk.BooleanVar(value=False)
@@ -3703,15 +3703,16 @@ class NovelWriterApp(
         var_chapters = tk.BooleanVar(value=True)
         
         options_frame = tk.Frame(dlg, bg=C['bg_dark'])
-        options_frame.pack(fill=tk.X, padx=30, pady=5)
+        options_frame.pack(fill=tk.X, padx=20, pady=3)
         
         def make_cb(parent, text, var, enabled=True):
             cb = tk.Checkbutton(parent, text=text, variable=var,
-                               font=('微软雅黑', 10),
+                               font=('微软雅黑', 9),
                                bg=C['bg_dark'], fg=C['text_primary'],
                                selectcolor=C['bg_card'], activebackground=C['bg_dark'],
-                               activeforeground=C['text_primary'])
-            cb.pack(anchor=tk.W, pady=4)
+                               activeforeground=C['text_primary'],
+                               wraplength=420, justify=tk.LEFT)
+            cb.pack(anchor=tk.W, pady=3)
             if not enabled:
                 cb.config(state=tk.DISABLED)
             return cb

@@ -3,6 +3,17 @@ name = "ai-novel-writer"
 version = "2.5.1"
 description = "AI自动写小说系统"
 requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.24",
+    "loguru>=0.7.0",
+    "python-docx>=0.8.11",
+    "pypdf>=3.0",
+    "ebooklib>=0.18",
+    "markdown>=3.4",
+    "beautifulsoup4>=4.12",
+    "Pillow>=9.0",
+    "chromadb>=0.4.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "backend/tests"]

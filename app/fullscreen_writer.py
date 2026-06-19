@@ -7,7 +7,12 @@ import re
 import threading
 import tkinter as tk
 from tkinter import ttk
-from loguru import logger
+
+try:
+    from loguru import logger
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
 
 from .ai_client import AIClient
 from .config import AppConfig

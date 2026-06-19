@@ -3780,13 +3780,44 @@ class NovelWriterApp(
                         
                         prev_context = "\n---\n".join(recent_context)
                         
+                        # 如果大纲是"待规划"，动态生成本章大纲
+                        chapter_summary = chapter_info.get("summary", "")
+                        chapter_title = chapter_info.get("title", f"第{ch_num}章")
+                        if not chapter_summary or chapter_summary == "待规划":
+                            self._log(f"第{ch_num}章大纲为空，动态生成中...")
+                            try:
+                                gen_system = f"""基于前文续写下一章大纲。
+输出JSON: {{"title": "章节标题(10字)", "summary": "内容概要(100字)"}}"""
+                                gen_prompt = f"前文上下文:\n{prev_context[:1000]}\n\n主角陈渊的故事继续。请生成第{ch_num}章大纲。"
+                                resp = self.ai_client.chat(
+                                    [{"role": "user", "content": gen_prompt}],
+                                    system=gen_system, max_tokens=300
+                                )
+                                if resp:
+                                    import re
+                                    m = re.search(r'\{[\s\S]*\}', resp)
+                                    if m:
+                                        new = json.loads(m.group())
+                                        chapter_title = new.get("title", chapter_title)
+                                        chapter_summary = new.get("summary", chapter_summary)
+                                        # 更新outline
+                                        with self._state_lock:
+                                            if self.outline and ch_num-1 < len(self.outline):
+                                                self.outline[ch_num-1]["title"] = chapter_title
+                                                self.outline[ch_num-1]["summary"] = chapter_summary
+                                        self._log(f"第{ch_num}章大纲已动态生成: {chapter_title}")
+                                if not chapter_summary or chapter_summary == "待规划":
+                                    chapter_summary = f"主角陈渊在第{ch_num-1}章事件后继续冒险"
+                            except Exception:
+                                chapter_summary = f"主角陈渊继续在阴阳岛的故事"
+                        
                         # 超时重试3次
                         for attempt in range(3):
                             try:
                                 content = self.agent.generate_chapter(
                                     ch_num,
-                                    chapter_info.get("title", f"第{ch_num}章"),
-                                    chapter_info.get("summary", ""),
+                                    chapter_title,
+                                    chapter_summary,
                                     word_count=meta.get("word_count_per_chapter", 6000),
                                     prev_context=prev_context
                                 )

@@ -10,12 +10,18 @@
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "compileSdkVersion": 35,
+        "targetSdkVersion": 35,
+        "minSdkVersion": 24
       }
     },
     "production": {
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "compileSdkVersion": 35,
+        "targetSdkVersion": 35,
+        "minSdkVersion": 24
       }
     }
   },

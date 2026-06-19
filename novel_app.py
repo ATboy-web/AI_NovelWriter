@@ -3733,7 +3733,7 @@ class NovelWriterApp(
         btn_frame = tk.Frame(dlg, bg=C['bg_dark'])
         btn_frame.pack(pady=15)
         tk.Button(btn_frame, text="开始重新创作", command=on_confirm,
-                 bg=C['danger'], fg='white', font=('微软雅黑', 10, 'bold'),
+                 bg=C['error'], fg='white', font=('微软雅黑', 10, 'bold'),
                  padx=20, pady=6).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="取消", command=on_cancel,
                  bg=C['bg_light'], fg=C['text_primary'],

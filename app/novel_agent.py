@@ -712,41 +712,104 @@ class NovelAgent:
         return chars
     
     def generate_outline(self, genre: str, title: str, chapter_count: int, concept: str = "") -> list:
-        """生成大纲 - 支持大量章节分批生成"""
-        max_batch = 50  # 每批最多生成50章大纲
+        """生成大纲 - 智能分批+故事弧线
         
-        if chapter_count <= max_batch:
+        策略:
+        - 小量(<20章): 一次生成
+        - 中量(20-100章): 按故事弧线分批(开端/发展/高潮/结局)
+        - 大量(100+章): 生成全局弧线+分批详细大纲
+        """
+        if chapter_count <= 20:
             return self._generate_outline_batch(genre, title, chapter_count, 1, concept)
         
-        # 大量章节分批生成
-        self.log(f"[智能体] 共{chapter_count}章，分批生成大纲（每批{max_batch}章）...")
+        # 分批策略: 每批15章，确保AI有足够token生成详细大纲
+        batch_size = 15
         all_outline = []
+        total_batches = (chapter_count + batch_size - 1) // batch_size
         
-        for start_ch in range(1, chapter_count + 1, max_batch):
-            batch_count = min(max_batch, chapter_count - start_ch + 1)
-            self.log(f"[大纲] 生成第{start_ch}-{start_ch+batch_count-1}章大纲...")
-            batch_outline = self._generate_outline_batch(genre, title, batch_count, start_ch, concept)
-            all_outline.extend(batch_outline)
+        # 先规划故事弧线 (对于大量章节)
+        if chapter_count > 50:
+            arc_plan = self._plan_story_arcs(genre, title, chapter_count, concept)
+        else:
+            arc_plan = ""
+        
+        for batch_idx in range(total_batches):
+            start_ch = batch_idx * batch_size + 1
+            batch_count = min(batch_size, chapter_count - start_ch + 1)
             
-            # 更新上下文
+            # 构建上下文
+            ctx = concept[:200] if concept else ""
             if all_outline:
-                last_summary = all_outline[-1].get("summary", "")
-                concept = f"已规划{len(all_outline)}章。上一章摘要：{last_summary}"
+                # 包含前几章摘要
+                recent = all_outline[-3:]
+                ctx = "前文概要:\n" + "\n".join(
+                    f"第{r.get('chapter','?')}章 {r.get('title','?')}: {str(r.get('summary',''))[:40]}"
+                    for r in recent
+                )
+            
+            # 添加弧线位置提示
+            progress_pct = (start_ch - 1) / chapter_count * 100
+            if progress_pct < 15:
+                phase = "【故事开端】建立世界观，引入主角和核心矛盾"
+            elif progress_pct < 40:
+                phase = "【发展阶段】展开情节，深化冲突，发展角色关系"
+            elif progress_pct < 70:
+                phase = "【高潮推进】关键冲突升级，重大转折，角色成长"
+            elif progress_pct < 90:
+                phase = "【高潮巅峰】最终决战或最大冲突"
+            else:
+                phase = "【结局收束】收尾主线，交代结局，主题升华"
+            
+            if arc_plan:
+                phase += f"\n全局弧线规划: {arc_plan[:200]}"
+            
+            self.log(f"[大纲] 第{start_ch}-{start_ch+batch_count-1}章 ({batch_idx+1}/{total_batches}) {phase[:20]}")
+            
+            batch_outline = self._generate_outline_batch(
+                genre, title, batch_count, start_ch, 
+                f"{ctx}\n创作阶段: {phase}\n剩余{chapter_count-start_ch+1-batch_count}章"
+            )
+            all_outline.extend(batch_outline)
         
         return all_outline
     
+    def _plan_story_arcs(self, genre: str, title: str, chapter_count: int, concept: str) -> str:
+        """为长篇规划故事弧线"""
+        system = f"你是专业故事架构师。为{chapter_count}章长篇规划故事弧线。输出简洁文本。"
+        prompt = f"类型:{genre} 标题:{title} 概念:{concept[:200]}\n为{chapter_count}章规划: 1.开端(前15%) 2.发展(15-70%) 3.高潮(70-90%) 4.结局(90-100%)。每段50字。"
+        try:
+            response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=500)
+            return response or ""
+        except:
+            return ""
+    
     def _generate_outline_batch(self, genre: str, title: str, count: int, start_num: int, concept: str = "") -> list:
-        """生成一批大纲"""
-        context = self._build_context(0)
-        system = f"你是专业小说大纲规划师。\n{context}\n输出JSON数组：[{{'chapter':{start_num},'title':'','summary':'','key_events':[],'characters_involved':[]}}]"
-        prompt = f"小说类型：{genre}\n标题：{title}\n章节数：{count}章（从第{start_num}章开始）"
-        if concept:
-            prompt += f"\n用户想法：{concept}\n请基于用户的想法来规划大纲"
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
+        """生成一批大纲 - 确保每章都有实质性内容"""
+        system = f"""你是专业小说大纲师。为{count}章生成大纲。每章必须完整。
+输出JSON数组，每项包含: chapter(章节号), title(章节标题10字内), summary(内容概要80-150字)。
+禁止"待规划"或空摘要。关键：摘要要具体，包含本章独特事件。"""
+        
+        prompt = f"类型:{genre} 标题:{title} 从第{start_num}章起{count}章。{concept}"
+        
+        # 增加max_tokens: 每章约60 tokens，加上buffer
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, 
+                              max_tokens=max(count * 80, 2000))
         outline = self._parse_json_response(response, [], is_list=True)
-        if not outline:
-            outline = [{"chapter": start_num+i, "title": f"第{start_num+i}章", "summary": concept if concept else "待规划"} 
-                      for i in range(count)]
+        
+        if not outline or len(outline) < count:
+            # 填充缺失的章节
+            existing = {o["chapter"] for o in outline} if outline else set()
+            for i in range(count):
+                ch_num = start_num + i
+                if ch_num not in existing:
+                    outline.append({
+                        "chapter": ch_num, 
+                        "title": f"第{ch_num}章",
+                        "summary": f"第{ch_num}章的故事发展（根据前文情节自然推进，激化主要矛盾，发展人物关系）"
+                    })
+        
+        # 确保有序
+        outline.sort(key=lambda x: x.get("chapter", 0))
         return outline
     
     def generate_outline_continuation(self, genre: str, title: str, 

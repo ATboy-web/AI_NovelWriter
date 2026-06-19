@@ -3668,25 +3668,109 @@ class NovelWriterApp(
         threading.Thread(target=run, daemon=True).start()
     
     def _regen_all_chapters(self):
-        """全部重新创作"""
+        """全部重新创作 — 让用户选择是否重创世界观/角色/大纲"""
         if not self._check_ready(silent=True):
             return
         if not self.current_novel_dir:
             messagebox.showwarning("提示", "请先打开小说")
             return
         
-        result = messagebox.askyesno("全部重新创作", 
-            "⚠️ 确定要重新创作所有章节吗？\n\n所有已生成的章节内容将被覆盖！\n此操作不可撤销！")
-        if not result:
+        # 构建选择对话框
+        dlg = tk.Toplevel(self.root)
+        dlg.title("全部重新创作")
+        dlg.geometry("420x320")
+        dlg.configure(bg=UIStyle.COLORS['bg_dark'])
+        dlg.resizable(False, False)
+        C = UIStyle.COLORS
+        
+        tk.Label(dlg, text="⚠️ 全部重新创作", font=('微软雅黑', 14, 'bold'),
+                bg=C['bg_dark'], fg=C['accent']).pack(pady=(15, 5))
+        tk.Label(dlg, text="选择需要重新生成的内容：", font=('微软雅黑', 10),
+                bg=C['bg_dark'], fg=C['text_secondary']).pack(pady=(0, 10))
+        
+        # 勾选框
+        var_world = tk.BooleanVar(value=False)
+        var_chars = tk.BooleanVar(value=False)
+        var_outline = tk.BooleanVar(value=True)
+        var_chapters = tk.BooleanVar(value=True)
+        
+        options_frame = tk.Frame(dlg, bg=C['bg_dark'])
+        options_frame.pack(fill=tk.X, padx=30, pady=5)
+        
+        def make_cb(parent, text, var, enabled=True):
+            cb = tk.Checkbutton(parent, text=text, variable=var,
+                               font=('微软雅黑', 10),
+                               bg=C['bg_dark'], fg=C['text_primary'],
+                               selectcolor=C['bg_card'], activebackground=C['bg_dark'],
+                               activeforeground=C['text_primary'])
+            cb.pack(anchor=tk.W, pady=4)
+            if not enabled:
+                cb.config(state=tk.DISABLED)
+            return cb
+        
+        make_cb(options_frame, "重新生成世界观 (世界设定/背景)", var_world)
+        make_cb(options_frame, "重新生成角色 (主角/配角/反派)", var_chars)
+        make_cb(options_frame, "重新生成大纲 (章节大纲)", var_outline)
+        make_cb(options_frame, "重新生成所有章节 (正文内容)", var_chapters, enabled=False)
+        
+        # 提示
+        tk.Label(dlg, text="未勾选的项目将保留现有内容",
+                font=('微软雅黑', 9), bg=C['bg_dark'],
+                fg=C['text_secondary']).pack(pady=(10, 5))
+        
+        result = {'confirmed': False}
+        
+        def on_confirm():
+            result['confirmed'] = True
+            result['world'] = var_world.get()
+            result['chars'] = var_chars.get()
+            result['outline'] = var_outline.get()
+            dlg.destroy()
+        
+        def on_cancel():
+            dlg.destroy()
+        
+        btn_frame = tk.Frame(dlg, bg=C['bg_dark'])
+        btn_frame.pack(pady=15)
+        tk.Button(btn_frame, text="开始重新创作", command=on_confirm,
+                 bg=C['danger'], fg='white', font=('微软雅黑', 10, 'bold'),
+                 padx=20, pady=6).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="取消", command=on_cancel,
+                 bg=C['bg_light'], fg=C['text_primary'],
+                 font=('微软雅黑', 10), padx=20, pady=6).pack(side=tk.LEFT, padx=5)
+        
+        dlg.transient(self.root)
+        dlg.grab_set()
+        self.root.wait_window(dlg)
+        
+        if not result['confirmed']:
             return
         
-        # 确认删除现有章节
-        confirm = messagebox.askyesno("再次确认",
-            "⚠️ 此操作将删除所有已生成的章节并重新创作。\n确定继续？")
-        if not confirm:
-            return
+        # 删除勾选的内容
+        if result['world']:
+            sf = self.current_novel_dir / "memory" / "settings.json"
+            if sf.exists():
+                sf.unlink()
+            self._log("已清除世界观")
         
-        self._log("开始全部重新创作...")
+        if result['chars']:
+            cd = self.current_novel_dir / "characters"
+            if cd.exists():
+                for f in cd.glob("*.json"):
+                    f.unlink()
+            self._log("已清除所有角色")
+        
+        if result['outline']:
+            of = self.current_novel_dir / "outline.json"
+            if of.exists():
+                of.unlink()
+            # 清除整体大纲和故事大纲
+            for fn in ["overall.json", "stories.json"]:
+                fpath = self.current_novel_dir / "outlines" / fn
+                if fpath.exists():
+                    fpath.unlink()
+            self.outline = []
+            self._log("已清除所有大纲")
         
         # 删除旧章节
         chapters_dir = self.current_novel_dir / "chapters"
@@ -3701,6 +3785,13 @@ class NovelWriterApp(
         total = meta.get('total_chapters', meta.get('chapter_count', '?'))
         self.chapter_var.set(f"0/{total}")
         self.content_text.delete("1.0", tk.END)
+        
+        summary = []
+        if result['world']: summary.append("世界观")
+        if result['chars']: summary.append("角色")
+        if result['outline']: summary.append("大纲")
+        summary.append("所有章节")
+        self._log(f"开始全部重新创作: {', '.join(summary)}")
         
         # 启动自动创作
         self._auto_generate()

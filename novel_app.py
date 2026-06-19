@@ -3686,7 +3686,7 @@ class NovelWriterApp(
         # 构建选择对话框
         dlg = tk.Toplevel(self.root)
         dlg.title("全部重新创作")
-        dlg.geometry("420x320")
+        dlg.geometry("440x380")
         dlg.configure(bg=UIStyle.COLORS['bg_dark'])
         dlg.resizable(False, False)
         C = UIStyle.COLORS

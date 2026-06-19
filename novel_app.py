@@ -2665,6 +2665,10 @@ class NovelWriterApp(
                 if outlines_ctx:
                     prev_context = outlines_ctx + "\n\n---\n\n" + prev_context
                 
+                world_ctx = self._get_world_context()
+                if world_ctx:
+                    prev_context = world_ctx + "\n\n---\n\n" + prev_context
+                
                 content = self.agent.generate_chapter(
                     ch_num,
                     chapter_info.get("title", f"第{ch_num}章"),
@@ -3643,6 +3647,10 @@ class NovelWriterApp(
                 if outlines_ctx:
                     prev_context = outlines_ctx + "\n\n---\n\n" + prev_context
                 
+                world_ctx = self._get_world_context()
+                if world_ctx:
+                    prev_context = world_ctx + "\n\n---\n\n" + prev_context
+                
                 content = self.agent.generate_chapter(
                     current_ch,
                     chapter_info.get("title", f"第{current_ch}章"),
@@ -3927,6 +3935,11 @@ class NovelWriterApp(
                         if outlines_ctx:
                             prev_context = outlines_ctx + "\n\n---\n\n" + prev_context
                         
+                        # 注入世界观设定到生成上下文
+                        world_ctx = self._get_world_context()
+                        if world_ctx:
+                            prev_context = world_ctx + "\n\n---\n\n" + prev_context
+                        
                         # 如果大纲是"待规划"或为空，批量生成后续大纲
                         chapter_summary = chapter_info.get("summary", "")
                         chapter_title = chapter_info.get("title", f"第{ch_num}章")
@@ -3939,11 +3952,15 @@ class NovelWriterApp(
                                 is_ending = (ch_num > len(outline_snapshot) * 0.85)
                                 ending_hint = "这是结尾阶段，请规划收束。每条摘要需推进结局。" if is_ending else ""
                                 
-                                gen_system = f"""你是故事大纲师。基于前文生成{batch_end-ch_num+1}章大纲。{ending_hint}
-输出JSON数组: [{{"chapter":{ch_num},"title":"章节标题(10字)","summary":"具体情节(80字)"}}]
-禁止"待规划"。确保每章有独立事件，保持主题一致。"""
+                                # 获取世界观和概念上下文
+                                world_context = self._get_world_context() or ""
+                                concept_hint = f"\n\n【世界观/概念】\n{world_context[:600]}\n" if world_context else ""
                                 
-                                gen_prompt = f"前文: {prev_context[:800]}\n类型: {meta['genre']}\n主角: {meta.get('title','')[:30]}\n还剩余{remaining}章完结。"
+                                gen_system = f"""你是故事大纲师。基于前文和世界观生成{batch_end-ch_num+1}章大纲。{ending_hint}
+输出JSON数组: [{{"chapter":{ch_num},"title":"章节标题(10字)","summary":"具体情节(80字)"}}]
+禁止"待规划"。每章必须有具体事件，标题必须反映本章核心内容。"""
+                                
+                                gen_prompt = f"前文: {prev_context[:800]}\n类型: {meta['genre']}\n标题: {meta.get('title','')[:30]}\n概念: {meta.get('concept','')[:200]}\n还剩余{remaining}章完结。{concept_hint}"
                                 resp = self.ai_client.chat(
                                     [{"role": "user", "content": gen_prompt}],
                                     system=gen_system, max_tokens=2000
@@ -4197,6 +4214,11 @@ class NovelWriterApp(
                         outlines_ctx = self._get_outlines_context()
                         if outlines_ctx:
                             prev_ctx = outlines_ctx + "\n\n---\n\n" + prev_ctx
+                        
+                        # 注入世界观设定
+                        world_ctx = self._get_world_context()
+                        if world_ctx:
+                            prev_ctx = world_ctx + "\n\n---\n\n" + prev_ctx
                         
                         content = self.agent.generate_chapter(
                             ch_num, ch_info.get("title", f"第{ch_num}章"),
@@ -5006,6 +5028,21 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         
         return "\n\n".join(parts) if parts else ""
     
+    def _get_world_context(self) -> str:
+        """获取世界观设定上下文，用于注入章节生成"""
+        if not self.current_novel_dir:
+            return ""
+        settings_file = self.current_novel_dir / "memory" / "settings.json"
+        if not settings_file.exists():
+            return ""
+        try:
+            with open(settings_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            raw = data.get("raw", json.dumps(data, ensure_ascii=False))
+            return f"【世界观设定】\n{raw[:2000]}"
+        except:
+            return ""
+    
     def _add_outline_item(self):
         """添加大纲项"""
         if not self.current_novel_dir:
@@ -5722,6 +5759,11 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         outlines_ctx = self._get_outlines_context()
         if outlines_ctx:
             shared_context += f"\n{outlines_ctx}\n"
+        
+        # 注入世界观设定
+        world_ctx = self._get_world_context()
+        if world_ctx:
+            shared_context += f"\n{world_ctx}\n"
         
         def save_callback(content):
             # 保存到当前章节

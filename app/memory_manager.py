@@ -8,7 +8,12 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
 from collections import Counter
-from loguru import logger
+
+try:
+    from loguru import logger
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
 
 
 class MemoryManager:

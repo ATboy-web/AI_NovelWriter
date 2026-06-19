@@ -9,7 +9,12 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
-from loguru import logger
+
+try:
+    from loguru import logger
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
 
 from .config import AppConfig
 

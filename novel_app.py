@@ -3868,6 +3868,30 @@ class NovelWriterApp(
                         return
                 else:
                     self._log(f"大纲已存在: {len(self.outline)}章，跳过生成")
+                
+                # 3.5 自动生成整体大纲和故事大纲（如果缺失）
+                outlines_dir = self.current_novel_dir / "outlines"
+                outlines_dir.mkdir(exist_ok=True)
+                overall_file = outlines_dir / "overall.json"
+                stories_file = outlines_dir / "stories.json"
+                
+                if not overall_file.exists() or not stories_file.exists():
+                    self._log("自动生成整体大纲和故事大纲...")
+                    concept = meta.get("concept", "")
+                    try:
+                        # 生成整体大纲
+                        overall = self._generate_overall_outline(meta)
+                        self._save_overall_outline(overall)
+                        self._log("整体大纲已生成")
+                    except Exception as e:
+                        self._log(f"整体大纲生成跳过: {e}")
+                    try:
+                        # 生成故事大纲
+                        stories = self._generate_story_outlines(meta)
+                        self._save_story_outlines(stories)
+                        self._log("故事大纲已生成")
+                    except Exception as e:
+                        self._log(f"故事大纲生成跳过: {e}")
 
                 # 4. 逐章生成（从已完成的下一章开始）
                 chapters_dir = self.current_novel_dir / "chapters"

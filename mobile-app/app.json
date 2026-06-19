@@ -12,11 +12,15 @@
     },
     "android": {
       "package": "com.ainovelwriter.app",
-      "versionCode": 20,
+      "versionCode": 21,
       "adaptiveIcon": {
         "backgroundColor": "#1e1e2e"
-      }
+      },
+      "softwareKeyboardLayoutMode": "pan"
     },
+    "plugins": [
+      "expo-build-properties"
+    ],
     "web": {
       "favicon": "./assets/icon.png"
     }

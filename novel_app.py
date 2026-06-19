@@ -321,6 +321,12 @@ class NovelWriterApp(
                                    command=self._open_timeline)
         self.timeline_btn.pack(fill=tk.X, pady=2)
         
+        self.extend_btn = tk.Button(mode_frame, text="续写小说", font=('微软雅黑', 10),
+                                   bg=C['success'], fg='white', relief=tk.FLAT,
+                                   padx=10, pady=6, cursor='hand2',
+                                   command=self._extend_novel)
+        self.extend_btn.pack(fill=tk.X, pady=2)
+        
         # 左侧 - 智能体步骤
         agent_frame = tk.Frame(left_panel, bg=C['bg_medium'], padx=10, pady=5)
         agent_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
@@ -3780,36 +3786,57 @@ class NovelWriterApp(
                         
                         prev_context = "\n---\n".join(recent_context)
                         
-                        # 如果大纲是"待规划"，动态生成本章大纲
+                        # 完结收束：最后章节提示AI收尾
+                        total_chapters = len(outline_snapshot)
+                        remaining = total_chapters - ch_num
+                        if remaining <= 3:
+                            prev_context += f"\n\n【重要】只剩{remaining+1}章完结。本章必须推进至最终结局。"
+                        elif remaining <= 10:
+                            prev_context += f"\n\n【提示】还有{remaining+1}章。请为结局做铺垫，收束支线。"
+                        
+                        # 如果大纲是"待规划"或为空，批量生成后续大纲
                         chapter_summary = chapter_info.get("summary", "")
                         chapter_title = chapter_info.get("title", f"第{ch_num}章")
                         if not chapter_summary or chapter_summary == "待规划":
-                            self._log(f"第{ch_num}章大纲为空，动态生成中...")
+                            # 批量生成后10章大纲（含当前章）
+                            batch_end = min(ch_num + 9, len(outline_snapshot))
+                            self._log(f"大纲不足，动态生成第{ch_num}-{batch_end}章大纲...")
                             try:
-                                gen_system = f"""基于前文续写下一章大纲。
-输出JSON: {{"title": "章节标题(10字)", "summary": "内容概要(100字)"}}"""
-                                gen_prompt = f"前文上下文:\n{prev_context[:1000]}\n\n主角陈渊的故事继续。请生成第{ch_num}章大纲。"
+                                remaining = len(outline_snapshot) - ch_num + 1
+                                is_ending = (ch_num > len(outline_snapshot) * 0.85)
+                                ending_hint = "这是结尾阶段，请规划收束。每条摘要需推进结局。" if is_ending else ""
+                                
+                                gen_system = f"""你是故事大纲师。基于前文生成{batch_end-ch_num+1}章大纲。{ending_hint}
+输出JSON数组: [{{"chapter":{ch_num},"title":"章节标题(10字)","summary":"具体情节(80字)"}}]
+禁止"待规划"。确保每章有独立事件，保持主题一致。"""
+                                
+                                gen_prompt = f"前文: {prev_context[:800]}\n类型: {meta['genre']}\n主角: {meta.get('title','')[:30]}\n还剩余{remaining}章完结。"
                                 resp = self.ai_client.chat(
                                     [{"role": "user", "content": gen_prompt}],
-                                    system=gen_system, max_tokens=300
+                                    system=gen_system, max_tokens=2000
                                 )
                                 if resp:
                                     import re
-                                    m = re.search(r'\{[\s\S]*\}', resp)
+                                    m = re.search(r'\[[\s\S]*\]', resp)
                                     if m:
-                                        new = json.loads(m.group())
-                                        chapter_title = new.get("title", chapter_title)
-                                        chapter_summary = new.get("summary", chapter_summary)
-                                        # 更新outline
+                                        new_batch = json.loads(m.group())
                                         with self._state_lock:
-                                            if self.outline and ch_num-1 < len(self.outline):
-                                                self.outline[ch_num-1]["title"] = chapter_title
-                                                self.outline[ch_num-1]["summary"] = chapter_summary
-                                        self._log(f"第{ch_num}章大纲已动态生成: {chapter_title}")
+                                            for item in new_batch:
+                                                idx = item["chapter"] - 1
+                                                if idx < len(self.outline):
+                                                    self.outline[idx]["title"] = item.get("title", f"第{item['chapter']}章")
+                                                    self.outline[idx]["summary"] = item.get("summary", f"第{item['chapter']}章情节")
+                                        # 用新生成的大纲
+                                        cur_item = next((x for x in new_batch if x["chapter"] == ch_num), None)
+                                        if cur_item:
+                                            chapter_title = cur_item.get("title", chapter_title)
+                                            chapter_summary = cur_item.get("summary", chapter_summary)
+                                            self._log(f"大纲已批量生成: 第{ch_num}章 {chapter_title}")
+                                
                                 if not chapter_summary or chapter_summary == "待规划":
-                                    chapter_summary = f"主角陈渊在第{ch_num-1}章事件后继续冒险"
+                                    chapter_summary = f"第{ch_num}章的情节自然推进，与前后章节连贯一致"
                             except Exception:
-                                chapter_summary = f"主角陈渊继续在阴阳岛的故事"
+                                chapter_summary = f"第{ch_num}章，故事继续发展"
                         
                         # 超时重试3次
                         for attempt in range(3):
@@ -3936,6 +3963,132 @@ class NovelWriterApp(
         
         tk.Button(dialog, text="关闭", font=('微软雅黑', 10), padx=20,
                  bg=C['bg_light'], fg=C['text_primary'], command=dialog.destroy).pack(pady=10)
+    
+    def _extend_novel(self):
+        """续写已完结的小说"""
+        if not self.current_novel_dir:
+            messagebox.showwarning("提示", "请先打开小说")
+            return
+        
+        chapters_dir = self.current_novel_dir / "chapters"
+        existing = sorted([int(f.stem.split("_")[-1]) for f in chapters_dir.glob("chapter_*.txt")])
+        if not existing:
+            messagebox.showwarning("提示", "没有已生成的章节")
+            return
+        
+        last_ch = existing[-1]
+        meta = self._get_meta()
+        
+        ask = tk.Toplevel(self.root)
+        ask.title("续写小说")
+        ask.geometry("400x250")
+        C = UIStyle.COLORS
+        ask.configure(bg=C['bg_dark'])
+        
+        tk.Label(ask, text=f"从第{last_ch}章后续写", font=('微软雅黑', 12, 'bold'),
+                bg=C['bg_dark'], fg=C['accent']).pack(pady=15)
+        
+        tk.Label(ask, text="新增章节数:", bg=C['bg_dark'], fg=C['text_primary']).pack()
+        add_count = tk.StringVar(value="10")
+        tk.Spinbox(ask, from_=1, to=500, textvariable=add_count, width=8,
+                  font=('微软雅黑', 10), bg=C['bg_card']).pack(pady=5)
+        
+        def start():
+            n = int(add_count.get())
+            ask.destroy()
+            
+            def run():
+                try:
+                    self._auto_running = True
+                    self._stop_flag = False
+                    
+                    # 读最后5章内容作为上下文
+                    context_parts = []
+                    for ch in existing[-5:]:
+                        chf = chapters_dir / f"chapter_{ch:04d}.txt"
+                        if chf.exists():
+                            text = chf.read_text(encoding='utf-8')
+                            context_parts.append(f"第{ch}章内容摘录: {text[:500]}")
+                    context_text = "\n".join(context_parts)
+                    
+                    # 生成新的延续大纲
+                    self._log(f"[续写] 基于第{last_ch}章结尾生成{n}章大纲...")
+                    new_outline = self.agent.generate_outline_continuation(
+                        meta.get("genre", "玄幻"), meta.get("title", ""), n,
+                        context_text, concept=meta.get("concept", "")
+                    )
+                    
+                    # 更新总章数
+                    total = last_ch + n
+                    meta["chapter_count"] = total
+                    with open(self.current_novel_dir / "meta.json", 'w', encoding='utf-8') as f:
+                        json.dump(meta, f, indent=2, ensure_ascii=False)
+                    
+                    # 合并大纲
+                    existing_outline = list(self.outline) if self.outline else []
+                    # 修复新大纲的chapter编号
+                    for i, o in enumerate(new_outline):
+                        o["chapter"] = last_ch + i + 1
+                    
+                    # 写入 outline.json
+                    full_outline = existing_outline + new_outline
+                    with open(self.current_novel_dir / "outline.json", 'w', encoding='utf-8') as f:
+                        json.dump(full_outline, f, indent=2, ensure_ascii=False)
+                    self.outline = full_outline
+                    self._refresh_outline_list()
+                    
+                    # 逐章生成
+                    self._log(f"[续写] 开始创作{n}章...")
+                    word_count = meta.get("word_count_per_chapter", 6000)
+                    
+                    for i, ch_info in enumerate(new_outline):
+                        if self._stop_flag:
+                            break
+                        ch_num = last_ch + i + 1
+                        
+                        # 读前几章
+                        prev_parts = []
+                        for off in [1, 2, 3]:
+                            pf = chapters_dir / f"chapter_{ch_num - off:04d}.txt"
+                            if pf.exists():
+                                t = pf.read_text(encoding='utf-8')
+                                prev_parts.append(f"第{ch_num-off}章: {t[:600]}..." if len(t)>600 else t)
+                        prev_ctx = "\n---\n".join(prev_parts)
+                        
+                        # 结尾收束
+                        rem = len(new_outline) - i - 1
+                        if rem <= 3:
+                            prev_ctx += f"\n\n【重要】只剩{rem+1}章完结。请收束故事。"
+                        
+                        content = self.agent.generate_chapter(
+                            ch_num, ch_info.get("title", f"第{ch_num}章"),
+                            ch_info.get("summary", ""), word_count, prev_context=prev_ctx
+                        )
+                        
+                        ch_file = chapters_dir / f"chapter_{ch_num:04d}.txt"
+                        ch_file.write_text(content, encoding='utf-8')
+                        self.agent.finalize_chapter(ch_num, content)
+                        self._auto_detect_characters(ch_num, content)
+                        self._auto_detect_decisions(ch_num, content)
+                        
+                        with self._state_lock:
+                            self.current_chapter = ch_num
+                        self.root.after(0, lambda c=content, n=ch_num, t=ch_info.get("title",""): 
+                                       self._display_chapter(n, t, c))
+                        self._log(f"[续写] 第{ch_num}章完成 ({len(content)}字)")
+                    
+                    self._log(f"[续写] 完成！共新增{len(new_outline)}章")
+                    self.root.after(0, lambda: messagebox.showinfo("完成", f"续写完成！新增{len(new_outline)}章"))
+                except Exception as e:
+                    self._log(f"[续写] 失败: {e}")
+                    self.root.after(0, lambda: messagebox.showerror("失败", str(e)))
+                finally:
+                    self._auto_running = False
+            
+            threading.Thread(target=run, daemon=True).start()
+        
+        tk.Button(ask, text="开始续写", font=('微软雅黑', 10), padx=20,
+                 bg=C['accent'], fg='white', command=start).pack(pady=10)
     
     def _generate_cover(self):
         """AI生成小说封面"""

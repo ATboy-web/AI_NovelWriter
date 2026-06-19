@@ -2,7 +2,7 @@
   "expo": {
     "name": "AI小说创作工坊",
     "slug": "ai-novel-writer",
-    "version": "2.10.0",
+    "version": "2.11.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "assetBundlePatterns": ["**/*"],

@@ -2648,11 +2648,29 @@ class NovelWriterApp(
             try:
                 ch_num = self.current_chapter  # 捕获当前值，避免竞态
                 meta = self._get_meta()
+                
+                # 构建上下文（前几章 + 整体大纲 + 故事大纲）
+                prev_context = ""
+                chapters_dir = self.current_novel_dir / "chapters"
+                if chapters_dir.exists():
+                    prev_files = sorted(chapters_dir.glob(f"chapter_{max(1, ch_num-3):04d}.txt"))
+                    if prev_files:
+                        recent = []
+                        for pf in prev_files[-3:]:
+                            text = pf.read_text(encoding='utf-8')
+                            recent.append(f"前文节选 ({pf.stem}): {text[-500:]}")
+                        prev_context = "\n".join(recent)
+                
+                outlines_ctx = self._get_outlines_context()
+                if outlines_ctx:
+                    prev_context = outlines_ctx + "\n\n---\n\n" + prev_context
+                
                 content = self.agent.generate_chapter(
                     ch_num,
                     chapter_info.get("title", f"第{ch_num}章"),
                     chapter_info.get("summary", ""),
-                    word_count=meta.get("word_count_per_chapter", 3000)
+                    word_count=meta.get("word_count_per_chapter", 3000),
+                    prev_context=prev_context
                 )
                 
                 # 保存章节
@@ -3609,11 +3627,28 @@ class NovelWriterApp(
                 if self.outline and current_ch <= len(self.outline):
                     chapter_info = self.outline[current_ch - 1]
                 
+                # 构建上下文（前几章 + 整体大纲 + 故事大纲）
+                prev_context = ""
+                chapters_dir = self.current_novel_dir / "chapters"
+                if chapters_dir.exists():
+                    prev_files = sorted(chapters_dir.glob(f"chapter_{max(1, current_ch-3):04d}.txt"))
+                    if prev_files:
+                        recent = []
+                        for pf in prev_files[-3:]:
+                            text = pf.read_text(encoding='utf-8')
+                            recent.append(f"前文节选 ({pf.stem}): {text[-500:]}")
+                        prev_context = "\n".join(recent)
+                
+                outlines_ctx = self._get_outlines_context()
+                if outlines_ctx:
+                    prev_context = outlines_ctx + "\n\n---\n\n" + prev_context
+                
                 content = self.agent.generate_chapter(
                     current_ch,
                     chapter_info.get("title", f"第{current_ch}章"),
                     chapter_info.get("summary", ""),
-                    word_count=meta.get("word_count_per_chapter", 10000)
+                    word_count=meta.get("word_count_per_chapter", 10000),
+                    prev_context=prev_context
                 )
                 
                 # 保存
@@ -3795,6 +3830,11 @@ class NovelWriterApp(
                             prev_context += f"\n\n【重要】只剩{remaining+1}章完结。本章必须推进至最终结局。"
                         elif remaining <= 10:
                             prev_context += f"\n\n【提示】还有{remaining+1}章。请为结局做铺垫，收束支线。"
+                        
+                        # 注入整体大纲和故事大纲到生成上下文
+                        outlines_ctx = self._get_outlines_context()
+                        if outlines_ctx:
+                            prev_context = outlines_ctx + "\n\n---\n\n" + prev_context
                         
                         # 如果大纲是"待规划"或为空，批量生成后续大纲
                         chapter_summary = chapter_info.get("summary", "")
@@ -4061,6 +4101,11 @@ class NovelWriterApp(
                         rem = len(new_outline) - i - 1
                         if rem <= 3:
                             prev_ctx += f"\n\n【重要】只剩{rem+1}章完结。请收束故事。"
+                        
+                        # 注入整体大纲和故事大纲
+                        outlines_ctx = self._get_outlines_context()
+                        if outlines_ctx:
+                            prev_ctx = outlines_ctx + "\n\n---\n\n" + prev_ctx
                         
                         content = self.agent.generate_chapter(
                             ch_num, ch_info.get("title", f"第{ch_num}章"),
@@ -4848,6 +4893,28 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         with open(outline_dir / "stories.json", 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
     
+    def _get_outlines_context(self) -> str:
+        """获取整体大纲和故事大纲的上下文，用于注入章节生成"""
+        parts = []
+        overall = self._get_overall_outline()
+        if overall:
+            lines = []
+            for i, item in enumerate(overall[:15]):
+                title = item.get("title", "")
+                content = item.get("content", "")[:120]
+                lines.append(f"{i+1}. {title}：{content}")
+            parts.append(f"【整体大纲 - 全局创作指南】\n" + "\n".join(lines))
+        
+        stories = self._get_story_outlines()
+        if stories:
+            lines = []
+            for name, story in list(stories.items())[:8]:
+                content = story.get("content", "")[:150]
+                lines.append(f"故事线「{name}」：{content}")
+            parts.append(f"【故事大纲 - 多条故事线】\n" + "\n".join(lines))
+        
+        return "\n\n".join(parts) if parts else ""
+    
     def _add_outline_item(self):
         """添加大纲项"""
         if not self.current_novel_dir:
@@ -5559,6 +5626,11 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         if self.outline and self.current_chapter > 0 and self.current_chapter <= len(self.outline):
             ch_info = self.outline[self.current_chapter - 1]
             shared_context += f"当前章节大纲: {ch_info.get('summary', '')}\n"
+        
+        # 注入整体大纲和故事大纲
+        outlines_ctx = self._get_outlines_context()
+        if outlines_ctx:
+            shared_context += f"\n{outlines_ctx}\n"
         
         def save_callback(content):
             # 保存到当前章节

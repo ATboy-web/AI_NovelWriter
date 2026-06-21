@@ -435,9 +435,8 @@ class AIClient:
         except Exception:
             return []
     
-    @retry_with_backoff(max_retries=2, base_delay=1)
     def chat(self, messages: List[Dict], system: str = "", **kwargs) -> str:
-        """发送聊天请求 - 带自动重试和降级"""
+        """发送聊天请求 - 带模型降级"""
         if not self.is_configured():
             raise Exception("AI API未配置")
         
@@ -512,10 +511,8 @@ class AIClient:
             fallback_model = self.FALLBACK_CHAIN.get(model)
             if fallback_model:
                 self._log(f"模型降级: {model} -> {fallback_model}")
+                # 不修改持久化配置，只在本次请求中使用降级模型
                 model = fallback_model
-                # 更新config中的模型，确保_init_client()用新模型重建连接
-                self.config["model"] = model
-                self._init_client()
                 # 重试时不递归，直接调用对应方法
                 if provider == "ollama":
                     result = self._chat_ollama(messages, system, model, max_tokens, temperature)

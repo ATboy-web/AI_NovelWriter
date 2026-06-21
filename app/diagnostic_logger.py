@@ -140,23 +140,35 @@ class DiagnosticLogger:
                  response_data: dict = None, error: Exception = None,
                  duration_ms: float = None):
         """记录 AI API 调用"""
+        # 兼容两种response_data格式
+        resp_info = None
+        if response_data:
+            if "choices" in response_data:
+                # OpenAI格式
+                resp_info = {
+                    "status": "success",
+                    "choices_count": len(response_data.get("choices", [])),
+                    "usage": response_data.get("usage", {}),
+                    "content_preview": str(response_data.get("choices", [{}])[0].get("message", {}).get("content", ""))[:300]
+                        if response_data.get("choices") else "",
+                }
+            else:
+                # 简化格式 (from ai_client.py)
+                resp_info = {
+                    "status": response_data.get("status", "success"),
+                    "result_len": response_data.get("result_len", 0),
+                    "content_preview": str(response_data.get("content_preview", ""))[:300],
+                }
+        
         self.log("API_CALL", f"{provider}::{endpoint}", {
             "provider": provider,
             "endpoint": endpoint,
             "request": {
                 "model": request_data.get("model", "unknown"),
-                "messages_count": len(request_data.get("messages", [])),
+                "messages_count": len(request_data.get("messages", [])) if "messages" in request_data else request_data.get("messages_count", 0),
                 "max_tokens": request_data.get("max_tokens", 0),
-                "system_prompt_preview": str(request_data.get("messages", [{}])[0].get("content", ""))[:200] 
-                    if request_data.get("messages") else "",
             },
-            "response": {
-                "status": "success" if response_data else "error",
-                "choices_count": len(response_data.get("choices", [])) if response_data else 0,
-                "usage": response_data.get("usage", {}) if response_data else {},
-                "content_preview": str(response_data.get("choices", [{}])[0].get("message", {}).get("content", ""))[:300]
-                    if response_data and response_data.get("choices") else "",
-            } if response_data else None,
+            "response": resp_info,
         }, error=error, duration_ms=duration_ms)
     
     def func_entry(self, func_name: str, params: dict = None):

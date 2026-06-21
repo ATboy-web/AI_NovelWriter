@@ -770,7 +770,7 @@ class CharacterSystem:
         return cats
     
     def get_weapons(self, category: str) -> List[Dict]:
-        weapons = self.weapon_library.get(category, [])
+        weapons = list(self.weapon_library.get(category, []))  # 浅拷贝，避免污染内置库
         # 添加自定义武器
         for w in self.custom_weapons:
             if w.get("category") == category:
@@ -793,7 +793,7 @@ class CharacterSystem:
         return cats
     
     def get_skills(self, category: str) -> List[Dict]:
-        skills = self.skill_library.get(category, [])
+        skills = list(self.skill_library.get(category, []))  # 浅拷贝，避免污染内置库
         for s in self.custom_skills:
             if s.get("type") == category:
                 skills.append(s)

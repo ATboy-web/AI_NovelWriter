@@ -491,7 +491,7 @@
       <!-- 关于 -->
       <div class="card" style="margin-top:10px;">
         <h3>📋 关于</h3>
-        <p>AI小说创作工坊 v2.12.5 · 移动版</p>
+        <p>AI小说创作工坊 v2.12.6 · 移动版</p>
         <p style="font-size:11px;">纯HTML5构建，无框架依赖，支持15种小说类型</p>
       </div>
     </div>
@@ -743,12 +743,15 @@ function clearCurrentLog() {
 
 // ===== API URL 智能修复 =====
 var KNOWN_API_PATTERNS = {
-  'deepseek': 'https://api.deepseek.com/v1/chat/completions',
+  'deepseek': 'https://api.deepseek.com/chat/completions',
   'openai': 'https://api.openai.com/v1/chat/completions',
   'claude': 'https://api.anthropic.com/v1/messages',
   'qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
   'zhipu': 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
   'moonshot': 'https://api.moonshot.cn/v1/chat/completions',
+  'kimi': 'https://api.moonshot.cn/v1/chat/completions',
+  'mimo': 'https://api.xiaomimimo.com/v1/chat/completions',
+  'xiaomi': 'https://api.xiaomimimo.com/v1/chat/completions',
   'minimax': 'https://api.minimax.chat/v1/text/chatcompletion_v2',
   'baichuan': 'https://api.baichuan-ai.com/v1/chat/completions',
   'ollama': 'http://localhost:11434/v1/chat/completions'
@@ -758,10 +761,15 @@ function fixApiEndpoint(input) {
   var url = input.trim();
   if (!url) return '';
   
+  // 已经是完整endpoint (包含 /chat/ 或 /messages)
+  if (url.indexOf('/chat/') >= 0 || url.indexOf('/messages') >= 0) {
+    return url;
+  }
+  
   // 检测已知提供商关键词
   var lowerUrl = url.toLowerCase();
   for (var key in KNOWN_API_PATTERNS) {
-    if (lowerUrl.indexOf(key) >= 0 && url.indexOf('/v1/') < 0 && url.indexOf('/chat/') < 0 && url.indexOf('/messages') < 0) {
+    if (lowerUrl.indexOf(key) >= 0) {
       // 用户只输入了base URL，自动补全路径
       var full = KNOWN_API_PATTERNS[key];
       addLog('api', '自动补全API端点: ' + key, url + ' → ' + full);
@@ -771,13 +779,36 @@ function fixApiEndpoint(input) {
   
   // 如果是纯域名（没有路径部分），尝试补全
   if (url.match(/^https?:\/\/[^\/]+$/)) {
-    // 只输入了域名，默认加上 /v1/chat/completions
     var fixed = url.replace(/\/+$/, '') + '/v1/chat/completions';
     addLog('api', '自动补全API路径', url + ' → ' + fixed);
     return fixed;
   }
   
   return url;
+}
+
+// 构建API请求headers（适配不同提供商的认证方式）
+function buildApiHeaders(apiKey, endpoint) {
+  var headers = { 'Content-Type': 'application/json' };
+  if (!apiKey) return headers;
+  
+  var lowerEndpoint = (endpoint || '').toLowerCase();
+  
+  // MIMO 使用 api-key header
+  if (lowerEndpoint.indexOf('xiaomimimo') >= 0 || lowerEndpoint.indexOf('mimo') >= 0) {
+    headers['api-key'] = apiKey;
+  }
+  // Claude 使用 x-api-key header
+  else if (lowerEndpoint.indexOf('anthropic') >= 0) {
+    headers['x-api-key'] = apiKey;
+    headers['anthropic-version'] = '2023-06-01';
+  }
+  // 其他使用 Bearer token
+  else {
+    headers['Authorization'] = 'Bearer ' + apiKey;
+  }
+  
+  return headers;
 }
 
 // ===== 持久化存储 =====
@@ -862,15 +893,23 @@ function testApiConnection() {
     return;
   }
   
-  addLog('api', '测试API连接', endpoint + ' | Model: ' + (model || 'gpt-4o'));
+  // 智能推断默认模型
+  if (!model) {
+    if (endpoint.indexOf('deepseek') >= 0) model = 'deepseek-v4-flash';
+    else if (endpoint.indexOf('xiaomimimo') >= 0 || endpoint.indexOf('mimo') >= 0) model = 'mimo-v2.5-pro';
+    else if (endpoint.indexOf('moonshot') >= 0 || endpoint.indexOf('kimi') >= 0) model = 'kimi-k2.6';
+    else if (endpoint.indexOf('anthropic') >= 0) model = 'claude-sonnet-4-20250514';
+    else model = 'gpt-4o';
+  }
+  
+  addLog('api', '测试API连接', endpoint + ' | Model: ' + model);
   statusEl.innerHTML = '<div class="status-bar status-warn">⏳ 正在测试...</div>';
   
-  // 发送测试请求（小消息）
-  var headers = { 'Content-Type': 'application/json' };
-  if (key) headers['Authorization'] = 'Bearer ' + key;
+  // 🔧 使用适配的headers
+  var headers = buildApiHeaders(key, endpoint);
   
   var reqBody = {
-    model: model || 'gpt-4o',
+    model: model,
     messages: [{ role: 'user', content: '你好，请回复"连接成功"' }],
     max_tokens: 10
   };
@@ -889,9 +928,10 @@ function testApiConnection() {
     
     if (!r.ok) {
       var hint = '';
-      if (r.status === 404) hint = ' | 端点不存在，请确认URL包含完整路径(如 /v1/chat/completions)';
-      else if (r.status === 401) hint = ' | API密钥无效';
+      if (r.status === 404) hint = ' | 端点不存在(DeepSeek: /chat/completions, OpenAI: /v1/chat/completions)';
+      else if (r.status === 401) hint = ' | API密钥无效或未设置';
       else if (r.status === 429) hint = ' | 请求过于频繁，请稍后再试';
+      else if (r.status === 403) hint = ' | 访问被拒绝，检查API密钥权限';
       throw new Error('HTTP ' + r.status + hint);
     }
     return r.json();
@@ -1076,8 +1116,7 @@ function createNovel() {
     });
   } else {
     // 直连AI API
-    var headers = { 'Content-Type': 'application/json' };
-    if (appState.apiKey) headers['Authorization'] = 'Bearer ' + appState.apiKey;
+    var headers = buildApiHeaders(appState.apiKey, appState.apiEndpoint);
     
     var prompt = '你是一个小说创作AI。请为以下概念生成一个简要大纲（200字内）：\n' +
       '标题：' + title + '\n类型：' + type + '\n核心概念：' + (concept || '无') + 
@@ -1088,7 +1127,7 @@ function createNovel() {
     fetch(appState.apiEndpoint, {
       method: 'POST', headers: headers,
       body: JSON.stringify({
-        model: appState.apiModel || 'gpt-4o',
+        model: appState.apiModel || 'deepseek-v4-flash',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 500
       })
@@ -1096,9 +1135,10 @@ function createNovel() {
     .then(function(r) {
       if (!r.ok) {
         var hint = '';
-        if (r.status === 404) hint = ' | API端点不存在';
+        if (r.status === 404) hint = ' | 端点不存在';
         else if (r.status === 401) hint = ' | 密钥无效';
         else if (r.status === 429) hint = ' | 请求过于频繁';
+        else if (r.status === 403) hint = ' | 访问被拒绝';
         throw new Error('HTTP ' + r.status + hint);
       }
       return r.json();

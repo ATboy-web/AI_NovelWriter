@@ -481,7 +481,7 @@ class CharacterSystem:
         """提升角色分类"""
         if name in self.characters:
             self.characters[name].category = new_category
-            if new_importance:
+            if new_importance is not None:
                 self.characters[name].importance = new_importance
             self.save_character(name)
             return True

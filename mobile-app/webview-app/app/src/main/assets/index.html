@@ -375,42 +375,80 @@
         <button class="btn btn-primary" style="margin-top:12px;" onclick="switchTab(4)">去设置API →</button>
       </div>
       <div id="tools-list" style="display:none;">
-        <div class="card" style="cursor:pointer;" onclick="showToast('风格转换需要桌面版后端支持')">
+        <div class="card" style="cursor:pointer;" onclick="openTool('style')">
           <div class="list-item" style="border:none;padding:6px 0;">
             <div class="item-icon">🎨</div>
             <div class="item-info"><div class="item-title">风格转换</div><div class="item-sub">将文本转换为不同写作风格</div></div>
             <div class="item-arrow">›</div>
           </div>
         </div>
-        <div class="card" style="cursor:pointer;" onclick="showToast('情景对话推演需要桌面版后端支持')">
+        <div class="card" style="cursor:pointer;" onclick="openTool('dialogue')">
           <div class="list-item" style="border:none;padding:6px 0;">
             <div class="item-icon">💬</div>
             <div class="item-info"><div class="item-title">情景对话推演</div><div class="item-sub">AI模拟多角色对话场景</div></div>
             <div class="item-arrow">›</div>
           </div>
         </div>
-        <div class="card" style="cursor:pointer;" onclick="showToast('故事流推演需要桌面版后端支持')">
+        <div class="card" style="cursor:pointer;" onclick="openTool('storyflow')">
           <div class="list-item" style="border:none;padding:6px 0;">
             <div class="item-icon">🌊</div>
             <div class="item-info"><div class="item-title">故事流推演</div><div class="item-sub">多分支剧情可能性探索</div></div>
             <div class="item-arrow">›</div>
           </div>
         </div>
-        <div class="card" style="cursor:pointer;" onclick="showToast('事物描写库需要桌面版后端支持')">
+        <div class="card" style="cursor:pointer;" onclick="openTool('description')">
           <div class="list-item" style="border:none;padding:6px 0;">
             <div class="item-icon">🖼️</div>
             <div class="item-info"><div class="item-title">事物描写库</div><div class="item-sub">场景、人物、环境描写增强</div></div>
             <div class="item-arrow">›</div>
           </div>
         </div>
-        <div class="card" style="cursor:pointer;" onclick="showToast('角色桥段库需要桌面版后端支持')">
+        <div class="card" style="cursor:pointer;" onclick="openTool('bridge')">
           <div class="list-item" style="border:none;padding:6px 0;">
             <div class="item-icon">🎭</div>
             <div class="item-info"><div class="item-title">角色桥段库</div><div class="item-sub">经典角色互动桥段模板</div></div>
             <div class="item-arrow">›</div>
           </div>
         </div>
+        <div class="card" style="cursor:pointer;" onclick="openTool('chapter')">
+          <div class="list-item" style="border:none;padding:6px 0;">
+            <div class="item-icon">📖</div>
+            <div class="item-info"><div class="item-title">AI章节生成</div><div class="item-sub">根据大纲自动生成章节内容</div></div>
+            <div class="item-arrow">›</div>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer;" onclick="openTool('characters')">
+          <div class="list-item" style="border:none;padding:6px 0;">
+            <div class="item-icon">👤</div>
+            <div class="item-info"><div class="item-title">AI角色生成</div><div class="item-sub">创建小说角色设定</div></div>
+            <div class="item-arrow">›</div>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer;" onclick="openTool('outline')">
+          <div class="list-item" style="border:none;padding:6px 0;">
+            <div class="item-icon">📋</div>
+            <div class="item-info"><div class="item-title">AI大纲生成</div><div class="item-sub">生成章节大纲与故事线</div></div>
+            <div class="item-arrow">›</div>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer;" onclick="openTool('worldview')">
+          <div class="list-item" style="border:none;padding:6px 0;">
+            <div class="item-icon">🌍</div>
+            <div class="item-info"><div class="item-title">AI世界观生成</div><div class="item-sub">构建小说世界观设定</div></div>
+            <div class="item-arrow">›</div>
+          </div>
+        </div>
       </div>
+    </div>
+
+    <!-- 工具弹窗 -->
+    <div id="tool-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg-dark);z-index:100;overflow-y:auto;padding:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 id="tool-modal-title">工具</h3>
+        <button onclick="closeTool()" style="background:none;border:none;color:var(--text-primary);font-size:20px;cursor:pointer;">✕</button>
+      </div>
+      <div id="tool-modal-content"></div>
+      <div id="tool-modal-result" style="margin-top:12px;"></div>
     </div>
 
     <!-- API设置 -->
@@ -930,6 +968,7 @@ function testApiConnection() {
       var hint = '';
       if (r.status === 404) hint = ' | 端点不存在(DeepSeek: /chat/completions, OpenAI: /v1/chat/completions)';
       else if (r.status === 401) hint = ' | API密钥无效或未设置';
+      else if (r.status === 402) hint = ' | ⚠️ 账户余额不足！请登录API提供商控制台充值';
       else if (r.status === 429) hint = ' | 请求过于频繁，请稍后再试';
       else if (r.status === 403) hint = ' | 访问被拒绝，检查API密钥权限';
       throw new Error('HTTP ' + r.status + hint);
@@ -1137,6 +1176,7 @@ function createNovel() {
         var hint = '';
         if (r.status === 404) hint = ' | 端点不存在';
         else if (r.status === 401) hint = ' | 密钥无效';
+        else if (r.status === 402) hint = ' | ⚠️ 账户余额不足，请充值';
         else if (r.status === 429) hint = ' | 请求过于频繁';
         else if (r.status === 403) hint = ' | 访问被拒绝';
         throw new Error('HTTP ' + r.status + hint);
@@ -1162,8 +1202,8 @@ function createNovel() {
   loadSettings();
   switchTab(0);
   checkApiReady();
-  addLog('info', '应用启动', 'v2.12.3 | 模式: ' + (apiMode === 'direct' ? '直连AI' : '桌面版') + ' | 在线: ' + (navigator.onLine ? '是' : '否'));
-  console.log('AI小说创作工坊 v2.12.3 已就绪');
+  addLog('info', '应用启动', 'v2.12.6 | 模式: ' + (apiMode === 'direct' ? '直连AI' : '桌面版') + ' | 在线: ' + (navigator.onLine ? '是' : '否'));
+  console.log('AI小说创作工坊 v2.12.6 已就绪');
   console.log('Mode: ' + apiMode);
 })();
 
@@ -1172,6 +1212,279 @@ function escapeHtml(text) {
   if (!text) return '';
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// ===== 写作工具系统 =====
+var TOOL_CONFIGS = {
+  style: {
+    title: '🎨 风格转换',
+    inputs: [
+      {id: 'source', label: '原文内容', type: 'textarea', placeholder: '粘贴要转换风格的文本...', rows: 5},
+      {id: 'target_style', label: '目标风格', type: 'select', options: ['古风武侠', '现代都市', '悬疑推理', '浪漫言情', '科幻未来', '幽默搞笑', '严肃文学', '网络爽文']}
+    ],
+    prompt: function(vals) {
+      return '你是一个文学风格转换专家。请将以下文本转换为"' + vals.target_style + '"风格。\n\n原文:\n' + vals.source + '\n\n要求:\n1. 保持原文核心情节和人物不变\n2. 调整语言风格、句式、用词\n3. 输出转换后的文本（保持原文字数左右）';
+    }
+  },
+  dialogue: {
+    title: '💬 情景对话推演',
+    inputs: [
+      {id: 'scene', label: '场景描述', type: 'textarea', placeholder: '描述对话发生的场景...', rows: 3},
+      {id: 'characters', label: '参与角色', type: 'input', placeholder: '如: 林风、火灵儿、玄影'},
+      {id: 'topic', label: '对话主题/冲突', type: 'input', placeholder: '如: 关于宝藏的归属'}
+    ],
+    prompt: function(vals) {
+      return '你是小说对话创作专家。请根据以下场景创作一段多角色对话。\n\n场景: ' + vals.scene + '\n角色: ' + vals.characters + '\n主题/冲突: ' + vals.topic + '\n\n要求:\n1. 每个角色说话风格要有区分度\n2. 对话要推进剧情发展\n3. 包含动作描写和心理活动\n4. 输出8-15轮对话';
+    }
+  },
+  storyflow: {
+    title: '🌊 故事流推演',
+    inputs: [
+      {id: 'current', label: '当前剧情', type: 'textarea', placeholder: '描述当前故事进展...', rows: 3},
+      {id: 'direction', label: '推演方向', type: 'select', options: ['正向发展(顺利)', '反向发展(挫折)', '意外转折', '多分支探索']},
+      {id: 'chapters', label: '推演章节数', type: 'input', placeholder: '如: 3'}
+    ],
+    prompt: function(vals) {
+      return '你是故事推演专家。请根据当前剧情推演接下来的发展。\n\n当前剧情: ' + vals.current + '\n推演方向: ' + vals.direction + '\n推演章节数: ' + vals.chapters + '章\n\n要求:\n1. 每章包含标题和200字摘要\n2. 保持情节连贯性\n3. 包含冲突升级和解决\n4. 输出JSON格式: [{"chapter":1,"title":"...","summary":"..."}]';
+    }
+  },
+  description: {
+    title: '🖼️ 事物描写库',
+    inputs: [
+      {id: 'object', label: '描写对象', type: 'input', placeholder: '如: 夕阳下的古城'},
+      {id: 'category', label: '描写类别', type: 'select', options: ['场景描写', '人物外貌', '人物心理', '战斗场面', '自然风光', '建筑环境', '美食描写', '情感氛围']},
+      {id: 'style', label: '描写风格', type: 'select', options: ['细腻优美', '简洁有力', '古风典雅', '现代白话', '诗意浪漫']}
+    ],
+    prompt: function(vals) {
+      return '你是文学描写专家。请创作一段高质量的' + vals.category + '。\n\n描写对象: ' + vals.object + '\n风格: ' + vals.style + '\n\n要求:\n1. 使用多种修辞手法（比喻、拟人、排比等）\n2. 调动多种感官（视觉、听觉、嗅觉、触觉）\n3. 字数200-400字\n4. 可直接用于小说正文';
+    }
+  },
+  bridge: {
+    title: '🎭 角色桥段库',
+    inputs: [
+      {id: 'type', label: '桥段类型', type: 'select', options: ['相遇初识', '生死对决', '背叛反转', '重逢相认', '师徒传承', '兄弟反目', '英雄救美', '身世揭秘', '以弱胜强', '牺牲奉献']},
+      {id: 'characters', label: '角色', type: 'input', placeholder: '如: 主角林风、反派暗影'},
+      {id: 'setting', label: '背景设定', type: 'textarea', placeholder: '简述背景...', rows: 2}
+    ],
+    prompt: function(vals) {
+      return '你是小说桥段创作专家。请创作一个"' + vals.type + '"类型的经典桥段。\n\n角色: ' + vals.characters + '\n背景: ' + vals.setting + '\n\n要求:\n1. 包含完整的起承转合\n2. 情感张力充足\n3. 人物行为符合性格\n4. 字数500-800字\n5. 可直接用于小说正文';
+    }
+  },
+  chapter: {
+    title: '📖 AI章节生成',
+    inputs: [
+      {id: 'title', label: '章节标题', type: 'input', placeholder: '如: 第一章 重生'},
+      {id: 'outline', label: '章节大纲', type: 'textarea', placeholder: '描述本章要讲什么...', rows: 3},
+      {id: 'worldview', label: '世界观设定', type: 'textarea', placeholder: '简述世界观...', rows: 2},
+      {id: 'characters', label: '出场角色', type: 'input', placeholder: '如: 林风(主角)、火灵儿(女主)'},
+      {id: 'wordcount', label: '目标字数', type: 'input', placeholder: '如: 3000'}
+    ],
+    prompt: function(vals) {
+      return '你是一个小说创作AI。请根据以下信息生成一个完整的小说章节。\n\n标题: ' + vals.title + '\n大纲: ' + vals.outline + '\n世界观: ' + (vals.worldview || '默认') + '\n出场角色: ' + (vals.characters || '无') + '\n目标字数: ' + (vals.wordcount || '3000') + '字\n\n要求:\n1. 开头紧接前文（如有）\n2. 包含场景描写、对话、动作、心理\n3. 结尾设置悬念\n4. 保持世界观一致性\n5. 直接输出正文内容';
+    }
+  },
+  characters: {
+    title: '👤 AI角色生成',
+    inputs: [
+      {id: 'genre', label: '小说类型', type: 'select', options: ['武侠', '仙侠', '科幻', '都市', '言情', '悬疑', '奇幻', '历史']},
+      {id: 'count', label: '生成数量', type: 'input', placeholder: '如: 3'},
+      {id: 'concept', label: '故事概念', type: 'textarea', placeholder: '简述故事背景和需求...', rows: 2}
+    ],
+    prompt: function(vals) {
+      return '你是小说角色设计专家。请为一部' + vals.genre + '小说创建' + (vals.count || '3') + '个角色。\n\n故事概念: ' + vals.concept + '\n\n请为每个角色包含:\n1. 姓名\n2. 身份/职业\n3. 性格特点(3-5个)\n4. 外貌描写(50字)\n5. 背景故事(100字)\n6. 目标/动机\n7. 与主角的关系\n\n输出JSON格式:\n[{"name":"...","identity":"...","personality":["..."],"appearance":"...","backstory":"...","goal":"...","relation":"..."}]';
+    }
+  },
+  outline: {
+    title: '📋 AI大纲生成',
+    inputs: [
+      {id: 'title', label: '小说标题', type: 'input', placeholder: '输入标题'},
+      {id: 'genre', label: '小说类型', type: 'select', options: ['武侠', '仙侠', '科幻', '都市', '言情', '悬疑', '奇幻', '历史', '穿越', '系统流']},
+      {id: 'concept', label: '核心概念', type: 'textarea', placeholder: '描述故事核心概念...', rows: 3},
+      {id: 'chapters', label: '章节数量', type: 'input', placeholder: '如: 20'}
+    ],
+    prompt: function(vals) {
+      return '你是小说大纲创作专家。请为以下小说生成详细大纲。\n\n标题: ' + vals.title + '\n类型: ' + vals.genre + '\n概念: ' + vals.concept + '\n章节数: ' + (vals.chapters || '20') + '章\n\n要求:\n1. 每章包含标题和100字摘要\n2. 故事有完整的起承转合\n3. 冲突逐步升级\n4. 角色有成长弧线\n5. 输出JSON格式: [{"chapter":1,"title":"...","summary":"..."}]';
+    }
+  },
+  worldview: {
+    title: '🌍 AI世界观生成',
+    inputs: [
+      {id: 'genre', label: '小说类型', type: 'select', options: ['仙侠', '科幻', '奇幻', '武侠', '都市', '历史', '末日', '游戏']},
+      {id: 'concept', label: '核心概念', type: 'textarea', placeholder: '描述你想要的世界观特点...', rows: 3}
+    ],
+    prompt: function(vals) {
+      return '你是小说世界观构建专家。请为一部' + vals.genre + '小说构建完整的世界观。\n\n核心概念: ' + vals.concept + '\n\n请包含以下方面:\n1. 世界名称和基本设定\n2. 力量体系/修炼体系\n3. 主要势力/组织\n4. 地理环境\n5. 历史背景\n6. 特殊规则/禁忌\n7. 经济体系\n8. 文化特色\n\n输出JSON格式:\n{"world_name":"...","basic_setting":"...","power_system":"...","factions":["..."],"geography":"...","history":"...","rules":["..."],"economy":"...","culture":"..."}';
+    }
+  }
+};
+
+function openTool(toolId) {
+  if (!appState.apiConfigured) {
+    showToast('请先在设置中配置API');
+    return;
+  }
+  
+  var config = TOOL_CONFIGS[toolId];
+  if (!config) return;
+  
+  var modal = document.getElementById('tool-modal');
+  var title = document.getElementById('tool-modal-title');
+  var content = document.getElementById('tool-modal-content');
+  var result = document.getElementById('tool-modal-result');
+  
+  title.textContent = config.title;
+  result.innerHTML = '';
+  
+  var html = '';
+  for (var i = 0; i < config.inputs.length; i++) {
+    var inp = config.inputs[i];
+    html += '<div class="form-group"><label>' + inp.label + '</label>';
+    if (inp.type === 'textarea') {
+      html += '<textarea id="tool-' + inp.id + '" class="input-field" rows="' + (inp.rows || 3) + '" placeholder="' + (inp.placeholder || '') + '"></textarea>';
+    } else if (inp.type === 'select') {
+      html += '<select id="tool-' + inp.id + '" class="input-field" style="height:42px;">';
+      for (var j = 0; j < inp.options.length; j++) {
+        html += '<option value="' + inp.options[j] + '">' + inp.options[j] + '</option>';
+      }
+      html += '</select>';
+    } else {
+      html += '<input id="tool-' + inp.id + '" class="input-field" placeholder="' + (inp.placeholder || '') + '" />';
+    }
+    html += '</div>';
+  }
+  html += '<button class="btn btn-primary" onclick="executeTool(\'' + toolId + '\')">🚀 开始生成</button>';
+  content.innerHTML = html;
+  
+  modal.style.display = 'block';
+  document.getElementById('tool-modal-content').scrollTop = 0;
+}
+
+function closeTool() {
+  document.getElementById('tool-modal').style.display = 'none';
+}
+
+function executeTool(toolId) {
+  var config = TOOL_CONFIGS[toolId];
+  if (!config) return;
+  
+  var vals = {};
+  for (var i = 0; i < config.inputs.length; i++) {
+    var inp = config.inputs[i];
+    var el = document.getElementById('tool-' + inp.id);
+    vals[inp.id] = el ? el.value.trim() : '';
+  }
+  
+  var prompt = config.prompt(vals);
+  if (!prompt) {
+    showToast('请填写必要信息');
+    return;
+  }
+  
+  var resultEl = document.getElementById('tool-modal-result');
+  resultEl.innerHTML = '<div class="card" style="text-align:center;"><div style="font-size:24px;margin-bottom:8px;">⏳</div><p>AI正在生成中，请稍候...</p></div>';
+  
+  addLog('api', '工具调用: ' + config.title, '参数: ' + JSON.stringify(vals).substring(0, 200));
+  diagApiCall('TOOL', toolId, {}, vals, null, null, null, 0);
+  
+  var headers = buildApiHeaders(appState.apiKey, appState.apiEndpoint);
+  var t0 = Date.now();
+  
+  fetch(appState.apiEndpoint, {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify({
+      model: appState.apiModel || 'deepseek-v4-flash',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 2000
+    })
+  })
+  .then(function(r) {
+    r.clone().text().then(function(txt) {
+      diagApiCall('TOOL', toolId, {}, vals, r.status, txt, null, Date.now() - t0);
+    });
+    if (!r.ok) {
+      var hint = '';
+      if (r.status === 402) hint = ' | ⚠️ 账户余额不足，请充值';
+      else if (r.status === 401) hint = ' | API密钥无效';
+      else if (r.status === 404) hint = ' | 端点不存在';
+      throw new Error('HTTP ' + r.status + hint);
+    }
+    return r.json();
+  })
+  .then(function(data) {
+    var content = data.choices && data.choices[0] ? data.choices[0].message.content : '生成失败';
+    var duration = ((Date.now() - t0) / 1000).toFixed(1);
+    
+    addLog('success', config.title + ' 完成', '耗时' + duration + '秒');
+    
+    resultEl.innerHTML = '<div class="card">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+        '<h3>📋 生成结果</h3>' +
+        '<button class="btn btn-primary" style="font-size:10px;padding:3px 8px;" onclick="copyToolResult()">📋 复制</button>' +
+      '</div>' +
+      '<div id="tool-result-text" style="white-space:pre-wrap;font-size:13px;line-height:1.6;max-height:400px;overflow-y:auto;background:var(--bg-medium);padding:10px;border-radius:8px;">' +
+        escapeHtml(content) +
+      '</div>' +
+      '<p style="font-size:10px;color:var(--text-muted);margin-top:6px;">耗时: ' + duration + '秒 | ' + content.length + '字</p>' +
+    '</div>';
+  })
+  .catch(function(e) {
+    addLog('error', config.title + ' 失败', e.message);
+    diagError('executeTool:' + toolId, e);
+    resultEl.innerHTML = '<div class="card" style="border-left:3px solid var(--danger);">' +
+      '<p style="color:var(--danger);">❌ 生成失败: ' + escapeHtml(e.message) + '</p>' +
+      '<p style="font-size:11px;color:var(--text-muted);">请检查API设置和账户余额</p>' +
+    '</div>';
+  });
+}
+
+function copyToolResult() {
+  var el = document.getElementById('tool-result-text');
+  if (!el) return;
+  var text = el.textContent || el.innerText;
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('✅ 已复制到剪贴板');
+  } catch(e) {
+    showToast('⚠️ 复制失败');
+  }
+  document.body.removeChild(ta);
+}
+
+// ===== 小说数据管理 =====
+function saveNovelData(key, data) {
+  try {
+    localStorage.setItem('ainovel_' + key, JSON.stringify(data));
+  } catch(e) {
+    addLog('error', '数据保存失败', key + ': ' + e.message);
+  }
+}
+
+function loadNovelData(key) {
+  try {
+    var d = localStorage.getItem('ainovel_' + key);
+    return d ? JSON.parse(d) : null;
+  } catch(e) {
+    return null;
+  }
+}
+
+function getNovels() {
+  return loadNovelData('novels') || [];
+}
+
+function saveNovels(novels) {
+  saveNovelData('novels', novels);
+}
+
+// 初始化时更新工具页状态
+var origCheckApiReady = typeof checkApiReady === 'function' ? checkApiReady : null;
+
 </script>
 </body>
 </html>

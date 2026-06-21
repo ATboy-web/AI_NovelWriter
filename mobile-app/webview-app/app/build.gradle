@@ -1,0 +1,50 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.ainovelwriter'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.ainovelwriter.app"
+        minSdk 24
+        targetSdk 34
+        versionCode 27
+        versionName "2.12.3"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("${project.rootDir}/../ai-novel-writer-release.keystore")
+            storePassword 'ainovel123'
+            keyAlias 'ainovelwriter'
+            keyPassword 'ainovel123'
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // Don't compress assets
+    aaptOptions {
+        noCompress "js", "bundle", "png", "jpg", "jpeg", "gif", "ttf", "otf", "woff", "woff2", "json"
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.webkit:webkit:1.8.0'
+}

@@ -1,100 +1,103 @@
-# AI自动写小说系统 v2.10.0
+# AI小说创作工坊 v2.14.2
 
-智能小说创作工坊 - 支持多种类型小说的自动创作
+基于AI的智能小说创作系统 — 支持15种小说类型的全自动创作，5Agent协作架构，世界线分支系统
 
 ## 功能特性
 
-### 核心功能
-- **自动创作**：一键自动生成大纲、角色、章节
-- **续写功能**：已完成小说可续写新章
-- **章节选择**：下拉选择器跳转任意章节
-- **停止创作**：随时停止自动创作
-- **多格式导出**：支持TXT、EPUB、PDF、DOCX、Markdown
+### 核心创作
+- **一键自动生成**: 大纲 → 角色 → 章节全自动创作
+- **5Agent协作架构**: PlotDesigner → WorldBuilder → Writer → Reviewer → Editor
+- **多轮迭代修订**: AI审校反馈 → 自动修订，质量阈值自动判定
+- **15种小说类型**: 科幻、悬疑、言情、奇幻、都市、历史、武侠、仙侠、恐怖、军事、游戏、体育、穿越、系统流、末日
+- **续写功能**: 已完成小说可续写新章，上下文无缝衔接
 
-### 专业创作框架
-- **Writer**：五幕法章节结构、感官五维场景构建、叙事节奏控制
-- **Reviewer**：六维度评分(结构/角色/节奏/细节/对话/风格)
-- **Editor**：编辑裁定标准和原则
-- **Character**：角色五维度设计框架
-- **Outline**：三幕结构规划框架
-- **Synopsis**：四句话简介公式
-- **Biography**：六幕法传记写作框架
+### 世界线分支系统
+- 决策点每章自动检测，主线完结后生成分支
+- 分支线拥有完整系统（独立大纲/角色/摘要）
+- 世界线面板直接浏览决策点
 
-### 角色管理
-- 角色五维度信息展示(属性/武器/技能/性格/背景)
-- 角色面板可滚动显示完整详情
-- 一键生成角色个人传记(保存到biographies目录)
-- 角色桥段库(10种桥段类别、6种桥段基调)
-
-### 文生图提示词系统
-- AI自动检测名场面、人物描写、关键时刻
-- 自动选择画面比例(1:1, 3:4, 9:16, 16:9)
-- 电影级镜头语言(特写/中景/远景/俯仰角)
-- 专业摄影构图(三分法/引导线/框架构图)
-- 提示词自动保存到scene_prompts目录
+### 角色系统
+- 角色五维度信息（属性/武器/技能/性格/背景）
+- 自动生成角色传记
+- 角色桥段库（10种桥段类别、6种桥段基调）
+- 自动创建新角色，角色成长追踪
 
 ### 创作工具
-- 事物描写库(10种描写类别、5种描写风格)
-- 情景对话推演(多角色对话生成)
-- 故事流推演(正向/反向/插值/分支推演)
-- 风格转换(7种风格模板)
-- 编辑器右键菜单(选中文本跳转创作工具)
+- 事物描写库（10种类别、5种风格）
+- 情景对话推演（多角色对话生成）
+- 故事流推演（正向/反向/插值/分支推演）
+- 风格转换（7种风格模板）
+- AI封面生成器（提示词 + HTML预览）
 
-### 其他功能
-- 侧边栏可滚动
-- 多种AI模型支持(Ollama/OpenAI/DeepSeek/Claude)
-- 向量检索增强(ChromaDB)
-- 一致性审校功能
-- 阅读管理器(支持TXT/EPUB/PDF/DOCX/Markdown)
+### 导出与阅读
+- 多格式导出: TXT、EPUB、PDF、DOCX、Markdown
+- 阅读管理器: 支持多种电子书格式
+- 文生图提示词系统（电影级镜头语言）
 
 ## 下载
 
-[最新版本 v2.8.0](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.8.0)
+| 平台 | 版本 | 大小 | 链接 |
+|------|------|------|------|
+| Windows | v2.14.2 | ~97MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
+| Android | v2.12.3 | ~2.4MB | [AI_NovelWriter.apk](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.12.3) |
 
-## 使用方法
+## 快速开始
 
-1. 下载AI_NovelWriter.exe
-2. 运行程序
-3. 配置AI API(Ollama/OpenAI等)
-4. 新建小说或打开已有小说
-5. 点击自动创作或手动创作
+1. 下载 `AI_NovelWriter.exe`
+2. 运行程序（首次运行需配置AI服务）
+3. 点击 **设置** 配置AI API（支持 Ollama / OpenAI / DeepSeek / Claude 等）
+4. 点击 **新建小说** 输入标题、类型、概念
+5. 点击 **自动创作** 开始生成
 
 ## 系统要求
 
-- Windows 10/11
+- Windows 10/11 64位
 - 至少4GB内存
-- 推荐使用GPU加速(可选)
+- 推荐：本地 Ollama + 14B+ 模型，或 OpenAI/Claude API密钥
 
 ## 项目结构
 
 ```
 ai-novel-writer/
-├── novel_app.py          # 主程序
+├── novel_app.py              # 主程序 (Tkinter GUI)
 ├── app/
-│   ├── ai_client.py      # AI客户端(支持多模型)
-│   ├── novel_agent.py    # 小说创作智能体
-│   ├── memory_manager.py # 记忆管理
-│   ├── scene_detector.py # 名场面检测
-│   ├── navigation.py     # 导航菜单
-│   └── agent_orchestrator.py # 智能体编排
-├── tests/                # 测试文件
-└── installer/            # 打包配置
+│   ├── ai_client.py          # AI客户端 (Ollama/OpenAI/DeepSeek/Claude)
+│   ├── novel_agent.py        # 5Agent协作智能体
+│   ├── agent_orchestrator.py # 智能体编排器
+│   ├── memory_manager.py     # 记忆管理系统
+│   ├── config.py             # 配置管理
+│   ├── scene_detector.py     # 名场面检测
+│   ├── note_manager.py       # 笔记管理
+│   ├── reading_manager.py    # 阅读管理器
+│   ├── fullscreen_writer.py  # 全屏写作模式
+│   └── ...                   # 更多模块
+├── backend/                  # 后端服务 (FastAPI)
+├── mobile-app/               # 移动端 (WebView)
+├── installer/                # 打包配置
+├── CHANGELOG.md              # 更新日志
+├── CONTRIBUTING.md           # 贡献指南
+└── LICENSE                   # MIT 许可证
 ```
 
 ## 开发
 
 ```bash
 # 安装依赖
-pip install httpx pytest
+pip install httpx loguru python-docx pypdf ebooklib markdown beautifulsoup4 Pillow chromadb
+
+# 运行
+python novel_app.py
+
+# 打包 EXE
+pip install pyinstaller
+pyinstaller --onefile --windowed --name AI_NovelWriter \
+  --add-data "app;app" --add-data "backend;backend" \
+  novel_app.py
 
 # 运行测试
 python -m pytest tests/ -v
-
-# 打包
-cd installer
-pyinstaller novel_app.spec
 ```
 
 ## 许可证
 
-MIT License
+MIT License - 详见 [LICENSE](LICENSE)

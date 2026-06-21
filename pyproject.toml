@@ -1,6 +1,6 @@
 [project]
 name = "ai-novel-writer"
-version = "2.5.1"
+version = "2.14.2"
 description = "AI自动写小说系统"
 requires-python = ">=3.11"
 dependencies = [

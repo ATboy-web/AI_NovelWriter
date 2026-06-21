@@ -741,6 +741,17 @@ class MemoryManager:
             return meta
         return default if key else {}
     
+    def set_meta(self, key: str, value):
+        """设置小说元数据字段"""
+        meta_file = self.novel_dir / "meta.json"
+        meta = {}
+        if meta_file.exists():
+            with open(meta_file, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+        meta[key] = value
+        with open(meta_file, 'w', encoding='utf-8') as f:
+            json.dump(meta, f, indent=2, ensure_ascii=False)
+    
     def _format_settings_md(self, settings: dict, level: int = 0) -> str:
         """将settings字典格式化为Markdown"""
         lines = []

@@ -374,6 +374,14 @@ class AIClient:
         self.metrics = AIMetrics()
         self._init_client()
     
+    def _log(self, msg: str):
+        """日志记录（静默模式，不影响主流程）"""
+        try:
+            from loguru import logger
+            logger.info(f"[AI] {msg}")
+        except Exception:
+            pass
+    
     def _init_client(self):
         provider = self.config.get("api_provider", "ollama")
         api_key = self.config.get("api_key", "")
@@ -440,6 +448,11 @@ class AIClient:
             
             latency = time.time() - start
             self.metrics.record(len(result), latency)
+            
+            # 记录空响应（帮助调试）
+            if not result or len(result.strip()) == 0:
+                self._log(f"[提示] AI服务响应较慢，可能需要等待 (model={model}, latency={latency:.1f}s)")
+            
             return result
             
         except Exception as e:

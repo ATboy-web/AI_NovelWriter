@@ -4,6 +4,7 @@ AI自动写小说系统 - 桌面应用程序
 """
 
 import json
+import re
 import time
 import shutil
 import threading
@@ -592,10 +593,21 @@ class NovelWriterApp(
                  command=self._learn_skill).pack(side=tk.LEFT, padx=1)
         
         # 右侧 - 日志
+        log_toolbar = tk.Frame(log_frame, bg=C['bg_dark'])
+        log_toolbar.pack(side=tk.TOP, fill=tk.X, padx=(0, 10), pady=(10, 0))
+        tk.Label(log_toolbar, text="运行日志", font=('微软雅黑', 9, 'bold'),
+                bg=C['bg_dark'], fg=C['text_secondary']).pack(side=tk.LEFT, padx=5)
+        tk.Button(log_toolbar, text="导出日志", font=('微软雅黑', 8),
+                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=10, pady=2,
+                 command=self._export_log).pack(side=tk.RIGHT, padx=2)
+        tk.Button(log_toolbar, text="清空", font=('微软雅黑', 8),
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=8, pady=2,
+                 command=self._clear_log).pack(side=tk.RIGHT, padx=2)
+        
         self.log_text = tk.Text(log_frame, wrap=tk.WORD, font=('Consolas', 10),
                                bg=C['bg_card'], fg=C['text_muted'],
                                relief=tk.FLAT, padx=15, pady=15, state=tk.DISABLED)
-        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10), pady=10)
+        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10), pady=(0, 10))
         
         # === 审校结果页 ===
         review_frame = tk.Frame(self.notebook, bg=C['bg_dark'])
@@ -1122,6 +1134,96 @@ class NovelWriterApp(
             self.root.after(0, _do_log)
         except RuntimeError:
             pass
+    
+    def _export_log(self):
+        """导出运行日志到桌面"""
+        desktop = Path.home() / "Desktop"
+        filename = f"AI_NovelWriter_日志_{time.strftime('%Y%m%d_%H%M%S')}.log"
+        filepath = desktop / filename
+        try:
+            content = self.log_text.get("1.0", tk.END).strip()
+            if not content:
+                messagebox.showwarning("提示", "日志为空，无需导出")
+                return
+            filepath.write_text(content, encoding='utf-8')
+            self._log(f"日志已导出: {filepath}")
+            messagebox.showinfo("导出成功", f"日志已保存到桌面:\n{filepath}")
+        except Exception as e:
+            messagebox.showerror("导出失败", f"无法导出日志:\n{e}")
+    
+    def _clear_log(self):
+        """清空运行日志"""
+        self.log_text.config(state=tk.NORMAL)
+        self.log_text.delete("1.0", tk.END)
+        self.log_text.config(state=tk.DISABLED)
+        self._log("日志已清空")
+    
+    def _sync_characters_from_memory(self):
+        """从 memory/characters.json 同步角色到 characters/ 目录"""
+        if not self.current_novel_dir:
+            return
+        mem_file = self.current_novel_dir / "memory" / "characters.json"
+        if not mem_file.exists():
+            return
+        chars_dir = self.current_novel_dir / "characters"
+        chars_dir.mkdir(exist_ok=True)
+        
+        try:
+            with open(mem_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            raw = data.get("raw", "")
+            if not raw:
+                # 可能 memory 文件本身就是 dict（旧格式）
+                chars = {k: v for k, v in data.items() if k != "raw" and isinstance(v, dict)}
+                if chars:
+                    self._write_char_files(chars_dir, chars)
+                    return
+                return
+            
+            # 解析 raw JSON
+            chars = {}
+            if isinstance(raw, str):
+                # 多层尝试
+                clean = raw.strip()
+                clean = clean.replace('\u3000', ' ')  # 全角空格
+                clean = re.sub(r'^```(?:json)?\s*\n?', '', clean)
+                clean = re.sub(r'\n?```\s*$', '', clean)
+                clean = clean.replace('\uff1a', ':')  # 全角冒号
+                clean = clean.replace('\u201c', '"').replace('\u201d', '"')  # 全角引号
+                # 修复 "goal":["a","b"] → "goal":"a; b" 
+                clean = re.sub(r'("(?:goal|target|objective)")\s*:\s*\[([^\]]*)\]',
+                              lambda m: f'{m.group(1)}: "{m.group(2).strip()}"', clean)
+                # 修复连续冒号
+                clean = re.sub(r'("\w+")\s*:{2,}', r'\1:', clean)
+                
+                try:
+                    chars = json.loads(clean)
+                except json.JSONDecodeError as e:
+                    self._log(f"[同步] JSON解析失败(line {e.lineno}): {e}")
+                    # 用 agent 的提取方法尝试
+                    if hasattr(self, 'agent'):
+                        chars = self.agent._extract_characters_from_raw(clean)
+            elif isinstance(raw, dict):
+                chars = {k: v for k, v in raw.items() if isinstance(v, dict)}
+            
+            if chars:
+                self._write_char_files(chars_dir, chars)
+        except Exception as e:
+            self._log(f"同步角色失败: {e}")
+            import traceback
+            self._log(traceback.format_exc())
+    
+    def _write_char_files(self, chars_dir: Path, chars: dict):
+        """写入角色文件到磁盘"""
+        count = 0
+        for name, info in chars.items():
+            if isinstance(info, dict):
+                char_data = {"name": name, **info}
+                with open(chars_dir / f"{name}.json", 'w', encoding='utf-8') as f:
+                    json.dump(char_data, f, indent=2, ensure_ascii=False)
+                count += 1
+        if count > 0:
+            self._log(f"已从记忆恢复 {count} 个角色")
     
     def _update_status(self):
         """更新状态栏"""
@@ -1699,7 +1801,11 @@ class NovelWriterApp(
         except Exception as e:
             self._log(f"切换标签页失败: {e}")
         
+        self._sync_characters_from_memory()
         self._log(f"已打开小说《{meta.get('title', '未知')}》")
+        
+        # 🛡️ 检查是否有未完成的生成任务（断电恢复）
+        self._check_recovery()
         
         # 切换到章节内容标签页
         try:
@@ -1712,6 +1818,7 @@ class NovelWriterApp(
         except Exception as e:
             self._log(f"切换标签页失败: {e}")
         
+        self._sync_characters_from_memory()
         self._log(f"已打开小说《{meta.get('title', '未知')}》")
         
         # 显示进度提示
@@ -2511,30 +2618,60 @@ class NovelWriterApp(
             if not mem_chars.exists():
                 return
             data = _j.loads(mem_chars.read_text(encoding='utf-8'))
-            chars = data if isinstance(data, dict) else {}
+            
+            # 从 raw 字段提取角色数据
+            chars = {}
+            raw = data.get("raw", "")
+            if raw and isinstance(raw, str):
+                clean = raw.strip()
+                clean = re.sub(r'```(?:json)?\s*\n?', '', clean)
+                clean = re.sub(r'\n?```\s*$', '', clean)
+                clean = clean.replace('\uff1a', ':')
+                clean = clean.replace('\uff0c', ',')
+                # 修复 goal 等数组字段
+                clean = re.sub(r'"goal"\s*:\s*\[([^\]]*)',
+                    lambda m: '"goal": "' + '; '.join(re.findall(r'"([^"]*)"', m.group(1))) + '"',
+                    clean)
+                clean = re.sub(r'("\w+")\s*:{2,}', r'\1:', clean)
+                try:
+                    parsed = _j.loads(clean)
+                    if isinstance(parsed, dict):
+                        chars = {k: v for k, v in parsed.items() if isinstance(v, dict)}
+                except Exception:
+                    # 尝试逐字符提取
+                    chars = self._extract_chars_from_raw(clean) if hasattr(self, '_extract_chars_from_raw') else {}
+            elif isinstance(data, dict):
+                chars = {k: v for k, v in data.items() if k != "raw" and isinstance(v, dict)}
+            
+            if not chars:
+                return
             
             if not self.character_system:
                 from character_system import CharacterSystem
                 self.character_system = CharacterSystem(self.current_novel_dir)
             
+            existing_names = set(self.character_system.get_character_names())
+            new_count = 0
             for name, info in chars.items():
-                if not self.character_system.get_character(name):
-                    info_dict = info if isinstance(info, dict) else {"description": str(info)}
-                    category = info_dict.get("role", info_dict.get("category", "配角"))
-                    faction = info_dict.get("faction", "中立")
-                    self.character_system.create_character(
-                        name=name, category=category, faction=faction,
-                        first_appearance=1
-                    )
-                    # 添加描述
-                    desc = info_dict.get("description", "") or info_dict.get("personality", "") or ""
-                    if desc:
-                        c = self.character_system.get_character(name)
-                        if c:
-                            c.personality = str(desc)[:200]
-                    self.character_system.save_character(name)
+                if name in existing_names:
+                    continue
+                info_dict = info if isinstance(info, dict) else {"description": str(info)}
+                category = info_dict.get("role", info_dict.get("category", "配角"))
+                faction = info_dict.get("faction", "中立")
+                self.character_system.create_character(
+                    name=name, category=category, faction=faction,
+                    first_appearance=1
+                )
+                desc = info_dict.get("personality", "") or info_dict.get("description", "") or ""
+                if desc:
+                    c = self.character_system.get_character(name)
+                    if c:
+                        c.personality = str(desc)[:200]
+                self.character_system.save_character(name)
+                new_count += 1
             
-            self._log(f"[角色同步] {len(chars)}个角色已同步到characters/目录")
+            if new_count > 0:
+                self._log(f"[角色同步] 从记忆恢复{new_count}个新角色 (共{len(chars)}个)")
             self.root.after(0, self._update_char_display)
         except Exception as e:
             self._log(f"[角色同步] 失败: {e}")
@@ -2555,9 +2692,14 @@ class NovelWriterApp(
                 meta = self._get_meta()
                 
                 if outline_type == "章节大纲":
-                    # 生成章节大纲
+                    # 生成章节大纲 — 使用 total_chapters（用户设定的总章数）
+                    real_total = meta.get("total_chapters", meta.get("chapter_count"))
+                    # 大题纲分批生成，超过50章先打前站
+                    outline_count = min(real_total, 50) if real_total > 10 else real_total
                     new_outline = self.agent.generate_outline(
-                        meta["genre"], meta["title"], meta["chapter_count"]
+                        meta["genre"], meta["title"], outline_count,
+                        concept=meta.get("concept", ""),
+                        total_chapters=real_total  # 真实总章数，防止阶段计算偏差
                     )
                     with self._state_lock:
                         self.outline = new_outline
@@ -2568,18 +2710,17 @@ class NovelWriterApp(
                 elif outline_type == "整体大纲":
                     # 生成整体大纲
                     self._log("正在生成整体大纲...")
-                    overall = self._generate_overall_outline(meta)
+                    concept = meta.get("concept", "")
+                    overall = self._generate_overall_outline(meta, concept, self.outline)
                     self._save_overall_outline(overall)
                     self._log("整体大纲已保存到 outlines/overall.json")
                     
                 elif outline_type == "故事大纲":
                     # 生成故事大纲
                     self._log("正在生成故事大纲...")
-                    stories = self._generate_story_outlines(meta)
-                    outline_dir = self.current_novel_dir / "outlines"
-                    outline_dir.mkdir(exist_ok=True)
-                    with open(outline_dir / "stories.json", 'w', encoding='utf-8') as f:
-                        json.dump(stories, f, indent=2, ensure_ascii=False)
+                    concept = meta.get("concept", "")
+                    stories = self._generate_story_outlines(meta, concept, self.outline)
+                    self._save_story_outlines(stories)
                     self._log("故事大纲已保存到 outlines/stories.json")
                 
                 # GUI操作在主线程
@@ -2591,75 +2732,299 @@ class NovelWriterApp(
         
         threading.Thread(target=run, daemon=True).start()
     
-    def _generate_overall_outline(self, meta: dict) -> list:
-        """生成整体大纲"""
-        system = """你是专业小说大纲规划师。请生成整体大纲，包含：
-1. 故事主线
-2. 主要冲突
-3. 高潮节点
+    def _generate_overall_outline(self, meta: dict, concept: str = "", chapter_outline: list = None) -> list:
+        """生成整体大纲 — 带概念上下文和重试"""
+        real_total = meta.get("total_chapters", meta.get("chapter_count", 100))
+        protagonist = meta.get("protagonist", "")
+        
+        context_lines = [f"小说类型：{meta['genre']}", f"标题：{meta['title']}", f"全书总章数：{real_total}章", f"当前批次大纲：{meta.get('chapter_count', len(chapter_outline) if chapter_outline else '?')}章"]
+        if protagonist:
+            context_lines.insert(0, f"主角名：{protagonist}")
+        if concept:
+            context_lines.insert(0, f"核心概念（用户想法）：{concept}")
+        if chapter_outline:
+            titles = [c.get('title', f"第{i+1}章") for i, c in enumerate(chapter_outline[:10])]
+            context_lines.append(f"已有章节标题：{' → '.join(titles)}")
+        prompt = "\n".join(context_lines)
+        
+        protagonist_hint = ""
+        if protagonist:
+            protagonist_hint = f"\n【重要】本小说主角名为「{protagonist}」，所有描述必须围绕「{protagonist}」展开！"
+        
+        system = f"""你是专业小说大纲规划师。请根据小说的核心概念和章节标题，生成整体大纲，包含：
+1. 故事主线（一句话概括）
+2. 主要冲突（2-3个）
+3. 高潮节点（2-3个关键转折点）
 4. 结局走向
+{protagonist_hint}
 
-输出JSON数组：[{"title": "", "description": "", "chapter_range": ""}]"""
-        prompt = f"小说类型：{meta['genre']}\n标题：{meta['title']}\n章节数：{meta['chapter_count']}"
-        response = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
-        return self._parse_json_response(response or "{}", [])
+严格输出合法JSON数组，不要添加任何额外文字。注意：所有字符串值必须用双引号；每个对象的最后一个键值对后不能有逗号。
+输出格式：[{{"title": "故事主线", "description": "详细描述", "chapter_range": "第1-5000章"}}, ...]"""
+        
+        last_error = None
+        for attempt in range(3):
+            try:
+                response = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4096)
+                if not response or len(response.strip()) < 20:
+                    # 打印调试信息帮助诊断
+                    resp_len = len(response) if response else 0
+                    self._log(f"[整体大纲] AI响应异常 (长度={resp_len})，等待重试({attempt+1}/3)...")
+                    if resp_len > 0:
+                        self._log(f"[整体大纲] 响应预览: {response.strip()[:200]}")
+                    time.sleep(5)
+                    continue
+                result = self._parse_json_response(response, [])
+                # 标准化：确保返回列表
+                if isinstance(result, dict) and "title" in result:
+                    result = [result]
+                if result and isinstance(result, list) and len(result) > 0:
+                    self._log(f"整体大纲生成成功 ({len(result)}项)")
+                    return result
+                else:
+                    self._log(f"[整体大纲] 解析结果为空，等待重试({attempt+1}/3)...")
+                    time.sleep(5)
+            except Exception as e:
+                last_error = e
+                if attempt < 2:
+                    self._log(f"整体大纲生成重试 {attempt+2}/3...")
+                    time.sleep(5)
+        
+        # 降级：从章节大纲提取有意义的信息
+        self._log(f"整体大纲AI生成失败，使用降级方案: {last_error}")
+        # 从章节大纲提取关键事件
+        key_events = []
+        if chapter_outline:
+            for item in chapter_outline[:5]:
+                title = item.get('title', '')
+                if title:
+                    key_events.append(title)
+        events_text = '、'.join(key_events) if key_events else '主角面临核心困境与挑战'
+        
+        fallback = [
+            {"title": "故事主线", "description": f"小说《{meta['title']}》：{meta.get('concept', '')[:200]}。主角{protagonist}在阴阳交界处重生，逐步揭开岛屿秘密。", "chapter_range": f"第1-{real_total}章"},
+            {"title": "主要冲突", "description": f"{protagonist}被阳人和阴人双重排斥，需在夹缝中求生并证明自己。关键事件：{events_text}", "chapter_range": f"第1-{real_total*2//3}章"},
+            {"title": "高潮节点", "description": f"{protagonist}掌握阴阳之力后，面对岛屿最大秘密的揭示，引发阴阳两域的终极对决", "chapter_range": f"第{real_total*4//5-10}-{real_total*4//5+10}章"},
+            {"title": "结局走向", "description": f"{protagonist}打破阴阳隔阂，重塑岛屿秩序，或选择离开这个不属于他的世界", "chapter_range": f"最后20章"}
+        ]
+        return fallback
     
-    def _generate_story_outlines(self, meta: dict) -> dict:
-        """生成故事大纲"""
-        system = """你是专业小说大纲规划师。请生成故事大纲，包含多条故事线：
-1. 主线故事
-2. 副线故事（可选）
-3. 感情线（可选）
+    def _generate_story_outlines(self, meta: dict, concept: str = "", chapter_outline: list = None) -> dict:
+        """生成故事大纲 — 带概念上下文和重试"""
+        real_total = meta.get("total_chapters", meta.get("chapter_count", 100))
+        protagonist = meta.get("protagonist", "")
+        
+        context_lines = [f"小说类型：{meta['genre']}", f"标题：{meta['title']}", f"全书总章数：{real_total}章", f"当前批次大纲：{meta.get('chapter_count', len(chapter_outline) if chapter_outline else '?')}章"]
+        if protagonist:
+            context_lines.insert(0, f"主角名：{protagonist}")
+        if concept:
+            context_lines.insert(0, f"核心概念（用户想法）：{concept}")
+        if chapter_outline:
+            titles = [c.get('title', f"第{i+1}章") for i, c in enumerate(chapter_outline[:10])]
+            context_lines.append(f"已有章节标题：{' → '.join(titles)}")
+        prompt = "\n".join(context_lines)
+        
+        protagonist_hint = ""
+        if protagonist:
+            protagonist_hint = f"\n【重要】本小说主角名为「{protagonist}」，所有故事线必须围绕「{protagonist}」展开！"
+        
+        system = f"""你是专业小说大纲规划师。请根据小说的核心概念和章节标题，生成简洁有力的故事大纲。
 
-输出JSON：{"主线": {"title": "", "summary": "", "key_events": []}, "副线": {...}}"""
-        prompt = f"小说类型：{meta['genre']}\n标题：{meta['title']}\n章节数：{meta['chapter_count']}"
-        response = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
-        return self._parse_json_response(response, {})
+要求：
+1. 主线故事：核心情节推进线（3-8个关键事件）
+2. 副线故事：次要线索或隐藏真相线（2-4个关键事件）
+{protagonist_hint}
+
+📌 输出格式（仅JSON，无其他文字）：
+{{"主线": {{"title": "短标题", "summary": "1-2句话概要", "key_events": ["事件1","事件2","事件3"]}}, "副线": {{"title": "短标题", "summary": "1-2句话概要", "key_events": ["事件1","事件2"]}}}}
+
+⚠️ JSON语法：所有字符串用双引号，冒号后无多余空格，最后一项后不加逗号。"""
+        
+        last_error = None
+        for attempt in range(3):
+            try:
+                response = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4096)
+                if not response or len(response.strip()) < 20:
+                    last_error = f"empty_response_attempt_{attempt+1}"
+                    self._log(f"[故事大纲] AI响应为空，等待重试({attempt+1}/3)...")
+                    time.sleep(5)
+                    continue
+                result = self._parse_json_response(response, {})
+                if result and isinstance(result, dict) and len(result) > 0:
+                    self._log(f"故事大纲生成成功 ({len(result)}条故事线)")
+                    return result
+                else:
+                    last_error = f"parse_failed_attempt_{attempt+1}"
+                    self._log(f"[故事大纲] 解析结果为空，等待重试({attempt+1}/3)...")
+                    time.sleep(5)
+            except Exception as e:
+                last_error = str(e)[:200]
+                if attempt < 2:
+                    self._log(f"故事大纲生成重试 {attempt+2}/3...")
+                    time.sleep(5)
+        
+        # 降级：从章节大纲和概念提取有意义的故事线
+        self._log(f"故事大纲AI生成失败，使用智能降级方案: {last_error}")
+        # 从章节大纲提取关键事件
+        key_events = []
+        if chapter_outline:
+            for item in chapter_outline[:12]:
+                title = item.get('title', '')
+                if title and len(title) > 1:
+                    key_events.append(title)
+        if not key_events:
+            key_events = ["开端", "发展", "转折", "高潮", "结局"]
+        
+        # 从概念中提取世界观描述
+        world_desc = ""
+        if concept:
+            world_desc = concept[:80] + ("..." if len(concept) > 80 else "")
+        else:
+            world_desc = f"{meta.get('genre','玄幻')}世界"
+        
+        protagonist_name = protagonist or "主角"
+        fallback = {
+            "主线": {
+                "title": f"《{meta['title']}》— {protagonist_name}的征程",
+                "summary": f"在{world_desc}中，{protagonist_name}踏上冒险之路，经历重重考验，最终成长为独当一面的存在。",
+                "key_events": key_events[:8]
+            },
+            "副线": {
+                "title": "隐藏的真相",
+                "summary": f"在{protagonist_name}的旅途背后，一个更深的秘密正在浮现。古老的力量、失落的传承、敌友难辨的关系交织在一起。",
+                "key_events": key_events[4:8] if len(key_events) >= 8 else ["揭示第一个秘密", "发现核心线索", "真相大白"]
+            }
+        }
+        return fallback
     
     def _parse_json_response(self, response: str, default):
-        """解析JSON响应"""
-        try:
-            # 尝试提取JSON
-            import re
-            json_match = re.search(r'\{[\s\S]*\}|\[[\s\S]*\]', response)
-            if json_match:
-                return json.loads(json_match.group())
+        """解析JSON响应 — 多层修复（与novel_agent一致的健壮版本）"""
+        if not response or not isinstance(response, str):
             return default
-        except:
-            return default
+        
+        text = response.strip()
+        strategies = []
+        
+        # Strategy 1: 直接提取 { } 或 [ ]
+        for marker, end_marker in [('{', '}'), ('[', ']')]:
+            start = text.find(marker)
+            end = text.rfind(end_marker) + 1
+            if start >= 0 and end > start:
+                strategies.append(text[start:end])
+        
+        # Strategy 2: 清理 markdown 后提取
+        clean = text.replace('```json', '').replace('```', '')
+        for marker, end_marker in [('{', '}'), ('[', ']')]:
+            start = clean.find(marker)
+            end = clean.rfind(end_marker) + 1
+            if start >= 0 and end > start:
+                strategies.append(clean[start:end])
+        
+        # Strategy 3: 修复常见AI JSON错误
+        for raw in list(strategies):
+            fixed = raw
+            # 全角标点 → 半角
+            fixed = fixed.replace('\uff1a', ':').replace('\uff0c', ',')
+            fixed = fixed.replace('\u201c', '"').replace('\u201d', '"')
+            fixed = fixed.replace('\u2018', "'").replace('\u2019', "'")
+            # 连续冒号
+            fixed = re.sub(r'("\w+")\s*:{2,}', r'\1:', fixed)
+            # goal数组→字符串
+            fixed = re.sub(
+                r'("(?:goal|target|objective|purpose)")\s*:\s*\[([^\]]*)\]',
+                lambda m: m.group(1) + ': "' + '; '.join(re.findall(r'"([^"]*)"', m.group(2))) + '"',
+                fixed
+            )
+            # 尾随逗号
+            fixed = re.sub(r',\s*([\]}])', r'\1', fixed)
+            # 缺失逗号: "value"\n  "key" → "value",\n  "key"
+            fixed = re.sub(r'"\s*\n(\s*")', '",\n\\1', fixed)
+            strategies.append(fixed)
+        
+        # 依次尝试
+        for s in strategies:
+            try:
+                return json.loads(s)
+            except (json.JSONDecodeError, ValueError):
+                continue
+        
+        # Strategy 4: 尝试补全截断的JSON
+        for s in strategies:
+            for suffix in ['"}', '"}]', '"}}', '"}]}}', '"]}}}', '}}}', '"}\n}', '"}\n}]']:
+                try:
+                    return json.loads(s + suffix)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+        
+        # Strategy 5: 逐个提取已完成的对象
+        for s in strategies:
+            chars = {}
+            for m in re.finditer(r'"([^"]+)"\s*:\s*\{', s):
+                name = m.group(1)
+                if name in ('raw', 'weapon', 'attributes', 'skill_suggestions'):
+                    continue
+                brace_start = m.end() - 1
+                depth = 0
+                for j in range(brace_start, len(s)):
+                    if s[j] == '{': depth += 1
+                    elif s[j] == '}':
+                        depth -= 1
+                        if depth == 0:
+                            try:
+                                obj = json.loads(s[brace_start:j+1])
+                                chars[name] = obj
+                            except (json.JSONDecodeError, ValueError):
+                                pass
+                            break
+            if chars:
+                return chars
+        
+        return default
     
     def _gen_chapter(self):
         """生成下一章"""
         if not self._check_ready():
             return
-        if not self.outline:
-            messagebox.showwarning("提示", "请先生成大纲")
-            return
-        
-        self.current_chapter += 1
-        if self.current_chapter > len(self.outline):
-            messagebox.showinfo("提示", "所有章节已生成完毕")
-            self.current_chapter = len(self.outline)
-            return
-        
-        chapter_info = self.outline[self.current_chapter - 1]
+        with self._state_lock:
+            if not self.outline:
+                messagebox.showwarning("提示", "请先生成大纲")
+                return
+            
+            self.current_chapter += 1
+            if self.current_chapter > len(self.outline):
+                messagebox.showinfo("提示", "所有章节已生成完毕")
+                self.current_chapter = len(self.outline)
+                return
+            
+            chapter_info = self.outline[self.current_chapter - 1]
 
         def run():
             try:
                 ch_num = self.current_chapter  # 捕获当前值，避免竞态
                 meta = self._get_meta()
                 
-                # 构建上下文（前几章 + 整体大纲 + 故事大纲）
+                # 构建上下文（前几章完整内容 + 整体大纲 + 故事大纲）
                 prev_context = ""
                 chapters_dir = self.current_novel_dir / "chapters"
                 if chapters_dir.exists():
-                    prev_files = sorted(chapters_dir.glob(f"chapter_{max(1, ch_num-3):04d}.txt"))
-                    if prev_files:
+                    # 🔧 修复：获取所有章节文件，取最近3章（而非只匹配1个文件）
+                    all_chapters = sorted(chapters_dir.glob("chapter_*.txt"))
+                    recent_chapters = [f for f in all_chapters if f.stem < f"chapter_{ch_num:04d}"]
+                    recent_chapters = recent_chapters[-3:]
+                    if recent_chapters:
                         recent = []
-                        for pf in prev_files[-3:]:
+                        for pf in recent_chapters:
                             text = pf.read_text(encoding='utf-8')
-                            recent.append(f"前文节选 ({pf.stem}): {text[-500:]}")
-                        prev_context = "\n".join(recent)
+                            # 最近一章：开头回顾+完整结尾（连贯性关键）
+                            if pf == recent_chapters[-1]:
+                                ch_start = text[:800] if len(text) > 800 else text
+                                ch_end = text[-1500:] if len(text) > 2000 else text
+                                recent.append(f"【前一章·{pf.stem}开头回顾】\n{ch_start}")
+                                recent.append(f"【前一章·{pf.stem}结尾 — 必须紧接】\n{ch_end}")
+                            else:
+                                ch_sample = text[:600] if len(text) > 600 else text
+                                ch_tail = text[-400:] if len(text) > 1000 else ""
+                                recent.append(f"【{pf.stem}节选】\n{ch_sample}\n...(结尾) {ch_tail}")
+                        prev_context = "\n\n---\n\n".join(recent)
                 
                 outlines_ctx = self._get_outlines_context()
                 if outlines_ctx:
@@ -2668,6 +3033,10 @@ class NovelWriterApp(
                 world_ctx = self._get_world_context()
                 if world_ctx:
                     prev_context = world_ctx + "\n\n---\n\n" + prev_context
+                
+                # 添加强制连贯指令
+                coherence_hint = "\n\n【⚠️ 连贯性核心要求】\n1. 本章必须紧接前一章结尾的情节继续\n2. 不得更换世界观设定、场景类型、故事基调\n3. 保持与前几章一致的叙事风格和语言风格\n4. 所有已出现角色保持性格、关系、状态一致"
+                prev_context = prev_context + coherence_hint if prev_context else coherence_hint
                 
                 content = self.agent.generate_chapter(
                     ch_num,
@@ -3631,17 +4000,28 @@ class NovelWriterApp(
                 if self.outline and current_ch <= len(self.outline):
                     chapter_info = self.outline[current_ch - 1]
                 
-                # 构建上下文（前几章 + 整体大纲 + 故事大纲）
+                # 构建上下文（前几章完整内容 + 整体大纲 + 故事大纲）
                 prev_context = ""
                 chapters_dir = self.current_novel_dir / "chapters"
                 if chapters_dir.exists():
-                    prev_files = sorted(chapters_dir.glob(f"chapter_{max(1, current_ch-3):04d}.txt"))
-                    if prev_files:
+                    # 🔧 修复：获取所有章节文件，取最近3章（而非只匹配1个文件）
+                    all_chapters = sorted(chapters_dir.glob("chapter_*.txt"))
+                    recent_chapters = [f for f in all_chapters if f.stem < f"chapter_{current_ch:04d}"]
+                    recent_chapters = recent_chapters[-3:]
+                    if recent_chapters:
                         recent = []
-                        for pf in prev_files[-3:]:
+                        for pf in recent_chapters:
                             text = pf.read_text(encoding='utf-8')
-                            recent.append(f"前文节选 ({pf.stem}): {text[-500:]}")
-                        prev_context = "\n".join(recent)
+                            if pf == recent_chapters[-1]:
+                                ch_start = text[:800] if len(text) > 800 else text
+                                ch_end = text[-1500:] if len(text) > 2000 else text
+                                recent.append(f"【前一章·{pf.stem}开头回顾】\n{ch_start}")
+                                recent.append(f"【前一章·{pf.stem}结尾 — 必须紧接】\n{ch_end}")
+                            else:
+                                ch_sample = text[:600] if len(text) > 600 else text
+                                ch_tail = text[-400:] if len(text) > 1000 else ""
+                                recent.append(f"【{pf.stem}节选】\n{ch_sample}\n...(结尾) {ch_tail}")
+                        prev_context = "\n\n---\n\n".join(recent)
                 
                 outlines_ctx = self._get_outlines_context()
                 if outlines_ctx:
@@ -3650,6 +4030,10 @@ class NovelWriterApp(
                 world_ctx = self._get_world_context()
                 if world_ctx:
                     prev_context = world_ctx + "\n\n---\n\n" + prev_context
+                
+                # 添加强制连贯指令
+                coherence_hint = "\n\n【⚠️ 连贯性核心要求】\n1. 本章必须紧接前一章结尾的情节继续\n2. 不得更换世界观设定、场景类型、故事基调\n3. 保持与前几章一致的叙事风格和语言风格\n4. 所有已出现角色保持性格、关系、状态一致"
+                prev_context = prev_context + coherence_hint if prev_context else coherence_hint
                 
                 content = self.agent.generate_chapter(
                     current_ch,
@@ -3719,7 +4103,7 @@ class NovelWriterApp(
         
         make_cb(options_frame, "重新生成世界观 (世界设定/背景)", var_world)
         make_cb(options_frame, "重新生成角色 (主角/配角/反派)", var_chars)
-        make_cb(options_frame, "重新生成大纲 (章节大纲)", var_outline)
+        make_cb(options_frame, "重新生成大纲 (全部: 章节/整体/故事)", var_outline)
         make_cb(options_frame, "重新生成所有章节 (正文内容)", var_chapters, enabled=False)
         
         # 提示
@@ -3755,6 +4139,9 @@ class NovelWriterApp(
         if not result['confirmed']:
             return
         
+        # 🛡️ 自动备份（在删除前）
+        self._backup_novel("before_regen")
+        
         # 删除勾选的内容
         if result['world']:
             sf = self.current_novel_dir / "memory" / "settings.json"
@@ -3787,6 +4174,25 @@ class NovelWriterApp(
             for f in chapters_dir.glob("chapter_*.txt"):
                 f.unlink()
             self._log("已清除所有旧章节")
+        
+        # 清除旧的记忆数据（防止上一轮生成的污染）
+        mem_dir = self.current_novel_dir / "memory"
+        if mem_dir.exists():
+            for sub in ["chapters", "chunks", "timeline"]:
+                sd = mem_dir / sub
+                if sd.exists():
+                    for f in sd.glob("*"):
+                        f.unlink()
+            for fn in ["global_summary.txt", "inverted_index.json", "scores.json"]:
+                fp = mem_dir / fn
+                if fp.exists():
+                    fp.unlink()
+        # 清除摘要和场景提示
+        for sd_name in ["summaries", "scene_prompts"]:
+            sd = self.current_novel_dir / sd_name
+            if sd.exists():
+                for f in sd.glob("*"):
+                    f.unlink()
         
         # 重置进度
         self.current_chapter = 0
@@ -3842,10 +4248,22 @@ class NovelWriterApp(
                 characters_dir = self.current_novel_dir / "characters"
                 if not characters_dir.exists() or not list(characters_dir.glob("*.json")):
                     try:
-                        self.agent.generate_characters(meta["genre"], meta["title"])
-                        self._log("角色生成完成")
+                        chars = self.agent.generate_characters(meta["genre"], meta["title"])
+                        # 验证：检查characters/目录是否有文件生成
+                        char_files = list(characters_dir.glob("*.json"))
+                        if not char_files:
+                            self._log("[错误] 角色生成后 characters/ 目录仍为空！")
+                            # 尝试从 memory 恢复
+                            self._sync_characters_from_memory()
+                            char_files = list(characters_dir.glob("*.json"))
+                        if char_files:
+                            self._log(f"角色生成完成 ({len(char_files)}个角色)")
+                        else:
+                            self._log("[错误] 角色生成完全失败，无法恢复")
                     except Exception as e:
-                        self._log(f"角色生成失败，跳过: {e}")
+                        self._log(f"角色生成失败: {e}")
+                        import traceback
+                        self._log(traceback.format_exc())
                 else:
                     self._log("角色已存在，跳过生成")
 
@@ -3854,14 +4272,22 @@ class NovelWriterApp(
                 if not outline_file.exists() or not self.outline:
                     try:
                         concept = meta.get("concept", "")
+                        real_total = meta.get("total_chapters", meta.get("chapter_count"))
+                        # 大题纲分批生成，超过50章先打前站
+                        outline_count = min(real_total, 50) if real_total > 10 else real_total
                         with self._state_lock:
                             self.outline = self.agent.generate_outline(
-                                meta["genre"], meta["title"], meta["chapter_count"], concept)
+                                meta["genre"], meta["title"], outline_count, concept,
+                                total_chapters=real_total)
                         with open(outline_file, 'w', encoding='utf-8') as f:
                             with self._state_lock:
                                 json.dump(self.outline, f, indent=2, ensure_ascii=False)
+                        # 更新meta中的章节数，保持total_chapters不变
+                        meta["chapter_count"] = outline_count
+                        with open(self.current_novel_dir / "meta.json", 'w', encoding='utf-8') as f:
+                            json.dump(meta, f, indent=2, ensure_ascii=False)
                         self.root.after(0, self._refresh_outline_list)
-                        self._log(f"大纲已生成: {len(self.outline)}章")
+                        self._log(f"大纲已生成: {len(self.outline)}章 (总计划{real_total}章)")
                     except Exception as e:
                         self._log(f"大纲生成失败: {e}")
                         self._auto_running = False
@@ -3879,20 +4305,25 @@ class NovelWriterApp(
                 if not overall_file.exists() or not stories_file.exists():
                     self._log("自动生成整体大纲和故事大纲...")
                     concept = meta.get("concept", "")
-                    try:
-                        # 生成整体大纲
-                        overall = self._generate_overall_outline(meta)
-                        self._save_overall_outline(overall)
-                        self._log("整体大纲已生成")
-                    except Exception as e:
-                        self._log(f"整体大纲生成跳过: {e}")
-                    try:
-                        # 生成故事大纲
-                        stories = self._generate_story_outlines(meta)
-                        self._save_story_outlines(stories)
-                        self._log("故事大纲已生成")
-                    except Exception as e:
-                        self._log(f"故事大纲生成跳过: {e}")
+                    chapter_outline = self.outline  # 已生成的章节大纲作为上下文
+                    
+                    # 生成整体大纲
+                    if not overall_file.exists():
+                        try:
+                            overall = self._generate_overall_outline(meta, concept, chapter_outline)
+                            self._save_overall_outline(overall)
+                            self._log(f"整体大纲已生成 ({len(overall)}项)")
+                        except Exception as e:
+                            self._log(f"整体大纲生成失败: {e}")
+                    
+                    # 生成故事大纲
+                    if not stories_file.exists():
+                        try:
+                            stories = self._generate_story_outlines(meta, concept, chapter_outline)
+                            self._save_story_outlines(stories)
+                            self._log(f"故事大纲已生成 ({len(stories)}条线)")
+                        except Exception as e:
+                            self._log(f"故事大纲生成失败: {e}")
 
                 # 4. 逐章生成（从已完成的下一章开始）
                 chapters_dir = self.current_novel_dir / "chapters"
@@ -3909,6 +4340,7 @@ class NovelWriterApp(
                     outline_snapshot = list(self.outline)
                 
                 total = len(outline_snapshot)
+                display_total = meta.get("total_chapters", total)  # 真实总章数用于进度显示
                 skipped = 0
                 generated = 0
                 failed = 0
@@ -3930,6 +4362,9 @@ class NovelWriterApp(
                     with self._state_lock:
                         self.current_chapter = ch_num
                     
+                    # 🛡️ 保存检查点（断电恢复用）
+                    self._save_checkpoint(ch_num, "generating")
+                    
                     try:
                         # 构建前几章上下文（内容+摘要）
                         recent_context = []
@@ -3939,18 +4374,26 @@ class NovelWriterApp(
                             pf = chapters_dir / f"chapter_{prev_ch:04d}.txt"
                             if pf.exists():
                                 text = pf.read_text(encoding='utf-8')
-                                content_sample = text[:800] if len(text) > 800 else text
-                                ending_sample = text[-500:] if len(text) > 1000 else ""
-                                recent_context.append(f"第{prev_ch}章开头: {content_sample}")
-                                if offset == 1:  # 最近一章包含结尾
-                                    recent_context.append(f"第{prev_ch}章结尾: {ending_sample}")
+                                if offset == 1:
+                                    # 最近一章：保留开头+完整结尾（连贯性关键）
+                                    content_sample = text[:600] if len(text) > 600 else text
+                                    ending_sample = text[-1200:] if len(text) > 1800 else text
+                                    recent_context.append(f"【前一章·第{prev_ch}章开头】\n{content_sample}")
+                                    recent_context.append(f"【前一章·第{prev_ch}章结尾 — 必须紧接此情节继续】\n{ending_sample}")
+                                else:
+                                    # 更早的章节：只保留摘要
+                                    content_sample = text[:400] if len(text) > 400 else text
+                                    recent_context.append(f"【第{prev_ch}章概要】\n{content_sample}")
                         
                         prev_context = "\n---\n".join(recent_context)
                         
-                        # 完结收束：最后章节提示AI收尾
-                        total_chapters = len(outline_snapshot)
-                        remaining = total_chapters - ch_num
-                        if remaining <= 3:
+                        # 完结收束：根据小说真实总章数判断是否接近结局
+                        # 使用 meta 中的 total_chapters（用户设定的总章数），而非当前批次大纲长度
+                        real_total = meta.get("total_chapters", meta.get("chapter_count", len(outline_snapshot)))
+                        remaining = real_total - ch_num
+                        if real_total > 100 and ch_num <= 10:
+                            pass  # 长篇开头不提示完结
+                        elif remaining <= 3:
                             prev_context += f"\n\n【重要】只剩{remaining+1}章完结。本章必须推进至最终结局。"
                         elif remaining <= 10:
                             prev_context += f"\n\n【提示】还有{remaining+1}章。请为结局做铺垫，收束支线。"
@@ -3973,15 +4416,19 @@ class NovelWriterApp(
                             batch_end = min(ch_num + 9, len(outline_snapshot))
                             self._log(f"大纲不足，动态生成第{ch_num}-{batch_end}章大纲...")
                             try:
-                                remaining = len(outline_snapshot) - ch_num + 1
-                                is_ending = (ch_num > len(outline_snapshot) * 0.85)
+                                real_total = meta.get("total_chapters", meta.get("chapter_count", len(outline_snapshot)))
+                                remaining = real_total - ch_num + 1
+                                is_ending = (ch_num > real_total * 0.85)
                                 ending_hint = "这是结尾阶段，请规划收束。每条摘要需推进结局。" if is_ending else ""
                                 
                                 # 获取世界观和概念上下文
                                 world_context = self._get_world_context() or ""
                                 concept_hint = f"\n\n【世界观/概念】\n{world_context[:600]}\n" if world_context else ""
                                 
-                                gen_system = f"""你是故事大纲师。基于前文和世界观生成{batch_end-ch_num+1}章大纲。{ending_hint}
+                                protagonist = meta.get("protagonist", "")
+                                protagonist_hint = f"\n【重要】主角名为「{protagonist}」，所有章节必须以此角色为主角！" if protagonist else ""
+                                
+                                gen_system = f"""你是故事大纲师。基于前文和世界观生成{batch_end-ch_num+1}章大纲。{ending_hint}{protagonist_hint}
 输出JSON数组: [{{"chapter":{ch_num},"title":"章节标题(10字)","summary":"具体情节(80字)"}}]
 禁止"待规划"。每章必须有具体事件，标题必须反映本章核心内容。"""
                                 
@@ -4001,6 +4448,10 @@ class NovelWriterApp(
                                                 if idx < len(self.outline):
                                                     self.outline[idx]["title"] = item.get("title", f"第{item['chapter']}章")
                                                     self.outline[idx]["summary"] = item.get("summary", f"第{item['chapter']}章情节")
+                                            # 保存已更新的 outline.json
+                                            outline_file = self.current_novel_dir / "outline.json"
+                                            with open(outline_file, 'w', encoding='utf-8') as f:
+                                                json.dump(self.outline, f, indent=2, ensure_ascii=False)
                                         # 用新生成的大纲
                                         cur_item = next((x for x in new_batch if x["chapter"] == ch_num), None)
                                         if cur_item:
@@ -4009,7 +4460,10 @@ class NovelWriterApp(
                                             self._log(f"大纲已批量生成: 第{ch_num}章 {chapter_title}")
                                 
                                 if not chapter_summary or chapter_summary == "待规划":
-                                    chapter_summary = f"第{ch_num}章的情节自然推进，与前后章节连贯一致"
+                                    # 注入世界观和概念到大纲，让 AI 有明确创作方向
+                                    concept_text = meta.get("concept", "")
+                                    genre_text = meta.get("genre", "")
+                                    chapter_summary = f"【{genre_text}】{concept_text[:150]}。第{ch_num}章：请基于世界观设定创作该章情节，保持风格一致。"
                             except Exception:
                                 chapter_summary = f"第{ch_num}章，故事继续发展"
                         
@@ -4030,9 +4484,9 @@ class NovelWriterApp(
                                 else:
                                     raise
 
-                        # 保存
-                        with open(chapters_dir / f"chapter_{ch_num:04d}.txt", 'w', encoding='utf-8') as f:
-                            f.write(content)
+                        # 🛡️ 原子写入章节（防止断电损坏）
+                        chapter_file = chapters_dir / f"chapter_{ch_num:04d}.txt"
+                        self._atomic_write(chapter_file, content)
 
                         # 定稿
                         self.agent.finalize_chapter(ch_num, content)
@@ -4051,34 +4505,44 @@ class NovelWriterApp(
                         batch_count += 1
                         if generated == 1 or batch_count % 5 == 0 or ch_num == total:
                             self.root.after(0, lambda c=content, n=ch_num, t=chapter_info.get("title", ""): self._display_chapter(n, t, c))
-                            self._log(f"第{ch_num}章创作完成 (进度: {generated+1}/{total-skipped})")
+                            self._log(f"第{ch_num}章创作完成 (进度: {generated+1}/{total-skipped}, 全书: {ch_num}/{display_total})")
                         else:
                             self._log(f"第{ch_num}章创作完成")
                         
                         generated += 1
                         
-                        # 每10章释放一次内存
+                        # 每10章释放一次内存 + 保存快照
                         if generated % 10 == 0:
                             import gc
                             gc.collect()
-                            self._log(f"[内存] 已释放内存 (已完成{generated}章)")
+                            # 🛡️ 定期保存内存快照（防止累积数据丢失）
+                            self._save_checkpoint(ch_num, "snapshot")
+                            self._log(f"[内存] 已释放内存+保存快照 (已完成{generated}章)")
                             
                     except Exception as e:
-                        self._log(f"第{ch_num}章创作失败，继续下一章: {e}")
+                        import traceback
+                        tb = traceback.format_exc()
+                        self._log(f"第{ch_num}章创作失败: {e}")
+                        self._log(f"[DEBUG] Traceback:\n{tb[:500]}")
                         failed += 1
                         continue
                 
-                # 更新进度显示
-                self.root.after(0, lambda: self.chapter_var.set(f"{len(existing_chapters) + generated}/{total}"))
+                # 更新进度显示 — 使用真实总章数
+                completed = len(existing_chapters) + generated
+                self.root.after(0, lambda c=completed, dt=display_total: self.chapter_var.set(f"{c}/{dt}"))
                 
                 summary = f"=== 自动创作完成 ===\n"
-                summary += f"总章数: {total}\n"
+                summary += f"全书计划: {display_total} 章\n"
+                summary += f"本次批次: {total} 章\n"
                 if skipped > 0:
                     summary += f"跳过已完成: {skipped} 章\n"
                 summary += f"本次生成: {generated} 章\n"
                 if failed > 0:
                     summary += f"失败: {failed} 章\n"
                 self._log(summary)
+                
+                # 🛡️ 清除检查点（生成完成）
+                self._clear_checkpoint()
                 
                 if generated > 0:
                     self.root.after(0, lambda: messagebox.showinfo("完成", f"《{meta['title']}》创作完成！\n本次生成 {generated} 章"))
@@ -4190,12 +4654,13 @@ class NovelWriterApp(
                     self._log(f"[续写] 基于第{last_ch}章结尾生成{n}章大纲...")
                     new_outline = self.agent.generate_outline_continuation(
                         meta.get("genre", "玄幻"), meta.get("title", ""), n,
-                        context_text, concept=meta.get("concept", "")
+                        context_text, current_count=last_ch
                     )
                     
                     # 更新总章数
                     total = last_ch + n
                     meta["chapter_count"] = total
+                    meta["total_chapters"] = total  # 同步更新 total_chapters
                     with open(self.current_novel_dir / "meta.json", 'w', encoding='utf-8') as f:
                         json.dump(meta, f, indent=2, ensure_ascii=False)
                     
@@ -4230,9 +4695,12 @@ class NovelWriterApp(
                                 prev_parts.append(f"第{ch_num-off}章: {t[:600]}..." if len(t)>600 else t)
                         prev_ctx = "\n---\n".join(prev_parts)
                         
-                        # 结尾收束
-                        rem = len(new_outline) - i - 1
-                        if rem <= 3:
+                        # 结尾收束：根据小说真实总章数判断
+                        real_total = meta.get("total_chapters", meta.get("chapter_count", last_ch + len(new_outline)))
+                        rem = real_total - last_ch - i - 1
+                        if real_total > 100 and last_ch + i <= 10:
+                            pass  # 长篇开头不提示完结
+                        elif rem <= 3:
                             prev_ctx += f"\n\n【重要】只剩{rem+1}章完结。请收束故事。"
                         
                         # 注入整体大纲和故事大纲
@@ -4373,7 +4841,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 data = json.loads(f.read_text(encoding='utf-8'))
                 data["_file"] = f.name
                 timelines.append(data)
-            except:
+            except Exception:
                 pass
         
         # 世界线列表
@@ -4724,7 +5192,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                             branch_mem.save_chapter_summary(ch_num, ch_summary_text or content[:200])
                             (branch_dir / "summaries" / f"chapter_{ch_num:04d}_summary.txt").write_text(
                                 f"分支第{i+1}章: {title}\n\n{ch_summary_text or content[:200]}", encoding='utf-8')
-                        except:
+                        except Exception:
                             pass
                     
                     # 角色自动检测
@@ -4741,7 +5209,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                                     branch_chars.create_character(name=name, first_appearance=ch_num)
                                     branch_chars.save_character(name)
                                     self._log(f"[分支角色] 新增: {name}")
-                    except:
+                    except Exception:
                         pass
                     
                     # 更新上下文用于下一章
@@ -4809,6 +5277,126 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         except Exception as e:
             self._log(f"[摘要] 保存失败: {e}")
     
+    # ===== 数据保护机制 =====
+    
+    def _backup_novel(self, label: str = "auto"):
+        """创建小说数据备份（带时间戳）"""
+        if not self.current_novel_dir:
+            return None
+        try:
+            backup_dir = self.current_novel_dir / "backups"
+            backup_dir.mkdir(exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_name = f"{label}_{timestamp}"
+            backup_path = backup_dir / backup_name
+            backup_path.mkdir(exist_ok=True)
+            
+            # 备份关键文件
+            for src_name in ["meta.json", "outline.json"]:
+                src = self.current_novel_dir / src_name
+                if src.exists():
+                    shutil.copy2(src, backup_path / src_name)
+            
+            # 备份 outlines/
+            outlines_src = self.current_novel_dir / "outlines"
+            if outlines_src.exists():
+                outlines_dst = backup_path / "outlines"
+                shutil.copytree(outlines_src, outlines_dst, dirs_exist_ok=True)
+            
+            # 备份 characters/
+            chars_src = self.current_novel_dir / "characters"
+            if chars_src.exists():
+                chars_dst = backup_path / "characters"
+                shutil.copytree(chars_src, chars_dst, dirs_exist_ok=True)
+            
+            # 备份 memory/settings.json 和 memory/characters.json
+            mem_src = self.current_novel_dir / "memory"
+            if mem_src.exists():
+                mem_dst = backup_path / "memory"
+                mem_dst.mkdir(exist_ok=True)
+                for fn in ["settings.json", "characters.json", "settings.md"]:
+                    fp = mem_src / fn
+                    if fp.exists():
+                        shutil.copy2(fp, mem_dst / fn)
+            
+            # 清理旧备份（保留最近10个）
+            backups = sorted(backup_dir.iterdir(), key=lambda p: p.name, reverse=True)
+            for old in backups[10:]:
+                shutil.rmtree(old, ignore_errors=True)
+            
+            self._log(f"[备份] 已创建 {label} 备份: {backup_name}")
+            return backup_path
+        except Exception as e:
+            self._log(f"[备份] 备份失败: {e}")
+            return None
+    
+    def _save_checkpoint(self, chapter_num: int, status: str = "generating"):
+        """保存生成检查点（用于断电恢复）"""
+        if not self.current_novel_dir:
+            return
+        try:
+            checkpoint = {
+                "chapter": chapter_num,
+                "status": status,
+                "timestamp": datetime.now().isoformat(),
+                "outline_count": len(self.outline) if self.outline else 0
+            }
+            cp_file = self.current_novel_dir / "checkpoint.json"
+            # 原子写入：先写临时文件，再重命名
+            tmp_file = cp_file.with_suffix('.tmp')
+            with open(tmp_file, 'w', encoding='utf-8') as f:
+                json.dump(checkpoint, f, indent=2, ensure_ascii=False)
+            tmp_file.replace(cp_file)
+        except Exception:
+            pass
+    
+    def _clear_checkpoint(self):
+        """清除检查点（生成完成）"""
+        if not self.current_novel_dir:
+            return
+        try:
+            cp_file = self.current_novel_dir / "checkpoint.json"
+            if cp_file.exists():
+                cp_file.unlink()
+        except Exception:
+            pass
+    
+    def _check_recovery(self):
+        """检查是否有未完成的生成任务（断电恢复）"""
+        if not self.current_novel_dir:
+            return
+        cp_file = self.current_novel_dir / "checkpoint.json"
+        if not cp_file.exists():
+            return
+        try:
+            with open(cp_file, 'r', encoding='utf-8') as f:
+                cp = json.load(f)
+            ch = cp.get("chapter", 0)
+            ts = cp.get("timestamp", "未知")
+            status = cp.get("status", "unknown")
+            
+            if status == "generating":
+                self._log(f"[恢复] 检测到未完成的生成任务：第{ch}章 ({ts})")
+                self._log(f"[恢复] 可使用「自动创作」继续，已完成的章节会自动跳过")
+            elif status == "completed":
+                self._clear_checkpoint()
+        except Exception:
+            pass
+    
+    def _atomic_write(self, filepath: Path, content: str, encoding: str = 'utf-8'):
+        """原子写入文件（先写临时文件，再重命名，防止断电损坏）"""
+        tmp_file = filepath.with_suffix('.tmp')
+        with open(tmp_file, 'w', encoding=encoding) as f:
+            f.write(content)
+        tmp_file.replace(filepath)
+    
+    def _atomic_json_write(self, filepath: Path, data: Any):
+        """原子写入JSON文件"""
+        tmp_file = filepath.with_suffix('.tmp')
+        with open(tmp_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        tmp_file.replace(filepath)
+    
     def _save_chapter(self):
         """保存当前章节"""
         if not self.current_novel_dir:
@@ -4822,8 +5410,9 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         
         chapters_dir = self.current_novel_dir / "chapters"
         chapters_dir.mkdir(exist_ok=True)
-        with open(chapters_dir / f"chapter_{self.current_chapter:04d}.txt", 'w', encoding='utf-8') as f:
-            f.write(content)
+        # 🛡️ 原子写入
+        chapter_file = chapters_dir / f"chapter_{self.current_chapter:04d}.txt"
+        self._atomic_write(chapter_file, content)
         
         self._log(f"第{self.current_chapter}章已保存")
         messagebox.showinfo("成功", "章节已保存")
@@ -4980,8 +5569,12 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                     self.chapter_select_var.set(current)
         elif outline_type == "整体大纲":
             overall = self._get_overall_outline()
-            for i, item in enumerate(overall):
-                self.outline_list.insert(tk.END, f"{i+1}. {item.get('title', '未命名')}")
+            if isinstance(overall, dict):
+                # 单对象格式 → 显示为一项
+                self.outline_list.insert(tk.END, f"1. {overall.get('title', '未命名')}")
+            elif isinstance(overall, list):
+                for i, item in enumerate(overall):
+                    self.outline_list.insert(tk.END, f"{i+1}. {item.get('title', '未命名')}")
         elif outline_type == "故事大纲":
             stories = self._get_story_outlines()
             for name, story in stories.items():
@@ -4992,22 +5585,30 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         self._refresh_outline_list()
     
     def _get_overall_outline(self) -> list:
-        """获取整体大纲"""
+        """获取整体大纲 — 自动标准化为列表"""
         if not self.current_novel_dir:
             return []
         outline_dir = self.current_novel_dir / "outlines"
         overall_file = outline_dir / "overall.json"
         if overall_file.exists():
             with open(overall_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+            # 兼容单个对象的旧格式
+            if isinstance(data, dict):
+                return [data]
+            if isinstance(data, list):
+                return data
         return []
     
-    def _save_overall_outline(self, data: list):
-        """保存整体大纲"""
+    def _save_overall_outline(self, data):
+        """保存整体大纲 — 自动标准化为列表格式"""
         if not self.current_novel_dir:
             return
         outline_dir = self.current_novel_dir / "outlines"
         outline_dir.mkdir(exist_ok=True)
+        # 兼容：如果AI返回单个对象，包装为列表
+        if isinstance(data, dict) and "title" in data:
+            data = [data]
         with open(outline_dir / "overall.json", 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
     
@@ -5037,19 +5638,28 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         overall = self._get_overall_outline()
         if overall:
             lines = []
-            for i, item in enumerate(overall[:15]):
-                title = item.get("title", "")
-                content = item.get("content", "")[:120]
-                lines.append(f"{i+1}. {title}：{content}")
-            parts.append(f"【整体大纲 - 全局创作指南】\n" + "\n".join(lines))
+            # 兼容dict和list两种格式
+            if isinstance(overall, dict):
+                # 单个对象 → 取title和description
+                title = overall.get("title", "")
+                desc = overall.get("description", overall.get("content", ""))[:120]
+                lines.append(f"1. {title}：{desc}")
+            elif isinstance(overall, list):
+                for i, item in enumerate(overall[:15]):
+                    title = item.get("title", "")
+                    desc = item.get("description", item.get("content", ""))[:120]
+                    lines.append(f"{i+1}. {title}：{desc}")
+            if lines:
+                parts.append(f"【整体大纲 - 全局创作指南】\n" + "\n".join(lines))
         
         stories = self._get_story_outlines()
         if stories:
             lines = []
             for name, story in list(stories.items())[:8]:
-                content = story.get("content", "")[:150]
-                lines.append(f"故事线「{name}」：{content}")
-            parts.append(f"【故事大纲 - 多条故事线】\n" + "\n".join(lines))
+                summary = story.get("summary", story.get("content", ""))[:150]
+                lines.append(f"故事线「{name}」：{summary}")
+            if lines:
+                parts.append(f"【故事大纲 - 多条故事线】\n" + "\n".join(lines))
         
         return "\n\n".join(parts) if parts else ""
     
@@ -5064,8 +5674,11 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
             with open(settings_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             raw = data.get("raw", json.dumps(data, ensure_ascii=False))
-            return f"【世界观设定】\n{raw[:2000]}"
-        except:
+            # 清理markdown标记
+            raw = raw.replace("```json", "").replace("```", "").strip()
+            return f"【世界观设定 — 必须严格遵守以下设定进行创作】\n{raw[:3000]}"
+        except Exception as e:
+            self._log(f"读取世界观失败: {e}")
             return ""
     
     def _add_outline_item(self):
@@ -5150,7 +5763,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
             if idx < len(overall):
                 item = overall[idx]
                 title = item.get("title", "")
-                content = item.get("content", "")
+                content = item.get("description", item.get("content", ""))
             else:
                 return
         elif outline_type == "故事大纲":
@@ -5159,7 +5772,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
             if idx < len(names):
                 item = stories[names[idx]]
                 title = item.get("title", "")
-                content = item.get("content", "")
+                content = item.get("summary", item.get("content", ""))
             else:
                 return
         
@@ -5202,14 +5815,19 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                     json.dump(self.outline, f, indent=2, ensure_ascii=False)
             elif outline_type == "整体大纲":
                 overall = self._get_overall_outline()
-                overall[idx] = {"title": new_title, "content": new_content}
+                overall[idx] = {"title": new_title, "description": new_content, "chapter_range": overall[idx].get("chapter_range", "")}
                 self._save_overall_outline(overall)
             elif outline_type == "故事大纲":
                 stories = self._get_story_outlines()
                 names = list(stories.keys())
                 old_name = names[idx]
+                old_story = stories.get(old_name, {})
                 del stories[old_name]
-                stories[new_title] = {"title": new_title, "content": new_content, "chapters": []}
+                stories[new_title] = {
+                    "title": new_title, 
+                    "summary": new_content, 
+                    "key_events": old_story.get("key_events", [])
+                }
                 self._save_story_outlines(stories)
             
             self._refresh_outline_list()
@@ -5520,7 +6138,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
     
     def _on_outline_select(self, event):
         """大纲选中事件"""
-        if not self.current_novel_dir or not self.outline:
+        if not self.current_novel_dir:
             return
         
         selection = self.outline_list.curselection()
@@ -5528,30 +6146,60 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
             return
         
         idx = selection[0]
-        if idx < len(self.outline):
-            chapter_info = self.outline[idx]
-            # 使用索引+1作为章节号（与文件命名一致）
-            self.current_chapter = idx + 1
-            
-            # 尝试加载已生成的章节
-            chapters_dir = self.current_novel_dir / "chapters"
-            chapter_file = chapters_dir / f"chapter_{self.current_chapter:04d}.txt"
-            
-            if chapter_file.exists():
-                content = chapter_file.read_text(encoding='utf-8')
+        outline_type = self.outline_type_var.get() if hasattr(self, 'outline_type_var') else "章节大纲"
+        
+        if outline_type == "整体大纲":
+            overall = self._get_overall_outline()
+            items = [overall] if isinstance(overall, dict) else overall
+            if 0 <= idx < len(items):
+                item = items[idx]
                 self.content_text.delete("1.0", tk.END)
-                self.content_text.insert("1.0", content)
-                self.chapter_title_var.set(f"第{self.current_chapter}章: {chapter_info.get('title', '')}")
-                self.word_count_var.set(f"字数: {len(content)}")
-                self._log(f"已加载第{self.current_chapter}章，可编辑后按 Ctrl+S 保存")
-            else:
-                self.chapter_title_var.set(f"第{self.current_chapter}章: {chapter_info.get('title', '')} (未生成)")
+                lines = [
+                    f"标题: {item.get('title', '未命名')}",
+                    f"描述: {item.get('description', item.get('content', '暂无'))}",
+                    f"章节范围: {item.get('chapter_range', '全文')}",
+                ]
+                self.content_text.insert("1.0", "\n\n".join(lines))
+                self.chapter_title_var.set(f"整体大纲: {item.get('title', '')}")
+        elif outline_type == "故事大纲":
+            stories = self._get_story_outlines()
+            story_list = list(stories.items())
+            if 0 <= idx < len(story_list):
+                name, story = story_list[idx]
                 self.content_text.delete("1.0", tk.END)
-                self.content_text.insert("1.0", f"章节大纲：\n{chapter_info.get('summary', '无')}\n\n在此处编写内容...")
-            
-            # 更新进度显示
-            total = len(self.outline)
-            self.chapter_var.set(f"{self.current_chapter}/{total}")
+                events = story.get("key_events", [])
+                lines = [
+                    f"故事线: {name}",
+                    f"标题: {story.get('title', '未知')}",
+                    f"概要: {story.get('summary', story.get('content', '暂无'))}",
+                    f"关键事件: {', '.join(events) if events else '暂无'}",
+                ]
+                self.content_text.insert("1.0", "\n\n".join(lines))
+                self.chapter_title_var.set(f"故事大纲: {name}")
+        elif self.outline:
+            # 章节大纲
+            if idx < len(self.outline):
+                chapter_info = self.outline[idx]
+                self.current_chapter = idx + 1
+                
+                chapters_dir = self.current_novel_dir / "chapters"
+                chapter_file = chapters_dir / f"chapter_{self.current_chapter:04d}.txt"
+                
+                if chapter_file.exists():
+                    content = chapter_file.read_text(encoding='utf-8')
+                    self.content_text.delete("1.0", tk.END)
+                    self.content_text.insert("1.0", content)
+                    self.chapter_title_var.set(f"第{self.current_chapter}章: {chapter_info.get('title', '')}")
+                    self.word_count_var.set(f"字数: {len(content)}")
+                    self._log(f"已加载第{self.current_chapter}章，可编辑后按 Ctrl+S 保存")
+                else:
+                    self.chapter_title_var.set(f"第{self.current_chapter}章: {chapter_info.get('title', '')} (未生成)")
+                    self.content_text.delete("1.0", tk.END)
+                    self.content_text.insert("1.0", f"章节大纲：\n{chapter_info.get('summary', '无')}\n\n在此处编写内容...")
+                
+                total = len(self.outline)
+                display_total = self._get_meta().get("total_chapters", total)
+                self.chapter_var.set(f"{self.current_chapter}/{display_total}")
     
     def _detect_and_prompt_image(self, content: str, chapter_num: int):
         """检测名场面 - 只保留质量最高的2个"""
@@ -5789,6 +6437,20 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         world_ctx = self._get_world_context()
         if world_ctx:
             shared_context += f"\n{world_ctx}\n"
+        
+        # 🔒 注入主角名锁定
+        if self.current_novel_dir:
+            import re as _re
+            meta_file = self.current_novel_dir / "meta.json"
+            if meta_file.exists():
+                try:
+                    with open(meta_file, 'r', encoding='utf-8') as f:
+                        _meta = json.load(f)
+                    _protagonist = _meta.get("protagonist", "")
+                    if _protagonist:
+                        shared_context += f"\n【重要·主角锁定】本小说主角名为「{_protagonist}」。所有创作必须以「{_protagonist}」为主角，禁止更换！"
+                except Exception:
+                    pass
         
         def save_callback(content):
             # 保存到当前章节

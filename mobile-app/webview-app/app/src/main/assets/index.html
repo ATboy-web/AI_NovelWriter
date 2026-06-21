@@ -876,15 +876,19 @@ function loadSettings() {
 }
 
 function saveSettingsToDisk() {
-  var s = {
-    mode: apiMode,
-    apiEndpoint: appState.apiEndpoint,
-    apiKey: appState.apiKey,
-    apiModel: appState.apiModel,
-    desktopUrl: appState.desktopUrl,
-    desktopToken: appState.desktopToken
-  };
-  localStorage.setItem('ainovel_settings', JSON.stringify(s));
+  try {
+    var s = {
+      mode: apiMode,
+      apiEndpoint: appState.apiEndpoint,
+      apiKey: appState.apiKey,
+      apiModel: appState.apiModel,
+      desktopUrl: appState.desktopUrl,
+      desktopToken: appState.desktopToken
+    };
+    localStorage.setItem('ainovel_settings', JSON.stringify(s));
+  } catch(e) {
+    addLog('error', '设置保存失败', e.message);
+  }
 }
 
 // ===== API模式切换 =====
@@ -1137,7 +1141,10 @@ function createNovel() {
       method: 'POST', headers: headers,
       body: JSON.stringify({ title: title, type: type, concept: concept })
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
     .then(function(data) {
       if (data.success) {
         addLog('success', '小说创建成功', '「' + title + '」已提交到桌面版');
@@ -1149,8 +1156,9 @@ function createNovel() {
         showToast('创建失败: ' + (data.message || '未知错误'));
       }
     })
-    .catch(function() {
-      addLog('error', '无法连接桌面版', appState.desktopUrl);
+    .catch(function(e) {
+      addLog('error', '无法连接桌面版', e.message);
+      diagError('createNovel:desktop', e);
       showToast('无法连接桌面版服务\n请确认桌面版正在运行\n地址: ' + appState.desktopUrl, 5000);
     });
   } else {
@@ -1481,9 +1489,6 @@ function getNovels() {
 function saveNovels(novels) {
   saveNovelData('novels', novels);
 }
-
-// 初始化时更新工具页状态
-var origCheckApiReady = typeof checkApiReady === 'function' ? checkApiReady : null;
 
 </script>
 </body>

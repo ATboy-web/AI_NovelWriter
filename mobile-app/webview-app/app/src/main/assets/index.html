@@ -469,10 +469,29 @@
       <button class="btn btn-primary" onclick="saveApiSettings()">💾 保存设置</button>
       <div id="save-status" style="font-size:11px;text-align:center;margin-top:6px;color:var(--text-muted);"></div>
 
+      <!-- 运行日志 -->
+      <div class="card" style="margin-top:10px;">
+        <h3>📋 日志
+          <span style="font-size:10px;color:var(--text-muted);margin-left:6px;">
+            <a href="#" onclick="showLogTab('user');return false;" id="log-tab-user" style="color:var(--accent-light);font-weight:bold;">用户日志</a>
+            &nbsp;|&nbsp;
+            <a href="#" onclick="showLogTab('diagnostic');return false;" id="log-tab-diag" style="color:var(--text-muted);">AI诊断</a>
+          </span>
+          <button class="btn btn-danger" onclick="clearCurrentLog()" style="float:right;font-size:10px;padding:3px 8px;margin:0;">清空</button>
+          <button class="btn btn-success" onclick="exportCurrentLog()" style="float:right;font-size:10px;padding:3px 8px;margin-right:4px;">📤 导出微信</button>
+        </h3>
+        <div id="log-container-user" style="max-height:250px;overflow-y:auto;font-size:10px;line-height:1.4;margin-top:6px;">
+          <div style="color:var(--text-muted);padding:10px;">暂无日志记录</div>
+        </div>
+        <div id="log-container-diag" style="display:none;max-height:250px;overflow-y:auto;font-size:9px;line-height:1.3;margin-top:6px;font-family:monospace;">
+          <div style="color:var(--text-muted);padding:10px;">暂无诊断记录</div>
+        </div>
+      </div>
+
       <!-- 关于 -->
       <div class="card" style="margin-top:10px;">
         <h3>📋 关于</h3>
-        <p>AI小说创作工坊 v2.12.3 · 移动版</p>
+        <p>AI小说创作工坊 v2.12.5 · 移动版</p>
         <p style="font-size:11px;">纯HTML5构建，无框架依赖，支持15种小说类型</p>
       </div>
     </div>
@@ -506,6 +525,260 @@ var appState = {
 
 var tabTitles = ['AI小说创作工坊', '我的书架', '开始创作', '写作工具箱', 'API设置中心'];
 var tabSubs = ['智能创作助手', '管理你的小说', '输入灵感，生成故事', 'AI辅助写作', '配置AI服务'];
+
+// ===== 日志系统 (双日志: 用户日志 + AI诊断日志) =====
+var appLogs = [];          // 用户日志 (简单文本)
+var diagnosticLogs = [];   // AI诊断日志 (完整JSON，含请求/响应/错误)
+var MAX_LOGS = 300;
+var currentLogTab = 'user'; // 'user' | 'diagnostic'
+
+function addLog(type, message, detail) {
+  var now = new Date();
+  var time = now.toLocaleTimeString('zh-CN');
+  var entry = {
+    time: time, type: type, message: message, detail: detail || '', timestamp: now.getTime()
+  };
+  appLogs.unshift(entry);
+  if (appLogs.length > MAX_LOGS) appLogs.pop();
+  renderLogs();
+}
+
+// ===== AI诊断日志 (完整记录，供开发者/AI分析) =====
+function addDiagLog(event, data) {
+  var now = new Date();
+  var entry = {
+    ts: now.toISOString(),
+    time: now.toLocaleTimeString('zh-CN') + '.' + String(now.getMilliseconds()).padStart(3, '0'),
+    event: event,
+    data: data || {},
+    ua: navigator.userAgent.substring(0, 80),
+    online: navigator.onLine
+  };
+  diagnosticLogs.unshift(entry);
+  if (diagnosticLogs.length > MAX_LOGS) diagnosticLogs.pop();
+  renderDiagnostic();
+}
+
+// 便捷诊断记录
+function diagApiCall(method, url, reqHeaders, reqBody, respStatus, respBody, error, durationMs) {
+  addDiagLog('API_CALL', {
+    method: method,
+    url: url,
+    req_headers: sanitizeForLog(reqHeaders || {}),
+    req_body: truncForLog(reqBody, 1500),
+    resp_status: respStatus,
+    resp_body: truncForLog(respBody, 1500),
+    error: error ? (error.message || String(error)) : null,
+    duration_ms: durationMs || 0
+  });
+}
+
+function diagError(context, error) {
+  addDiagLog('ERROR', {
+    context: context,
+    error_type: error ? (error.name || 'Error') : 'unknown',
+    error_message: error ? (error.message || String(error)) : '',
+    error_stack: error ? (error.stack || '').substring(0, 1500) : '',
+    timestamp: Date.now()
+  });
+}
+
+function diagSysEvent(event, info) {
+  addDiagLog('SYSTEM', { event: event, info: info || '', timestamp: Date.now() });
+}
+
+function sanitizeForLog(obj) {
+  // 移除敏感信息 (API密钥等)
+  var r = {};
+  for (var k in obj) {
+    if (k.toLowerCase().indexOf('auth') >= 0 || k.toLowerCase().indexOf('key') >= 0 || k.toLowerCase().indexOf('token') >= 0) {
+      r[k] = '***REDACTED***';
+    } else {
+      r[k] = truncForLog(obj[k], 500);
+    }
+  }
+  return r;
+}
+
+function truncForLog(val, maxLen) {
+  if (val === undefined || val === null) return '';
+  var s = typeof val === 'string' ? val : JSON.stringify(val);
+  if (s.length > maxLen) return s.substring(0, maxLen) + '...[' + s.length + 'chars]';
+  return s;
+}
+
+// ===== 双日志渲染 =====
+function showLogTab(tab) {
+  currentLogTab = tab;
+  document.getElementById('log-container-user').style.display = (tab === 'user') ? '' : 'none';
+  document.getElementById('log-container-diag').style.display = (tab === 'diagnostic') ? '' : 'none';
+  document.getElementById('log-tab-user').style.cssText = (tab === 'user') ? 'color:var(--accent-light);font-weight:bold;' : 'color:var(--text-muted);';
+  document.getElementById('log-tab-diag').style.cssText = (tab === 'diagnostic') ? 'color:var(--accent-light);font-weight:bold;' : 'color:var(--text-muted);';
+  if (tab === 'user') renderLogs();
+  else renderDiagnostic();
+}
+
+function renderLogs() {
+  var container = document.getElementById('log-container-user');
+  if (!container || container.style.display === 'none') return;
+  
+  var html = '';
+  for (var i = 0; i < appLogs.length; i++) {
+    var l = appLogs[i];
+    var icon = l.type === 'error' ? '❌' : l.type === 'success' ? '✅' : l.type === 'api' ? '🔗' : '📝';
+    var color = l.type === 'error' ? 'var(--danger)' : l.type === 'success' ? 'var(--success)' : l.type === 'api' ? 'var(--accent-light)' : 'var(--text-secondary)';
+    html += '<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:11px;">' +
+      '<span style="color:' + color + ';">' + icon + ' [' + l.time + ']</span> ' +
+      '<span style="color:var(--text-primary);">' + escapeHtml(l.message) + '</span>' +
+      (l.detail ? '<br><span style="color:var(--text-muted);margin-left:16px;">' + escapeHtml(l.detail.substring(0, 200)) + '</span>' : '') +
+      '</div>';
+  }
+  container.innerHTML = html || '<div style="color:var(--text-muted);padding:10px;">暂无日志记录</div>';
+}
+
+function renderDiagnostic() {
+  var container = document.getElementById('log-container-diag');
+  if (!container || container.style.display === 'none') return;
+  
+  var html = '';
+  for (var i = 0; i < diagnosticLogs.length; i++) {
+    var d = diagnosticLogs[i];
+    var color = 'var(--text-secondary)';
+    if (d.event === 'ERROR') color = 'var(--danger)';
+    else if (d.event === 'API_CALL') color = 'var(--accent-light)';
+    
+    html += '<div style="padding:3px 0;border-bottom:1px solid var(--border);font-size:9px;">' +
+      '<span style="color:' + color + ';">[' + d.time + ']</span> ' +
+      '<b>' + escapeHtml(d.event) + '</b>';
+    
+    if (d.data) {
+      var keys = Object.keys(d.data);
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k];
+        var val = d.data[key];
+        if (val === null || val === '' || val === undefined) continue;
+        var displayVal = typeof val === 'object' ? JSON.stringify(val).substring(0, 120) : String(val).substring(0, 120);
+        html += '<br><span style="color:var(--text-muted);margin-left:12px;">' + key + ': </span>' +
+          '<span style="color:var(--text-primary);">' + escapeHtml(displayVal) + '</span>';
+      }
+    }
+    html += '</div>';
+  }
+  container.innerHTML = html || '<div style="color:var(--text-muted);padding:10px;">暂无诊断记录</div>';
+}
+
+function exportCurrentLog() {
+  if (currentLogTab === 'diagnostic') {
+    exportDiagLogs();
+  } else {
+    exportUserLogs();
+  }
+}
+
+function exportUserLogs() {
+  var text = '📋 AI小说创作工坊 · 运行日志\n';
+  text += '导出: ' + new Date().toLocaleString('zh-CN') + '\n';
+  text += '版本: v2.12.4\n═══ ' + appLogs.length + '条 ═══\n\n';
+  
+  for (var i = 0; i < appLogs.length; i++) {
+    var l = appLogs[i];
+    text += '[' + l.time + '] [' + l.type.toUpperCase() + '] ' + l.message + '\n';
+    if (l.detail) text += '  详情: ' + l.detail + '\n';
+  }
+  copyAndToast(text, '用户日志');
+}
+
+function exportDiagLogs() {
+  var text = '🤖 AI小说创作工坊 · AI诊断日志\n';
+  text += '导出: ' + new Date().toLocaleString('zh-CN') + '\n';
+  text += '版本: v2.12.4 | ' + diagnosticLogs.length + '条\n';
+  text += '设备: ' + navigator.userAgent.substring(0, 100) + '\n';
+  text += '在线: ' + (navigator.onLine ? '是' : '否') + '\n';
+  text += '══════════════════\n\n';
+  
+  for (var i = 0; i < diagnosticLogs.length; i++) {
+    var d = diagnosticLogs[i];
+    text += '[' + d.time + '] ' + d.event + '\n';
+    if (d.data) {
+      var keys = Object.keys(d.data);
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k];
+        var val = d.data[key];
+        if (val === null || val === '' || val === undefined) continue;
+        text += '  ' + key + ': ' + (typeof val === 'object' ? JSON.stringify(val) : String(val)) + '\n';
+      }
+    }
+    text += '\n';
+  }
+  copyAndToast(text, 'AI诊断日志');
+}
+
+function copyAndToast(text, label) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('✅ ' + label + '已复制\n可在微信中粘贴发送给好友', 3000);
+  } catch(e) {
+    showToast('⚠️ 复制失败，请长按手动选择', 3000);
+  }
+  document.body.removeChild(ta);
+}
+
+function clearCurrentLog() {
+  if (currentLogTab === 'diagnostic') {
+    diagnosticLogs = [];
+    renderDiagnostic();
+    showToast('诊断日志已清空');
+  } else {
+    appLogs = [];
+    renderLogs();
+    showToast('用户日志已清空');
+  }
+}
+
+// ===== API URL 智能修复 =====
+var KNOWN_API_PATTERNS = {
+  'deepseek': 'https://api.deepseek.com/v1/chat/completions',
+  'openai': 'https://api.openai.com/v1/chat/completions',
+  'claude': 'https://api.anthropic.com/v1/messages',
+  'qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+  'zhipu': 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+  'moonshot': 'https://api.moonshot.cn/v1/chat/completions',
+  'minimax': 'https://api.minimax.chat/v1/text/chatcompletion_v2',
+  'baichuan': 'https://api.baichuan-ai.com/v1/chat/completions',
+  'ollama': 'http://localhost:11434/v1/chat/completions'
+};
+
+function fixApiEndpoint(input) {
+  var url = input.trim();
+  if (!url) return '';
+  
+  // 检测已知提供商关键词
+  var lowerUrl = url.toLowerCase();
+  for (var key in KNOWN_API_PATTERNS) {
+    if (lowerUrl.indexOf(key) >= 0 && url.indexOf('/v1/') < 0 && url.indexOf('/chat/') < 0 && url.indexOf('/messages') < 0) {
+      // 用户只输入了base URL，自动补全路径
+      var full = KNOWN_API_PATTERNS[key];
+      addLog('api', '自动补全API端点: ' + key, url + ' → ' + full);
+      return full;
+    }
+  }
+  
+  // 如果是纯域名（没有路径部分），尝试补全
+  if (url.match(/^https?:\/\/[^\/]+$/)) {
+    // 只输入了域名，默认加上 /v1/chat/completions
+    var fixed = url.replace(/\/+$/, '') + '/v1/chat/completions';
+    addLog('api', '自动补全API路径', url + ' → ' + fixed);
+    return fixed;
+  }
+  
+  return url;
+}
 
 // ===== 持久化存储 =====
 function loadSettings() {
@@ -573,47 +846,72 @@ function updateModeUI() {
 
 // ===== 测试API连接 =====
 function testApiConnection() {
-  var endpoint = document.getElementById('api-endpoint').value.trim();
+  var rawEndpoint = document.getElementById('api-endpoint').value.trim();
   var key = document.getElementById('api-key').value.trim();
   var model = document.getElementById('api-model').value.trim();
   var statusEl = document.getElementById('api-test-status');
+  
+  // 🔧 智能修复API端点
+  var endpoint = fixApiEndpoint(rawEndpoint);
+  if (endpoint !== rawEndpoint) {
+    document.getElementById('api-endpoint').value = endpoint;
+  }
   
   if (!endpoint) {
     statusEl.innerHTML = '<div class="status-bar status-err">请输入API端点URL</div>';
     return;
   }
   
+  addLog('api', '测试API连接', endpoint + ' | Model: ' + (model || 'gpt-4o'));
   statusEl.innerHTML = '<div class="status-bar status-warn">⏳ 正在测试...</div>';
   
   // 发送测试请求（小消息）
   var headers = { 'Content-Type': 'application/json' };
   if (key) headers['Authorization'] = 'Bearer ' + key;
   
+  var reqBody = {
+    model: model || 'gpt-4o',
+    messages: [{ role: 'user', content: '你好，请回复"连接成功"' }],
+    max_tokens: 10
+  };
+  var t0 = Date.now();
+  
   fetch(endpoint, {
     method: 'POST',
     headers: headers,
-    body: JSON.stringify({
-      model: model || 'gpt-4o',
-      messages: [{ role: 'user', content: '你好，请回复"连接成功"' }],
-      max_tokens: 10
-    })
+    body: JSON.stringify(reqBody)
   })
   .then(function(r) {
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    // 诊断日志: API响应
+    r.clone().text().then(function(txt) {
+      diagApiCall('POST', endpoint, headers, reqBody, r.status, txt, null, Date.now() - t0);
+    });
+    
+    if (!r.ok) {
+      var hint = '';
+      if (r.status === 404) hint = ' | 端点不存在，请确认URL包含完整路径(如 /v1/chat/completions)';
+      else if (r.status === 401) hint = ' | API密钥无效';
+      else if (r.status === 429) hint = ' | 请求过于频繁，请稍后再试';
+      throw new Error('HTTP ' + r.status + hint);
+    }
     return r.json();
   })
   .then(function(data) {
-    statusEl.innerHTML = '<div class="status-bar status-ok">✅ 连接成功！API响应正常</div>';
+    var content = data.choices && data.choices[0] ? data.choices[0].message.content : '';
+    statusEl.innerHTML = '<div class="status-bar status-ok">✅ 连接成功！响应: ' + escapeHtml(content.substring(0, 50)) + '</div>';
     appState.apiEndpoint = endpoint;
     appState.apiKey = key;
     appState.apiModel = model || 'gpt-4o';
     appState.apiConfigured = true;
     saveSettingsToDisk();
     checkApiReady();
+    addLog('success', 'API连接成功', '模型: ' + (model || 'gpt-4o') + ' | 端点: ' + endpoint);
     showToast('API连接成功！可以开始创作了');
   })
   .catch(function(e) {
+    diagError('testApiConnection', e);
     statusEl.innerHTML = '<div class="status-bar status-err">❌ 连接失败：' + e.message + '<br><small>请检查URL和密钥是否正确</small></div>';
+    addLog('error', 'API连接失败', e.message + ' | ' + endpoint);
   });
 }
 
@@ -655,7 +953,12 @@ function testDesktopConnection() {
 function saveApiSettings() {
   // 读取当前模式的表单值
   if (apiMode === 'direct') {
-    appState.apiEndpoint = document.getElementById('api-endpoint').value.trim();
+    var rawEndpoint = document.getElementById('api-endpoint').value.trim();
+    // 🔧 智能修复API端点
+    appState.apiEndpoint = fixApiEndpoint(rawEndpoint);
+    if (appState.apiEndpoint !== rawEndpoint) {
+      document.getElementById('api-endpoint').value = appState.apiEndpoint;
+    }
     appState.apiKey = document.getElementById('api-key').value.trim();
     appState.apiModel = document.getElementById('api-model').value.trim();
     appState.apiConfigured = !!appState.apiEndpoint;
@@ -667,6 +970,8 @@ function saveApiSettings() {
   
   saveSettingsToDisk();
   checkApiReady();
+  
+  addLog('info', '设置已保存', '模式: ' + (apiMode === 'direct' ? '直连AI' : '桌面版') + ' | ' + (apiMode === 'direct' ? appState.apiEndpoint : appState.desktopUrl));
   
   document.getElementById('save-status').textContent = '✅ 设置已保存 (' + new Date().toLocaleTimeString() + ')';
   document.getElementById('save-status').style.color = 'var(--success)';
@@ -747,6 +1052,8 @@ function createNovel() {
     var headers = { 'Content-Type': 'application/json' };
     if (appState.desktopToken) headers['Authorization'] = 'Bearer ' + appState.desktopToken;
     
+    addLog('api', '创建小说(桌面版)', '标题: ' + title + ' | 类型: ' + type);
+    
     fetch(appState.desktopUrl.replace(/\/+$/, '') + '/api/novels/create', {
       method: 'POST', headers: headers,
       body: JSON.stringify({ title: title, type: type, concept: concept })
@@ -754,14 +1061,17 @@ function createNovel() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.success) {
+        addLog('success', '小说创建成功', '「' + title + '」已提交到桌面版');
         showToast('小说「' + title + '」创建成功！\n请在桌面版查看生成进度');
         document.getElementById('novel-title').value = '';
         document.getElementById('novel-concept').value = '';
       } else {
+        addLog('error', '创建失败', data.message || '未知错误');
         showToast('创建失败: ' + (data.message || '未知错误'));
       }
     })
     .catch(function() {
+      addLog('error', '无法连接桌面版', appState.desktopUrl);
       showToast('无法连接桌面版服务\n请确认桌面版正在运行\n地址: ' + appState.desktopUrl, 5000);
     });
   } else {
@@ -773,6 +1083,8 @@ function createNovel() {
       '标题：' + title + '\n类型：' + type + '\n核心概念：' + (concept || '无') + 
       '\n\n请直接输出大纲，不要多余解释。';
     
+    addLog('api', 'AI生成大纲', '标题: ' + title + ' | 类型: ' + type + ' | 端点: ' + appState.apiEndpoint);
+    
     fetch(appState.apiEndpoint, {
       method: 'POST', headers: headers,
       body: JSON.stringify({
@@ -782,17 +1094,25 @@ function createNovel() {
       })
     })
     .then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!r.ok) {
+        var hint = '';
+        if (r.status === 404) hint = ' | API端点不存在';
+        else if (r.status === 401) hint = ' | 密钥无效';
+        else if (r.status === 429) hint = ' | 请求过于频繁';
+        throw new Error('HTTP ' + r.status + hint);
+      }
       return r.json();
     })
     .then(function(data) {
       var content = data.choices && data.choices[0] ? data.choices[0].message.content : '未获取到大纲';
+      addLog('success', 'AI生成成功', '标题: ' + title + ' | 字数: ' + content.length);
       showToast('📝 生成完成！\n' + content.substring(0, 150) + '...', 5000);
       document.getElementById('novel-title').value = '';
       document.getElementById('novel-concept').value = '';
     })
     .catch(function(e) {
-      showToast('AI调用失败: ' + e.message + '\n请检查API设置', 5000);
+      addLog('error', 'AI调用失败', e.message + ' | ' + title);
+      showToast('AI调用失败: ' + e.message + '\n请检查API设置（可查看日志排查）', 5000);
     });
   }
 }
@@ -802,9 +1122,16 @@ function createNovel() {
   loadSettings();
   switchTab(0);
   checkApiReady();
+  addLog('info', '应用启动', 'v2.12.3 | 模式: ' + (apiMode === 'direct' ? '直连AI' : '桌面版') + ' | 在线: ' + (navigator.onLine ? '是' : '否'));
   console.log('AI小说创作工坊 v2.12.3 已就绪');
   console.log('Mode: ' + apiMode);
 })();
+
+// ===== 工具函数 =====
+function escapeHtml(text) {
+  if (!text) return '';
+  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 </script>
 </body>
 </html>

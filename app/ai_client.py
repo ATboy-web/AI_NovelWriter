@@ -20,6 +20,13 @@ import httpx
 
 from .config import AppConfig
 
+# AI诊断日志
+try:
+    from .diagnostic_logger import get_logger
+    _diag_logger = get_logger()
+except Exception:
+    _diag_logger = None
+
 
 def retry_with_backoff(max_retries=3, base_delay=1, max_delay=30):
     """指数退避重试装饰器"""
@@ -435,6 +442,19 @@ class AIClient:
         start = time.time()
         error = False
         
+        # 🔍 AI诊断日志: 记录API调用
+        if _diag_logger:
+            _diag_logger.api_call(
+                provider=provider, 
+                endpoint=f"chat/{model}",
+                request_data={
+                    "model": model, "messages": messages,
+                    "system": system, "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "messages_count": len(messages)
+                }
+            )
+        
         try:
             if provider == "ollama":
                 result = self._chat_ollama(messages, system, model, max_tokens, temperature)
@@ -449,6 +469,16 @@ class AIClient:
             latency = time.time() - start
             self.metrics.record(len(result), latency)
             
+            # 🔍 成功日志
+            if _diag_logger:
+                _diag_logger.api_call(
+                    provider=provider, endpoint=f"chat/{model}",
+                    request_data={"model": model, "messages_count": len(messages)},
+                    response_data={"status": "success", "result_len": len(result),
+                                  "content_preview": result[:200]},
+                    duration_ms=latency * 1000
+                )
+            
             # 记录空响应（帮助调试）
             if not result or len(result.strip()) == 0:
                 self._log(f"[提示] AI服务响应较慢，可能需要等待 (model={model}, latency={latency:.1f}s)")
@@ -459,6 +489,14 @@ class AIClient:
             error = True
             latency = time.time() - start
             self.metrics.record(0, latency, error=True)
+            
+            # 🔍 失败日志
+            if _diag_logger:
+                _diag_logger.api_call(
+                    provider=provider, endpoint=f"chat/{model}",
+                    request_data={"model": model, "messages_count": len(messages)},
+                    error=e, duration_ms=latency * 1000
+                )
             
             fallback_model = self.FALLBACK_CHAIN.get(model)
             if fallback_model:

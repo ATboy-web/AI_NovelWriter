@@ -19,6 +19,10 @@ from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 # 结构化日志
 from loguru import logger
 
+# AI诊断日志
+from app.diagnostic_logger import get_logger
+_diag = get_logger()
+
 # 小说工具集
 from novel_toolkit import (ElementLibrary, BridgeLibrary, DescriptionLibrary,
                            DialogueEngine, StoryFlowEngine, StyleTransferEngine, AdaptEngine,
@@ -3059,6 +3063,9 @@ class NovelWriterApp(
                 # 自动定稿
                 self.agent.finalize_chapter(ch_num, content)
                 
+                # 角色EXP奖励
+                self._award_chapter_exp(ch_num, content)
+                
                 # 名场面检测
                 if self.config.get("auto_detect_scene", True):
                     self._detect_and_prompt_image(content, ch_num)
@@ -3972,6 +3979,140 @@ class NovelWriterApp(
         if names:
             self._update_char_display()
     
+    def _award_chapter_exp(self, chapter_num: int, content: str):
+        """章节完成后，AI分析角色行为自动给予EXP（基于角色做了什么）"""
+        try:
+            if not self.character_system or not self.ai_client:
+                return
+            if not self.ai_client.is_configured():
+                return
+            
+            # 获取当前活跃角色和配角列表
+            all_chars = self.character_system.get_character_names()
+            if not all_chars:
+                return
+            
+            _diag.chapter_event(chapter_num, "EXP_ANALYSIS_START", {
+                "characters": all_chars[:5], "content_len": len(content)
+            })
+            
+            # 只对活跃角色进行行为分析（最多分析5个）
+            chars_to_analyze = all_chars[:5]
+            chars_str = "、".join(chars_to_analyze)
+            
+            # AI分析提示：提取角色在章节中的行为（支持正向和负向）
+            system_prompt = f"""你是小说角色行为分析专家。
+分析以下章节内容中，下列角色分别做了什么事情。
+人生有得有失，故事中的角色也会经历成功和挫折。根据行为给予正向或负向的经验值。
+
+可分析的角色: {chars_str}
+
+正向行为（+EXP）：
+- 重大战斗胜利/对决: 60-150
+- 突破领悟/觉醒: 60-120
+- 技能学习/修炼成功: 30-80
+- 关键决策正确: 25-60
+- 探索发现/奇遇: 20-50
+- 社交结盟/帮助他人: 10-40
+- 日常积极行为: 5-20
+
+负向行为（-EXP，体现成长的代价）：
+- 战斗失败/被击败: -30 to -100
+- 决策失误/判断错误: -20 to -60
+- 遭受背叛/被暗算: -10 to -40
+- 技能使用失败/走火入魔: -20 to -80
+- 失去重要物品/资源: -10 to -30
+- 违背承诺/道德瑕疵: -5 to -20
+- 遭遇挫折/低谷期: -5 to -15
+
+未出场/无行动: 0
+
+输出格式（严格JSON，键为角色名，值为action/exp/detail）：
+{{"角色名": {{"action": "行为类别(+/-)", "exp": 经验值(正数或负数), "detail": "行为简述(15字内)"}}}}
+示例: {{"林风": {{"action": "战斗失败", "exp": -50, "detail": "被强敌击败重伤"}}}}"""
+
+            # 截取章节内容（取前3000字分析）
+            sample = content[:3000] if len(content) > 3000 else content
+            
+            response = self.ai_client.chat(
+                [{"role": "user", "content": f"第{chapter_num}章内容:\n{sample}\n\n请分析角色行为并输出JSON。"}],
+                system=system_prompt, max_tokens=800
+            )
+            
+            if not response:
+                self._log(f"[角色EXP] AI未返回行为分析结果")
+                _diag.chapter_event(chapter_num, "EXP_NO_RESPONSE", {"chars": chars_str})
+                return
+            
+            _diag.chapter_event(chapter_num, "EXP_AI_RESPONSE", {
+                "response_len": len(response), "response_preview": response[:200]
+            })
+            
+            # 解析JSON
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', response)
+            if not json_match:
+                self._log(f"[角色EXP] AI返回格式不正确: {response[:100]}")
+                _diag.chapter_event(chapter_num, "EXP_JSON_NO_MATCH", {"response": response[:200]})
+                return
+            
+            try:
+                behaviors = json.loads(json_match.group())
+            except json.JSONDecodeError as e:
+                self._log(f"[角色EXP] JSON解析失败: {json_match.group()[:100]}")
+                _diag.chapter_event(chapter_num, "EXP_JSON_PARSE_ERROR", {
+                    "error": str(e), "json_str": json_match.group()[:300]
+                })
+                return
+            
+            # 发放EXP（支持正向和负向）
+            total_exp = 0
+            logs = []
+            for char_name, behavior in behaviors.items():
+                if not isinstance(behavior, dict):
+                    continue
+                exp = int(behavior.get("exp", 0))
+                if exp == 0:
+                    continue  # 跳过无行动
+                action = behavior.get("action", "行为")
+                detail = behavior.get("detail", "")
+                
+                # 查找角色
+                char = self.character_system.get_character(char_name)
+                if not char:
+                    continue
+                
+                result = char.add_exp(exp)
+                self.character_system.save_character(char_name)
+                total_exp += exp
+                
+                # 正向: 升级提示
+                if exp > 0 and result.get("leveled_up"):
+                    logs.append(f"{char_name}({action}) +{exp}EXP → 升级 Lv.{result['current_level']}")
+                elif exp < 0 and result.get("leveled_down"):
+                    logs.append(f"{char_name}({action}) {exp}EXP → 降级 Lv.{result['current_level']}")
+                elif exp < 0:
+                    logs.append(f"{char_name}({action}) {exp}EXP | {detail}")
+                else:
+                    logs.append(f"{char_name}({action}) +{exp}EXP | {detail}")
+            
+            if logs:
+                self._log(f"[角色EXP] 第{chapter_num}章 共{total_exp}EXP | " + " | ".join(logs[:5]))
+                _diag.chapter_event(chapter_num, "EXP_AWARDED", {
+                    "total_exp": total_exp, "characters_awarded": len(logs),
+                    "details": logs[:5]
+                })
+                self.root.after(0, self._update_char_display)
+            else:
+                self._log(f"[角色EXP] 第{chapter_num}章 未检测到角色有效行为")
+                _diag.chapter_event(chapter_num, "EXP_NO_ACTION", {"behaviors": behaviors})
+                
+        except Exception as e:
+            self._log(f"[角色EXP] 分析失败: {e}")
+            _diag.log("ERROR", "award_chapter_exp", {"chapter": chapter_num}, error=e)
+            import traceback
+            self._log(traceback.format_exc())
+    
     def _regen_current_chapter(self):
         """重新创作当前章节"""
         if not self._check_ready(silent=True):
@@ -4497,7 +4638,10 @@ class NovelWriterApp(
                         # 自动检测新角色
                         self._auto_detect_characters(ch_num, content)
                         
-                        # 名场面检测
+                        # 角色EXP奖励
+                        self._award_chapter_exp(ch_num, content)
+                        
+                        # 名场面检测 (auto-generate)
                         if self.config.get("auto_detect_scene", True):
                             self._detect_and_prompt_image(content, ch_num)
 
@@ -4723,6 +4867,9 @@ class NovelWriterApp(
                         self.agent.finalize_chapter(ch_num, content)
                         self._auto_detect_characters(ch_num, content)
                         self._auto_detect_decisions(ch_num, content)
+                        
+                        # 角色EXP奖励
+                        self._award_chapter_exp(ch_num, content)
                         
                         with self._state_lock:
                             self.current_chapter = ch_num
@@ -6466,6 +6613,11 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 threading.Thread(target=lambda: self.agent.finalize_chapter(
                     ch_num, content), daemon=True).start()
                 self._log(f"[联动] 全屏写作内容已保存并更新记忆")
+            
+            # 角色EXP奖励（异步分析，不阻塞UI）
+            with self._state_lock:
+                ch_num = self.current_chapter
+            threading.Thread(target=lambda: self._award_chapter_exp(ch_num, content), daemon=True).start()
         
         FullscreenWriter(
             parent=self.root,
@@ -6505,6 +6657,15 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         
         names = self.character_system.get_character_names()
         self.char_select_combo['values'] = names
+        
+        # 🔧 修复：同步下拉框选中项到当前活跃角色
+        if self.character_system.active_name and self.character_system.active_name in names:
+            self.char_select_var.set(self.character_system.active_name)
+        elif names:
+            self.char_select_var.set(names[0])
+            self.character_system.set_active(names[0])
+        else:
+            self.char_select_var.set("无角色")
         
         # 生成角色卡片
         for name in names[:5]:  # 最多显示5个角色

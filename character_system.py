@@ -199,17 +199,53 @@ class CharacterProfile:
         }
     
     def add_exp(self, amount: int) -> Dict:
+        """增加/减少经验值 (正数增加，负数减少)"""
         self.exp += amount
         leveled_up = False
+        leveled_down = False
         levels_gained = 0
-        while self.exp >= self.exp_to_next:
+        levels_lost = 0
+        
+        # 升级循环
+        while self.exp >= self.exp_to_next and self.level < 100:
             self.exp -= self.exp_to_next
             self.level += 1
             levels_gained += 1
             leveled_up = True
             self._on_level_up()
-        return {"leveled_up": leveled_up, "levels_gained": levels_gained,
-                "current_level": self.level, "current_exp": self.exp, "exp_to_next": self.exp_to_next}
+        
+        # 降级循环 (exp 可以为负)
+        while self.exp < 0 and self.level > 1:
+            self.exp_to_next = int(self.exp_to_next / 1.5)  # 回退升级时的exp_to_next
+            self.level -= 1
+            self.exp += self.exp_to_next
+            levels_lost += 1
+            leveled_down = True
+            self._on_level_down()
+        
+        # 最低保障: level >= 1, exp >= 0
+        if self.level < 1:
+            self.level = 1
+        if self.exp < 0:
+            self.exp = 0
+        
+        return {
+            "leveled_up": leveled_up, "leveled_down": leveled_down,
+            "levels_gained": levels_gained, "levels_lost": levels_lost,
+            "current_level": self.level, "current_exp": self.exp, 
+            "exp_to_next": self.exp_to_next
+        }
+    
+    def _on_level_down(self):
+        """降级惩罚"""
+        for attr in self.attributes:
+            loss = random.randint(0, 2)
+            self.attributes[attr] = max(self.attributes[attr] - loss, 5)
+        self.max_hp = max(self.max_hp - random.randint(10, 30), 100)
+        self.max_mp = max(self.max_mp - random.randint(5, 15), 50)
+        self.hp = min(self.hp, self.max_hp)
+        self.mp = min(self.mp, self.max_mp)
+        self._update_title()
     
     def _on_level_up(self):
         self.exp_to_next = int(self.exp_to_next * 1.5)

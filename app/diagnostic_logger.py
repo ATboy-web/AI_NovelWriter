@@ -105,6 +105,10 @@ class DiagnosticLogger:
                 entry["duration_ms"] = round(duration_ms, 2)
             
             try:
+                # 写入前检查轮转
+                if self._current_file.exists() and self._current_file.stat().st_size > self.MAX_FILE_SIZE:
+                    self._current_file = self._get_log_file()
+                
                 with open(self._current_file, 'a', encoding='utf-8') as f:
                     f.write(json.dumps(entry, ensure_ascii=False) + '\n')
                     f.flush()
@@ -200,13 +204,12 @@ class DiagnosticLogger:
     def export_recent(self, count: int = 100) -> str:
         """导出最近 N 条日志为可读文本（用于导出给 AI 分析）"""
         try:
-            import subprocess
-            # 用 tail 读取最后 count 行
-            result = subprocess.run(
-                ['tail', '-n', str(count), str(self._current_file)],
-                capture_output=True, text=True, encoding='utf-8'
-            )
-            lines = result.stdout.strip().split('\n')
+            # 用Python原生方式读取最后N行（跨平台兼容）
+            lines = []
+            with open(self._current_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    lines.append(line.strip())
+            lines = lines[-count:]  # 取最后count行
         except Exception:
             return "无法读取诊断日志"
         

@@ -397,11 +397,16 @@ class AIClient:
         base_url = api_base or self.PROVIDERS.get(provider, {}).get("base_url", "")
         
         if provider == "claude" and api_key:
-            try:
-                import anthropic
-                self.client = anthropic.Anthropic(api_key=api_key)
-            except ImportError:
-                self.client = None
+            # Claude 使用 httpx 直接调用 Anthropic API（无需 anthropic SDK）
+            self.client = httpx.Client(
+                base_url="https://api.anthropic.com",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                timeout=120.0,
+            )
         elif provider == "ollama":
             self.client = httpx.Client(base_url=base_url, timeout=300.0)
         elif api_key:
@@ -502,6 +507,8 @@ class AIClient:
             if fallback_model:
                 self._log(f"模型降级: {model} -> {fallback_model}")
                 model = fallback_model
+                # 更新config中的模型，确保_init_client()用新模型重建连接
+                self.config["model"] = model
                 self._init_client()
                 # 重试时不递归，直接调用对应方法
                 if provider == "ollama":
@@ -582,7 +589,11 @@ class AIClient:
             "model": model, "messages": full_messages, "max_tokens": max_tokens, "temperature": temperature
         })
         response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+        result = response.json()
+        choices = result.get("choices", [])
+        if not choices:
+            raise Exception(f"OpenAI兼容API返回无choices: {json.dumps(result, ensure_ascii=False)[:200]}")
+        return choices[0].get("message", {}).get("content", "")
     
     def _chat_ollama(self, messages, system, model, max_tokens, temperature) -> str:
         full_messages = [{"role": "system", "content": system}] if system else []
@@ -592,16 +603,15 @@ class AIClient:
             "options": {"temperature": temperature, "num_predict": max_tokens}
         })
         response.raise_for_status()
-        return response.json()["message"]["content"]
+        result = response.json()
+        message = result.get("message", {})
+        content = message.get("content", "")
+        if not content:
+            raise Exception(f"Ollama返回空内容: {json.dumps(result, ensure_ascii=False)[:200]}")
+        return content
     
     def _chat_claude(self, messages, system, model, max_tokens, temperature) -> str:
-        """Anthropic Claude API调用"""
-        headers = {
-            "x-api-key": self.config.get("api_key", ""),
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
-        }
-        
+        """Anthropic Claude API调用 (通过httpx直接调用)"""
         # 构建Anthropic格式的请求
         anthropic_messages = []
         for msg in messages:
@@ -611,16 +621,17 @@ class AIClient:
             "model": model,
             "max_tokens": max_tokens,
             "system": system or "",
-            "messages": anthropic_messages
+            "messages": anthropic_messages,
+            "temperature": temperature
         }
         
-        response = self.client.post(
-            "https://api.anthropic.com/v1/messages",
-            json=payload,
-            headers=headers
-        )
+        response = self.client.post("/v1/messages", json=payload)
         response.raise_for_status()
-        return response.json()["content"][0]["text"]
+        result = response.json()
+        content_blocks = result.get("content", [])
+        if not content_blocks:
+            raise Exception(f"Claude返回无内容: {json.dumps(result, ensure_ascii=False)[:200]}")
+        return content_blocks[0].get("text", "")
     
     def _chat_deepseek(self, messages, system, model, max_tokens, temperature, 
                        thinking_enabled=False, reasoning_effort="high") -> str:
@@ -646,10 +657,17 @@ class AIClient:
         response.raise_for_status()
         
         result = response.json()
-        content = result["choices"][0]["message"]["content"]
+        
+        # 防御性解析
+        choices = result.get("choices", [])
+        if not choices:
+            raise Exception(f"DeepSeek返回无choices: {json.dumps(result, ensure_ascii=False)[:200]}")
+        
+        message = choices[0].get("message", {})
+        content = message.get("content", "")
         
         # 如果有思考内容，记录到日志
-        reasoning = result["choices"][0]["message"].get("reasoning_content")
+        reasoning = message.get("reasoning_content")
         if reasoning:
             self._log_thinking(reasoning)
         

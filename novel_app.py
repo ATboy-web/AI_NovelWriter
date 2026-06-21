@@ -82,6 +82,7 @@ class NovelWriterApp(
         self.current_chapter = 0
         self.is_modified = False  # 文档是否已修改
         self._state_lock = threading.Lock()  # 保护共享状态的锁
+        self._exp_awarded_chapters = set()   # 防止同一章节重复发放EXP
         
         # 创建GUI
         self.root = tk.Tk()
@@ -3881,7 +3882,6 @@ class NovelWriterApp(
             if not response:
                 return
             
-            import re
             match = re.search(r'\{[\s\S]*\}', response)
             if not match:
                 return
@@ -3932,7 +3932,6 @@ class NovelWriterApp(
             if not response:
                 return
             
-            import re
             match = re.search(r'\[[\s\S]*\]', response)
             if not match:
                 return
@@ -3981,6 +3980,12 @@ class NovelWriterApp(
     
     def _award_chapter_exp(self, chapter_num: int, content: str):
         """章节完成后，AI分析角色行为自动给予EXP（基于角色做了什么）"""
+        # 防止同一章节重复发放EXP
+        with self._state_lock:
+            if chapter_num in self._exp_awarded_chapters:
+                return
+            self._exp_awarded_chapters.add(chapter_num)
+        
         try:
             if not self.character_system or not self.ai_client:
                 return
@@ -4049,7 +4054,6 @@ class NovelWriterApp(
             })
             
             # 解析JSON
-            import re
             json_match = re.search(r'\{[\s\S]*\}', response)
             if not json_match:
                 self._log(f"[角色EXP] AI返回格式不正确: {response[:100]}")
@@ -4579,7 +4583,6 @@ class NovelWriterApp(
                                     system=gen_system, max_tokens=2000
                                 )
                                 if resp:
-                                    import re
                                     m = re.search(r'\[[\s\S]*\]', resp)
                                     if m:
                                         new_batch = json.loads(m.group())
@@ -5280,7 +5283,6 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 if not response:
                     return
                 
-                import re
                 match = re.search(r'\{[\s\S]*\}', response)
                 if not match:
                     return

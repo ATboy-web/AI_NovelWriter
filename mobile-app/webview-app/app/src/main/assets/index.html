@@ -678,10 +678,19 @@ function diagSysEvent(event, info) {
 }
 
 function sanitizeForLog(obj) {
-  // 移除敏感信息 (API密钥等)
+  // 精确匹配敏感字段名
+  var sensitiveKeys = ['authorization', 'api-key', 'x-api-key', 'token', 'api_key', 'apikey'];
   var r = {};
   for (var k in obj) {
-    if (k.toLowerCase().indexOf('auth') >= 0 || k.toLowerCase().indexOf('key') >= 0 || k.toLowerCase().indexOf('token') >= 0) {
+    var lk = k.toLowerCase();
+    var isSensitive = false;
+    for (var i = 0; i < sensitiveKeys.length; i++) {
+      if (lk === sensitiveKeys[i] || lk.indexOf(sensitiveKeys[i]) === 0) {
+        isSensitive = true;
+        break;
+      }
+    }
+    if (isSensitive) {
       r[k] = '***REDACTED***';
     } else {
       r[k] = truncForLog(obj[k], 500);
@@ -782,7 +791,7 @@ function exportCurrentLog() {
 function exportUserLogs() {
   var text = '📋 AI小说创作工坊 · 运行日志\n';
   text += '导出: ' + new Date().toLocaleString('zh-CN') + '\n';
-  text += '版本: v2.12.4\n═══ ' + appLogs.length + '条 ═══\n\n';
+  text += '版本: v2.12.7\n═══ ' + appLogs.length + '条 ═══\n\n';
   
   for (var i = 0; i < appLogs.length; i++) {
     var l = appLogs[i];
@@ -795,7 +804,7 @@ function exportUserLogs() {
 function exportDiagLogs() {
   var text = '🤖 AI小说创作工坊 · AI诊断日志\n';
   text += '导出: ' + new Date().toLocaleString('zh-CN') + '\n';
-  text += '版本: v2.12.4 | ' + diagnosticLogs.length + '条\n';
+  text += '版本: v2.12.7 | ' + diagnosticLogs.length + '条\n';
   text += '设备: ' + navigator.userAgent.substring(0, 100) + '\n';
   text += '在线: ' + (navigator.onLine ? '是' : '否') + '\n';
   text += '══════════════════\n\n';
@@ -1197,6 +1206,42 @@ function startFullCreation() {
   if (!title) { showToast('请输入小说标题'); return; }
   if (!appState.apiConfigured) { showToast('请先在设置中配置API'); return; }
   
+  // 桌面版模式：提交到桌面版后端
+  if (apiMode === 'desktop') {
+    var headers = { 'Content-Type': 'application/json' };
+    if (appState.desktopToken) headers['Authorization'] = 'Bearer ' + appState.desktopToken;
+    
+    addLog('api', '创建小说(桌面版)', '标题: ' + title + ' | 类型: ' + type);
+    
+    fetch(appState.desktopUrl.replace(/\/+$/, '') + '/api/novels/create', {
+      method: 'POST', headers: headers,
+      body: JSON.stringify({ title: title, type: type, concept: concept })
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      if (data.success) {
+        addLog('success', '小说创建成功', '「' + title + '」已提交到桌面版');
+        showToast('小说「' + title + '」创建成功！\n请在桌面版查看生成进度');
+        document.getElementById('novel-title').value = '';
+        document.getElementById('novel-concept').value = '';
+      } else {
+        addLog('error', '创建失败', data.message || '未知错误');
+        showToast('创建失败: ' + (data.message || '未知错误'));
+      }
+    })
+    .catch(function(e) {
+      addLog('error', '无法连接桌面版', e.message);
+      diagError('startFullCreation:desktop', e);
+      showToast('无法连接桌面版服务\n请确认桌面版正在运行\n地址: ' + appState.desktopUrl, 5000);
+    });
+    return;
+  }
+  
+  // 直连AI模式：完整创作流程
+  
   // 初始化创作数据
   currentCreation = {
     title: title, type: type, concept: concept,
@@ -1325,6 +1370,8 @@ function creationStep3_Outline() {
     updateProgress('step-outline', '❌ 大纲生成失败: ' + e.message);
     addLog('error', '大纲生成失败', e.message);
     diagError('creationStep3_Outline', e);
+    // 失败也继续下一步
+    creationStep4_OverallOutline();
   });
 }
 
@@ -1462,30 +1509,79 @@ function generateNextChapter() {
     diagError('generateChapter:' + (chIndex + 1), e);
   });
 }
+
+// ===== 保存小说到书架 =====
+function saveCurrentNovel() {
+  if (!currentCreation) {
+    showToast('没有可保存的创作');
+    return;
+  }
   
-  callAI(chapterPrompt, 4000).then(function(content) {
-    currentCreation.chapters[chIndex].content = content;
-    currentCreation.currentChapter = chIndex + 1;
-    
-    document.getElementById('chapter-content').textContent = content;
-    document.getElementById('btn-next-chapter').disabled = false;
-    
-    updateProgress('step2', '✅ 第' + (chIndex + 1) + '章完成 (' + content.length + '字)');
-    addLog('success', '章节生成完成', '第' + (chIndex + 1) + '章: ' + content.length + '字');
-    
-    if (chIndex + 1 >= currentCreation.chapters.length) {
-      document.getElementById('btn-next-chapter').textContent = '🎉 全部完成';
-      document.getElementById('btn-next-chapter').onclick = function() {
-        showToast('🎉 所有章节已生成完成！请点击保存到书架');
-      };
+  // 从outline中提取有内容的章节
+  var chapters = [];
+  for (var i = 0; i < currentCreation.outline.length; i++) {
+    var ch = currentCreation.outline[i];
+    if (ch.content) {
+      chapters.push({
+        chapter: ch.chapter || (i + 1),
+        title: ch.title || '第' + (i + 1) + '章',
+        summary: ch.summary || '',
+        content: ch.content
+      });
     }
-    
-  }).catch(function(e) {
-    document.getElementById('chapter-content').textContent = '❌ 生成失败: ' + e.message;
-    document.getElementById('btn-next-chapter').disabled = false;
-    addLog('error', '章节生成失败', '第' + (chIndex + 1) + '章: ' + e.message);
-    diagError('generateChapter:' + (chIndex + 1), e);
-  });
+  }
+  
+  if (!chapters.length) {
+    showToast('还没有生成任何章节内容');
+    return;
+  }
+  
+  var novels = getNovels();
+  var novel = {
+    id: Date.now(),
+    title: currentCreation.title,
+    type: currentCreation.type,
+    concept: currentCreation.concept,
+    worldview: currentCreation.worldview,
+    characters: currentCreation.characters,
+    outline: currentCreation.outline,
+    overallOutline: currentCreation.overallOutline,
+    storyOutline: currentCreation.storyOutline,
+    chapters: chapters,
+    createdAt: currentCreation.createdAt,
+    savedAt: new Date().toISOString()
+  };
+  
+  // 检查localStorage容量
+  try {
+    novels.unshift(novel);
+    var dataStr = JSON.stringify(novels);
+    if (dataStr.length > 4 * 1024 * 1024) { // 4MB预警
+      showToast('⚠️ 存储空间即将用尽\n建议导出TXT备份后删除旧小说', 5000);
+    }
+    saveNovels(novels);
+    addLog('success', '小说已保存', '「' + currentCreation.title + '」共' + chapters.length + '章');
+    showToast('✅ 已保存到书架！(' + chapters.length + '章)');
+  } catch(e) {
+    if (e.name === 'QuotaExceededError') {
+      showToast('❌ 存储空间不足！\n请删除一些旧小说后再试', 5000);
+      addLog('error', '存储空间不足', e.message);
+    } else {
+      showToast('❌ 保存失败: ' + e.message);
+      addLog('error', '保存失败', e.message);
+    }
+    return;
+  }
+  
+  // 重置
+  currentCreation = null;
+  document.getElementById('new-novel-form').style.display = '';
+  document.getElementById('creation-progress').style.display = 'none';
+  document.getElementById('novel-title').value = '';
+  document.getElementById('novel-concept').value = '';
+  
+  // 更新书架
+  renderNovelsList();
 }
 
 function saveCurrentNovel() {
@@ -1647,6 +1743,10 @@ function callAI(prompt, maxTokens) {
     
     diagApiCall('POST', appState.apiEndpoint, headers, {prompt_len: prompt.length}, null, null, null, 0);
     
+    // 超时控制 (60秒)
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function() { controller.abort(); }, 60000);
+    
     fetch(appState.apiEndpoint, {
       method: 'POST',
       headers: headers,
@@ -1654,9 +1754,11 @@ function callAI(prompt, maxTokens) {
         model: appState.apiModel || 'deepseek-v4-flash',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: maxTokens || 2000
-      })
+      }),
+      signal: controller.signal
     })
     .then(function(r) {
+      clearTimeout(timeoutId);
       var duration = Date.now() - t0;
       r.clone().text().then(function(txt) {
         diagApiCall('POST', appState.apiEndpoint, headers, {prompt_len: prompt.length}, r.status, txt, null, duration);
@@ -1677,52 +1779,14 @@ function callAI(prompt, maxTokens) {
       resolve(content);
     })
     .catch(function(e) {
-      reject(e);
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        reject(new Error('请求超时(60秒)，请检查网络'));
+      } else {
+        reject(e);
+      }
     });
   });
-}
-
-// 保留旧的createNovel兼容桌面版
-function createNovel() {
-  if (apiMode === 'desktop') {
-    var title = document.getElementById('novel-title').value.trim();
-    var type = document.getElementById('novel-type').value;
-    var concept = document.getElementById('novel-concept').value.trim();
-    
-    if (!title) { showToast('请输入小说标题'); return; }
-    
-    var headers = { 'Content-Type': 'application/json' };
-    if (appState.desktopToken) headers['Authorization'] = 'Bearer ' + appState.desktopToken;
-    
-    addLog('api', '创建小说(桌面版)', '标题: ' + title + ' | 类型: ' + type);
-    
-    fetch(appState.desktopUrl.replace(/\/+$/, '') + '/api/novels/create', {
-      method: 'POST', headers: headers,
-      body: JSON.stringify({ title: title, type: type, concept: concept })
-    })
-    .then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    })
-    .then(function(data) {
-      if (data.success) {
-        addLog('success', '小说创建成功', '「' + title + '」已提交到桌面版');
-        showToast('小说「' + title + '」创建成功！\n请在桌面版查看生成进度');
-        document.getElementById('novel-title').value = '';
-        document.getElementById('novel-concept').value = '';
-      } else {
-        addLog('error', '创建失败', data.message || '未知错误');
-        showToast('创建失败: ' + (data.message || '未知错误'));
-      }
-    })
-    .catch(function(e) {
-      addLog('error', '无法连接桌面版', e.message);
-      diagError('createNovel:desktop', e);
-      showToast('无法连接桌面版服务\n请确认桌面版正在运行\n地址: ' + appState.desktopUrl, 5000);
-    });
-  } else {
-    startFullCreation();
-  }
 }
 
 // ===== 初始化 =====

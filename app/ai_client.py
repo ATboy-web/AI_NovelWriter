@@ -363,16 +363,22 @@ class AIClient:
     PROVIDERS = {
         "ollama": {"name": "Ollama (本地)", "base_url": "http://localhost:11434", "models": ["qwen2.5:14b", "qwen2.5:7b"]},
         "openai": {"name": "OpenAI", "base_url": "https://api.openai.com/v1", "models": ["gpt-4o", "gpt-4o-mini"]},
-        "deepseek": {"name": "DeepSeek", "base_url": "https://api.deepseek.com/v1", "models": ["deepseek-chat"]},
-        "claude": {"name": "Claude", "base_url": "https://api.anthropic.com/v1", "models": ["claude-3-5-sonnet-20241022"]},
+        "deepseek": {"name": "DeepSeek", "base_url": "https://api.deepseek.com", "models": ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat"]},
+        "claude": {"name": "Claude", "base_url": "https://api.anthropic.com", "models": ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022"]},
+        "mimo": {"name": "小米 MiMo", "base_url": "https://api.xiaomimimo.com/v1", "models": ["mimo-v2.5-pro"]},
+        "kimi": {"name": "Kimi", "base_url": "https://api.moonshot.cn/v1", "models": ["kimi-k2.6", "moonshot-v1-128k"]},
         "custom": {"name": "自定义API", "base_url": "", "models": []},
     }
     
     FALLBACK_CHAIN = {
         "gpt-4o": "gpt-4o-mini",
         "gpt-4-turbo": "gpt-4o-mini",
+        "claude-sonnet-4-20250514": "claude-3-5-sonnet-20241022",
         "claude-3-5-sonnet-20241022": "claude-3-5-haiku-20241022",
-        "deepseek-chat": None,
+        "deepseek-v4-pro": "deepseek-v4-flash",
+        "deepseek-chat": "deepseek-v4-flash",
+        "mimo-v2.5-pro": None,
+        "kimi-k2.6": "moonshot-v1-128k",
     }
     
     def __init__(self, config: AppConfig):

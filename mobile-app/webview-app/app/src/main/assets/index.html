@@ -376,6 +376,11 @@
             <label>核心概念</label>
             <textarea id="novel-concept" class="input-field" placeholder="描述你的故事核心概念..." rows="3"></textarea>
           </div>
+          <div class="form-group">
+            <label>计划章节数</label>
+            <input id="novel-chapters" class="input-field" type="number" value="10" min="3" max="50" placeholder="10" />
+            <div class="hint">建议先用10章测试，满意后再扩展</div>
+          </div>
           <button class="btn btn-primary" onclick="startFullCreation()">🚀 开始完整创作</button>
         </div>
         <!-- 创作进度面板 -->
@@ -1180,13 +1185,14 @@ function showToast(msg, duration) {
   toastTimer = setTimeout(function() { toast.classList.remove('show'); }, duration);
 }
 
-// ===== 完整创作流程 =====
-var currentCreation = null; // 当前创作中的小说数据
+// ===== 完整创作流程 (对齐桌面版) =====
+var currentCreation = null;
 
 function startFullCreation() {
   var title = document.getElementById('novel-title').value.trim();
   var type = document.getElementById('novel-type').value;
   var concept = document.getElementById('novel-concept').value.trim();
+  var totalChapters = parseInt(document.getElementById('novel-chapters') ? document.getElementById('novel-chapters').value : '10') || 10;
   
   if (!title) { showToast('请输入小说标题'); return; }
   if (!appState.apiConfigured) { showToast('请先在设置中配置API'); return; }
@@ -1194,7 +1200,10 @@ function startFullCreation() {
   // 初始化创作数据
   currentCreation = {
     title: title, type: type, concept: concept,
-    outline: '', chapters: [], currentChapter: 0,
+    totalChapters: totalChapters,
+    worldview: '', characters: [], outline: [],
+    overallOutline: '', storyOutline: '',
+    chapters: [], currentChapter: 0,
     createdAt: new Date().toISOString()
   };
   
@@ -1204,104 +1213,255 @@ function startFullCreation() {
   document.getElementById('outline-display').style.display = 'none';
   document.getElementById('chapter-display').style.display = 'none';
   
-  updateProgress('step1', '📝 正在生成大纲...');
-  addLog('api', '开始完整创作', '标题: ' + title + ' | 类型: ' + type);
+  addLog('api', '开始完整创作', '标题: ' + title + ' | 类型: ' + type + ' | 计划' + totalChapters + '章');
   
-  // 第1步：生成大纲
-  var outlinePrompt = '你是一个小说创作专家。请为以下小说生成详细的章节大纲。\n\n' +
-    '标题：' + title + '\n类型：' + type + '\n核心概念：' + (concept || '无') + '\n\n' +
-    '要求：\n1. 生成10个章节的标题和简要内容(每章50-100字)\n' +
-    '2. 故事要有起承转合，冲突逐步升级\n' +
-    '3. 输出JSON格式：[{"chapter":1,"title":"章节标题","summary":"章节内容摘要"}]\n' +
-    '4. 直接输出JSON，不要其他内容';
+  // 按桌面版流程执行: 世界观→角色→大纲→整体大纲→故事大纲→章节
+  creationStep1_Worldview();
+}
+
+// ===== Step 1: 生成世界观 =====
+function creationStep1_Worldview() {
+  updateProgress('step-world', '🌍 正在生成世界观...');
   
-  callAI(outlinePrompt, 2000).then(function(response) {
+  var prompt = '你是小说世界观构建专家。请为一部' + currentCreation.type + '小说构建世界观设定。\n\n' +
+    '标题：' + currentCreation.title + '\n核心概念：' + (currentCreation.concept || '无') + '\n\n' +
+    '请包含：\n1. 世界名称和基本设定\n2. 力量体系/修炼体系\n3. 主要势力(3-5个)\n4. 地理环境\n5. 特殊规则/禁忌\n\n' +
+    '输出JSON格式：{"world_name":"...","basic_setting":"...","power_system":"...","factions":["..."],"geography":"...","rules":["..."]}';
+  
+  callAI(prompt, 1500).then(function(response) {
+    currentCreation.worldview = response;
+    updateProgress('step-world', '✅ 世界观完成');
+    addLog('success', '世界观生成完成', response.substring(0, 100));
+    
+    // 进入下一步
+    creationStep2_Characters();
+  }).catch(function(e) {
+    updateProgress('step-world', '⚠️ 世界观生成失败(跳过): ' + e.message);
+    addLog('error', '世界观生成失败', e.message);
+    // 失败也继续
+    creationStep2_Characters();
+  });
+}
+
+// ===== Step 2: 生成角色 =====
+function creationStep2_Characters() {
+  updateProgress('step-chars', '👤 正在生成角色(5个)...');
+  
+  var prompt = '你是小说角色设计专家。请为以下小说创建5个核心角色。\n\n' +
+    '标题：' + currentCreation.title + '\n类型：' + currentCreation.type + '\n概念：' + (currentCreation.concept || '无') + '\n' +
+    (currentCreation.worldview ? '世界观摘要：' + currentCreation.worldview.substring(0, 300) + '\n' : '') +
+    '\n每个角色包含：姓名、身份、性格(3个)、外貌(30字)、背景(50字)、目标\n' +
+    '输出JSON格式：[{"name":"...","identity":"...","personality":["..."],"appearance":"...","backstory":"...","goal":"..."}]';
+  
+  callAI(prompt, 2000).then(function(response) {
     try {
-      // 尝试解析JSON
       var jsonMatch = response.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        currentCreation.chapters = JSON.parse(jsonMatch[0]);
-      } else {
-        // 降级：按行解析
-        var lines = response.split('\n').filter(function(l) { return l.trim(); });
-        for (var i = 0; i < Math.min(lines.length, 10); i++) {
-          currentCreation.chapters.push({
-            chapter: i + 1,
-            title: '第' + (i + 1) + '章',
-            summary: lines[i].replace(/^\d+[\.\)、]\s*/, '')
-          });
-        }
+        currentCreation.characters = JSON.parse(jsonMatch[0]);
       }
-    } catch(e) {
-      // 解析失败，创建默认大纲
-      for (var i = 0; i < 10; i++) {
-        currentCreation.chapters.push({
-          chapter: i + 1,
-          title: '第' + (i + 1) + '章',
-          summary: '待生成'
-        });
+    } catch(e) {}
+    
+    if (!currentCreation.characters.length) {
+      currentCreation.characters = [{name:'主角',identity:'待定',personality:['坚韧'],appearance:'待定',backstory:'待定',goal:'待定'}];
+    }
+    
+    updateProgress('step-chars', '✅ 角色完成 (' + currentCreation.characters.length + '个)');
+    addLog('success', '角色生成完成', currentCreation.characters.length + '个角色');
+    
+    // 进入下一步
+    creationStep3_Outline();
+  }).catch(function(e) {
+    updateProgress('step-chars', '⚠️ 角色生成失败(跳过): ' + e.message);
+    addLog('error', '角色生成失败', e.message);
+    creationStep3_Outline();
+  });
+}
+
+// ===== Step 3: 生成大纲 =====
+function creationStep3_Outline() {
+  updateProgress('step-outline', '📋 正在生成大纲(' + currentCreation.totalChapters + '章)...');
+  
+  var charsInfo = currentCreation.characters.map(function(c) { return c.name + '(' + c.identity + ')'; }).join('、');
+  
+  var prompt = '你是小说大纲创作专家。请为以下小说生成' + currentCreation.totalChapters + '章的详细大纲。\n\n' +
+    '标题：' + currentCreation.title + '\n类型：' + currentCreation.type + '\n概念：' + (currentCreation.concept || '无') + '\n' +
+    '主要角色：' + charsInfo + '\n' +
+    (currentCreation.worldview ? '世界观：' + currentCreation.worldview.substring(0, 200) + '\n' : '') +
+    '\n要求：\n1. 每章包含title(标题)和summary(50-100字摘要)\n2. 故事有起承转合\n3. 冲突逐步升级\n4. 角色有成长弧线\n\n' +
+    '输出JSON格式：[{"chapter":1,"title":"...","summary":"..."}]';
+  
+  callAI(prompt, 4000).then(function(response) {
+    try {
+      var jsonMatch = response.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        currentCreation.outline = JSON.parse(jsonMatch[0]);
+      }
+    } catch(e) {}
+    
+    if (!currentCreation.outline.length) {
+      // 降级：创建默认大纲
+      for (var i = 0; i < currentCreation.totalChapters; i++) {
+        currentCreation.outline.push({chapter: i+1, title: '第'+(i+1)+'章', summary: '待生成'});
       }
     }
     
-    currentCreation.outline = response;
-    
     // 显示大纲
     var outlineHtml = '';
-    for (var i = 0; i < currentCreation.chapters.length; i++) {
-      var ch = currentCreation.chapters[i];
-      outlineHtml += '<div style="margin-bottom:8px;padding:6px;background:var(--bg-medium);border-radius:6px;">' +
+    for (var i = 0; i < currentCreation.outline.length; i++) {
+      var ch = currentCreation.outline[i];
+      outlineHtml += '<div style="margin-bottom:6px;padding:6px;background:var(--bg-medium);border-radius:6px;">' +
         '<b>第' + ch.chapter + '章: ' + escapeHtml(ch.title) + '</b>' +
         '<p style="font-size:11px;color:var(--text-secondary);margin-top:2px;">' + escapeHtml(ch.summary) + '</p></div>';
     }
     document.getElementById('outline-content').innerHTML = outlineHtml;
     document.getElementById('outline-display').style.display = '';
     
-    updateProgress('step1', '✅ 大纲完成');
-    addLog('success', '大纲生成完成', '共' + currentCreation.chapters.length + '章');
+    updateProgress('step-outline', '✅ 大纲完成 (' + currentCreation.outline.length + '章)');
+    addLog('success', '大纲生成完成', currentCreation.outline.length + '章');
     
-    // 自动开始生成第1章
-    generateNextChapter();
-    
+    // 进入下一步
+    creationStep4_OverallOutline();
   }).catch(function(e) {
-    updateProgress('step1', '❌ 大纲生成失败: ' + e.message);
+    updateProgress('step-outline', '❌ 大纲生成失败: ' + e.message);
     addLog('error', '大纲生成失败', e.message);
-    diagError('startFullCreation', e);
+    diagError('creationStep3_Outline', e);
   });
 }
 
+// ===== Step 4: 生成整体大纲 =====
+function creationStep4_OverallOutline() {
+  updateProgress('step-overall', '📊 正在生成整体大纲...');
+  
+  var outlineSummary = currentCreation.outline.slice(0, 10).map(function(ch) {
+    return '第' + ch.chapter + '章 ' + ch.title + ': ' + ch.summary;
+  }).join('\n');
+  
+  var prompt = '请为以下小说生成整体大纲规划(4个阶段)。\n\n' +
+    '标题：' + currentCreation.title + '\n类型：' + currentCreation.type + '\n' +
+    '章节数：' + currentCreation.totalChapters + '章\n\n' +
+    '前10章大纲：\n' + outlineSummary + '\n\n' +
+    '请输出4个故事阶段，每阶段包含：阶段名、涵盖章节范围、核心内容(100字)\n' +
+    '输出JSON格式：[{"phase":"...","range":"第1-X章","content":"..."}]';
+  
+  callAI(prompt, 1500).then(function(response) {
+    currentCreation.overallOutline = response;
+    updateProgress('step-overall', '✅ 整体大纲完成');
+    addLog('success', '整体大纲生成完成', '');
+    
+    // 进入下一步
+    creationStep5_StoryOutline();
+  }).catch(function(e) {
+    updateProgress('step-overall', '⚠️ 整体大纲失败(跳过): ' + e.message);
+    addLog('error', '整体大纲失败', e.message);
+    creationStep5_StoryOutline();
+  });
+}
+
+// ===== Step 5: 生成故事大纲 =====
+function creationStep5_StoryOutline() {
+  updateProgress('step-story', '📖 正在生成故事大纲...');
+  
+  var prompt = '请为以下小说生成故事线大纲(2条主线)。\n\n' +
+    '标题：' + currentCreation.title + '\n类型：' + currentCreation.type + '\n概念：' + (currentCreation.concept || '无') + '\n\n' +
+    '请输出2条故事主线，每条包含：线名、起点、发展、高潮、结局\n' +
+    '输出JSON格式：[{"line":"...","start":"...","develop":"...","climax":"...","ending":"..."}]';
+  
+  callAI(prompt, 1500).then(function(response) {
+    currentCreation.storyOutline = response;
+    updateProgress('step-story', '✅ 故事大纲完成');
+    addLog('success', '故事大纲生成完成', '');
+    
+    // 进入章节生成
+    creationStep6_Chapters();
+  }).catch(function(e) {
+    updateProgress('step-story', '⚠️ 故事大纲失败(跳过): ' + e.message);
+    addLog('error', '故事大纲失败', e.message);
+    creationStep6_Chapters();
+  });
+}
+
+// ===== Step 6: 开始章节生成 =====
+function creationStep6_Chapters() {
+  updateProgress('step-chapters', '📖 准备生成章节...');
+  document.getElementById('chapter-display').style.display = '';
+  document.getElementById('chapter-title').textContent = '📖 准备中...';
+  document.getElementById('chapter-counter').textContent = '0/' + currentCreation.outline.length;
+  document.getElementById('chapter-content').textContent = '点击"生成下一章"开始创作';
+  document.getElementById('btn-next-chapter').disabled = false;
+  
+  addLog('info', '准备生成章节', '共' + currentCreation.outline.length + '章');
+  showToast('🎉 准备工作完成！\n点击"生成下一章"开始创作');
+}
+
+// ===== 生成下一章 =====
 function generateNextChapter() {
-  if (!currentCreation || !currentCreation.chapters.length) {
+  if (!currentCreation || !currentCreation.outline.length) {
     showToast('请先生成大纲');
     return;
   }
   
   var chIndex = currentCreation.currentChapter;
-  if (chIndex >= currentCreation.chapters.length) {
+  if (chIndex >= currentCreation.outline.length) {
     showToast('🎉 所有章节已生成完成！');
-    updateProgress('step2', '✅ 全部章节完成');
+    updateProgress('step-chapters', '✅ 全部章节完成');
     return;
   }
   
-  var chInfo = currentCreation.chapters[chIndex];
-  var prevChapter = chIndex > 0 ? currentCreation.chapters[chIndex - 1] : null;
+  var chInfo = currentCreation.outline[chIndex];
+  var prevChapter = chIndex > 0 ? currentCreation.outline[chIndex - 1] : null;
+  var nextChapter = chIndex < currentCreation.outline.length - 1 ? currentCreation.outline[chIndex + 1] : null;
   
-  updateProgress('step2', '📖 正在生成第' + (chIndex + 1) + '章...');
+  updateProgress('step-chapters', '📖 正在生成第' + (chIndex + 1) + '章...');
   document.getElementById('chapter-display').style.display = '';
   document.getElementById('chapter-title').textContent = '📖 ' + chInfo.title;
-  document.getElementById('chapter-counter').textContent = (chIndex + 1) + '/' + currentCreation.chapters.length;
-  document.getElementById('chapter-content').textContent = '⏳ 生成中...';
+  document.getElementById('chapter-counter').textContent = (chIndex + 1) + '/' + currentCreation.outline.length;
+  document.getElementById('chapter-content').textContent = '⏳ AI创作中，请稍候...';
   document.getElementById('btn-next-chapter').disabled = true;
   
-  var chapterPrompt = '你是一个小说创作AI。请根据以下信息生成一个完整的小说章节。\n\n' +
+  // 构建上下文
+  var charsInfo = currentCreation.characters.map(function(c) { return c.name + '(' + c.identity + ')'; }).join('、');
+  var worldCtx = currentCreation.worldview ? '世界观：' + currentCreation.worldview.substring(0, 300) + '\n' : '';
+  var overallCtx = currentCreation.overallOutline ? '整体大纲：' + currentCreation.overallOutline.substring(0, 200) + '\n' : '';
+  var storyCtx = currentCreation.storyOutline ? '故事线：' + currentCreation.storyOutline.substring(0, 200) + '\n' : '';
+  
+  var chapterPrompt = '你是一个小说创作AI。请根据以下信息创作一个完整的小说章节。\n\n' +
     '小说标题：' + currentCreation.title + '\n' +
     '小说类型：' + currentCreation.type + '\n' +
-    '章节标题：' + chInfo.title + '\n' +
+    '出场角色：' + charsInfo + '\n' +
+    worldCtx + overallCtx + storyCtx +
+    '\n章节标题：' + chInfo.title + '\n' +
     '章节大纲：' + chInfo.summary + '\n' +
-    (prevChapter ? '前一章摘要：' + prevChapter.summary + '\n' : '') +
-    (currentCreation.chapters.length > chIndex + 1 ? '下一章预告：' + currentCreation.chapters[chIndex + 1].summary + '\n' : '') +
-    '\n要求：\n1. 字数2000-3000字\n2. 包含场景描写、对话、动作、心理\n3. 结尾设置悬念\n4. 直接输出正文内容';
+    (prevChapter ? '前一章标题：' + prevChapter.title + '\n前一章摘要：' + prevChapter.summary + '\n' : '') +
+    (nextChapter ? '下一章预告：' + nextChapter.summary + '\n' : '') +
+    '\n要求：\n1. 字数3000-5000字\n2. 包含场景描写、对话、动作、心理活动\n3. 结尾设置悬念引向下一章\n4. 保持角色性格一致\n5. 直接输出正文内容';
   
   addLog('api', '生成章节', '第' + (chIndex + 1) + '章: ' + chInfo.title);
+  
+  callAI(chapterPrompt, 4000).then(function(content) {
+    currentCreation.outline[chIndex].content = content;
+    currentCreation.currentChapter = chIndex + 1;
+    
+    document.getElementById('chapter-content').textContent = content;
+    document.getElementById('btn-next-chapter').disabled = false;
+    
+    var wordCount = content.length;
+    updateProgress('step-chapters', '✅ 第' + (chIndex + 1) + '章完成 (' + wordCount + '字)');
+    addLog('success', '章节完成', '第' + (chIndex + 1) + '章: ' + wordCount + '字');
+    
+    if (chIndex + 1 >= currentCreation.outline.length) {
+      document.getElementById('btn-next-chapter').textContent = '🎉 全部完成';
+      document.getElementById('btn-next-chapter').onclick = function() {
+        showToast('🎉 所有章节已生成完成！请点击保存到书架');
+      };
+    }
+    
+  }).catch(function(e) {
+    document.getElementById('chapter-content').textContent = '❌ 生成失败: ' + e.message + '\n\n点击重试';
+    document.getElementById('btn-next-chapter').disabled = false;
+    addLog('error', '章节失败', '第' + (chIndex + 1) + '章: ' + e.message);
+    diagError('generateChapter:' + (chIndex + 1), e);
+  });
+}
   
   callAI(chapterPrompt, 4000).then(function(content) {
     currentCreation.chapters[chIndex].content = content;

@@ -17,7 +17,7 @@ from datetime import datetime
 from enum import Enum
 
 from .ai_client import AIClient, PromptManager
-from .agent_orchestrator import ContextOptimizer, PromptOptimizer, AgentOrchestrator
+from .agent_orchestrator import AgentOrchestrator
 from .memory_manager import MemoryManager
 from .config import AppConfig
 
@@ -140,8 +140,6 @@ class NovelAgent:
         
         # 启用优化器模块
         self.orchestrator = AgentOrchestrator(ai_client, log_callback)
-        self.context_optimizer = ContextOptimizer
-        self.prompt_optimizer = PromptOptimizer
         
         # 工具注册中心（参考MCP协议）
         self.tools = ToolRegistry()
@@ -169,8 +167,12 @@ class NovelAgent:
     
     def _record_conversation(self, agent: str, action: str, content: str):
         """记录智能体对话 - 使用标准AgentMessage协议"""
-        msg = AgentMessage(MessageRole(agent.lower()) if hasattr(MessageRole, agent.upper()) else MessageRole.SYSTEM,
-                          action, content)
+        # BUG-2修复: 角色名到枚举的正确映射
+        _ROLE_MAP = {"PlotDesigner": "PLOT", "WorldBuilder": "WORLD",
+                     "Writer": "WRITER", "Reviewer": "REVIEWER", "Editor": "EDITOR"}
+        role_name = _ROLE_MAP.get(agent, "SYSTEM")
+        role = MessageRole[role_name]
+        msg = AgentMessage(role, action, content)
         with self._log_lock:
             self._conversation_log.append(msg)
     
@@ -204,29 +206,33 @@ class NovelAgent:
         gs = self.memory.get_global_summary()
         if gs:
             text = self._compress_text(gs, int(max_chars * ratio["global"]), keep_tail=True)
-            parts.append(f"【全局摘要】\n{text}")
-            used += len(text)
+            section = f"【全局摘要】\n{text}"
+            parts.append(section)
+            used += len(section)
         
         vol = self.memory.get_current_volume_summary(chapter_num)
         if vol:
             text = self._compress_text(vol, int(max_chars * ratio["volume"]), keep_tail=True)
-            parts.append(f"【当前卷】\n{text}")
-            used += len(text)
+            section = f"【当前卷】\n{text}"
+            parts.append(section)
+            used += len(section)
         
         chars = self.memory.get_characters()
         if chars:
             active_names = self.memory.get_active_characters(chapter_num, window=50)
             text = self._compress_active_characters(chars, active_names, int(max_chars * ratio["chars"]))
             if text:
-                parts.append(f"【活跃角色】\n{text}")
-                used += len(text)
+                section = f"【活跃角色】\n{text}"
+                parts.append(section)
+                used += len(section)
         
         recent_count = 5 if chapter_num > 1000 else 3
         recent = self.memory.get_recent_summaries(recent_count)
         if recent:
             text = self._compress_text(recent, int(max_chars * ratio["recent"]), keep_tail=True)
-            parts.append(f"【近期章节】\n{text}")
-            used += len(text)
+            section = f"【近期章节】\n{text}"
+            parts.append(section)
+            used += len(section)
         
         if extra_context:
             # 直接注入外部上下文（世界观、大纲等关键信息）
@@ -251,10 +257,10 @@ class NovelAgent:
         # 修复: 直接拼接 parts 并用简单截断
         result = "\n\n".join(parts)
         if len(result) > max_chars:
-            # 保头保尾截断: 前30% + 后70%
+            marker = "\n...(截断)...\n"
             head = int(max_chars * 0.3)
-            tail = max_chars - head - 10
-            result = result[:head] + "\n...(截断)...\n" + result[-tail:]
+            tail = max_chars - head - len(marker)
+            result = result[:head] + marker + result[-tail:]
         return result
     
     def _compress_active_characters(self, chars: dict, active_names: List[str], budget: int) -> str:
@@ -389,10 +395,11 @@ class NovelAgent:
         content = self._writer_generate(chapter_num, chapter_title, chapter_outline, word_count, context=context, prev_ending=prev_ending)
         
         # Phase 4-5: Reviewer → Editor 迭代修订
+        prev_feedback = ""
         for round_num in range(1, self.MAX_REVISION_ROUNDS + 1):
             self.log(f"[Reviewer] 审校第{chapter_num}章（第{round_num}轮）...")
             self._record_conversation("Reviewer", "review", f"第{round_num}轮审校")
-            review = self._reviewer_evaluate(chapter_num, content)
+            review = self._reviewer_evaluate(chapter_num, content, previous_feedback=prev_feedback)
             
             # 工具调用: 一致性检查
             self.tools.call("check_consistency", content=content[:500])
@@ -408,6 +415,7 @@ class NovelAgent:
             
             suggestions = review.get("suggestions", [])
             issues = review.get("issues", [])
+            prev_feedback = f"上轮问题: {'; '.join(issues[:5])}" if issues else ""
             self.log(f"[Editor] ⚠️ 质量不达标（{review.get('overall_score', 0)}/{self.QUALITY_THRESHOLD}），"
                     f"触发第{round_num}轮修订...")
             
@@ -632,10 +640,14 @@ class NovelAgent:
             
             # 限制max_tokens避免超时(中文字约1.5token/字)
             retry_tokens = min(word_count * 2, 16384)
-            new_content = self.ai.chat(
-                [{"role": "user", "content": f"创作第{chapter_num}章：{chapter_title}，{word_count}字"}],
-                system=strict_system, max_tokens=retry_tokens
-            )
+            try:
+                new_content = self.ai.chat(
+                    [{"role": "user", "content": f"创作第{chapter_num}章：{chapter_title}，{word_count}字"}],
+                    system=strict_system, max_tokens=retry_tokens
+                )
+            except Exception as e:
+                self.log(f"第{chapter_num}章重试{retry+1}失败: {e}")
+                new_content = None
             if new_content:
                 content = new_content
         
@@ -655,16 +667,20 @@ class NovelAgent:
         if len(paragraphs) < 3:
             return (actual_words < target_words * 0.6, actual_words)
         
-        # 检测相似段落
+        # 检测相似段落 — BUG-3修复: 使用字符级4-gram匹配（中文无空格分词）
+        def _char_ngrams(text, n=4):
+            """提取字符级n-gram集合"""
+            return set(text[i:i+n] for i in range(max(0, len(text)-n+1)))
+        
         similar_count = 0
         for i in range(len(paragraphs)):
             for j in range(i + 1, min(i + 5, len(paragraphs))):
-                if len(paragraphs[i]) > 80 and len(paragraphs[j]) > 80:
-                    words_i = set(paragraphs[i][:80].split())
-                    words_j = set(paragraphs[j][:80].split())
-                    if words_i and words_j:
-                        overlap = len(words_i & words_j) / min(len(words_i), len(words_j))
-                        if overlap > 0.7:  # 提高阈值减少误判
+                if len(paragraphs[i]) > 40 and len(paragraphs[j]) > 40:
+                    ngrams_i = _char_ngrams(paragraphs[i][:100])
+                    ngrams_j = _char_ngrams(paragraphs[j][:100])
+                    if ngrams_i and ngrams_j:
+                        overlap = len(ngrams_i & ngrams_j) / min(len(ngrams_i), len(ngrams_j))
+                        if overlap > 0.5:
                             similar_count += 1
         
         # 短段落占比检查 - 中文网文短段落是正常的，阈值放高
@@ -708,6 +724,10 @@ class NovelAgent:
         prompt = f"小说类型：{genre}\n标题：{title}\n概念：{concept}\n\n请生成一个灵活、可扩展的世界观。"
         response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
         settings = self._parse_json_response(response, {"raw": response})
+        # ERR-2修复: 验证settings不为空或None
+        if not settings or (isinstance(settings, dict) and len(settings) == 0):
+            self.log("[警告] 世界观生成失败，使用空设定")
+            settings = {"raw": response, "world": {}, "rules": {}, "factions": {}}
         self.memory.save_settings(settings)
         return settings
     
@@ -874,7 +894,9 @@ class NovelAgent:
         for name, info in chars.items():
             if isinstance(info, dict):
                 char_data = {"name": name, **info}
-                with open(chars_dir / f"{name}.json", 'w', encoding='utf-8') as f:
+                # API-3修复: 文件名安全处理（Windows不允许 / \ : * ? " < > |）
+                safe_name = re.sub(r'[<>:"/\\|?*]', '_', name)
+                with open(chars_dir / f"{safe_name}.json", 'w', encoding='utf-8') as f:
                     json.dump(char_data, f, indent=2, ensure_ascii=False)
                 saved_count += 1
         
@@ -989,7 +1011,7 @@ class NovelAgent:
         
         if not outline or len(outline) < count:
             # 填充缺失的章节 — 使用"待规划"标记，让生成器动态填充
-            existing = {o["chapter"] for o in outline} if outline else set()
+            existing = {o["chapter"] for o in outline if "chapter" in o} if outline else set()
             for i in range(count):
                 ch_num = start_num + i
                 if ch_num not in existing:
@@ -1194,7 +1216,7 @@ class NovelAgent:
                 
                 if summary_parts:
                     self.log(f"[角色成长] 第{chapter_num}章: {', '.join(summary_parts)}")
-        except Exception as e:
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
             self.log(f"[角色成长] 检测跳过: {e}")
     
     # ===== 风格模仿 =====
@@ -1277,7 +1299,7 @@ class NovelAgent:
 4. 直接输出创作内容，不要添加解释"""
         
         response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=word_count * 2)
-        return response
+        return response or ""
     
     # ===== 工具方法 =====
     

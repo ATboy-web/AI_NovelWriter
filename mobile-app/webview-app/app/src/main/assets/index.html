@@ -311,11 +311,21 @@
           <div class="icon">⚙️</div><div class="label">API设置</div>
         </div>
       </div>
-      <div class="section-title">支持类型</div>
+      <div class="section-title">支持类型 (24种)</div>
       <div class="card">
-        <p>科幻 · 悬疑 · 言情 · 奇幻 · 都市 · 历史 · 武侠 · 仙侠 · 恐怖 · 军事 · 游戏 · 体育 · 穿越 · 系统流 · 末日</p>
+        <p style="font-size:12px;line-height:1.6;">科幻 · 悬疑 · 言情 · 奇幻 · 都市 · 历史 · 武侠 · 仙侠 · 恐怖 · 军事 · 游戏 · 体育 · 穿越 · 系统流 · 末日 · 无限流 · 修真 · 玄幻 · 轻小说 · 同人 · 谍战 · 推理 · 校园 · 职场</p>
       </div>
       <div id="home-status"></div>
+      <!-- 首页日志预览 -->
+      <div class="card" style="margin-top:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3 style="font-size:13px;">📋 最近日志</h3>
+          <button onclick="switchTab(4)" style="background:none;border:none;color:var(--accent-light);font-size:11px;cursor:pointer;">查看全部 →</button>
+        </div>
+        <div id="home-logs" style="font-size:11px;line-height:1.4;margin-top:6px;max-height:150px;overflow-y:auto;">
+          <div style="color:var(--text-muted);">暂无日志</div>
+        </div>
+      </div>
     </div>
 
     <!-- 书架 -->
@@ -338,7 +348,8 @@
         <button class="btn btn-primary" style="margin-top:12px;" onclick="switchTab(4)">去设置API →</button>
       </div>
       <div id="editor-form" style="display:none;">
-        <div class="card">
+        <!-- 新创作表单 -->
+        <div id="new-novel-form" class="card">
           <h3>📝 新创作</h3>
           <div class="form-group">
             <label>小说标题</label>
@@ -354,14 +365,50 @@
               <option value="恐怖">恐怖</option><option value="军事">军事</option>
               <option value="游戏">游戏</option><option value="体育">体育</option>
               <option value="穿越">穿越</option><option value="系统流">系统流</option>
-              <option value="末日">末日</option>
+              <option value="末日">末日</option><option value="无限流">无限流</option>
+              <option value="修真">修真</option><option value="玄幻">玄幻</option>
+              <option value="轻小说">轻小说</option><option value="同人">同人</option>
+              <option value="谍战">谍战</option><option value="推理">推理</option>
+              <option value="校园">校园</option><option value="职场">职场</option>
             </select>
           </div>
           <div class="form-group">
             <label>核心概念</label>
             <textarea id="novel-concept" class="input-field" placeholder="描述你的故事核心概念..." rows="3"></textarea>
           </div>
-          <button class="btn btn-primary" onclick="createNovel()">🚀 开始创作</button>
+          <button class="btn btn-primary" onclick="startFullCreation()">🚀 开始完整创作</button>
+        </div>
+        <!-- 创作进度面板 -->
+        <div id="creation-progress" style="display:none;">
+          <div class="card">
+            <h3 id="progress-title">📝 创作中...</h3>
+            <div id="progress-steps" style="font-size:12px;line-height:1.8;"></div>
+            <div id="progress-current" style="margin-top:8px;color:var(--accent-light);font-size:11px;"></div>
+          </div>
+          <!-- 大纲展示 -->
+          <div id="outline-display" style="display:none;" class="card">
+            <h3>📋 故事大纲</h3>
+            <div id="outline-content" style="font-size:13px;line-height:1.6;max-height:300px;overflow-y:auto;"></div>
+          </div>
+          <!-- 章节展示 -->
+          <div id="chapter-display" style="display:none;" class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <h3 id="chapter-title">📖 第1章</h3>
+              <span id="chapter-counter" style="font-size:11px;color:var(--text-muted);">1/10</span>
+            </div>
+            <div id="chapter-content" style="font-size:13px;line-height:1.8;max-height:400px;overflow-y:auto;white-space:pre-wrap;margin-top:8px;"></div>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <button class="btn btn-primary" onclick="generateNextChapter()" id="btn-next-chapter">📖 生成下一章</button>
+              <button class="btn btn-success" onclick="saveCurrentNovel()">💾 保存到书架</button>
+            </div>
+          </div>
+        </div>
+        <!-- 已保存小说列表 -->
+        <div id="saved-novels" class="card" style="margin-top:10px;">
+          <h3>📚 我的创作</h3>
+          <div id="novels-list" style="margin-top:8px;">
+            <p style="color:var(--text-muted);font-size:12px;">暂无创作，点击上方开始</p>
+          </div>
         </div>
       </div>
     </div>
@@ -529,7 +576,7 @@
       <!-- 关于 -->
       <div class="card" style="margin-top:10px;">
         <h3>📋 关于</h3>
-        <p>AI小说创作工坊 v2.12.6 · 移动版</p>
+        <p>AI小说创作工坊 v2.12.7 · 移动版</p>
         <p style="font-size:11px;">纯HTML5构建，无框架依赖，支持15种小说类型</p>
       </div>
     </div>
@@ -657,21 +704,35 @@ function showLogTab(tab) {
 }
 
 function renderLogs() {
+  // 更新设置页日志
   var container = document.getElementById('log-container-user');
-  if (!container || container.style.display === 'none') return;
-  
-  var html = '';
-  for (var i = 0; i < appLogs.length; i++) {
-    var l = appLogs[i];
-    var icon = l.type === 'error' ? '❌' : l.type === 'success' ? '✅' : l.type === 'api' ? '🔗' : '📝';
-    var color = l.type === 'error' ? 'var(--danger)' : l.type === 'success' ? 'var(--success)' : l.type === 'api' ? 'var(--accent-light)' : 'var(--text-secondary)';
-    html += '<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:11px;">' +
-      '<span style="color:' + color + ';">' + icon + ' [' + l.time + ']</span> ' +
-      '<span style="color:var(--text-primary);">' + escapeHtml(l.message) + '</span>' +
-      (l.detail ? '<br><span style="color:var(--text-muted);margin-left:16px;">' + escapeHtml(l.detail.substring(0, 200)) + '</span>' : '') +
-      '</div>';
+  if (container) {
+    var html = '';
+    for (var i = 0; i < appLogs.length; i++) {
+      var l = appLogs[i];
+      var icon = l.type === 'error' ? '❌' : l.type === 'success' ? '✅' : l.type === 'api' ? '🔗' : '📝';
+      var color = l.type === 'error' ? 'var(--danger)' : l.type === 'success' ? 'var(--success)' : l.type === 'api' ? 'var(--accent-light)' : 'var(--text-secondary)';
+      html += '<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:11px;">' +
+        '<span style="color:' + color + ';">' + icon + ' [' + l.time + ']</span> ' +
+        '<span style="color:var(--text-primary);">' + escapeHtml(l.message) + '</span>' +
+        (l.detail ? '<br><span style="color:var(--text-muted);margin-left:16px;">' + escapeHtml(l.detail.substring(0, 200)) + '</span>' : '') +
+        '</div>';
+    }
+    container.innerHTML = html || '<div style="color:var(--text-muted);padding:10px;">暂无日志记录</div>';
   }
-  container.innerHTML = html || '<div style="color:var(--text-muted);padding:10px;">暂无日志记录</div>';
+  
+  // 更新首页日志预览（最近5条）
+  var homeLogs = document.getElementById('home-logs');
+  if (homeLogs) {
+    var hhtml = '';
+    var count = Math.min(appLogs.length, 5);
+    for (var i = 0; i < count; i++) {
+      var l = appLogs[i];
+      var icon = l.type === 'error' ? '❌' : l.type === 'success' ? '✅' : l.type === 'api' ? '🔗' : '📝';
+      hhtml += '<div style="padding:2px 0;font-size:10px;">' + icon + ' ' + escapeHtml(l.message) + '</div>';
+    }
+    homeLogs.innerHTML = hhtml || '<div style="color:var(--text-muted);">暂无日志</div>';
+  }
 }
 
 function renderDiagnostic() {
@@ -1119,8 +1180,10 @@ function showToast(msg, duration) {
   toastTimer = setTimeout(function() { toast.classList.remove('show'); }, duration);
 }
 
-// ===== 创建小说 =====
-function createNovel() {
+// ===== 完整创作流程 =====
+var currentCreation = null; // 当前创作中的小说数据
+
+function startFullCreation() {
   var title = document.getElementById('novel-title').value.trim();
   var type = document.getElementById('novel-type').value;
   var concept = document.getElementById('novel-concept').value.trim();
@@ -1128,10 +1191,346 @@ function createNovel() {
   if (!title) { showToast('请输入小说标题'); return; }
   if (!appState.apiConfigured) { showToast('请先在设置中配置API'); return; }
   
-  showToast('⏳ 正在生成...', 5000);
+  // 初始化创作数据
+  currentCreation = {
+    title: title, type: type, concept: concept,
+    outline: '', chapters: [], currentChapter: 0,
+    createdAt: new Date().toISOString()
+  };
   
+  // 显示进度面板
+  document.getElementById('new-novel-form').style.display = 'none';
+  document.getElementById('creation-progress').style.display = '';
+  document.getElementById('outline-display').style.display = 'none';
+  document.getElementById('chapter-display').style.display = 'none';
+  
+  updateProgress('step1', '📝 正在生成大纲...');
+  addLog('api', '开始完整创作', '标题: ' + title + ' | 类型: ' + type);
+  
+  // 第1步：生成大纲
+  var outlinePrompt = '你是一个小说创作专家。请为以下小说生成详细的章节大纲。\n\n' +
+    '标题：' + title + '\n类型：' + type + '\n核心概念：' + (concept || '无') + '\n\n' +
+    '要求：\n1. 生成10个章节的标题和简要内容(每章50-100字)\n' +
+    '2. 故事要有起承转合，冲突逐步升级\n' +
+    '3. 输出JSON格式：[{"chapter":1,"title":"章节标题","summary":"章节内容摘要"}]\n' +
+    '4. 直接输出JSON，不要其他内容';
+  
+  callAI(outlinePrompt, 2000).then(function(response) {
+    try {
+      // 尝试解析JSON
+      var jsonMatch = response.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        currentCreation.chapters = JSON.parse(jsonMatch[0]);
+      } else {
+        // 降级：按行解析
+        var lines = response.split('\n').filter(function(l) { return l.trim(); });
+        for (var i = 0; i < Math.min(lines.length, 10); i++) {
+          currentCreation.chapters.push({
+            chapter: i + 1,
+            title: '第' + (i + 1) + '章',
+            summary: lines[i].replace(/^\d+[\.\)、]\s*/, '')
+          });
+        }
+      }
+    } catch(e) {
+      // 解析失败，创建默认大纲
+      for (var i = 0; i < 10; i++) {
+        currentCreation.chapters.push({
+          chapter: i + 1,
+          title: '第' + (i + 1) + '章',
+          summary: '待生成'
+        });
+      }
+    }
+    
+    currentCreation.outline = response;
+    
+    // 显示大纲
+    var outlineHtml = '';
+    for (var i = 0; i < currentCreation.chapters.length; i++) {
+      var ch = currentCreation.chapters[i];
+      outlineHtml += '<div style="margin-bottom:8px;padding:6px;background:var(--bg-medium);border-radius:6px;">' +
+        '<b>第' + ch.chapter + '章: ' + escapeHtml(ch.title) + '</b>' +
+        '<p style="font-size:11px;color:var(--text-secondary);margin-top:2px;">' + escapeHtml(ch.summary) + '</p></div>';
+    }
+    document.getElementById('outline-content').innerHTML = outlineHtml;
+    document.getElementById('outline-display').style.display = '';
+    
+    updateProgress('step1', '✅ 大纲完成');
+    addLog('success', '大纲生成完成', '共' + currentCreation.chapters.length + '章');
+    
+    // 自动开始生成第1章
+    generateNextChapter();
+    
+  }).catch(function(e) {
+    updateProgress('step1', '❌ 大纲生成失败: ' + e.message);
+    addLog('error', '大纲生成失败', e.message);
+    diagError('startFullCreation', e);
+  });
+}
+
+function generateNextChapter() {
+  if (!currentCreation || !currentCreation.chapters.length) {
+    showToast('请先生成大纲');
+    return;
+  }
+  
+  var chIndex = currentCreation.currentChapter;
+  if (chIndex >= currentCreation.chapters.length) {
+    showToast('🎉 所有章节已生成完成！');
+    updateProgress('step2', '✅ 全部章节完成');
+    return;
+  }
+  
+  var chInfo = currentCreation.chapters[chIndex];
+  var prevChapter = chIndex > 0 ? currentCreation.chapters[chIndex - 1] : null;
+  
+  updateProgress('step2', '📖 正在生成第' + (chIndex + 1) + '章...');
+  document.getElementById('chapter-display').style.display = '';
+  document.getElementById('chapter-title').textContent = '📖 ' + chInfo.title;
+  document.getElementById('chapter-counter').textContent = (chIndex + 1) + '/' + currentCreation.chapters.length;
+  document.getElementById('chapter-content').textContent = '⏳ 生成中...';
+  document.getElementById('btn-next-chapter').disabled = true;
+  
+  var chapterPrompt = '你是一个小说创作AI。请根据以下信息生成一个完整的小说章节。\n\n' +
+    '小说标题：' + currentCreation.title + '\n' +
+    '小说类型：' + currentCreation.type + '\n' +
+    '章节标题：' + chInfo.title + '\n' +
+    '章节大纲：' + chInfo.summary + '\n' +
+    (prevChapter ? '前一章摘要：' + prevChapter.summary + '\n' : '') +
+    (currentCreation.chapters.length > chIndex + 1 ? '下一章预告：' + currentCreation.chapters[chIndex + 1].summary + '\n' : '') +
+    '\n要求：\n1. 字数2000-3000字\n2. 包含场景描写、对话、动作、心理\n3. 结尾设置悬念\n4. 直接输出正文内容';
+  
+  addLog('api', '生成章节', '第' + (chIndex + 1) + '章: ' + chInfo.title);
+  
+  callAI(chapterPrompt, 4000).then(function(content) {
+    currentCreation.chapters[chIndex].content = content;
+    currentCreation.currentChapter = chIndex + 1;
+    
+    document.getElementById('chapter-content').textContent = content;
+    document.getElementById('btn-next-chapter').disabled = false;
+    
+    updateProgress('step2', '✅ 第' + (chIndex + 1) + '章完成 (' + content.length + '字)');
+    addLog('success', '章节生成完成', '第' + (chIndex + 1) + '章: ' + content.length + '字');
+    
+    if (chIndex + 1 >= currentCreation.chapters.length) {
+      document.getElementById('btn-next-chapter').textContent = '🎉 全部完成';
+      document.getElementById('btn-next-chapter').onclick = function() {
+        showToast('🎉 所有章节已生成完成！请点击保存到书架');
+      };
+    }
+    
+  }).catch(function(e) {
+    document.getElementById('chapter-content').textContent = '❌ 生成失败: ' + e.message;
+    document.getElementById('btn-next-chapter').disabled = false;
+    addLog('error', '章节生成失败', '第' + (chIndex + 1) + '章: ' + e.message);
+    diagError('generateChapter:' + (chIndex + 1), e);
+  });
+}
+
+function saveCurrentNovel() {
+  if (!currentCreation) {
+    showToast('没有可保存的创作');
+    return;
+  }
+  
+  var novels = getNovels();
+  var novel = {
+    id: Date.now(),
+    title: currentCreation.title,
+    type: currentCreation.type,
+    concept: currentCreation.concept,
+    outline: currentCreation.outline,
+    chapters: currentCreation.chapters,
+    createdAt: currentCreation.createdAt,
+    savedAt: new Date().toISOString()
+  };
+  
+  novels.unshift(novel);
+  saveNovels(novels);
+  
+  addLog('success', '小说已保存', '「' + currentCreation.title + '」共' + currentCreation.chapters.length + '章');
+  showToast('✅ 已保存到书架！');
+  
+  // 重置
+  currentCreation = null;
+  document.getElementById('new-novel-form').style.display = '';
+  document.getElementById('creation-progress').style.display = 'none';
+  document.getElementById('novel-title').value = '';
+  document.getElementById('novel-concept').value = '';
+  
+  // 更新书架
+  renderNovelsList();
+}
+
+function renderNovelsList() {
+  var novels = getNovels();
+  var el = document.getElementById('novels-list');
+  
+  if (!novels.length) {
+    el.innerHTML = '<p style="color:var(--text-muted);font-size:12px;">暂无创作，点击上方开始</p>';
+    return;
+  }
+  
+  var html = '';
+  for (var i = 0; i < novels.length; i++) {
+    var n = novels[i];
+    var chCount = n.chapters ? n.chapters.length : 0;
+    var totalWords = 0;
+    if (n.chapters) {
+      for (var j = 0; j < n.chapters.length; j++) {
+        totalWords += (n.chapters[j].content || '').length;
+      }
+    }
+    html += '<div class="list-item" style="cursor:pointer;" onclick="viewNovel(' + n.id + ')">' +
+      '<div class="item-icon">📖</div>' +
+      '<div class="item-info">' +
+        '<div class="item-title">' + escapeHtml(n.title) + '</div>' +
+        '<div class="item-sub">' + n.type + ' | ' + chCount + '章 | ' + totalWords + '字</div>' +
+      '</div>' +
+      '<div class="item-arrow">›</div></div>';
+  }
+  el.innerHTML = html;
+}
+
+function viewNovel(id) {
+  var novels = getNovels();
+  var novel = null;
+  for (var i = 0; i < novels.length; i++) {
+    if (novels[i].id === id) { novel = novels[i]; break; }
+  }
+  if (!novel) return;
+  
+  var totalWords = 0;
+  if (novel.chapters) {
+    for (var j = 0; j < novel.chapters.length; j++) {
+      totalWords += (novel.chapters[j].content || '').length;
+    }
+  }
+  
+  var html = '<div class="card"><h3>' + escapeHtml(novel.title) + '</h3>' +
+    '<p style="font-size:12px;color:var(--text-muted);">' + novel.type + ' | ' + 
+    novel.chapters.length + '章 | ' + totalWords + '字</p>' +
+    '<p style="margin-top:6px;font-size:12px;">' + escapeHtml(novel.concept || '') + '</p></div>';
+  
+  for (var i = 0; i < novel.chapters.length; i++) {
+    var ch = novel.chapters[i];
+    html += '<div class="card" style="margin-top:8px;">' +
+      '<h4 style="font-size:14px;">' + escapeHtml(ch.title) + '</h4>' +
+      '<div style="font-size:12px;line-height:1.6;max-height:200px;overflow-y:auto;white-space:pre-wrap;margin-top:4px;">' +
+      escapeHtml(ch.content || ch.summary || '未生成') + '</div></div>';
+  }
+  
+  html += '<div style="display:flex;gap:8px;margin-top:10px;">' +
+    '<button class="btn btn-primary" onclick="exportNovelTxt(' + id + ')">📄 导出TXT</button>' +
+    '<button class="btn btn-danger" onclick="deleteNovel(' + id + ')">🗑️ 删除</button>' +
+    '<button class="btn" onclick="renderNovelsList()">← 返回</button></div>';
+  
+  document.getElementById('novels-list').innerHTML = html;
+}
+
+function exportNovelTxt(id) {
+  var novels = getNovels();
+  var novel = null;
+  for (var i = 0; i < novels.length; i++) {
+    if (novels[i].id === id) { novel = novels[i]; break; }
+  }
+  if (!novel) return;
+  
+  var text = novel.title + '\n类型: ' + novel.type + '\n\n';
+  for (var i = 0; i < novel.chapters.length; i++) {
+    var ch = novel.chapters[i];
+    text += ch.title + '\n\n' + (ch.content || ch.summary || '') + '\n\n';
+  }
+  
+  // 复制到剪贴板
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('✅ 已复制全文到剪贴板\n可在微信/备忘录中粘贴保存', 3000);
+  } catch(e) {
+    showToast('⚠️ 复制失败');
+  }
+  document.body.removeChild(ta);
+}
+
+function deleteNovel(id) {
+  if (!confirm('确定删除这部小说吗？')) return;
+  var novels = getNovels();
+  novels = novels.filter(function(n) { return n.id !== id; });
+  saveNovels(novels);
+  renderNovelsList();
+  showToast('已删除');
+}
+
+function updateProgress(stepId, text) {
+  var el = document.getElementById('progress-steps');
+  var steps = el.innerHTML;
+  if (steps.indexOf(stepId) >= 0) {
+    steps = steps.replace(new RegExp(stepId + '.*?</div>', 'g'), stepId + '">' + text + '</div>');
+  } else {
+    steps += '<div id="' + stepId + '">' + text + '</div>';
+  }
+  el.innerHTML = steps;
+}
+
+// ===== AI调用封装 =====
+function callAI(prompt, maxTokens) {
+  return new Promise(function(resolve, reject) {
+    var headers = buildApiHeaders(appState.apiKey, appState.apiEndpoint);
+    var t0 = Date.now();
+    
+    diagApiCall('POST', appState.apiEndpoint, headers, {prompt_len: prompt.length}, null, null, null, 0);
+    
+    fetch(appState.apiEndpoint, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({
+        model: appState.apiModel || 'deepseek-v4-flash',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: maxTokens || 2000
+      })
+    })
+    .then(function(r) {
+      var duration = Date.now() - t0;
+      r.clone().text().then(function(txt) {
+        diagApiCall('POST', appState.apiEndpoint, headers, {prompt_len: prompt.length}, r.status, txt, null, duration);
+      });
+      
+      if (!r.ok) {
+        var hint = '';
+        if (r.status === 402) hint = '账户余额不足';
+        else if (r.status === 401) hint = 'API密钥无效';
+        else if (r.status === 429) hint = '请求过于频繁';
+        throw new Error('HTTP ' + r.status + (hint ? ' (' + hint + ')' : ''));
+      }
+      return r.json();
+    })
+    .then(function(data) {
+      var content = data.choices && data.choices[0] ? data.choices[0].message.content : '';
+      if (!content) throw new Error('AI返回空内容');
+      resolve(content);
+    })
+    .catch(function(e) {
+      reject(e);
+    });
+  });
+}
+
+// 保留旧的createNovel兼容桌面版
+function createNovel() {
   if (apiMode === 'desktop') {
-    // 桌面版后端
+    var title = document.getElementById('novel-title').value.trim();
+    var type = document.getElementById('novel-type').value;
+    var concept = document.getElementById('novel-concept').value.trim();
+    
+    if (!title) { showToast('请输入小说标题'); return; }
+    
     var headers = { 'Content-Type': 'application/json' };
     if (appState.desktopToken) headers['Authorization'] = 'Bearer ' + appState.desktopToken;
     
@@ -1162,46 +1561,7 @@ function createNovel() {
       showToast('无法连接桌面版服务\n请确认桌面版正在运行\n地址: ' + appState.desktopUrl, 5000);
     });
   } else {
-    // 直连AI API
-    var headers = buildApiHeaders(appState.apiKey, appState.apiEndpoint);
-    
-    var prompt = '你是一个小说创作AI。请为以下概念生成一个简要大纲（200字内）：\n' +
-      '标题：' + title + '\n类型：' + type + '\n核心概念：' + (concept || '无') + 
-      '\n\n请直接输出大纲，不要多余解释。';
-    
-    addLog('api', 'AI生成大纲', '标题: ' + title + ' | 类型: ' + type + ' | 端点: ' + appState.apiEndpoint);
-    
-    fetch(appState.apiEndpoint, {
-      method: 'POST', headers: headers,
-      body: JSON.stringify({
-        model: appState.apiModel || 'deepseek-v4-flash',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 500
-      })
-    })
-    .then(function(r) {
-      if (!r.ok) {
-        var hint = '';
-        if (r.status === 404) hint = ' | 端点不存在';
-        else if (r.status === 401) hint = ' | 密钥无效';
-        else if (r.status === 402) hint = ' | ⚠️ 账户余额不足，请充值';
-        else if (r.status === 429) hint = ' | 请求过于频繁';
-        else if (r.status === 403) hint = ' | 访问被拒绝';
-        throw new Error('HTTP ' + r.status + hint);
-      }
-      return r.json();
-    })
-    .then(function(data) {
-      var content = data.choices && data.choices[0] ? data.choices[0].message.content : '未获取到大纲';
-      addLog('success', 'AI生成成功', '标题: ' + title + ' | 字数: ' + content.length);
-      showToast('📝 生成完成！\n' + content.substring(0, 150) + '...', 5000);
-      document.getElementById('novel-title').value = '';
-      document.getElementById('novel-concept').value = '';
-    })
-    .catch(function(e) {
-      addLog('error', 'AI调用失败', e.message + ' | ' + title);
-      showToast('AI调用失败: ' + e.message + '\n请检查API设置（可查看日志排查）', 5000);
-    });
+    startFullCreation();
   }
 }
 
@@ -1210,8 +1570,9 @@ function createNovel() {
   loadSettings();
   switchTab(0);
   checkApiReady();
-  addLog('info', '应用启动', 'v2.12.6 | 模式: ' + (apiMode === 'direct' ? '直连AI' : '桌面版') + ' | 在线: ' + (navigator.onLine ? '是' : '否'));
-  console.log('AI小说创作工坊 v2.12.6 已就绪');
+  renderNovelsList();
+  addLog('info', '应用启动', 'v2.12.7 | 模式: ' + (apiMode === 'direct' ? '直连AI' : '桌面版') + ' | 在线: ' + (navigator.onLine ? '是' : '否'));
+  console.log('AI小说创作工坊 v2.12.7 已就绪');
   console.log('Mode: ' + apiMode);
 })();
 

@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>AI小说创作工坊</title>
+<style>
+  :root {
+    --bg-dark: #1a1a2e;
+    --bg-medium: #16213e;
+    --bg-light: #0f3460;
+    --accent: #6c63ff;
+    --accent-light: #8b83ff;
+    --text-primary: #e0e0e0;
+    --text-secondary: #a0a0b0;
+    --text-muted: #6a6a7a;
+    --border: #2a2a4a;
+    --danger: #ff4757;
+    --success: #2ed573;
+    --warning: #ffa502;
+    --card-bg: #1e2746;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { 
+    height: 100%; width: 100%; 
+    background: var(--bg-dark); 
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  #app { display: flex; flex-direction: column; height: 100%; }
+
+  #header {
+    background: var(--bg-medium);
+    padding: 10px 16px;
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #header .subtitle {
+    font-size: 11px;
+    font-weight: normal;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  #content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    -webkit-overflow-scrolling: touch;
+  }
+  #content::-webkit-scrollbar { width: 4px; }
+  #content::-webkit-scrollbar-track { background: transparent; }
+  #content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  #tabbar {
+    display: flex;
+    background: var(--bg-medium);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .tab-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 2px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 10px;
+    cursor: pointer;
+    transition: color 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tab-btn.active { color: var(--accent); }
+  .tab-icon { font-size: 20px; margin-bottom: 1px; line-height: 1; }
+
+  .card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 10px;
+    border: 1px solid var(--border);
+  }
+  .card h3 { font-size: 14px; margin-bottom: 6px; }
+  .card p { font-size: 12px; color: var(--text-secondary); line-height: 1.45; }
+
+  .feature-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .feature-item {
+    background: var(--bg-light);
+    border-radius: 10px;
+    padding: 14px 10px;
+    text-align: center;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: border-color 0.2s;
+  }
+  .feature-item:active { border-color: var(--accent); }
+  .feature-item .icon { font-size: 26px; margin-bottom: 4px; }
+  .feature-item .label { font-size: 11px; color: var(--text-secondary); }
+
+  .btn {
+    display: block;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    text-align: center;
+    width: 100%;
+  }
+  .btn:active { opacity: 0.8; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-outline { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .btn-success { background: var(--success); color: #000; }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-sm { padding: 6px 12px; font-size: 11px; display: inline; width: auto; }
+
+  .list-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .list-item:last-child { border-bottom: none; }
+  .list-item .item-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: var(--bg-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    margin-right: 10px;
+    flex-shrink: 0;
+  }
+  .list-item .item-info { flex: 1; }
+  .list-item .item-title { font-size: 13px; margin-bottom: 1px; }
+  .list-item .item-sub { font-size: 11px; color: var(--text-muted); }
+  .list-item .item-arrow { color: var(--text-muted); font-size: 15px; }
+
+  .input-field {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    margin-top: 4px;
+  }
+  .input-field:focus { border-color: var(--accent); }
+  .input-field::placeholder { color: var(--text-muted); }
+  
+  textarea.input-field {
+    resize: vertical;
+    min-height: 70px;
+    line-height: 1.4;
+  }
+
+  .form-group {
+    margin-bottom: 10px;
+  }
+  .form-group label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+  .form-group .hint {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .tag {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    margin: 2px;
+  }
+  .tag-accent { background: rgba(108,99,255,0.2); color: var(--accent-light); }
+  .tag-success { background: rgba(46,213,115,0.2); color: var(--success); }
+  .tag-warning { background: rgba(255,165,2,0.2); color: var(--warning); }
+
+  .status-bar {
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    margin-top: 6px;
+    text-align: center;
+  }
+  .status-ok { background: rgba(46,213,115,0.15); color: var(--success); }
+  .status-err { background: rgba(255,71,87,0.15); color: var(--danger); }
+  .status-warn { background: rgba(255,165,2,0.15); color: var(--warning); }
+
+  .empty-state {
+    text-align: center;
+    padding: 36px 16px;
+    color: var(--text-muted);
+  }
+  .empty-state .icon { font-size: 42px; margin-bottom: 10px; }
+  .empty-state p { font-size: 12px; }
+
+  #toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--card-bg);
+    color: var(--text-primary);
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 12px;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.3s;
+    border: 1px solid var(--border);
+    white-space: pre-line;
+    text-align: center;
+    max-width: 85%;
+  }
+  #toast.show { opacity: 1; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .mode-tabs {
+    display: flex;
+    margin-bottom: 12px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .mode-tab {
+    flex: 1;
+    padding: 10px;
+    text-align: center;
+    font-size: 12px;
+    background: var(--bg-dark);
+    color: var(--text-muted);
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+  .mode-tab.active {
+    background: var(--accent);
+    color: white;
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: bold;
+    color: var(--text-secondary);
+    margin: 16px 0 8px;
+    padding-left: 4px;
+    border-left: 3px solid var(--accent);
+    padding-left: 10px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <div id="header-title">AI小说创作工坊</div>
+    <div class="subtitle" id="header-sub"></div>
+  </div>
+  <div id="content">
+    <!-- 首页 -->
+    <div class="page active" id="page-home">
+      <div class="card" style="text-align:center;padding:20px;">
+        <div style="font-size:44px;margin-bottom:6px;">✍️</div>
+        <h3 style="font-size:18px;">AI小说创作工坊</h3>
+        <p>用AI的力量，创作属于你的精彩故事</p>
+        <div style="margin-top:4px;">
+          <span class="tag tag-accent">多类型</span>
+          <span class="tag tag-accent">高质量</span>
+          <span class="tag tag-accent">智能辅助</span>
+        </div>
+      </div>
+      <div class="section-title">核心功能</div>
+      <div class="feature-list">
+        <div class="feature-item" onclick="switchTab(2)">
+          <div class="icon">📝</div><div class="label">开始创作</div>
+        </div>
+        <div class="feature-item" onclick="switchTab(1)">
+          <div class="icon">📚</div><div class="label">我的书架</div>
+        </div>
+        <div class="feature-item" onclick="switchTab(3)">
+          <div class="icon">🔧</div><div class="label">写作工具</div>
+        </div>
+        <div class="feature-item" onclick="switchTab(4)">
+          <div class="icon">⚙️</div><div class="label">API设置</div>
+        </div>
+      </div>
+      <div class="section-title">支持类型</div>
+      <div class="card">
+        <p>科幻 · 悬疑 · 言情 · 奇幻 · 都市 · 历史 · 武侠 · 仙侠 · 恐怖 · 军事 · 游戏 · 体育 · 穿越 · 系统流 · 末日</p>
+      </div>
+      <div id="home-status"></div>
+    </div>
+
+    <!-- 书架 -->
+    <div class="page" id="page-library">
+      <div id="library-list">
+        <div class="empty-state">
+          <div class="icon">📚</div>
+          <p>书架空空如也</p>
+          <p style="font-size:11px;">配置API后即可开始创作</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 写作 -->
+    <div class="page" id="page-editor">
+      <div id="editor-no-api" class="card" style="text-align:center;">
+        <div style="font-size:32px;margin-bottom:8px;">⚙️</div>
+        <h3>请先配置API</h3>
+        <p>在使用AI写作功能之前，需要先设置API服务</p>
+        <button class="btn btn-primary" style="margin-top:12px;" onclick="switchTab(4)">去设置API →</button>
+      </div>
+      <div id="editor-form" style="display:none;">
+        <div class="card">
+          <h3>📝 新创作</h3>
+          <div class="form-group">
+            <label>小说标题</label>
+            <input id="novel-title" class="input-field" style="height:40px;" placeholder="输入小说标题..." />
+          </div>
+          <div class="form-group">
+            <label>小说类型</label>
+            <select id="novel-type" class="input-field" style="height:42px;">
+              <option value="科幻">科幻</option><option value="悬疑">悬疑</option>
+              <option value="言情">言情</option><option value="奇幻">奇幻</option>
+              <option value="都市">都市</option><option value="历史">历史</option>
+              <option value="武侠" selected>武侠</option><option value="仙侠">仙侠</option>
+              <option value="恐怖">恐怖</option><option value="军事">军事</option>
+              <option value="游戏">游戏</option><option value="体育">体育</option>
+              <option value="穿越">穿越</option><option value="系统流">系统流</option>
+              <option value="末日">末日</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>核心概念</label>
+            <textarea id="novel-concept" class="input-field" placeholder="描述你的故事核心概念..." rows="3"></textarea>
+          </div>
+          <button class="btn btn-primary" onclick="createNovel()">🚀 开始创作</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 工具 -->
+    <div class="page" id="page-tools">
+      <div id="tools-no-api" class="card" style="text-align:center;">
+        <div style="font-size:32px;margin-bottom:8px;">⚙️</div>
+        <h3>请先配置API</h3>
+        <p>写作工具需要连接AI服务</p>
+        <button class="btn btn-primary" style="margin-top:12px;" onclick="switchTab(4)">去设置API →</button>
+      </div>
+      <div id="tools-list" style="display:none;">
+        <div class="card" style="cursor:pointer;" onclick="showToast('风格转换需要桌面版后端支持')">
+          <div class="list-item" style="border:none;padding:6px 0;">
+            <div class="item-icon">🎨</div>
+            <div class="item-info"><div class="item-title">风格转换</div><div class="item-sub">将文本转换为不同写作风格</div></div>
+            <div class="item-arrow">›</div>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer;" onclick="showToast('情景对话推演需要桌面版后端支持')">
+          <div class="list-item" style="border:none;padding:6px 0;">
+            <div class="item-icon">💬</div>
+            <div class="item-info"><div class="item-title">情景对话推演</div><div class="item-sub">AI模拟多角色对话场景</div></div>
+            <div class="item-arrow">›</div>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer;" onclick="showToast('故事流推演需要桌面版后端支持')">
+          <div class="list-item" style="border:none;padding:6px 0;">
+            <div class="item-icon">🌊</div>
+            <div class="item-info"><div class="item-title">故事流推演</div><div class="item-sub">多分支剧情可能性探索</div></div>
+            <div class="item-arrow">›</div>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer;" onclick="showToast('事物描写库需要桌面版后端支持')">
+          <div class="list-item" style="border:none;padding:6px 0;">
+            <div class="item-icon">🖼️</div>
+            <div class="item-info"><div class="item-title">事物描写库</div><div class="item-sub">场景、人物、环境描写增强</div></div>
+            <div class="item-arrow">›</div>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer;" onclick="showToast('角色桥段库需要桌面版后端支持')">
+          <div class="list-item" style="border:none;padding:6px 0;">
+            <div class="item-icon">🎭</div>
+            <div class="item-info"><div class="item-title">角色桥段库</div><div class="item-sub">经典角色互动桥段模板</div></div>
+            <div class="item-arrow">›</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- API设置 -->
+    <div class="page" id="page-settings">
+      <div class="card" style="text-align:center;padding:18px;">
+        <div style="width:50px;height:50px;border-radius:25px;background:var(--accent);margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:24px;">🤖</div>
+        <h3 style="margin-top:6px;">API 设置中心</h3>
+        <p style="font-size:11px;">配置AI服务以启用创作功能</p>
+      </div>
+
+      <!-- API模式选择 -->
+      <div class="card">
+        <h3>🔌 API 连接模式</h3>
+        <div class="mode-tabs" id="mode-tabs">
+          <button class="mode-tab active" onclick="switchApiMode('direct')">直连AI API</button>
+          <button class="mode-tab" onclick="switchApiMode('desktop')">桌面版后端</button>
+        </div>
+        <p id="mode-desc" style="font-size:11px;color:var(--text-muted);">直接调用AI服务API（OpenAI兼容接口）</p>
+
+        <!-- 直连AI API -->
+        <div id="mode-direct">
+          <div class="form-group">
+            <label>API 端点 URL *</label>
+            <input id="api-endpoint" class="input-field" placeholder="https://api.openai.com/v1/chat/completions" />
+            <div class="hint">支持 OpenAI / Claude / 本地模型等兼容接口</div>
+          </div>
+          <div class="form-group">
+            <label>API 密钥 (Key)</label>
+            <input id="api-key" class="input-field" type="password" placeholder="sk-xxxxxxxxxxxxxxxx" />
+            <div class="hint">密钥仅保存在本地，不会上传</div>
+          </div>
+          <div class="form-group">
+            <label>模型名称</label>
+            <input id="api-model" class="input-field" placeholder="gpt-4o / claude-3.5-sonnet / qwen-plus" />
+          </div>
+          <button class="btn btn-primary" onclick="testApiConnection()" style="margin-bottom:6px;">🔍 测试连接</button>
+          <div id="api-test-status"></div>
+        </div>
+
+        <!-- 桌面版后端 -->
+        <div id="mode-desktop" style="display:none;">
+          <div class="form-group">
+            <label>桌面版服务器地址</label>
+            <input id="desktop-url" class="input-field" placeholder="http://192.168.1.100:8002" />
+          </div>
+          <div class="form-group">
+            <label>API 令牌（如需要）</label>
+            <input id="desktop-token" class="input-field" type="password" placeholder="桌面版访问令牌" />
+          </div>
+          <button class="btn btn-success" onclick="testDesktopConnection()" style="margin-bottom:6px;">🔍 测试连接</button>
+          <div id="desktop-test-status"></div>
+        </div>
+      </div>
+
+      <!-- 保存按钮 -->
+      <button class="btn btn-primary" onclick="saveApiSettings()">💾 保存设置</button>
+      <div id="save-status" style="font-size:11px;text-align:center;margin-top:6px;color:var(--text-muted);"></div>
+
+      <!-- 关于 -->
+      <div class="card" style="margin-top:10px;">
+        <h3>📋 关于</h3>
+        <p>AI小说创作工坊 v2.12.3 · 移动版</p>
+        <p style="font-size:11px;">纯HTML5构建，无框架依赖，支持15种小说类型</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部Tab -->
+  <div id="tabbar">
+    <button class="tab-btn active" onclick="switchTab(0)"><span class="tab-icon">🏠</span>首页</button>
+    <button class="tab-btn" onclick="switchTab(1)"><span class="tab-icon">📚</span>书架</button>
+    <button class="tab-btn" onclick="switchTab(2)"><span class="tab-icon">✏️</span>写作</button>
+    <button class="tab-btn" onclick="switchTab(3)"><span class="tab-icon">🔧</span>工具</button>
+    <button class="tab-btn" onclick="switchTab(4)"><span class="tab-icon">⚙️</span>设置</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ===== 状态管理 =====
+var currentTab = 0;
+var apiMode = 'direct'; // 'direct' | 'desktop'
+var appState = {
+  apiConfigured: false,
+  apiEndpoint: '',
+  apiKey: '',
+  apiModel: 'gpt-4o',
+  desktopUrl: '',
+  desktopToken: '',
+  mode: 'direct'
+};
+
+var tabTitles = ['AI小说创作工坊', '我的书架', '开始创作', '写作工具箱', 'API设置中心'];
+var tabSubs = ['智能创作助手', '管理你的小说', '输入灵感，生成故事', 'AI辅助写作', '配置AI服务'];
+
+// ===== 持久化存储 =====
+function loadSettings() {
+  try {
+    var s = JSON.parse(localStorage.getItem('ainovel_settings') || '{}');
+    if (s.mode) apiMode = s.mode;
+    if (s.apiEndpoint) appState.apiEndpoint = s.apiEndpoint;
+    if (s.apiKey) appState.apiKey = s.apiKey;
+    if (s.apiModel) appState.apiModel = s.apiModel;
+    if (s.desktopUrl) appState.desktopUrl = s.desktopUrl;
+    if (s.desktopToken) appState.desktopToken = s.desktopToken;
+    appState.mode = apiMode;
+    appState.apiConfigured = !!(apiMode === 'direct' ? appState.apiEndpoint : appState.desktopUrl);
+    
+    // 回填表单
+    document.getElementById('api-endpoint').value = appState.apiEndpoint;
+    document.getElementById('api-key').value = appState.apiKey;
+    document.getElementById('api-model').value = appState.apiModel || 'gpt-4o';
+    document.getElementById('desktop-url').value = appState.desktopUrl;
+    document.getElementById('desktop-token').value = appState.desktopToken;
+    
+    // 模式UI
+    updateModeUI();
+    checkApiReady();
+  } catch(e) {}
+}
+
+function saveSettingsToDisk() {
+  var s = {
+    mode: apiMode,
+    apiEndpoint: appState.apiEndpoint,
+    apiKey: appState.apiKey,
+    apiModel: appState.apiModel,
+    desktopUrl: appState.desktopUrl,
+    desktopToken: appState.desktopToken
+  };
+  localStorage.setItem('ainovel_settings', JSON.stringify(s));
+}
+
+// ===== API模式切换 =====
+function switchApiMode(mode) {
+  apiMode = mode;
+  appState.mode = mode;
+  updateModeUI();
+  saveSettingsToDisk();
+}
+
+function updateModeUI() {
+  var tabs = document.querySelectorAll('#mode-tabs .mode-tab');
+  tabs.forEach(function(t, i) {
+    var modes = ['direct', 'desktop'];
+    t.classList.toggle('active', modes[i] === apiMode);
+  });
+  
+  document.getElementById('mode-direct').style.display = apiMode === 'direct' ? '' : 'none';
+  document.getElementById('mode-desktop').style.display = apiMode === 'desktop' ? '' : 'none';
+  
+  document.getElementById('mode-desc').textContent = apiMode === 'direct' 
+    ? '直接调用AI服务API（OpenAI兼容接口）'
+    : '连接桌面版AI小说创作工坊后端服务';
+  
+  document.getElementById('api-test-status').innerHTML = '';
+  document.getElementById('desktop-test-status').innerHTML = '';
+}
+
+// ===== 测试API连接 =====
+function testApiConnection() {
+  var endpoint = document.getElementById('api-endpoint').value.trim();
+  var key = document.getElementById('api-key').value.trim();
+  var model = document.getElementById('api-model').value.trim();
+  var statusEl = document.getElementById('api-test-status');
+  
+  if (!endpoint) {
+    statusEl.innerHTML = '<div class="status-bar status-err">请输入API端点URL</div>';
+    return;
+  }
+  
+  statusEl.innerHTML = '<div class="status-bar status-warn">⏳ 正在测试...</div>';
+  
+  // 发送测试请求（小消息）
+  var headers = { 'Content-Type': 'application/json' };
+  if (key) headers['Authorization'] = 'Bearer ' + key;
+  
+  fetch(endpoint, {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify({
+      model: model || 'gpt-4o',
+      messages: [{ role: 'user', content: '你好，请回复"连接成功"' }],
+      max_tokens: 10
+    })
+  })
+  .then(function(r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  })
+  .then(function(data) {
+    statusEl.innerHTML = '<div class="status-bar status-ok">✅ 连接成功！API响应正常</div>';
+    appState.apiEndpoint = endpoint;
+    appState.apiKey = key;
+    appState.apiModel = model || 'gpt-4o';
+    appState.apiConfigured = true;
+    saveSettingsToDisk();
+    checkApiReady();
+    showToast('API连接成功！可以开始创作了');
+  })
+  .catch(function(e) {
+    statusEl.innerHTML = '<div class="status-bar status-err">❌ 连接失败：' + e.message + '<br><small>请检查URL和密钥是否正确</small></div>';
+  });
+}
+
+function testDesktopConnection() {
+  var url = document.getElementById('desktop-url').value.trim();
+  var token = document.getElementById('desktop-token').value.trim();
+  var statusEl = document.getElementById('desktop-test-status');
+  
+  if (!url) {
+    statusEl.innerHTML = '<div class="status-bar status-err">请输入服务器地址</div>';
+    return;
+  }
+  
+  statusEl.innerHTML = '<div class="status-bar status-warn">⏳ 正在测试...</div>';
+  
+  var headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  
+  fetch(url.replace(/\/+$/, '') + '/api/health', { headers: headers })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      statusEl.innerHTML = '<div class="status-bar status-ok">✅ 连接成功！桌面版服务运行中</div>';
+      appState.desktopUrl = url;
+      appState.desktopToken = token;
+      appState.apiConfigured = true;
+      saveSettingsToDisk();
+      checkApiReady();
+      showToast('桌面版连接成功！');
+    })
+    .catch(function(e) {
+      statusEl.innerHTML = '<div class="status-bar status-err">❌ 连接失败：' + e.message + '<br><small>请确保桌面版应用正在运行</small></div>';
+    });
+}
+
+// ===== 保存设置 =====
+function saveApiSettings() {
+  // 读取当前模式的表单值
+  if (apiMode === 'direct') {
+    appState.apiEndpoint = document.getElementById('api-endpoint').value.trim();
+    appState.apiKey = document.getElementById('api-key').value.trim();
+    appState.apiModel = document.getElementById('api-model').value.trim();
+    appState.apiConfigured = !!appState.apiEndpoint;
+  } else {
+    appState.desktopUrl = document.getElementById('desktop-url').value.trim();
+    appState.desktopToken = document.getElementById('desktop-token').value.trim();
+    appState.apiConfigured = !!appState.desktopUrl;
+  }
+  
+  saveSettingsToDisk();
+  checkApiReady();
+  
+  document.getElementById('save-status').textContent = '✅ 设置已保存 (' + new Date().toLocaleTimeString() + ')';
+  document.getElementById('save-status').style.color = 'var(--success)';
+  showToast('API设置已保存');
+  
+  setTimeout(function() {
+    document.getElementById('save-status').textContent = '';
+  }, 3000);
+}
+
+// ===== API就绪检查 =====
+function checkApiReady() {
+  var configured = !!(apiMode === 'direct' ? appState.apiEndpoint : appState.desktopUrl);
+  
+  // 更新首页状态
+  var hs = document.getElementById('home-status');
+  if (configured) {
+    hs.innerHTML = '<div class="card status-ok" style="text-align:center;margin-top:10px;">✅ API已配置 · 可以开始创作</div>';
+  } else {
+    hs.innerHTML = '<div class="card status-warn" style="text-align:center;margin-top:10px;cursor:pointer;" onclick="switchTab(4)">⚠️ 尚未配置API · 点击前往设置</div>';
+  }
+  
+  // 更新写作页
+  document.getElementById('editor-no-api').style.display = configured ? 'none' : '';
+  document.getElementById('editor-form').style.display = configured ? '' : 'none';
+  
+  // 更新工具页
+  document.getElementById('tools-no-api').style.display = configured ? 'none' : '';
+  document.getElementById('tools-list').style.display = configured ? '' : 'none';
+  
+  // 更新header副标题
+  if (configured) {
+    tabSubs[0] = '已就绪 · ' + (apiMode === 'direct' ? '直连AI' : '桌面版');
+  } else {
+    tabSubs[0] = '请先配置API';
+  }
+  if (currentTab === 0) {
+    document.getElementById('header-sub').textContent = tabSubs[0];
+  }
+}
+
+// ===== Tab切换 =====
+function switchTab(index) {
+  currentTab = index;
+  var pages = document.querySelectorAll('.page');
+  pages.forEach(function(p, i) { p.classList.toggle('active', i === index); });
+  var btns = document.querySelectorAll('.tab-btn');
+  btns.forEach(function(b, i) { b.classList.toggle('active', i === index); });
+  document.getElementById('header-title').textContent = tabTitles[index];
+  document.getElementById('header-sub').textContent = tabSubs[index];
+  document.getElementById('content').scrollTop = 0;
+}
+
+// ===== Toast =====
+var toastTimer;
+function showToast(msg, duration) {
+  duration = duration || 2000;
+  var toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() { toast.classList.remove('show'); }, duration);
+}
+
+// ===== 创建小说 =====
+function createNovel() {
+  var title = document.getElementById('novel-title').value.trim();
+  var type = document.getElementById('novel-type').value;
+  var concept = document.getElementById('novel-concept').value.trim();
+  
+  if (!title) { showToast('请输入小说标题'); return; }
+  if (!appState.apiConfigured) { showToast('请先在设置中配置API'); return; }
+  
+  showToast('⏳ 正在生成...', 5000);
+  
+  if (apiMode === 'desktop') {
+    // 桌面版后端
+    var headers = { 'Content-Type': 'application/json' };
+    if (appState.desktopToken) headers['Authorization'] = 'Bearer ' + appState.desktopToken;
+    
+    fetch(appState.desktopUrl.replace(/\/+$/, '') + '/api/novels/create', {
+      method: 'POST', headers: headers,
+      body: JSON.stringify({ title: title, type: type, concept: concept })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.success) {
+        showToast('小说「' + title + '」创建成功！\n请在桌面版查看生成进度');
+        document.getElementById('novel-title').value = '';
+        document.getElementById('novel-concept').value = '';
+      } else {
+        showToast('创建失败: ' + (data.message || '未知错误'));
+      }
+    })
+    .catch(function() {
+      showToast('无法连接桌面版服务\n请确认桌面版正在运行\n地址: ' + appState.desktopUrl, 5000);
+    });
+  } else {
+    // 直连AI API
+    var headers = { 'Content-Type': 'application/json' };
+    if (appState.apiKey) headers['Authorization'] = 'Bearer ' + appState.apiKey;
+    
+    var prompt = '你是一个小说创作AI。请为以下概念生成一个简要大纲（200字内）：\n' +
+      '标题：' + title + '\n类型：' + type + '\n核心概念：' + (concept || '无') + 
+      '\n\n请直接输出大纲，不要多余解释。';
+    
+    fetch(appState.apiEndpoint, {
+      method: 'POST', headers: headers,
+      body: JSON.stringify({
+        model: appState.apiModel || 'gpt-4o',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 500
+      })
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      var content = data.choices && data.choices[0] ? data.choices[0].message.content : '未获取到大纲';
+      showToast('📝 生成完成！\n' + content.substring(0, 150) + '...', 5000);
+      document.getElementById('novel-title').value = '';
+      document.getElementById('novel-concept').value = '';
+    })
+    .catch(function(e) {
+      showToast('AI调用失败: ' + e.message + '\n请检查API设置', 5000);
+    });
+  }
+}
+
+// ===== 初始化 =====
+(function init() {
+  loadSettings();
+  switchTab(0);
+  checkApiReady();
+  console.log('AI小说创作工坊 v2.12.3 已就绪');
+  console.log('Mode: ' + apiMode);
+})();
+</script>
+</body>
+</html>

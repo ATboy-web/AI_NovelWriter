@@ -1,5 +1,53 @@
 # 更新日志
 
+## v2.14.2 (2026-06-22)
+
+### 修复
+- **WorldBuilder输出丢弃修复**: WorldBuilder构建的场景描写现已正确注入Writer上下文
+- **finalize_chapter崩溃修复**: AI返回None时kw.split()不再崩溃
+- **_parse_json_response类型修复**: Strategy5在is_list=True时正确返回list而非dict
+
+### 代码质量
+- 全面代码审查，发现并修复10+逻辑缺陷、2处资源泄漏、5处死代码
+
+## v2.14.1 (2026-06-22)
+
+### 修复
+- **角色空壳修复**: 当_parse_json_response返回部分角色(3/5)时，回退提取逻辑现在会触发补充缺失角色
+- 新增正则模式匹配，从截断JSON中提取角色名创建基础角色模板
+
+## v2.14.0 (2026-06-21)
+
+### 修复
+- **致命BUG: ContextOptimizer静默丢弃全部上下文**: _build_context传递{"内容":...}但optimize()遍历COMPRESSION_RATIOS键不匹配，导致所有上下文被返回为空字符串。Writer/Reviewer/所有Agent之前收到空上下文
+- **max_tokens不足修复**: _generate_overall_outline 2000→4096，_generate_story_outlines 3000→4096
+- **_generate_story_outlines降级方案动态化**: 使用concept+genre构造，不再硬编码"阴阳岛"
+
+## v2.13.0 (2026-06-21)
+
+### 修复
+- **上下文连贯性致命Bug**: glob模式只匹配1个文件而非最近3章 → 改为遍历全部章节文件取最近3章
+- **故事大纲AI返回空**: 增加重试和更好的错误处理
+- **角色生成增强**: Strategy 5回退从截断JSON提取角色名
+
+### 改动
+- EXE从console模式改为windowed模式（无终端窗口）
+- PlotDesigner日志消息修正
+
+## v2.12.3 (2026-06-21)
+
+### 新增
+- **API设置中心**: 独立设置页面，支持直连AI API / 桌面版后端两种模式
+- API端点URL、密钥、模型名称配置
+- 一键测试连接，设置自动保存
+- 未配置API时智能引导
+
+## v2.12.2 (2026-06-21)
+
+### 修复
+- **APK白屏 → 纯HTML重构**: Expo Web的React Native bundle在Android WebView中无法渲染，用纯HTML/CSS/JS重建移动端
+- APK大小从7.64MB降至2.4MB
+
 ## v2.11.0 (2026-06-19)
 
 ### 新增功能

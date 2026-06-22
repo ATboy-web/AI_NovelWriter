@@ -514,18 +514,24 @@ class AIClient:
                 # 不修改持久化配置，只在本次请求中使用降级模型
                 model = fallback_model
                 # 重试时不递归，直接调用对应方法
-                if provider == "ollama":
-                    result = self._chat_ollama(messages, system, model, max_tokens, temperature)
-                elif provider == "claude":
-                    result = self._chat_claude(messages, system, model, max_tokens, temperature)
-                elif provider == "deepseek":
-                    result = self._chat_deepseek(messages, system, model, max_tokens, temperature,
-                                                thinking_enabled, reasoning_effort)
-                else:
-                    result = self._chat_openai(messages, system, model, max_tokens, temperature)
-                latency = time.time() - start
-                self.metrics.record(len(result), latency)
-                return result
+                try:
+                    if provider == "ollama":
+                        result = self._chat_ollama(messages, system, model, max_tokens, temperature)
+                    elif provider == "claude":
+                        result = self._chat_claude(messages, system, model, max_tokens, temperature)
+                    elif provider == "deepseek":
+                        result = self._chat_deepseek(messages, system, model, max_tokens, temperature,
+                                                    thinking_enabled, reasoning_effort)
+                    else:
+                        result = self._chat_openai(messages, system, model, max_tokens, temperature)
+                    latency = time.time() - start
+                    self.metrics.record(len(result), latency)
+                    return result
+                except Exception as fallback_error:
+                    # 降级模型也失败，记录并抛出原始错误
+                    self._log(f"降级模型 {model} 也失败: {fallback_error}")
+                    self.metrics.record(0, time.time() - start, error=True)
+                    raise e  # 抛出原始错误
             
             raise
     
@@ -654,7 +660,7 @@ class AIClient:
             payload["extra_body"] = {"thinking": {"type": "enabled"}}
             payload["reasoning_effort"] = reasoning_effort
             # 思考模式下不支持temperature
-            del payload["temperature"]
+            payload.pop("temperature", None)
         
         response = self.client.post("/chat/completions", json=payload)
         response.raise_for_status()

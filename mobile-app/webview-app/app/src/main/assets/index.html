@@ -30,7 +30,16 @@
     -webkit-tap-highlight-color: transparent;
     user-select: none;
   }
-  #app { display: flex; flex-direction: column; height: 100%; }
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+  #app { 
+    flex: 1; 
+    display: flex; 
+    flex-direction: column; 
+    overflow: hidden;
+  }
 
   #header {
     background: var(--bg-medium);
@@ -53,6 +62,8 @@
     overflow-y: auto;
     padding: 14px;
     -webkit-overflow-scrolling: touch;
+    position: relative;
+    z-index: 1;
   }
   #content::-webkit-scrollbar { width: 4px; }
   #content::-webkit-scrollbar-track { background: transparent; }
@@ -62,8 +73,9 @@
     display: flex;
     background: var(--bg-medium);
     border-top: 1px solid var(--border);
-    flex-shrink: 0;
     padding-bottom: env(safe-area-inset-bottom, 0);
+    flex-shrink: 0;
+    touch-action: manipulation;
   }
   .tab-btn {
     flex: 1;
@@ -79,6 +91,7 @@
     cursor: pointer;
     transition: color 0.2s;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
   .tab-btn.active { color: var(--accent); }
   .tab-icon { font-size: 20px; margin-bottom: 1px; line-height: 1; }
@@ -129,6 +142,42 @@
   .btn-success { background: var(--success); color: #000; }
   .btn-danger { background: var(--danger); color: white; }
   .btn-sm { padding: 6px 12px; font-size: 11px; display: inline; width: auto; }
+
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: var(--bg-light);
+    border: 1px solid var(--border);
+    transition: 0.3s;
+    border-radius: 24px;
+  }
+  .toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 2px;
+    bottom: 2px;
+    background-color: var(--text-muted);
+    transition: 0.3s;
+    border-radius: 50%;
+  }
+  .toggle-switch input:checked + .toggle-slider {
+    background-color: var(--accent);
+    border-color: var(--accent);
+  }
+  .toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+    background-color: white;
+  }
 
   .list-item {
     display: flex;
@@ -230,15 +279,16 @@
     padding: 10px 20px;
     border-radius: 20px;
     font-size: 12px;
-    z-index: 100;
+    z-index: 1000;
     opacity: 0;
     transition: opacity 0.3s;
     border: 1px solid var(--border);
     white-space: pre-line;
     text-align: center;
     max-width: 85%;
+    pointer-events: none;
   }
-  #toast.show { opacity: 1; }
+  #toast.show { opacity: 1; pointer-events: auto; }
 
   .page { display: none; }
   .page.active { display: block; }
@@ -330,11 +380,18 @@
 
     <!-- 书架 -->
     <div class="page" id="page-library">
+      <div class="card">
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <button class="btn btn-primary" onclick="importFromFileSystem()" style="flex:1;">📁 导入本地小说</button>
+          <button class="btn btn-outline" onclick="refreshBookshelf()" style="flex:1;">🔄 刷新书架</button>
+        </div>
+        <div id="storage-info" style="font-size:11px;color:var(--text-muted);"></div>
+      </div>
       <div id="library-list">
         <div class="empty-state">
           <div class="icon">📚</div>
           <p>书架空空如也</p>
-          <p style="font-size:11px;">配置API后即可开始创作</p>
+          <p style="font-size:11px;">点击上方按钮导入已有小说，或开始创作新小说</p>
         </div>
       </div>
     </div>
@@ -358,18 +415,57 @@
           <div class="form-group">
             <label>小说类型</label>
             <select id="novel-type" class="input-field" style="height:42px;">
-              <option value="科幻">科幻</option><option value="悬疑">悬疑</option>
-              <option value="言情">言情</option><option value="奇幻">奇幻</option>
-              <option value="都市">都市</option><option value="历史">历史</option>
-              <option value="武侠" selected>武侠</option><option value="仙侠">仙侠</option>
-              <option value="恐怖">恐怖</option><option value="军事">军事</option>
-              <option value="游戏">游戏</option><option value="体育">体育</option>
-              <option value="穿越">穿越</option><option value="系统流">系统流</option>
-              <option value="末日">末日</option><option value="无限流">无限流</option>
-              <option value="修真">修真</option><option value="玄幻">玄幻</option>
-              <option value="轻小说">轻小说</option><option value="同人">同人</option>
-              <option value="谍战">谍战</option><option value="推理">推理</option>
-              <option value="校园">校园</option><option value="职场">职场</option>
+              <optgroup label="--- 男频 ---">
+                <option value="玄幻-东方玄幻">玄幻-东方玄幻</option>
+                <option value="玄幻-异世大陆">玄幻-异世大陆</option>
+                <option value="玄幻-高武世界">玄幻-高武世界</option>
+                <option value="仙侠-古典仙侠">仙侠-古典仙侠</option>
+                <option value="仙侠-现代修真">仙侠-现代修真</option>
+                <option value="仙侠-洪荒封神">仙侠-洪荒封神</option>
+                <option value="都市-都市异能">都市-都市异能</option>
+                <option value="都市-商战职场">都市-商战职场</option>
+                <option value="都市-娱乐明星">都市-娱乐明星</option>
+                <option value="历史-架空历史" selected>历史-架空历史</option>
+                <option value="历史-三国争霸">历史-三国争霸</option>
+                <option value="科幻-星际文明">科幻-星际文明</option>
+                <option value="科幻-末世危机">科幻-末世危机</option>
+                <option value="科幻-赛博朋克">科幻-赛博朋克</option>
+                <option value="悬疑-侦探推理">悬疑-侦探推理</option>
+                <option value="悬疑-灵异恐怖">悬疑-灵异恐怖</option>
+                <option value="悬疑-盗墓笔记">悬疑-盗墓笔记</option>
+                <option value="游戏-虚拟网游">游戏-虚拟网游</option>
+                <option value="游戏-电子竞技">游戏-电子竞技</option>
+                <option value="军事-谍战特工">军事-谍战特工</option>
+                <option value="军事-特种兵">军事-特种兵</option>
+                <option value="武侠-传统武侠">武侠-传统武侠</option>
+                <option value="武侠-国术古武">武侠-国术古武</option>
+                <option value="无限流-诸天万界">无限流-诸天万界</option>
+                <option value="无限流-副本挑战">无限流-副本挑战</option>
+                <option value="系统流-签到系统">系统流-签到系统</option>
+                <option value="末日-丧尸末日">末日-丧尸末日</option>
+                <option value="末日-废土求生">末日-废土求生</option>
+                <option value="克苏鲁-神话恐怖">克苏鲁-神话恐怖</option>
+                <option value="赛博朋克-赛博修仙">赛博朋克-赛博修仙</option>
+              </optgroup>
+              <optgroup label="--- 女频 ---">
+                <option value="古代言情-女尊王朝">古代言情-女尊王朝</option>
+                <option value="古代言情-宫闱宅斗">古代言情-宫闱宅斗</option>
+                <option value="古代言情-穿越奇情">古代言情-穿越奇情</option>
+                <option value="现代言情-豪门总裁">现代言情-豪门总裁</option>
+                <option value="现代言情-都市婚恋">现代言情-都市婚恋</option>
+                <option value="现代言情-军婚甜宠">现代言情-军婚甜宠</option>
+                <option value="幻想言情-异世恋歌">幻想言情-异世恋歌</option>
+                <option value="幻想言情-快穿攻略">幻想言情-快穿攻略</option>
+                <option value="仙侠奇缘-古典仙缘">仙侠奇缘-古典仙缘</option>
+                <option value="仙侠奇缘-修仙情劫">仙侠奇缘-修仙情劫</option>
+                <option value="纯爱-古代纯爱">纯爱-古代纯爱</option>
+                <option value="纯爱-现代纯爱">纯爱-现代纯爱</option>
+                <option value="悬疑灵异-推理侦探">悬疑灵异-推理侦探</option>
+                <option value="悬疑灵异-恐怖惊悚">悬疑灵异-恐怖惊悚</option>
+                <option value="穿书-穿成炮灰">穿书-穿成炮灰</option>
+                <option value="重生-重生复仇">重生-重生复仇</option>
+                <option value="年代文-七八十年代">年代文-七八十年代</option>
+              </optgroup>
             </select>
           </div>
           <div class="form-group">
@@ -378,8 +474,39 @@
           </div>
           <div class="form-group">
             <label>计划章节数</label>
-            <input id="novel-chapters" class="input-field" type="number" value="10" min="3" max="50" placeholder="10" />
-            <div class="hint">建议先用10章测试，满意后再扩展</div>
+            <input id="novel-chapters" class="input-field" type="number" value="10" min="3" max="5000" placeholder="10" />
+            <div class="hint">支持3-5000章长篇小说，大批量生成时请保持APP在前台运行</div>
+          </div>
+          <div class="form-group">
+            <label>每章字数</label>
+            <select id="novel-wordcount" class="input-field" style="height:42px;">
+              <option value="3000">3000字 (短章)</option>
+              <option value="5000" selected>5000字 (标准)</option>
+              <option value="8000">8000字 (长章)</option>
+              <option value="10000">10000字 (超长)</option>
+              <option value="15000">15000字 (巨章)</option>
+            </select>
+            <div class="hint">字数越多，生成时间越长</div>
+          </div>
+          <div class="form-group">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <label style="margin-bottom:0;">18+ 内容模式</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="novel-18plus" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="hint">开启后可生成包含成人内容、暴力、血腥等元素的小说</div>
+          </div>
+          <div class="form-group">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <label style="margin-bottom:0;">💋 擦边内容模式</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="novel-edge" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="hint">允许暧昧描写、性感魅力、擦边情节</div>
           </div>
           <button class="btn btn-primary" onclick="startFullCreation()">🚀 开始完整创作</button>
         </div>
@@ -401,10 +528,12 @@
               <h3 id="chapter-title">📖 第1章</h3>
               <span id="chapter-counter" style="font-size:11px;color:var(--text-muted);">1/10</span>
             </div>
-            <div id="chapter-content" style="font-size:13px;line-height:1.8;max-height:400px;overflow-y:auto;white-space:pre-wrap;margin-top:8px;"></div>
-            <div style="display:flex;gap:8px;margin-top:10px;">
-              <button class="btn btn-primary" onclick="generateNextChapter()" id="btn-next-chapter">📖 生成下一章</button>
-              <button class="btn btn-success" onclick="saveCurrentNovel()">💾 保存到书架</button>
+            <textarea id="chapter-content" class="input-field" style="font-size:13px;line-height:1.8;min-height:300px;max-height:500px;overflow-y:auto;white-space:pre-wrap;margin-top:8px;" placeholder="章节内容将在这里显示，您可以直接编辑..."></textarea>
+            <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
+              <button class="btn btn-primary" onclick="generateNextChapter()" id="btn-next-chapter" style="flex:1;min-width:100px;">📖 生成下一章</button>
+              <button class="btn btn-outline" onclick="regenerateCurrentChapter()" style="flex:1;min-width:80px;">🔄 重新生成</button>
+              <button class="btn btn-outline" onclick="saveChapterEdit()" style="flex:1;min-width:80px;">✏️ 保存编辑</button>
+              <button class="btn btn-success" onclick="saveCurrentNovel()" style="flex:1;min-width:80px;">💾 保存到书架</button>
             </div>
           </div>
         </div>
@@ -494,7 +623,7 @@
     </div>
 
     <!-- 工具弹窗 -->
-    <div id="tool-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg-dark);z-index:100;overflow-y:auto;padding:16px;">
+    <div id="tool-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg-dark);z-index:500;overflow-y:auto;padding:16px;pointer-events:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <h3 id="tool-modal-title">工具</h3>
         <button onclick="closeTool()" style="background:none;border:none;color:var(--text-primary);font-size:20px;cursor:pointer;">✕</button>
@@ -581,20 +710,20 @@
       <!-- 关于 -->
       <div class="card" style="margin-top:10px;">
         <h3>📋 关于</h3>
-        <p>AI小说创作工坊 v2.12.7 · 移动版</p>
+        <p>AI小说创作工坊 v2.13.0 · 移动版</p>
         <p style="font-size:11px;">纯HTML5构建，无框架依赖，支持15种小说类型</p>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- 底部Tab -->
-  <div id="tabbar">
-    <button class="tab-btn active" onclick="switchTab(0)"><span class="tab-icon">🏠</span>首页</button>
-    <button class="tab-btn" onclick="switchTab(1)"><span class="tab-icon">📚</span>书架</button>
-    <button class="tab-btn" onclick="switchTab(2)"><span class="tab-icon">✏️</span>写作</button>
-    <button class="tab-btn" onclick="switchTab(3)"><span class="tab-icon">🔧</span>工具</button>
-    <button class="tab-btn" onclick="switchTab(4)"><span class="tab-icon">⚙️</span>设置</button>
-  </div>
+<!-- 底部Tab - 移到app外部避免被content遮挡 -->
+<div id="tabbar">
+  <button class="tab-btn active" onclick="switchTab(0)"><span class="tab-icon">🏠</span>首页</button>
+  <button class="tab-btn" onclick="switchTab(1)"><span class="tab-icon">📚</span>书架</button>
+  <button class="tab-btn" onclick="switchTab(2)"><span class="tab-icon">✏️</span>写作</button>
+  <button class="tab-btn" onclick="switchTab(3)"><span class="tab-icon">🔧</span>工具</button>
+  <button class="tab-btn" onclick="switchTab(4)"><span class="tab-icon">⚙️</span>设置</button>
 </div>
 
 <div id="toast"></div>
@@ -615,6 +744,70 @@ var appState = {
 
 var tabTitles = ['AI小说创作工坊', '我的书架', '开始创作', '写作工具箱', 'API设置中心'];
 var tabSubs = ['智能创作助手', '管理你的小说', '输入灵感，生成故事', 'AI辅助写作', '配置AI服务'];
+
+// ===== 文件系统接口 (Android NovelFS) =====
+var NovelFS = window.NovelFS || null;
+
+// 检查文件系统是否可用
+function isFileSystemAvailable() {
+  return NovelFS !== null && typeof NovelFS.createNovelDir === 'function';
+}
+
+// 创建小说目录结构
+function createNovelFileSystem(novelName) {
+  if (!isFileSystemAvailable()) return false;
+  try {
+    var safeName = novelName.replace(/[<>:"/\\|?*]/g, '_');
+    return NovelFS.createNovelDir(safeName);
+  } catch(e) {
+    console.error('创建小说目录失败:', e);
+    return false;
+  }
+}
+
+// 保存文件到小说目录
+function saveNovelFile(novelName, relativePath, content) {
+  if (!isFileSystemAvailable()) return false;
+  try {
+    var safeName = novelName.replace(/[<>:"/\\|?*]/g, '_');
+    return NovelFS.writeFile(safeName, relativePath, content);
+  } catch(e) {
+    console.error('保存文件失败:', e);
+    return false;
+  }
+}
+
+// 读取小说文件
+function readNovelFile(novelName, relativePath) {
+  if (!isFileSystemAvailable()) return null;
+  try {
+    var safeName = novelName.replace(/[<>:"/\\|?*]/g, '_');
+    return NovelFS.readFile(safeName, relativePath);
+  } catch(e) {
+    console.error('读取文件失败:', e);
+    return null;
+  }
+}
+
+// 获取所有小说目录
+function getNovelDirs() {
+  if (!isFileSystemAvailable()) return [];
+  try {
+    return NovelFS.listNovels() || [];
+  } catch(e) {
+    return [];
+  }
+}
+
+// 获取本地存储路径
+function getStoragePath() {
+  if (!isFileSystemAvailable()) return 'localStorage';
+  try {
+    return NovelFS.getNovelsDir();
+  } catch(e) {
+    return 'localStorage';
+  }
+}
 
 // ===== 日志系统 (双日志: 用户日志 + AI诊断日志) =====
 var appLogs = [];          // 用户日志 (简单文本)
@@ -791,7 +984,7 @@ function exportCurrentLog() {
 function exportUserLogs() {
   var text = '📋 AI小说创作工坊 · 运行日志\n';
   text += '导出: ' + new Date().toLocaleString('zh-CN') + '\n';
-  text += '版本: v2.12.7\n═══ ' + appLogs.length + '条 ═══\n\n';
+  text += '版本: v2.13.0\n═══ ' + appLogs.length + '条 ═══\n\n';
   
   for (var i = 0; i < appLogs.length; i++) {
     var l = appLogs[i];
@@ -804,7 +997,7 @@ function exportUserLogs() {
 function exportDiagLogs() {
   var text = '🤖 AI小说创作工坊 · AI诊断日志\n';
   text += '导出: ' + new Date().toLocaleString('zh-CN') + '\n';
-  text += '版本: v2.12.7 | ' + diagnosticLogs.length + '条\n';
+  text += '版本: v2.13.0 | ' + diagnosticLogs.length + '条\n';
   text += '设备: ' + navigator.userAgent.substring(0, 100) + '\n';
   text += '在线: ' + (navigator.onLine ? '是' : '否') + '\n';
   text += '══════════════════\n\n';
@@ -1202,20 +1395,48 @@ function startFullCreation() {
   var type = document.getElementById('novel-type').value;
   var concept = document.getElementById('novel-concept').value.trim();
   var totalChapters = parseInt(document.getElementById('novel-chapters') ? document.getElementById('novel-chapters').value : '10') || 10;
+  var wordCountPerChapter = parseInt(document.getElementById('novel-wordcount') ? document.getElementById('novel-wordcount').value : '5000') || 5000;
+  var is18Plus = document.getElementById('novel-18plus') ? document.getElementById('novel-18plus').checked : false;
+  var isEdge = document.getElementById('novel-edge') ? document.getElementById('novel-edge').checked : false;
   
   if (!title) { showToast('请输入小说标题'); return; }
   if (!appState.apiConfigured) { showToast('请先在设置中配置API'); return; }
+  
+  // 概念为空时提示
+  if (!concept) {
+    showToast('💡 建议填写核心概念，能让AI更好地理解你的创作意图', 3000);
+  }
+  
+  // 限制最大章节数
+  if (totalChapters > 5000) {
+    showToast('章节数不能超过5000');
+    return;
+  }
+  
+  // 构建内容提示
+  var contentHint = '';
+  if (is18Plus) {
+    contentHint += '\n\n【🔞 18+成人内容模式 - 已启用】\n本作品包含成人内容，请大胆创作：\n- 亲密场景：可详细描写角色之间的亲密接触、情感交融、肌肤之亲\n- 暴力战斗：战斗场景要残酷真实，可描写血腥、伤痛、生死搏杀\n- 心理阴暗面：角色可以有复杂的道德灰度，展现人性的阴暗面\n- 禁忌题材：可涉及禁忌关系、道德边缘、灰色地带\n- 情感深度：情感描写要深入骨髓，展现欲望、执念、痴迷\n- 残酷现实：可描写社会阴暗面、人性丑恶、生存挣扎\n【重要】不要回避成人内容，这是创作需求，大胆发挥！';
+  }
+  if (isEdge) {
+    contentHint += '\n\n【💋 擦边内容模式 - 已启用】\n本作品允许擦边内容，在尺度边缘游走：\n- 暧昧描写：角色之间的暧昧互动、暗示性对话、若有若无的身体接触\n- 性感描写：可描写角色的性感魅力、身材曲线、诱人姿态\n- 暗示性场景：可通过暗示、隐喻手法描写亲密场景\n- 情色张力：在情节中制造情色张力，让读者产生遐想\n- 浴室/更衣等私密场景：可适当描写私密场景\n- 醉酒/意外等擦边情节：可设计擦边桥段\n【重要】擦边要擦到位，不要过于保守，让读者有想象空间！';
+  }
+  
+  // 将内容提示注入概念
+  if (contentHint) {
+    concept = concept + contentHint;
+  }
   
   // 桌面版模式：提交到桌面版后端
   if (apiMode === 'desktop') {
     var headers = { 'Content-Type': 'application/json' };
     if (appState.desktopToken) headers['Authorization'] = 'Bearer ' + appState.desktopToken;
     
-    addLog('api', '创建小说(桌面版)', '标题: ' + title + ' | 类型: ' + type);
+    addLog('api', '创建小说(桌面版)', '标题: ' + title + ' | 类型: ' + type + ' | 18+: ' + (is18Plus ? '是' : '否') + ' | 擦边: ' + (isEdge ? '是' : '否'));
     
     fetch(appState.desktopUrl.replace(/\/+$/, '') + '/api/novels/create', {
       method: 'POST', headers: headers,
-      body: JSON.stringify({ title: title, type: type, concept: concept })
+      body: JSON.stringify({ title: title, type: type, concept: concept, is_18plus: is18Plus, is_edge: isEdge })
     })
     .then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1246,6 +1467,9 @@ function startFullCreation() {
   currentCreation = {
     title: title, type: type, concept: concept,
     totalChapters: totalChapters,
+    wordCountPerChapter: wordCountPerChapter,
+    is18Plus: is18Plus,
+    isEdge: isEdge,
     worldview: '', characters: [], outline: [],
     overallOutline: '', storyOutline: '',
     chapters: [], currentChapter: 0,
@@ -1258,7 +1482,12 @@ function startFullCreation() {
   document.getElementById('outline-display').style.display = 'none';
   document.getElementById('chapter-display').style.display = 'none';
   
-  addLog('api', '开始完整创作', '标题: ' + title + ' | 类型: ' + type + ' | 计划' + totalChapters + '章');
+  addLog('api', '开始完整创作', '标题: ' + title + ' | 类型: ' + type + ' | 计划' + totalChapters + '章 | 18+: ' + (is18Plus ? '是' : '否') + ' | 擦边: ' + (isEdge ? '是' : '否'));
+  
+  // 长篇小说提示
+  if (totalChapters > 50) {
+    showToast('📝 长篇小说模式\n计划生成' + totalChapters + '章\n请保持APP在前台运行', 5000);
+  }
   
   // 按桌面版流程执行: 世界观→角色→大纲→整体大纲→故事大纲→章节
   creationStep1_Worldview();
@@ -1433,7 +1662,7 @@ function creationStep6_Chapters() {
   document.getElementById('chapter-display').style.display = '';
   document.getElementById('chapter-title').textContent = '📖 准备中...';
   document.getElementById('chapter-counter').textContent = '0/' + currentCreation.outline.length;
-  document.getElementById('chapter-content').textContent = '点击"生成下一章"开始创作';
+  document.getElementById('chapter-content').value = '点击"生成下一章"开始创作';
   document.getElementById('btn-next-chapter').disabled = false;
   
   addLog('info', '准备生成章节', '共' + currentCreation.outline.length + '章');
@@ -1451,6 +1680,8 @@ function generateNextChapter() {
   if (chIndex >= currentCreation.outline.length) {
     showToast('🎉 所有章节已生成完成！');
     updateProgress('step-chapters', '✅ 全部章节完成');
+    // 释放唤醒锁
+    if (NovelFS && NovelFS.releaseWakeLock) NovelFS.releaseWakeLock();
     return;
   }
   
@@ -1458,11 +1689,14 @@ function generateNextChapter() {
   var prevChapter = chIndex > 0 ? currentCreation.outline[chIndex - 1] : null;
   var nextChapter = chIndex < currentCreation.outline.length - 1 ? currentCreation.outline[chIndex + 1] : null;
   
+  // 获取唤醒锁，防止后台杀死
+  if (NovelFS && NovelFS.acquireWakeLock) NovelFS.acquireWakeLock();
+  
   updateProgress('step-chapters', '📖 正在生成第' + (chIndex + 1) + '章...');
   document.getElementById('chapter-display').style.display = '';
   document.getElementById('chapter-title').textContent = '📖 ' + chInfo.title;
   document.getElementById('chapter-counter').textContent = (chIndex + 1) + '/' + currentCreation.outline.length;
-  document.getElementById('chapter-content').textContent = '⏳ AI创作中，请稍候...';
+  document.getElementById('chapter-content').value = '⏳ AI创作中，请稍候...';
   document.getElementById('btn-next-chapter').disabled = true;
   
   // 构建上下文
@@ -1471,29 +1705,123 @@ function generateNextChapter() {
   var overallCtx = currentCreation.overallOutline ? '整体大纲：' + currentCreation.overallOutline.substring(0, 200) + '\n' : '';
   var storyCtx = currentCreation.storyOutline ? '故事线：' + currentCreation.storyOutline.substring(0, 200) + '\n' : '';
   
+  // 18+/擦边内容指令
+  var adultInstruction = '';
+  if (currentCreation.is18Plus) {
+    adultInstruction = '\n【🔞 18+成人内容模式 - 已启用】\n' +
+      '本作品包含成人内容，请大胆创作：\n' +
+      '- 亲密场景：可详细描写角色之间的亲密接触、情感交融、肌肤之亲\n' +
+      '- 暴力战斗：战斗场景要残酷真实，可描写血腥、伤痛、生死搏杀\n' +
+      '- 心理阴暗面：角色可以有复杂的道德灰度，展现人性的阴暗面\n' +
+      '- 禁忌题材：可涉及禁忌关系、道德边缘、灰色地带\n' +
+      '- 情感深度：情感描写要深入骨髓，展现欲望、执念、痴迷\n' +
+      '- 残酷现实：可描写社会阴暗面、人性丑恶、生存挣扎\n' +
+      '【重要】不要回避成人内容，这是创作需求，大胆发挥！\n';
+  }
+  if (currentCreation.isEdge) {
+    adultInstruction += '\n【💋 擦边内容模式 - 已启用】\n' +
+      '本作品允许擦边内容，在尺度边缘游走：\n' +
+      '- 暧昧描写：角色之间的暧昧互动、暗示性对话、若有若无的身体接触\n' +
+      '- 性感描写：可描写角色的性感魅力、身材曲线、诱人姿态\n' +
+      '- 暗示性场景：可通过暗示、隐喻手法描写亲密场景\n' +
+      '- 情色张力：在情节中制造情色张力，让读者产生遐想\n' +
+      '- 浴室/更衣等私密场景：可适当描写私密场景\n' +
+      '【重要】擦边要擦到位，不要过于保守，让读者有想象空间！\n';
+  }
+  
   var chapterPrompt = '你是一个小说创作AI。请根据以下信息创作一个完整的小说章节。\n\n' +
     '小说标题：' + currentCreation.title + '\n' +
     '小说类型：' + currentCreation.type + '\n' +
+    '核心概念：' + (currentCreation.concept || '无') + '\n' +
     '出场角色：' + charsInfo + '\n' +
     worldCtx + overallCtx + storyCtx +
     '\n章节标题：' + chInfo.title + '\n' +
     '章节大纲：' + chInfo.summary + '\n' +
     (prevChapter ? '前一章标题：' + prevChapter.title + '\n前一章摘要：' + prevChapter.summary + '\n' : '') +
     (nextChapter ? '下一章预告：' + nextChapter.summary + '\n' : '') +
-    '\n要求：\n1. 字数3000-5000字\n2. 包含场景描写、对话、动作、心理活动\n3. 结尾设置悬念引向下一章\n4. 保持角色性格一致\n5. 直接输出正文内容';
+    adultInstruction +
+    '\n要求：\n1. 字数' + currentCreation.wordCountPerChapter + '字左右，必须写够字数\n2. 包含场景描写、对话、动作、心理活动\n3. 结尾设置悬念引向下一章\n4. 保持角色性格一致\n5. 直接输出正文内容，不要输出任何解释';
   
-  addLog('api', '生成章节', '第' + (chIndex + 1) + '章: ' + chInfo.title);
+  addLog('api', '生成章节', '第' + (chIndex + 1) + '章: ' + chInfo.title + 
+    (currentCreation.is18Plus ? ' [18+]' : '') + (currentCreation.isEdge ? ' [擦边]' : ''));
   
-  callAI(chapterPrompt, 4000).then(function(content) {
-    currentCreation.outline[chIndex].content = content;
+  // 智能体协作流程: 情节分析 → 章节创作 → 质量审校
+  updateProgress('step-chapters', '🔍 [情节分析] 第' + (chIndex + 1) + '章...');
+  
+  // Step 1: PlotDesigner - 情节分析
+  var plotPrompt = '你是小说情节设计师。分析以下章节的大纲，输出创作指导。\n\n' +
+    '小说类型：' + currentCreation.type + '\n' +
+    '章节标题：' + chInfo.title + '\n' +
+    '章节大纲：' + chInfo.summary + '\n' +
+    (prevChapter ? '前一章：' + prevChapter.title + ' - ' + prevChapter.summary + '\n' : '') +
+    '\n输出JSON：{"pace":"节奏(快/中/慢)","mood":"氛围","focus":"重点场景","foreshadowing":"伏笔/悬念"}';
+  
+  callAI(plotPrompt, 500).then(function(plotResponse) {
+    var plotAnalysis = '';
+    try {
+      var jsonMatch = plotResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        var plot = JSON.parse(jsonMatch[0]);
+        plotAnalysis = '节奏：' + (plot.pace || '中') + ' | 氛围：' + (plot.mood || '正常') + 
+                      ' | 重点：' + (plot.focus || '情节推进') + ' | 伏笔：' + (plot.foreshadowing || '无');
+      }
+    } catch(e) {}
+    
+    updateProgress('step-chapters', '✍️ [章节创作] 第' + (chIndex + 1) + '章...');
+    
+    // Step 2: Writer - 章节创作
+    var chapterPrompt = '你是一个小说创作AI。请根据以下信息创作一个完整的小说章节。\n\n' +
+      '小说标题：' + currentCreation.title + '\n' +
+      '小说类型：' + currentCreation.type + '\n' +
+      '核心概念：' + (currentCreation.concept || '无') + '\n' +
+      '出场角色：' + charsInfo + '\n' +
+      worldCtx + overallCtx + storyCtx +
+      '\n章节标题：' + chInfo.title + '\n' +
+      '章节大纲：' + chInfo.summary + '\n' +
+      (plotAnalysis ? '创作指导：' + plotAnalysis + '\n' : '') +
+      (prevChapter ? '前一章标题：' + prevChapter.title + '\n前一章摘要：' + prevChapter.summary + '\n' : '') +
+      (nextChapter ? '下一章预告：' + nextChapter.summary + '\n' : '') +
+      adultInstruction +
+      '\n要求：\n1. 字数' + currentCreation.wordCountPerChapter + '字左右，必须写够字数\n2. 包含场景描写、对话、动作、心理活动\n3. 结尾设置悬念引向下一章\n4. 保持角色性格一致\n5. 直接输出正文内容，不要输出任何解释';
+    
+    var maxTokens = Math.max(currentCreation.wordCountPerChapter * 2, 10000);
+    
+    return callAI(chapterPrompt, maxTokens);
+    
+  }).then(function(content) {
+    // Step 3: Reviewer - 质量审校
+    updateProgress('step-chapters', '🔍 [质量审校] 第' + (chIndex + 1) + '章...');
+    
+    var reviewPrompt = '你是小说审校编辑。请评价以下章节的质量。\n\n' +
+      '章节内容（前500字）：' + content.substring(0, 500) + '\n\n' +
+      '评分维度（0-100）：\n1. 情节连贯性\n2. 角色一致性\n3. 文笔质量\n4. 节奏把控\n\n' +
+      '输出JSON：{"score":85,"comment":"一句话评价"}';
+    
+    return callAI(reviewPrompt, 300).then(function(reviewResponse) {
+      var score = 80;
+      var comment = '质量合格';
+      try {
+        var jsonMatch = reviewResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          var review = JSON.parse(jsonMatch[0]);
+          score = review.score || 80;
+          comment = review.comment || '质量合格';
+        }
+      } catch(e) {}
+      
+      return { content: content, score: score, comment: comment };
+    });
+    
+  }).then(function(result) {
+    currentCreation.outline[chIndex].content = result.content;
     currentCreation.currentChapter = chIndex + 1;
     
-    document.getElementById('chapter-content').textContent = content;
+    document.getElementById('chapter-content').value = result.content;
     document.getElementById('btn-next-chapter').disabled = false;
     
-    var wordCount = content.length;
-    updateProgress('step-chapters', '✅ 第' + (chIndex + 1) + '章完成 (' + wordCount + '字)');
-    addLog('success', '章节完成', '第' + (chIndex + 1) + '章: ' + wordCount + '字');
+    var wordCount = result.content.length;
+    updateProgress('step-chapters', '✅ 第' + (chIndex + 1) + '章完成 (' + wordCount + '字 | 评分:' + result.score + ')');
+    addLog('success', '章节完成', '第' + (chIndex + 1) + '章: ' + wordCount + '字 | 评分:' + result.score + ' | ' + result.comment);
     
     if (chIndex + 1 >= currentCreation.outline.length) {
       document.getElementById('btn-next-chapter').textContent = '🎉 全部完成';
@@ -1503,11 +1831,33 @@ function generateNextChapter() {
     }
     
   }).catch(function(e) {
-    document.getElementById('chapter-content').textContent = '❌ 生成失败: ' + e.message + '\n\n点击重试';
+    document.getElementById('chapter-content').value = '❌ 生成失败: ' + e.message + '\n\n点击重试';
     document.getElementById('btn-next-chapter').disabled = false;
     addLog('error', '章节失败', '第' + (chIndex + 1) + '章: ' + e.message);
     diagError('generateChapter:' + (chIndex + 1), e);
   });
+}
+
+// ===== 保存章节编辑 =====
+function saveChapterEdit() {
+  if (!currentCreation) return;
+  var chIndex = currentCreation.currentChapter - 1;
+  if (chIndex < 0) return;
+  
+  var editedContent = document.getElementById('chapter-content').value;
+  currentCreation.outline[chIndex].content = editedContent;
+  showToast('✅ 章节已保存');
+  addLog('success', '章节已编辑保存', '第' + (chIndex + 1) + '章: ' + editedContent.length + '字');
+}
+
+// ===== 重新生成当前章节 =====
+function regenerateCurrentChapter() {
+  if (!currentCreation) return;
+  var chIndex = currentCreation.currentChapter - 1;
+  if (chIndex < 0) return;
+  
+  currentCreation.currentChapter = chIndex;
+  generateNextChapter();
 }
 
 // ===== 保存小说到书架 =====
@@ -1542,6 +1892,8 @@ function saveCurrentNovel() {
     title: currentCreation.title,
     type: currentCreation.type,
     concept: currentCreation.concept,
+    is18Plus: currentCreation.is18Plus || false,
+    isEdge: currentCreation.isEdge || false,
     worldview: currentCreation.worldview,
     characters: currentCreation.characters,
     outline: currentCreation.outline,
@@ -1552,6 +1904,76 @@ function saveCurrentNovel() {
     savedAt: new Date().toISOString()
   };
   
+  // 保存到文件系统（如果可用）
+  var fsSaved = false;
+  if (isFileSystemAvailable()) {
+    try {
+      var novelName = currentCreation.title + '_' + Date.now();
+      
+      // 创建目录结构
+      createNovelFileSystem(novelName);
+      
+      // 保存meta.json
+      saveNovelFile(novelName, 'meta.json', JSON.stringify({
+        title: novel.title,
+        type: novel.type,
+        concept: novel.concept,
+        is18Plus: novel.is18Plus,
+        isEdge: novel.isEdge,
+        createdAt: novel.createdAt,
+        savedAt: novel.savedAt,
+        chapterCount: chapters.length,
+        totalWords: chapters.reduce(function(sum, ch) { return sum + (ch.content || '').length; }, 0)
+      }, null, 2));
+      
+      // 保存outline.json
+      saveNovelFile(novelName, 'outline.json', JSON.stringify(novel.outline, null, 2));
+      
+      // 保存世界观
+      if (novel.worldview) {
+        saveNovelFile(novelName, 'memory/settings.json', JSON.stringify({raw: novel.worldview}, null, 2));
+      }
+      
+      // 保存角色
+      if (novel.characters && novel.characters.length) {
+        novel.characters.forEach(function(char) {
+          var charName = (char.name || 'unknown').replace(/[<>:"/\\|?*]/g, '_');
+          saveNovelFile(novelName, 'characters/' + charName + '.json', JSON.stringify(char, null, 2));
+        });
+      }
+      
+      // 保存整体大纲和故事大纲
+      if (novel.overallOutline) {
+        saveNovelFile(novelName, 'outlines/overall.json', JSON.stringify({raw: novel.overallOutline}, null, 2));
+      }
+      if (novel.storyOutline) {
+        saveNovelFile(novelName, 'outlines/stories.json', JSON.stringify({raw: novel.storyOutline}, null, 2));
+      }
+      
+      // 保存每个章节
+      chapters.forEach(function(ch) {
+        var chapterNum = String(ch.chapter).padStart(4, '0');
+        var content = '# ' + ch.title + '\n\n' + (ch.content || '');
+        saveNovelFile(novelName, 'chapters/chapter_' + chapterNum + '.txt', content);
+        
+        // 保存章节摘要
+        if (ch.summary) {
+          saveNovelFile(novelName, 'memory/chapters/chapter_' + chapterNum + '.md', 
+            '# ' + ch.title + '\n\n' + ch.summary);
+        }
+      });
+      
+      // 保存到localStorage（兼容性）
+      novel.fsPath = novelName;
+      fsSaved = true;
+      
+      addLog('success', '文件已保存', '路径: ' + getStoragePath() + '/' + novelName);
+    } catch(e) {
+      console.error('文件系统保存失败:', e);
+      addLog('error', '文件系统保存失败', e.message);
+    }
+  }
+  
   // 检查localStorage容量
   try {
     novels.unshift(novel);
@@ -1560,8 +1982,12 @@ function saveCurrentNovel() {
       showToast('⚠️ 存储空间即将用尽\n建议导出TXT备份后删除旧小说', 5000);
     }
     saveNovels(novels);
+    var msg = '✅ 已保存到书架！(' + chapters.length + '章)';
+    if (fsSaved) {
+      msg += '\n📁 文件已同步到本地存储';
+    }
     addLog('success', '小说已保存', '「' + currentCreation.title + '」共' + chapters.length + '章');
-    showToast('✅ 已保存到书架！(' + chapters.length + '章)');
+    showToast(msg);
   } catch(e) {
     if (e.name === 'QuotaExceededError') {
       showToast('❌ 存储空间不足！\n请删除一些旧小说后再试', 5000);
@@ -1572,41 +1998,6 @@ function saveCurrentNovel() {
     }
     return;
   }
-  
-  // 重置
-  currentCreation = null;
-  document.getElementById('new-novel-form').style.display = '';
-  document.getElementById('creation-progress').style.display = 'none';
-  document.getElementById('novel-title').value = '';
-  document.getElementById('novel-concept').value = '';
-  
-  // 更新书架
-  renderNovelsList();
-}
-
-function saveCurrentNovel() {
-  if (!currentCreation) {
-    showToast('没有可保存的创作');
-    return;
-  }
-  
-  var novels = getNovels();
-  var novel = {
-    id: Date.now(),
-    title: currentCreation.title,
-    type: currentCreation.type,
-    concept: currentCreation.concept,
-    outline: currentCreation.outline,
-    chapters: currentCreation.chapters,
-    createdAt: currentCreation.createdAt,
-    savedAt: new Date().toISOString()
-  };
-  
-  novels.unshift(novel);
-  saveNovels(novels);
-  
-  addLog('success', '小说已保存', '「' + currentCreation.title + '」共' + currentCreation.chapters.length + '章');
-  showToast('✅ 已保存到书架！');
   
   // 重置
   currentCreation = null;
@@ -1638,10 +2029,12 @@ function renderNovelsList() {
         totalWords += (n.chapters[j].content || '').length;
       }
     }
+    var tag18 = n.is18Plus ? '<span style="background:var(--danger);color:white;font-size:9px;padding:1px 4px;border-radius:3px;margin-left:4px;">18+</span>' : '';
+    var tagEdge = n.isEdge ? '<span style="background:#ff69b4;color:white;font-size:9px;padding:1px 4px;border-radius:3px;margin-left:4px;">擦边</span>' : '';
     html += '<div class="list-item" style="cursor:pointer;" onclick="viewNovel(' + n.id + ')">' +
       '<div class="item-icon">📖</div>' +
       '<div class="item-info">' +
-        '<div class="item-title">' + escapeHtml(n.title) + '</div>' +
+        '<div class="item-title">' + escapeHtml(n.title) + tag18 + tagEdge + '</div>' +
         '<div class="item-sub">' + n.type + ' | ' + chCount + '章 | ' + totalWords + '字</div>' +
       '</div>' +
       '<div class="item-arrow">›</div></div>';
@@ -1673,19 +2066,76 @@ function viewNovel(id) {
     var ch = novel.chapters[i];
     html += '<div class="card" style="margin-top:8px;">' +
       '<h4 style="font-size:14px;">' + escapeHtml(ch.title) + '</h4>' +
-      '<div style="font-size:12px;line-height:1.6;max-height:200px;overflow-y:auto;white-space:pre-wrap;margin-top:4px;">' +
-      escapeHtml(ch.content || ch.summary || '未生成') + '</div></div>';
+      '<textarea class="input-field" id="view-chapter-' + i + '" style="font-size:12px;line-height:1.6;min-height:150px;max-height:300px;overflow-y:auto;white-space:pre-wrap;margin-top:4px;">' +
+      escapeHtml(ch.content || ch.summary || '未生成') + '</textarea>' +
+      '<button class="btn btn-outline btn-sm" style="margin-top:4px;" onclick="saveViewChapterEdit(' + id + ',' + i + ')">💾 保存修改</button>' +
+      '</div>';
   }
   
-  html += '<div style="display:flex;gap:8px;margin-top:10px;">' +
-    '<button class="btn btn-primary" onclick="exportNovelTxt(' + id + ')">📄 导出TXT</button>' +
+  html += '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">' +
+    '<button class="btn btn-primary" onclick="exportNovelTxt(' + id + ')">📄 导出TXT文件</button>' +
+    '<button class="btn btn-outline" onclick="copyNovelText(' + id + ')">📋 复制全文</button>' +
     '<button class="btn btn-danger" onclick="deleteNovel(' + id + ')">🗑️ 删除</button>' +
     '<button class="btn" onclick="renderNovelsList()">← 返回</button></div>';
   
   document.getElementById('novels-list').innerHTML = html;
 }
 
+function saveViewChapterEdit(novelId, chapterIndex) {
+  var novels = getNovels();
+  for (var i = 0; i < novels.length; i++) {
+    if (novels[i].id === novelId) {
+      var textarea = document.getElementById('view-chapter-' + chapterIndex);
+      if (textarea && novels[i].chapters[chapterIndex]) {
+        novels[i].chapters[chapterIndex].content = textarea.value;
+        saveNovels(novels);
+        showToast('✅ 章节修改已保存');
+        addLog('success', '章节已编辑', '第' + (chapterIndex + 1) + '章');
+      }
+      break;
+    }
+  }
+}
+
 function exportNovelTxt(id) {
+  var novels = getNovels();
+  var novel = null;
+  for (var i = 0; i < novels.length; i++) {
+    if (novels[i].id === id) { novel = novels[i]; break; }
+  }
+  if (!novel) return;
+  
+  var text = novel.title + '\n类型: ' + novel.type + '\n';
+  if (novel.concept) text += '概念: ' + novel.concept + '\n';
+  text += '章节数: ' + novel.chapters.length + '章\n';
+  text += '══════════════════════════════\n\n';
+  
+  for (var i = 0; i < novel.chapters.length; i++) {
+    var ch = novel.chapters[i];
+    text += ch.title + '\n\n' + (ch.content || ch.summary || '未生成') + '\n\n';
+    if (i < novel.chapters.length - 1) text += '────────────────────────────\n\n';
+  }
+  
+  // 通过Blob下载文件
+  try {
+    var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = novel.title + '.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('✅ TXT文件已开始下载');
+    addLog('success', '导出TXT', novel.title + '.txt');
+  } catch(e) {
+    // 降级：复制到剪贴板
+    copyNovelText(id);
+  }
+}
+
+function copyNovelText(id) {
   var novels = getNovels();
   var novel = null;
   for (var i = 0; i < novels.length; i++) {
@@ -1699,7 +2149,18 @@ function exportNovelTxt(id) {
     text += ch.title + '\n\n' + (ch.content || ch.summary || '') + '\n\n';
   }
   
-  // 复制到剪贴板
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      showToast('✅ 已复制全文到剪贴板');
+    }).catch(function() {
+      fallbackCopy(text);
+    });
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
   var ta = document.createElement('textarea');
   ta.value = text;
   ta.style.position = 'fixed';
@@ -1708,9 +2169,9 @@ function exportNovelTxt(id) {
   ta.select();
   try {
     document.execCommand('copy');
-    showToast('✅ 已复制全文到剪贴板\n可在微信/备忘录中粘贴保存', 3000);
+    showToast('✅ 已复制全文到剪贴板');
   } catch(e) {
-    showToast('⚠️ 复制失败');
+    showToast('⚠️ 复制失败，请手动长按选择文字复制');
   }
   document.body.removeChild(ta);
 }
@@ -1795,8 +2256,8 @@ function callAI(prompt, maxTokens) {
   switchTab(0);
   checkApiReady();
   renderNovelsList();
-  addLog('info', '应用启动', 'v2.12.7 | 模式: ' + (apiMode === 'direct' ? '直连AI' : '桌面版') + ' | 在线: ' + (navigator.onLine ? '是' : '否'));
-  console.log('AI小说创作工坊 v2.12.7 已就绪');
+  addLog('info', '应用启动', 'v2.13.0 | 模式: ' + (apiMode === 'direct' ? '直连AI' : '桌面版') + ' | 在线: ' + (navigator.onLine ? '是' : '否'));
+  console.log('AI小说创作工坊 v2.13.0 已就绪');
   console.log('Mode: ' + apiMode);
 })();
 
@@ -1948,7 +2409,7 @@ function openTool(toolId) {
   content.innerHTML = html;
   
   modal.style.display = 'block';
-  document.getElementById('tool-modal-content').scrollTop = 0;
+  document.getElementById('tool-modal').scrollTop = 0;
 }
 
 function closeTool() {
@@ -1981,13 +2442,19 @@ function executeTool(toolId) {
   var headers = buildApiHeaders(appState.apiKey, appState.apiEndpoint);
   var t0 = Date.now();
   
+  // 根据工具类型设置不同的max_tokens
+  var maxTokens = 2000;
+  if (toolId === 'chapter') maxTokens = 10000;
+  else if (toolId === 'outline' || toolId === 'characters') maxTokens = 4000;
+  else if (toolId === 'worldview') maxTokens = 3000;
+  
   fetch(appState.apiEndpoint, {
     method: 'POST',
     headers: headers,
     body: JSON.stringify({
       model: appState.apiModel || 'deepseek-v4-flash',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2000
+      max_tokens: maxTokens
     })
   })
   .then(function(r) {
@@ -2009,14 +2476,20 @@ function executeTool(toolId) {
     
     addLog('success', config.title + ' 完成', '耗时' + duration + '秒');
     
+    // 根据工具类型显示不同的操作按钮
+    var actionButtons = '<button class="btn btn-primary" style="font-size:10px;padding:3px 8px;" onclick="copyToolResult()">📋 复制</button>';
+    if (toolId === 'worldview' || toolId === 'characters' || toolId === 'outline') {
+      actionButtons += ' <button class="btn btn-success" style="font-size:10px;padding:3px 8px;" onclick="saveToolToCreation(\'' + toolId + '\')">💾 保存到创作</button>';
+    }
+    
     resultEl.innerHTML = '<div class="card">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
         '<h3>📋 生成结果</h3>' +
-        '<button class="btn btn-primary" style="font-size:10px;padding:3px 8px;" onclick="copyToolResult()">📋 复制</button>' +
+        actionButtons +
       '</div>' +
-      '<div id="tool-result-text" style="white-space:pre-wrap;font-size:13px;line-height:1.6;max-height:400px;overflow-y:auto;background:var(--bg-medium);padding:10px;border-radius:8px;">' +
+      '<textarea id="tool-result-text" class="input-field" style="white-space:pre-wrap;font-size:13px;line-height:1.6;min-height:200px;max-height:400px;overflow-y:auto;">' +
         escapeHtml(content) +
-      '</div>' +
+      '</textarea>' +
       '<p style="font-size:10px;color:var(--text-muted);margin-top:6px;">耗时: ' + duration + '秒 | ' + content.length + '字</p>' +
     '</div>';
   })
@@ -2033,20 +2506,245 @@ function executeTool(toolId) {
 function copyToolResult() {
   var el = document.getElementById('tool-result-text');
   if (!el) return;
-  var text = el.textContent || el.innerText;
-  var ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.position = 'fixed';
-  ta.style.left = '-9999px';
-  document.body.appendChild(ta);
-  ta.select();
-  try {
-    document.execCommand('copy');
-    showToast('✅ 已复制到剪贴板');
-  } catch(e) {
-    showToast('⚠️ 复制失败');
+  var text = el.value || el.textContent || el.innerText;
+  
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      showToast('✅ 已复制到剪贴板');
+    }).catch(function() {
+      fallbackCopy(text);
+    });
+  } else {
+    fallbackCopy(text);
   }
-  document.body.removeChild(ta);
+}
+
+// 保存工具结果到创作流程
+function saveToolToCreation(toolId) {
+  var el = document.getElementById('tool-result-text');
+  if (!el) return;
+  var content = el.value || el.textContent || el.innerText;
+  
+  if (!currentCreation) {
+    showToast('请先开始创作流程');
+    return;
+  }
+  
+  if (toolId === 'worldview') {
+    currentCreation.worldview = content;
+    showToast('✅ 世界观已保存到当前创作');
+    addLog('success', '工具→创作', '世界观已导入');
+  } else if (toolId === 'characters') {
+    try {
+      var jsonMatch = content.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        currentCreation.characters = JSON.parse(jsonMatch[0]);
+        showToast('✅ 角色已保存到当前创作 (' + currentCreation.characters.length + '个)');
+        addLog('success', '工具→创作', '角色已导入');
+      } else {
+        currentCreation.characters = [{name: '自定义角色', info: content}];
+        showToast('✅ 角色信息已保存');
+      }
+    } catch(e) {
+      currentCreation.characters = [{name: '自定义角色', info: content}];
+      showToast('✅ 角色信息已保存');
+    }
+  } else if (toolId === 'outline') {
+    try {
+      var jsonMatch = content.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        currentCreation.outline = JSON.parse(jsonMatch[0]);
+        showToast('✅ 大纲已保存到当前创作 (' + currentCreation.outline.length + '章)');
+        addLog('success', '工具→创作', '大纲已导入');
+      } else {
+        showToast('⚠️ 无法解析大纲JSON，请手动复制');
+      }
+    } catch(e) {
+      showToast('⚠️ 大纲解析失败，请手动复制');
+    }
+  }
+  
+  closeTool();
+}
+
+// ===== 导入本地小说 =====
+function importFromFileSystem() {
+  if (!isFileSystemAvailable()) {
+    showToast('⚠️ 文件系统不可用\n请在Android设备上使用此功能');
+    return;
+  }
+  
+  var novelDirs = getNovelDirs();
+  if (!novelDirs.length) {
+    showToast('📭 未找到本地小说文件\n请先在桌面版生成小说');
+    return;
+  }
+  
+  // 显示可导入的小说列表
+  var html = '<div class="card"><h3>📁 选择要导入的小说</h3>';
+  html += '<p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">找到 ' + novelDirs.length + ' 个本地小说</p>';
+  
+  for (var i = 0; i < novelDirs.length; i++) {
+    var dirName = novelDirs[i];
+    // 读取meta信息
+    var metaJson = readNovelFile(dirName, 'meta.json');
+    var meta = {};
+    try { meta = JSON.parse(metaJson); } catch(e) {}
+    
+    var title = meta.title || dirName.split('_')[0];
+    var type = meta.type || '未知';
+    var chapters = meta.chapterCount || '?';
+    
+    html += '<div class="list-item" style="cursor:pointer;" onclick="importNovel(\'' + dirName + '\')">' +
+      '<div class="item-icon">📖</div>' +
+      '<div class="item-info">' +
+        '<div class="item-title">' + escapeHtml(title) + '</div>' +
+        '<div class="item-sub">' + type + ' | ' + chapters + '章</div>' +
+      '</div>' +
+      '<div class="item-arrow">📥</div></div>';
+  }
+  
+  html += '<button class="btn" style="margin-top:12px;" onclick="renderNovelsList()">← 返回书架</button></div>';
+  document.getElementById('library-list').innerHTML = html;
+}
+
+function importNovel(dirName) {
+  if (!isFileSystemAvailable()) return;
+  
+  try {
+    // 读取meta
+    var metaJson = readNovelFile(dirName, 'meta.json');
+    var meta = {};
+    try { meta = JSON.parse(metaJson); } catch(e) {}
+    
+    // 读取大纲
+    var outlineJson = readNovelFile(dirName, 'outline.json');
+    var outline = [];
+    try { outline = JSON.parse(outlineJson); } catch(e) {}
+    
+    // 读取世界观
+    var worldview = readNovelFile(dirName, 'memory/settings.json') || '';
+    
+    // 读取角色
+    var characters = [];
+    var charFiles = NovelFS.listFiles(dirName, 'characters') || [];
+    for (var i = 0; i < charFiles.length; i++) {
+      if (charFiles[i].endsWith('.json')) {
+        var charJson = readNovelFile(dirName, 'characters/' + charFiles[i]);
+        try { characters.push(JSON.parse(charJson)); } catch(e) {}
+      }
+    }
+    
+    // 读取整体大纲和故事大纲
+    var overallOutline = readNovelFile(dirName, 'outlines/overall.json') || '';
+    var storyOutline = readNovelFile(dirName, 'outlines/stories.json') || '';
+    
+    // 读取章节
+    var chapters = [];
+    var chapterFiles = NovelFS.listFiles(dirName, 'chapters') || [];
+    chapterFiles.sort(); // 按文件名排序
+    
+    for (var i = 0; i < chapterFiles.length; i++) {
+      if (chapterFiles[i].endsWith('.txt')) {
+        var chapterContent = readNovelFile(dirName, 'chapters/' + chapterFiles[i]);
+        if (chapterContent) {
+          // 提取标题（第一行）
+          var lines = chapterContent.split('\n');
+          var title = lines[0].replace(/^#\s*/, '').trim();
+          var content = lines.slice(1).join('\n').trim();
+          
+          chapters.push({
+            chapter: i + 1,
+            title: title || '第' + (i + 1) + '章',
+            summary: '',
+            content: content
+          });
+        }
+      }
+    }
+    
+    if (!chapters.length) {
+      showToast('⚠️ 未找到章节内容');
+      return;
+    }
+    
+    // 创建小说对象
+    var novel = {
+      id: Date.now(),
+      title: meta.title || dirName.split('_')[0],
+      type: meta.type || '未知',
+      concept: meta.concept || '',
+      is18Plus: meta.is18Plus || false,
+      isEdge: meta.isEdge || false,
+      worldview: worldview,
+      characters: characters,
+      outline: outline,
+      overallOutline: overallOutline,
+      storyOutline: storyOutline,
+      chapters: chapters,
+      createdAt: meta.createdAt || new Date().toISOString(),
+      savedAt: new Date().toISOString(),
+      fsPath: dirName // 标记来源
+    };
+    
+    // 保存到localStorage
+    var novels = getNovels();
+    
+    // 检查是否已存在
+    var exists = false;
+    for (var i = 0; i < novels.length; i++) {
+      if (novels[i].fsPath === dirName || novels[i].title === novel.title) {
+        exists = true;
+        break;
+      }
+    }
+    
+    if (exists) {
+      showToast('⚠️ 书架中已存在同名小说');
+      return;
+    }
+    
+    novels.unshift(novel);
+    saveNovels(novels);
+    
+    var totalWords = 0;
+    for (var i = 0; i < chapters.length; i++) {
+      totalWords += (chapters[i].content || '').length;
+    }
+    
+    addLog('success', '导入成功', '「' + novel.title + '」' + chapters.length + '章 ' + totalWords + '字');
+    showToast('✅ 导入成功！\n' + novel.title + '\n' + chapters.length + '章 ' + totalWords + '字');
+    
+    // 刷新书架
+    renderNovelsList();
+    renderStorageInfo();
+    
+  } catch(e) {
+    addLog('error', '导入失败', e.message);
+    showToast('❌ 导入失败: ' + e.message);
+  }
+}
+
+function refreshBookshelf() {
+  renderNovelsList();
+  renderStorageInfo();
+  showToast('🔄 书架已刷新');
+}
+
+function renderStorageInfo() {
+  var el = document.getElementById('storage-info');
+  if (!el) return;
+  
+  var novels = getNovels();
+  var totalWords = 0;
+  for (var i = 0; i < novels.length; i++) {
+    for (var j = 0; j < (novels[i].chapters || []).length; j++) {
+      totalWords += ((novels[i].chapters || [])[j].content || '').length;
+    }
+  }
+  
+  var storagePath = getStoragePath();
+  el.innerHTML = '📚 ' + novels.length + ' 部小说 | 📝 ' + totalWords + ' 字 | 📁 ' + storagePath;
 }
 
 // ===== 小说数据管理 =====

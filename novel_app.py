@@ -1382,29 +1382,38 @@ class NovelWriterApp(
         
         # 男女频类型列表
         MALE_GENRES = [
-            "玄幻-东方玄幻", "玄幻-异世大陆", "玄幻-高武世界",
-            "仙侠-古典仙侠", "仙侠-现代修真", "仙侠-洪荒封神",
-            "都市-都市生活", "都市-都市异能", "都市-青春校园",
-            "历史-架空历史", "历史-两宋元明", "历史-三国争霸",
-            "科幻-星际文明", "科幻-末世危机", "科幻-时空穿梭",
-            "悬疑-灵异恐怖", "悬疑-侦探推理", "悬疑-探险揭秘",
-            "游戏-电子竞技", "游戏-虚拟网游", "游戏-游戏异界",
-            "军事-抗战烽火", "军事-谍战特工", "军事-战争幻想",
-            "武侠-传统武侠", "武侠-国术古武", "武侠-武侠幻想",
-            "体育-篮球风云", "体育-足球天下", "体育-综合竞技",
-            "轻小说-原生幻想", "轻小说-搞笑吐槽", "轻小说-恋爱日常",
-            "二次元-青春日常", "二次元-变身入替", "二次元-同人衍生",
+            "玄幻-东方玄幻", "玄幻-异世大陆", "玄幻-高武世界", "玄幻-王朝争霸", "玄幻-宗门林立",
+            "仙侠-古典仙侠", "仙侠-现代修真", "仙侠-洪荒封神", "仙侠-修真文明", "仙侠-凡人修仙",
+            "都市-都市生活", "都市-都市异能", "都市-青春校园", "都市-商战职场", "都市-娱乐明星",
+            "历史-架空历史", "历史-两宋元明", "历史-三国争霸", "历史-秦汉三国", "历史-五代十国",
+            "科幻-星际文明", "科幻-末世危机", "科幻-时空穿梭", "科幻-赛博朋克", "科幻-机甲战争",
+            "悬疑-灵异恐怖", "悬疑-侦探推理", "悬疑-探险揭秘", "悬疑-盗墓笔记", "悬疑-法医刑侦",
+            "游戏-电子竞技", "游戏-虚拟网游", "游戏-游戏异界", "游戏-游戏制作", "游戏-数据流",
+            "军事-抗战烽火", "军事-谍战特工", "军事-战争幻想", "军事-特种兵", "军事-谍战风云",
+            "武侠-传统武侠", "武侠-国术古武", "武侠-武侠幻想", "武侠-古武未来", "武侠-江湖恩怨",
+            "体育-篮球风云", "体育-足球天下", "体育-综合竞技", "体育-格斗搏击", "体育-赛车竞速",
+            "轻小说-原生幻想", "轻小说-搞笑吐槽", "轻小说-恋爱日常", "轻小说-异世界", "轻小说-魔法少女",
+            "二次元-青春日常", "二次元-变身入替", "二次元-同人衍生", "二次元-穿越动漫", "二次元-系统穿越",
+            "无限流-诸天万界", "无限流-副本挑战", "无限流-轮回空间", "无限流-世界穿梭",
+            "系统流-签到系统", "系统流-抽奖系统", "系统流-任务系统", "系统流-模拟器",
+            "末日-丧尸末日", "末日-废土求生", "末日-病毒危机", "末日-冰河世纪",
+            "克苏鲁-神话恐怖", "克苏鲁-未知恐惧", "克苏鲁-理智崩坏",
+            "赛博朋克-赛博修仙", "赛博朋克-数字生命", "赛博朋克-虚拟现实",
         ]
         FEMALE_GENRES = [
-            "古代言情-女尊王朝", "古代言情-宫闱宅斗", "古代言情-穿越奇情",
-            "现代言情-豪门总裁", "现代言情-都市婚恋", "现代言情-职场丽人",
-            "幻想言情-异世恋歌", "幻想言情-快穿攻略", "幻想言情-魔法幻情",
-            "纯爱-古代纯爱", "纯爱-现代纯爱", "纯爱-幻想纯爱",
-            "浪漫青春-青春校园", "浪漫青春-疼痛成长", "浪漫青春-纯爱唯美",
-            "仙侠奇缘-古典仙缘", "仙侠奇缘-修仙情劫", "仙侠奇缘-洪荒情缘",
-            "悬疑灵异-推理侦探", "悬疑灵异-恐怖惊悚", "悬疑灵异-灵异鬼怪",
-            "游戏竞技-电子竞技", "游戏竞技-全息网游", "游戏竞技-电竞爱情",
-            "短篇-短篇言情", "短篇-微小说", "短篇-轻小说",
+            "古代言情-女尊王朝", "古代言情-宫闱宅斗", "古代言情-穿越奇情", "古代言情-种田经商", "古代言情-江湖侠女",
+            "现代言情-豪门总裁", "现代言情-都市婚恋", "现代言情-职场丽人", "现代言情-娱乐圈", "现代言情-军婚甜宠",
+            "幻想言情-异世恋歌", "幻想言情-快穿攻略", "幻想言情-魔法幻情", "幻想言情-星际恋歌", "幻想言情-兽世奇缘",
+            "纯爱-古代纯爱", "纯爱-现代纯爱", "纯爱-幻想纯爱", "纯爱-星际纯爱", "纯爱-电竞纯爱",
+            "浪漫青春-青春校园", "浪漫青春-疼痛成长", "浪漫青春-纯爱唯美", "浪漫青春-暗恋成真", "浪漫青春-双向奔赴",
+            "仙侠奇缘-古典仙缘", "仙侠奇缘-修仙情劫", "仙侠奇缘-洪荒情缘", "仙侠奇缘-凡人仙缘",
+            "悬疑灵异-推理侦探", "悬疑灵异-恐怖惊悚", "悬疑灵异-灵异鬼怪", "悬疑灵异-法医档案",
+            "游戏竞技-电子竞技", "游戏竞技-全息网游", "游戏竞技-电竞爱情", "游戏竞技-游戏主播",
+            "短篇-短篇言情", "短篇-微小说", "短篇-轻小说", "短篇-同人小说",
+            "百合-古代百合", "百合-现代百合", "百合-幻想百合",
+            "年代文-七八十年代", "年代文-知青岁月", "年代文-重生年代",
+            "穿书-穿成炮灰", "穿书-穿成反派", "穿书-穿成女配",
+            "重生-重生复仇", "重生-重生逆袭", "重生-重生日常",
         ]
         
         tk.Label(top, text="小说类型:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).grid(row=5, column=0, sticky=tk.W, pady=3)
@@ -3043,6 +3052,14 @@ class NovelWriterApp(
                 coherence_hint = "\n\n【⚠️ 连贯性核心要求】\n1. 本章必须紧接前一章结尾的情节继续\n2. 不得更换世界观设定、场景类型、故事基调\n3. 保持与前几章一致的叙事风格和语言风格\n4. 所有已出现角色保持性格、关系、状态一致"
                 prev_context = prev_context + coherence_hint if prev_context else coherence_hint
                 
+                # 🔥 18+/擦边内容注入
+                adult_content = self.config.get("adult_content", False)
+                edge_content = self.config.get("edge_content", False)
+                if adult_content or edge_content:
+                    content_hint = self._build_content_hint(adult_content, edge_content, meta.get("genre", ""))
+                    if content_hint:
+                        prev_context = prev_context + "\n\n" + content_hint
+                
                 content = self.agent.generate_chapter(
                     ch_num,
                     chapter_info.get("title", f"第{ch_num}章"),
@@ -3998,11 +4015,11 @@ class NovelWriterApp(
                 return
             
             _diag.chapter_event(chapter_num, "EXP_ANALYSIS_START", {
-                "characters": all_chars[:5], "content_len": len(content)
+                "characters": all_chars[:8], "content_len": len(content)
             })
             
-            # 只对活跃角色进行行为分析（最多分析5个）
-            chars_to_analyze = all_chars[:5]
+            # 对活跃角色进行行为分析（最多分析8个）
+            chars_to_analyze = all_chars[:8]
             chars_str = "、".join(chars_to_analyze)
             
             # AI分析提示：提取角色在章节中的行为（支持正向和负向）
@@ -4034,18 +4051,28 @@ class NovelWriterApp(
 
 输出格式（严格JSON，键为角色名，值为action/exp/detail）：
 {{"角色名": {{"action": "行为类别(+/-)", "exp": 经验值(正数或负数), "detail": "行为简述(15字内)"}}}}
-示例: {{"林风": {{"action": "战斗失败", "exp": -50, "detail": "被强敌击败重伤"}}}}"""
+示例: {{"林风": {{"action": "战斗失败", "exp": -50, "detail": "被强敌击败重伤"}}}}
 
-            # 截取章节内容（取前3000字分析）
-            sample = content[:3000] if len(content) > 3000 else content
+重要：只输出JSON，不要任何其他文字！"""
+
+            # 截取章节内容（取前5000字分析，覆盖更多情节）
+            sample = content[:5000] if len(content) > 5000 else content
             
-            response = self.ai_client.chat(
-                [{"role": "user", "content": f"第{chapter_num}章内容:\n{sample}\n\n请分析角色行为并输出JSON。"}],
-                system=system_prompt, max_tokens=800
-            )
+            # 重试机制
+            response = None
+            for attempt in range(2):
+                response = self.ai_client.chat(
+                    [{"role": "user", "content": f"第{chapter_num}章内容:\n{sample}\n\n请分析角色行为并输出JSON。"}],
+                    system=system_prompt, max_tokens=1200
+                )
+                if response:
+                    break
+                if attempt == 0:
+                    self._log(f"[角色EXP] AI未返回结果，重试...")
+                    time.sleep(2)
             
             if not response:
-                self._log(f"[角色EXP] AI未返回行为分析结果")
+                self._log(f"[角色EXP] AI未返回行为分析结果（重试后仍失败）")
                 _diag.chapter_event(chapter_num, "EXP_NO_RESPONSE", {"chars": chars_str})
                 return
             
@@ -4053,42 +4080,47 @@ class NovelWriterApp(
                 "response_len": len(response), "response_preview": response[:200]
             })
             
-            # 解析JSON
-            json_match = re.search(r'\{[\s\S]*\}', response)
-            if not json_match:
-                self._log(f"[角色EXP] AI返回格式不正确: {response[:100]}")
-                _diag.chapter_event(chapter_num, "EXP_JSON_NO_MATCH", {"response": response[:200]})
+            # 解析JSON（增强容错）
+            behaviors = self._parse_exp_json(response)
+            if not behaviors:
+                self._log(f"[角色EXP] JSON解析失败: {response[:100]}")
+                _diag.chapter_event(chapter_num, "EXP_JSON_PARSE_FAILED", {"response": response[:200]})
                 return
             
-            try:
-                behaviors = json.loads(json_match.group())
-            except json.JSONDecodeError as e:
-                self._log(f"[角色EXP] JSON解析失败: {json_match.group()[:100]}")
-                _diag.chapter_event(chapter_num, "EXP_JSON_PARSE_ERROR", {
-                    "error": str(e), "json_str": json_match.group()[:300]
-                })
-                return
-            
-            # 发放EXP（支持正向和负向）
+            # 发放EXP（支持正向和负向，含模糊角色名匹配）
             total_exp = 0
             logs = []
             for char_name, behavior in behaviors.items():
                 if not isinstance(behavior, dict):
                     continue
-                exp = int(behavior.get("exp", 0))
+                try:
+                    exp = int(behavior.get("exp", 0))
+                except (ValueError, TypeError):
+                    continue
                 if exp == 0:
                     continue  # 跳过无行动
                 action = behavior.get("action", "行为")
                 detail = behavior.get("detail", "")
                 
-                # 查找角色
+                # 查找角色（支持模糊匹配）
                 char = self.character_system.get_character(char_name)
+                if not char:
+                    # 模糊匹配：检查角色名是否包含在AI返回的key中
+                    for real_name in all_chars:
+                        if real_name in char_name or char_name in real_name:
+                            char = self.character_system.get_character(real_name)
+                            char_name = real_name
+                            break
                 if not char:
                     continue
                 
-                result = char.add_exp(exp)
-                self.character_system.save_character(char_name)
-                total_exp += exp
+                try:
+                    result = char.add_exp(exp)
+                    self.character_system.save_character(char_name)
+                    total_exp += exp
+                except Exception as e:
+                    self._log(f"[角色EXP] {char_name} add_exp失败: {e}")
+                    continue
                 
                 # 正向: 升级提示
                 if exp > 0 and result.get("leveled_up"):
@@ -4109,13 +4141,59 @@ class NovelWriterApp(
                 self.root.after(0, self._update_char_display)
             else:
                 self._log(f"[角色EXP] 第{chapter_num}章 未检测到角色有效行为")
-                _diag.chapter_event(chapter_num, "EXP_NO_ACTION", {"behaviors": behaviors})
+                _diag.chapter_event(chapter_num, "EXP_NO_ACTION", {"behaviors_sample": str(behaviors)[:200]})
                 
         except Exception as e:
             self._log(f"[角色EXP] 分析失败: {e}")
             _diag.log("ERROR", "award_chapter_exp", {"chapter": chapter_num}, error=e)
             import traceback
             self._log(traceback.format_exc())
+    
+    def _parse_exp_json(self, response: str) -> dict:
+        """解析EXP分析的JSON响应（增强容错）"""
+        if not response:
+            return {}
+        
+        # Strategy 1: 直接正则提取最外层JSON
+        match = re.search(r'\{[\s\S]*\}', response)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                pass
+        
+        # Strategy 2: 尝试修复常见JSON错误
+        # 移除可能的markdown代码块标记
+        cleaned = response.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+        
+        match = re.search(r'\{[\s\S]*\}', cleaned)
+        if match:
+            json_str = match.group()
+            # 尝试修复尾部逗号
+            json_str = re.sub(r',\s*}', '}', json_str)
+            json_str = re.sub(r',\s*]', ']', json_str)
+            try:
+                return json.loads(json_str)
+            except json.JSONDecodeError:
+                pass
+        
+        # Strategy 3: 逐行提取key-value对
+        result = {}
+        pattern = r'"([^"]+)"\s*:\s*\{[^}]*"action"\s*:\s*"([^"]*)"[^}]*"exp"\s*:\s*(-?\d+)[^}]*"detail"\s*:\s*"([^"]*)"'
+        for m in re.finditer(pattern, response):
+            result[m.group(1)] = {
+                "action": m.group(2),
+                "exp": int(m.group(3)),
+                "detail": m.group(4)
+            }
+        return result
     
     def _regen_current_chapter(self):
         """重新创作当前章节"""
@@ -4371,6 +4449,16 @@ class NovelWriterApp(
         
         meta = self._get_meta()
         
+        # 🔥 18+/擦边内容注入到概念中（影响世界观、角色、大纲生成）
+        adult_content = self.config.get("adult_content", False)
+        edge_content = self.config.get("edge_content", False)
+        if adult_content or edge_content:
+            content_hint = self._build_content_hint(adult_content, edge_content, meta.get("genre", ""))
+            if content_hint:
+                original_concept = meta.get("concept", "")
+                meta["concept"] = original_concept + "\n\n" + content_hint if original_concept else content_hint
+                self._log(f"[内容模式] 18+:{'开' if adult_content else '关'} 擦边:{'开' if edge_content else '关'}")
+        
         def run():
             try:
                 self._log("=== 开始自动创作 ===")
@@ -4623,8 +4711,16 @@ class NovelWriterApp(
                                 )
                                 break
                             except Exception as te:
-                                if "time" in str(te).lower() and attempt < 2:
-                                    self._log(f"第{ch_num}章超时，重试{attempt+1}/3...")
+                                err_msg = str(te).lower()
+                                # 更全面的超时判断
+                                is_timeout = any(kw in err_msg for kw in [
+                                    "time", "timeout", "timed out", "deadline",
+                                    "connect", "read", "write", "reset"
+                                ])
+                                if is_timeout and attempt < 2:
+                                    wait_time = (attempt + 1) * 5  # 指数退避: 5s, 10s
+                                    self._log(f"第{ch_num}章超时，重试{attempt+1}/3（等待{wait_time}秒）...")
+                                    time.sleep(wait_time)
                                 else:
                                     raise
 
@@ -5811,6 +5907,45 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 parts.append(f"【故事大纲 - 多条故事线】\n" + "\n".join(lines))
         
         return "\n\n".join(parts) if parts else ""
+    
+    def _build_content_hint(self, adult: bool, edge: bool, genre: str) -> str:
+        """构建18+/擦边内容提示词"""
+        hints = []
+        
+        if adult:
+            hints.append("""【🔞 18+成人内容模式 - 已启用】
+本作品包含成人内容，请大胆创作：
+- 亲密场景：可详细描写角色之间的亲密接触、情感交融、肌肤之亲、床戏
+- 暴力战斗：战斗场景要残酷真实，可描写血腥、伤痛、生死搏杀
+- 心理阴暗面：角色可以有复杂的道德灰度，展现人性的阴暗面
+- 禁忌题材：可涉及禁忌关系、道德边缘、灰色地带
+- 情感深度：情感描写要深入骨髓，展现欲望、执念、痴迷
+- 残酷现实：可描写社会阴暗面、人性丑恶、生存挣扎
+【重要】不要回避成人内容，这是创作需求，大胆发挥！""")
+        
+        if edge:
+            hints.append("""【💋 擦边内容模式 - 已启用】
+本作品允许擦边内容，在尺度边缘游走：
+- 暧昧描写：角色之间的暧昧互动、暗示性对话、若有若无的身体接触
+- 性感描写：可描写角色的性感魅力、身材曲线、诱人姿态
+- 暗示性场景：可通过暗示、隐喻手法描写亲密场景，不直接描写但让读者遐想
+- 情色张力：在情节中制造情色张力，让读者产生遐想
+- 浴室/更衣等私密场景：可适当描写私密场景
+- 醉酒/意外等擦边情节：可设计擦边桥段
+【重要】擦边要擦到位，不要过于保守，让读者有想象空间！""")
+        
+        # 根据类型增强相关提示
+        genre_lower = genre.lower() if genre else ""
+        if any(kw in genre_lower for kw in ["言情", "romance", "恋爱", "婚恋", "总裁"]):
+            hints.append("【类型增强】本作品为言情类型，情感线和亲密互动是核心卖点，请着重描写角色之间的情感纠葛和身体吸引力。")
+        elif any(kw in genre_lower for kw in ["武侠", "仙侠", "玄幻", "修真"]):
+            hints.append("【类型增强】本作品为武侠/仙侠类型，战斗场景要热血激烈，可描写修炼的痛苦与突破的快感。")
+        elif any(kw in genre_lower for kw in ["悬疑", "恐怖", "灵异", "推理"]):
+            hints.append("【类型增强】本作品为悬疑/恐怖类型，要营造紧张压抑的氛围，可描写血腥恐怖的场景。")
+        elif any(kw in genre_lower for kw in ["末日", "apocalypse", "废土"]):
+            hints.append("【类型增强】本作品为末日类型，要展现末世的残酷和人性的挣扎，可描写生存的艰难和道德的崩塌。")
+        
+        return "\n\n".join(hints) if hints else ""
     
     def _get_world_context(self) -> str:
         """获取世界观设定上下文，用于注入章节生成"""

@@ -20,6 +20,18 @@ class AgentOrchestrator:
         self.metrics = ai_client.metrics
         self._executor = ThreadPoolExecutor(max_workers=3)
     
+    def shutdown(self, wait: bool = True):
+        """关闭线程池"""
+        if self._executor:
+            self._executor.shutdown(wait=wait)
+    
+    def __del__(self):
+        """析构时关闭线程池"""
+        try:
+            self.shutdown(wait=False)
+        except Exception:
+            pass
+    
     def run_parallel(self, tasks: List[Dict]) -> List[Dict]:
         """并行执行多个AI任务"""
         results = []
@@ -93,7 +105,13 @@ class ContextOptimizer:
     def _truncate(text: str, budget: int) -> str:
         if len(text) <= budget:
             return text
-        return text[:budget] + "\n...(已压缩)"
+        # 智能截断：尽量在段落边界截断
+        truncated = text[:budget]
+        # 尝试在最后一个段落边界截断
+        last_para = max(truncated.rfind('\n\n'), truncated.rfind('。'), truncated.rfind('！'), truncated.rfind('？'))
+        if last_para > budget * 0.8:  # 如果找到的边界在80%之后，就用这个边界
+            truncated = truncated[:last_para + 1]
+        return truncated + "\n...(已压缩)"
 
 
 class PromptOptimizer:

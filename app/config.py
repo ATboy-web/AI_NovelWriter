@@ -31,6 +31,9 @@ class AppConfig:
             "context_window": 32000,  # 上下文窗口大小（字符数）
             "auto_save": True,
             "theme": "light",
+            # 内容控制
+            "adult_content": False,  # 18+内容开关
+            "edge_content": False,   # 擦边内容开关
             # 文生图配置
             "img_provider": "comfyui",  # comfyui / sdapi / disabled
             "img_api_base": "http://127.0.0.1:8188",

@@ -359,7 +359,8 @@ class NovelAgent:
         
         Hello-Agents参考流程: PlotDesigner→WorldBuilder→Writer→Reviewer→Editor
         """
-        self._conversation_log = []
+        with self._log_lock:
+            self._conversation_log = []
         self.log(f"[编排器] 5Agent协作启动: 第{chapter_num}章「{chapter_title}」")
         
         # 🔑 提取前一章结尾（在压缩前保存，确保不丢失）
@@ -626,6 +627,10 @@ class NovelAgent:
             
             self.log(f"[重试{retry+1}/{max_retries}] 第{chapter_num}章重复问题: 当前{actual_words}字→目标{word_count}字")
             
+            # 重试前等待，避免API过载
+            if retry > 0:
+                time.sleep(retry * 3)  # 3s, 6s
+            
             strict_system = f"""你是专业小说作家。请根据大纲创作第{chapter_num}章。
 【核心要求】
 1. 目标字数{word_count}字，必须达标
@@ -648,6 +653,10 @@ class NovelAgent:
             except Exception as e:
                 self.log(f"第{chapter_num}章重试{retry+1}失败: {e}")
                 new_content = None
+                # 如果是最后一次重试失败，保留原内容
+                if retry == max_retries - 1:
+                    self.log(f"第{chapter_num}章重试耗尽，保留原内容")
+                    break
             if new_content:
                 content = new_content
         
@@ -1137,85 +1146,125 @@ class NovelAgent:
   "new_enemies": ["新敌人名"]
 }}
 
-变化包括正面和负面的。没有变化就输出{{}}。
-**必须检测所有出现的角色，不止主角。**"""
+变化包括正面和负面的。没有变化就输出{{"updates":[]}}。
+**必须检测所有出现的角色，不止主角。只输出JSON，不要其他文字！**"""
             
+            # 增加采样字数到3000字，max_tokens到1200
+            sample = content[:3000] if len(content) > 3000 else content
             response = self.ai.chat(
-                [{"role": "user", "content": f"章节摘要: {summary}\n内容片段: {content[:1500]}"}],
-                system=system, max_tokens=800
+                [{"role": "user", "content": f"章节摘要: {summary}\n内容片段: {sample}"}],
+                system=system, max_tokens=1200
             )
             if not response:
                 return
             
             import re
+            data = None
+            
+            # Strategy 1: 直接正则提取JSON
             match = re.search(r'\{[\s\S]*\}', response)
             if match:
-                data = json.loads(match.group())
-                
-                # 保存到记忆
-                changes = 0
-                if data.get("updates"):
-                    for u in data["updates"]:
+                json_str = match.group()
+                # 修复常见JSON错误
+                json_str = re.sub(r',\s*}', '}', json_str)
+                json_str = re.sub(r',\s*]', ']', json_str)
+                try:
+                    data = json.loads(json_str)
+                except json.JSONDecodeError:
+                    pass
+            
+            # Strategy 2: 移除markdown代码块后重试
+            if not data:
+                cleaned = response.strip()
+                if cleaned.startswith("```json"):
+                    cleaned = cleaned[7:]
+                elif cleaned.startswith("```"):
+                    cleaned = cleaned[3:]
+                if cleaned.endswith("```"):
+                    cleaned = cleaned[:-3]
+                match = re.search(r'\{[\s\S]*\}', cleaned.strip())
+                if match:
+                    try:
+                        data = json.loads(match.group())
+                    except json.JSONDecodeError:
+                        pass
+            
+            if not data:
+                self.log(f"[角色成长] JSON解析失败，跳过本章")
+                return
+            
+            # 保存到记忆
+            changes = 0
+            if data.get("updates"):
+                for u in data["updates"]:
+                    if isinstance(u, dict) and u.get("name"):
                         self.memory.add_event(chapter_num, 
-                            f"角色变化: {u['name']} {u['change']} ({u.get('reason','')})",
+                            f"角色变化: {u['name']} {u.get('change','')} ({u.get('reason','')})",
                             "character_growth")
                         changes += 1
-                
-                if data.get("skills_learned"):
-                    for s in data["skills_learned"]:
+            
+            if data.get("skills_learned"):
+                for s in data["skills_learned"]:
+                    if isinstance(s, dict) and s.get("name"):
                         self.memory.add_event(chapter_num,
-                            f"技能领悟: {s['name']} 学会 {s['skill']}",
+                            f"技能领悟: {s['name']} 学会 {s.get('skill','')}",
                             "skill_learn")
                         changes += 1
-                
-                if data.get("relationship_changes"):
-                    for r in data["relationship_changes"]:
+            
+            if data.get("relationship_changes"):
+                for r in data["relationship_changes"]:
+                    if isinstance(r, dict) and r.get("name1"):
                         self.memory.add_event(chapter_num,
-                            f"关系变化: {r['name1']}与{r['name2']} {r['old']}→{r['new']}",
+                            f"关系变化: {r['name1']}与{r.get('name2','')} {r.get('old','')}→{r.get('new','')}",
                             "relationship_change")
                         changes += 1
-                
-                if data.get("items_gained"):
-                    for item in data["items_gained"]:
+            
+            if data.get("items_gained"):
+                for item in data["items_gained"]:
+                    if isinstance(item, dict) and item.get("name"):
                         self.memory.add_event(chapter_num,
-                            f"获得物品: {item['name']} 获得 {item['item']}",
+                            f"获得物品: {item['name']} 获得 {item.get('item','')}",
                             "item_gain")
-                
-                if data.get("items_lost"):
-                    for item in data["items_lost"]:
+            
+            if data.get("items_lost"):
+                for item in data["items_lost"]:
+                    if isinstance(item, dict) and item.get("name"):
                         self.memory.add_event(chapter_num,
-                            f"失去物品: {item['name']} 失去 {item['item']}",
+                            f"失去物品: {item['name']} 失去 {item.get('item','')}",
                             "item_loss")
-                
-                if data.get("new_allies"):
-                    for name in data["new_allies"]:
+            
+            if data.get("new_allies"):
+                for name in data["new_allies"]:
+                    if isinstance(name, str) and name:
                         self.memory.add_event(chapter_num,
                             f"新盟友: {name}", "new_ally")
-                
-                if data.get("new_enemies"):
-                    for name in data["new_enemies"]:
+            
+            if data.get("new_enemies"):
+                for name in data["new_enemies"]:
+                    if isinstance(name, str) and name:
                         self.memory.add_event(chapter_num,
                             f"新敌人: {name}", "new_enemy")
-                
-                if data.get("deaths"):
-                    for name in data["deaths"]:
+            
+            if data.get("deaths"):
+                for name in data["deaths"]:
+                    if isinstance(name, str) and name:
                         self.memory.add_event(chapter_num,
                             f"角色死亡: {name}", "character_death")
                         self.memory.update_character(name, {"status": "死亡", "death_chapter": chapter_num})
-                
-                # 统计日志
-                summary_parts = []
-                if changes: summary_parts.append(f"{changes}个成长")
-                if data.get("items_gained"): summary_parts.append(f"{len(data['items_gained'])}个获得")
-                if data.get("items_lost"): summary_parts.append(f"{len(data['items_lost'])}个失去")
-                if data.get("skills_learned"): summary_parts.append(f"{len(data['skills_learned'])}个技能")
-                if data.get("relationship_changes"): summary_parts.append(f"{len(data['relationship_changes'])}个关系")
-                if data.get("deaths"): summary_parts.append(f"{len(data['deaths'])}个死亡")
-                if data.get("new_allies"): summary_parts.append(f"{len(data['new_allies'])}个新盟友")
-                if data.get("new_enemies"): summary_parts.append(f"{len(data['new_enemies'])}个新敌人")
-                
-                if summary_parts:
-                    self.log(f"[角色成长] 第{chapter_num}章: {', '.join(summary_parts)}")
+            
+            # 统计日志
+            summary_parts = []
+            if changes: summary_parts.append(f"{changes}个成长")
+            if data.get("items_gained"): summary_parts.append(f"{len(data['items_gained'])}个获得")
+            if data.get("items_lost"): summary_parts.append(f"{len(data['items_lost'])}个失去")
+            if data.get("skills_learned"): summary_parts.append(f"{len(data['skills_learned'])}个技能")
+            if data.get("relationship_changes"): summary_parts.append(f"{len(data['relationship_changes'])}个关系")
+            if data.get("deaths"): summary_parts.append(f"{len(data['deaths'])}个死亡")
+            if data.get("new_allies"): summary_parts.append(f"{len(data['new_allies'])}个新盟友")
+            if data.get("new_enemies"): summary_parts.append(f"{len(data['new_enemies'])}个新敌人")
+            
+            if summary_parts:
+                self.log(f"[角色成长] 第{chapter_num}章: {', '.join(summary_parts)}")
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
             self.log(f"[角色成长] 检测跳过: {e}")
     
@@ -1576,19 +1625,33 @@ class NovelAgent:
         
         # 末段完整性检查：如果结尾没有句号/感叹号/问号等，AI补全
         if parts and len(result) > 500:
-            last_100 = result[-100:].strip()
-            endings = {'。', '！', '？', '…', '"', '」', '】', '—'}
-            if not any(e in last_100[-3:] for e in endings):
-                self.log(f"[Writer] 第{chapter_num}章末段不完整，尝试补全...")
-                try:
-                    completion = self.ai.chat(
-                        [{"role": "user", "content": f"请补充完整以下段落（30-80字）：\n{result[-300:]}"}],
-                        system="你是作家。给上面段落补充一个自然的收尾。只输出补全文字。",
-                        max_tokens=200
-                    )
-                    if completion and len(completion) > 5:
-                        result += completion
-                except Exception as e:
-                    self.log(f"[长章节末段补全] 失败: {e}")
+            # 扩大检测范围：检查最后200字符，去除空白后判断
+            last_text = result[-200:].strip()
+            # 移除尾部空白、换行、引号等非实质字符
+            last_meaningful = last_text.rstrip('\n\r \t\'\"》）」】')
+            if last_meaningful:
+                last_char = last_meaningful[-1]
+                endings = {'。', '！', '？', '…', '"', '」', '】', '—', '.', '!', '?', '~', '…'}
+                if last_char not in endings:
+                    self.log(f"[Writer] 第{chapter_num}章末段不完整，尝试补全...")
+                    try:
+                        # 取最后500字作为上下文，让AI更好地理解语境
+                        context = result[-500:]
+                        completion = self.ai.chat(
+                            [{"role": "user", "content": f"以下是一段未完成的小说段落，请补充一个自然的收尾（20-60字）：\n{context}"}],
+                            system="你是作家。续写上面的段落，补充一个自然的收尾。只输出补全文字，不要重复已有内容。",
+                            max_tokens=200
+                        )
+                        if completion and len(completion) > 5:
+                            # 去重：检查补全内容是否与已有内容重复
+                            completion = completion.strip()
+                            # 移除可能的重复前缀
+                            if completion[:10] in result[-50:]:
+                                completion = completion[10:]
+                            # 确保补全内容不为空且不重复
+                            if completion and completion not in result:
+                                result += completion
+                    except Exception as e:
+                        self.log(f"[长章节末段补全] 失败: {e}")
         
         return result

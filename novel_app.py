@@ -4005,8 +4005,10 @@ class NovelWriterApp(
         
         try:
             if not self.character_system or not self.ai_client:
+                self._log(f"[角色EXP] 跳过: character_system={self.character_system is not None}, ai_client={self.ai_client is not None}")
                 return
             if not self.ai_client.is_configured():
+                self._log(f"[角色EXP] 跳过: AI未配置")
                 return
             
             # 获取当前活跃角色和配角列表
@@ -4055,25 +4057,52 @@ class NovelWriterApp(
 
 重要：只输出JSON，不要任何其他文字！"""
 
-            # 截取章节内容（取前5000字分析，覆盖更多情节）
-            sample = content[:5000] if len(content) > 5000 else content
+            # 截取章节内容（取前2000字分析，减少token消耗）
+            sample = content[:2000] if len(content) > 2000 else content
             
-            # 重试机制
+            # 简化提示词
+            system_prompt = """你是角色行为分析专家。分析章节中角色的行为，输出JSON。
+正向行为(战斗胜利/突破/学习/决策正确/发现): +20到+100 EXP
+负向行为(战斗失败/失误/被暗算/挫折): -10到-50 EXP
+未出场: 0
+
+输出格式: {"角色名": {"action": "行为", "exp": 数值, "detail": "简述"}}
+只输出JSON，不要其他文字。"""
+            
+            # 重试机制（增加到3次）
             response = None
-            for attempt in range(2):
-                response = self.ai_client.chat(
-                    [{"role": "user", "content": f"第{chapter_num}章内容:\n{sample}\n\n请分析角色行为并输出JSON。"}],
-                    system=system_prompt, max_tokens=1200
-                )
-                if response:
-                    break
-                if attempt == 0:
-                    self._log(f"[角色EXP] AI未返回结果，重试...")
-                    time.sleep(2)
+            for attempt in range(3):
+                try:
+                    simple_prompt = f"分析第{chapter_num}章中角色行为。\n角色: {chars_str}\n\n内容:\n{sample}"
+                    
+                    self._log(f"[角色EXP] 第{attempt+1}次调用AI...")
+                    response = self.ai_client.chat(
+                        [{"role": "user", "content": simple_prompt}],
+                        system=system_prompt, max_tokens=600
+                    )
+                    
+                    # 详细日志
+                    self._log(f"[角色EXP] 第{attempt+1}次响应: type={type(response).__name__}, len={len(response) if response else 0}")
+                    
+                    # 检查响应是否有效
+                    if response and len(response.strip()) > 10:
+                        self._log(f"[角色EXP] 第{attempt+1}次调用成功，响应长度: {len(response)}")
+                        break
+                    else:
+                        self._log(f"[角色EXP] 第{attempt+1}次响应为空或过短: {repr(response)[:100]}")
+                        response = None
+                        
+                except Exception as e:
+                    self._log(f"[角色EXP] 第{attempt+1}次调用异常: {type(e).__name__}: {e}")
+                    response = None
+                
+                if attempt < 2:
+                    self._log(f"[角色EXP] 重试{attempt+2}/3...")
+                    time.sleep(3)
             
             if not response:
-                self._log(f"[角色EXP] AI未返回行为分析结果（重试后仍失败）")
-                _diag.chapter_event(chapter_num, "EXP_NO_RESPONSE", {"chars": chars_str})
+                self._log(f"[角色EXP] 3次调用均失败，跳过本次EXP发放")
+                _diag.chapter_event(chapter_num, "EXP_NO_RESPONSE", {"chars": chars_str, "attempts": 3})
                 return
             
             _diag.chapter_event(chapter_num, "EXP_AI_RESPONSE", {

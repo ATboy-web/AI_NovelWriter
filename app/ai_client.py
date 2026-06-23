@@ -411,7 +411,7 @@ class AIClient:
                     "anthropic-version": "2023-06-01",
                     "content-type": "application/json"
                 },
-                timeout=120.0,
+                timeout=600.0,  # 10分钟，支持大请求
             )
         elif provider == "ollama":
             self.client = httpx.Client(base_url=base_url, timeout=300.0)
@@ -419,7 +419,7 @@ class AIClient:
             self.client = httpx.Client(
                 base_url=base_url,
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                timeout=120.0,
+                timeout=600.0,  # 10分钟，支持大请求（如50章大纲生成）
             )
         else:
             self.client = None

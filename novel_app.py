@@ -45,8 +45,17 @@ from app.panels import (ElementsPanelMixin, BridgesPanelMixin,
                         MemoryVizPanelMixin, SummaryMgmtPanelMixin,
                         BatchOpsPanelMixin, ChapterAnalysisPanelMixin)
 
+# ==================== 新增模块化管理器 ====================
+from app.ui_manager import UIManagerMixin
+from app.character_manager import CharacterManagerMixin
+from app.settings_manager import SettingsManagerMixin
+from app.note_manager_ui import NoteManagerMixin
+from app.reader_manager import ReaderManagerMixin
+
 
 class NovelWriterApp(
+    UIManagerMixin, CharacterManagerMixin, SettingsManagerMixin,
+    NoteManagerMixin, ReaderManagerMixin,
     ElementsPanelMixin, BridgesPanelMixin, DescriptionsPanelMixin,
     DialoguePanelMixin, StoryFlowPanelMixin, StylePanelMixin,
     AdaptPanelMixin, WebSearchPanelMixin, MemoryVizPanelMixin,
@@ -3894,7 +3903,7 @@ class NovelWriterApp(
             
             response = self.ai_client.chat(
                 [{"role": "user", "content": f"第{chapter_num}章:\n{content[:2000]}"}],
-                system=system, max_tokens=500
+                system=system, max_tokens=1500
             )
             if not response:
                 return
@@ -3925,7 +3934,73 @@ class NovelWriterApp(
             self._log(f"[世界线] 第{chapter_num}章 记录{len(decisions)}个决策点")
             
         except Exception as e:
-            pass  # 静默失败，不影响主流程
+            self._log(f"[世界线] 决策检测异常: {type(e).__name__}: {e}")
+    
+    def _edit_decision(self, dialog, all_branches, selected_idx, timelines, tl_name, main_file, refresh_callback):
+        """编辑选中的决策点"""
+        idx = selected_idx[0]
+        if idx < 0 or idx >= len(all_branches):
+            messagebox.showwarning("提示", "请先在左侧点击选择一个决策点")
+            return
+        
+        br = all_branches[idx]
+        
+        edit_dlg = tk.Toplevel(dialog)
+        edit_dlg.title("编辑决策点")
+        edit_dlg.geometry("500x450")
+        edit_dlg.configure(bg=UIStyle.COLORS['bg_dark'])
+        C = UIStyle.COLORS
+        
+        tk.Label(edit_dlg, text="编辑决策点", font=('微软雅黑', 11, 'bold'),
+                bg=C['bg_dark'], fg=C['accent']).pack(pady=8)
+        
+        fields = [
+            ("决策情境 (decision)", "decision", 60),
+            ("选择方案 (chosen)", "chosen", 40),
+            ("另一可能 (alternative)", "alternative", 40),
+            ("分支故事 (story)", "story", 200),
+        ]
+        
+        entries = {}
+        for label, key, height in fields:
+            tk.Label(edit_dlg, text=label, font=('微软雅黑', 9),
+                    bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=15, pady=(8, 1))
+            
+            if height > 80:
+                entry = tk.Text(edit_dlg, height=5, font=('微软雅黑', 9),
+                               bg=C['bg_medium'], fg=C['text_primary'], relief=tk.FLAT, padx=8, pady=5)
+            else:
+                entry = tk.Entry(edit_dlg, font=('微软雅黑', 9),
+                                bg=C['bg_medium'], fg=C['text_primary'], relief=tk.FLAT)
+            entry.pack(fill=tk.X, padx=15)
+            entries[key] = entry
+        
+        # 填充当前值
+        for key, entry in entries.items():
+            val = br.get(key, "")
+            if isinstance(entry, tk.Text):
+                entry.insert("1.0", val)
+            else:
+                entry.insert(0, val)
+        
+        def save_edit():
+            for key, entry in entries.items():
+                val = entry.get("1.0", tk.END).strip() if isinstance(entry, tk.Text) else entry.get().strip()
+                br[key] = val
+            
+            # 回写文件
+            target = next((t for t in timelines if t.get("name") == tl_name), None)
+            if target:
+                target_file = self.current_novel_dir / "timelines" / target["_file"]
+                target_file.write_text(json.dumps(target, indent=2, ensure_ascii=False), encoding='utf-8')
+                self._log(f"[世界线] 决策点已编辑保存")
+            
+            edit_dlg.destroy()
+            refresh_callback()
+        
+        tk.Button(edit_dlg, text="💾 保存", font=('微软雅黑', 10), padx=20,
+                 bg=C['accent'], fg='white', relief=tk.FLAT,
+                 command=save_edit).pack(pady=10)
     
     def _auto_detect_characters(self, chapter_num: int, content: str):
         """自动检测新角色并创建"""
@@ -3944,7 +4019,7 @@ class NovelWriterApp(
             
             response = self.ai_client.chat(
                 [{"role": "user", "content": f"第{chapter_num}章内容:\n{content[:2000]}"}],
-                system=system, max_tokens=500
+                system=system, max_tokens=1500
             )
             if not response:
                 return
@@ -3972,8 +4047,8 @@ class NovelWriterApp(
                     # 同时同步到CharacterSystem
                     self._sync_characters_to_system(added, chapter_num)
                     self._log(f"[角色] 自动创建{len(added)}个新角色: {', '.join(added[:5])}")
-        except Exception:
-            pass  # 静默失败不影响主流程
+        except Exception as e:
+            self._log(f"[角色] 角色检测异常: {type(e).__name__}: {e}")
     
     def _sync_characters_to_system(self, names: list, chapter_num: int):
         """同步角色到CharacterSystem"""
@@ -4060,25 +4135,25 @@ class NovelWriterApp(
             # 截取章节内容（取前2000字分析，减少token消耗）
             sample = content[:2000] if len(content) > 2000 else content
             
-            # 简化提示词
-            system_prompt = """你是角色行为分析专家。分析章节中角色的行为，输出JSON。
-正向行为(战斗胜利/突破/学习/决策正确/发现): +20到+100 EXP
-负向行为(战斗失败/失误/被暗算/挫折): -10到-50 EXP
-未出场: 0
-
-输出格式: {"角色名": {"action": "行为", "exp": 数值, "detail": "简述"}}
-只输出JSON，不要其他文字。"""
-            
             # 重试机制（增加到3次）
             response = None
             for attempt in range(3):
                 try:
-                    simple_prompt = f"分析第{chapter_num}章中角色行为。\n角色: {chars_str}\n\n内容:\n{sample}"
+                    # 简化prompt，明确要求只输出JSON
+                    simple_prompt = f"""分析第{chapter_num}章中角色行为，输出JSON。
+
+角色列表: {chars_str}
+
+章节内容:
+{sample}
+
+输出格式（只输出JSON，不要分析过程）:
+{{"角色名": {{"action": "行为", "exp": 数值, "detail": "简述"}}}}"""
                     
                     self._log(f"[角色EXP] 第{attempt+1}次调用AI...")
                     response = self.ai_client.chat(
                         [{"role": "user", "content": simple_prompt}],
-                        system=system_prompt, max_tokens=1500
+                        system=system_prompt, max_tokens=3000  # 增大token以容纳思考+JSON
                     )
                     
                     # 详细日志
@@ -4124,6 +4199,7 @@ class NovelWriterApp(
                     continue
                 try:
                     exp = int(behavior.get("exp", 0))
+                    exp = max(-200, min(200, exp))  # 钳位EXP范围
                 except (ValueError, TypeError):
                     continue
                 if exp == 0:
@@ -4131,15 +4207,26 @@ class NovelWriterApp(
                 action = behavior.get("action", "行为")
                 detail = behavior.get("detail", "")
                 
-                # 查找角色（支持模糊匹配）
+                # 查找角色（精确匹配 → 前缀匹配）
                 char = self.character_system.get_character(char_name)
                 if not char:
-                    # 模糊匹配：检查角色名是否包含在AI返回的key中
+                    # 优先精确匹配，其次前缀匹配
+                    best_match = None
+                    best_score = 0
                     for real_name in all_chars:
-                        if real_name in char_name or char_name in real_name:
-                            char = self.character_system.get_character(real_name)
-                            char_name = real_name
+                        if real_name == char_name:
+                            best_match = real_name
+                            best_score = 100
                             break
+                        # 前缀匹配（如"林风"匹配"林"）
+                        if real_name.startswith(char_name) or char_name.startswith(real_name):
+                            score = len(real_name)  # 更长的匹配更精确
+                            if score > best_score:
+                                best_match = real_name
+                                best_score = score
+                    if best_match:
+                        char = self.character_system.get_character(best_match)
+                        char_name = best_match
                 if not char:
                     continue
                 
@@ -4183,16 +4270,30 @@ class NovelWriterApp(
         if not response:
             return {}
         
-        # Strategy 1: 直接正则提取最外层JSON
-        match = re.search(r'\{[\s\S]*\}', response)
-        if match:
-            try:
-                return json.loads(match.group())
-            except json.JSONDecodeError:
-                pass
+        # Strategy 1: 括号深度追踪（最可靠，提取完整外层JSON）
+        start = response.find('{')
+        if start >= 0:
+            depth = 0
+            end_idx = -1
+            for i in range(start, len(response)):
+                if response[i] == '{': depth += 1
+                elif response[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end_idx = i + 1
+                        break
+            if end_idx > start:
+                json_str = response[start:end_idx]
+                json_str = re.sub(r',\s*}', '}', json_str)
+                json_str = re.sub(r',\s*]', ']', json_str)
+                try:
+                    result = json.loads(json_str)
+                    if isinstance(result, dict):
+                        return result
+                except json.JSONDecodeError:
+                    pass
         
-        # Strategy 2: 尝试修复常见JSON错误
-        # 移除可能的markdown代码块标记
+        # Strategy 2: 清理markdown后重试
         cleaned = response.strip()
         if cleaned.startswith("```json"):
             cleaned = cleaned[7:]
@@ -4202,16 +4303,22 @@ class NovelWriterApp(
             cleaned = cleaned[:-3]
         cleaned = cleaned.strip()
         
-        match = re.search(r'\{[\s\S]*\}', cleaned)
-        if match:
-            json_str = match.group()
-            # 尝试修复尾部逗号
-            json_str = re.sub(r',\s*}', '}', json_str)
-            json_str = re.sub(r',\s*]', ']', json_str)
-            try:
-                return json.loads(json_str)
-            except json.JSONDecodeError:
-                pass
+        start = cleaned.find('{')
+        if start >= 0:
+            depth = 0
+            end_idx = -1
+            for i in range(start, len(cleaned)):
+                if cleaned[i] == '{': depth += 1
+                elif cleaned[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end_idx = i + 1
+                        break
+            if end_idx > start:
+                try:
+                    return json.loads(cleaned[start:end_idx])
+                except json.JSONDecodeError:
+                    pass
         
         # Strategy 3: 逐行提取key-value对
         result = {}
@@ -4426,6 +4533,9 @@ class NovelWriterApp(
             for f in chapters_dir.glob("chapter_*.txt"):
                 f.unlink()
             self._log("已清除所有旧章节")
+        
+        # 重置EXP发放记录（旧章节已删除，新章节需要重新发放）
+        self._exp_awarded_chapters.clear()
         
         # 清除旧的记忆数据（防止上一轮生成的污染）
         mem_dir = self.current_novel_dir / "memory"
@@ -5042,7 +5152,7 @@ class NovelWriterApp(
                 prompt = self.ai_client.chat(
                     [{"role": "user", "content": f"书名：{title}\n类型：{genre}\n概念：{concept}\n内容片段：{content_sample[:1000]}\n\n请为这本小说生成一个精美的封面AI绘图提示词(英文，适合Midjourney/Stable Diffusion)，包含风格描述、画面构图、色彩方案、氛围。"}],
                     system="你是专业封面设计师。生成AI绘图提示词。只输出英文提示词。",
-                    max_tokens=500
+                    max_tokens=1500
                 )
                 
                 # 保存封面提示词
@@ -5091,13 +5201,13 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         dialog = tk.Toplevel(self.root)
         dialog.title("世界线 / 时间线")
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-        w, h = min(800, sw - 60), int(sh * 0.7)
+        w, h = min(1000, sw - 60), int(sh * 0.78)
         x, y = (sw - w) // 2, (sh - h) // 2
         dialog.geometry(f"{w}x{h}+{x}+{y}")
         dialog.configure(bg=UIStyle.COLORS['bg_dark'])
         C = UIStyle.COLORS
         
-        tk.Label(dialog, text="世界线 / 时间线管理", font=('微软雅黑', 12, 'bold'),
+        tk.Label(dialog, text="🌐 世界线 / 时间线管理", font=('微软雅黑', 12, 'bold'),
                 bg=C['bg_dark'], fg=C['accent']).pack(pady=10)
         
         # 加载已有世界线
@@ -5119,141 +5229,322 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
             except Exception:
                 pass
         
-        # 世界线列表
-        list_frame = tk.Frame(dialog, bg=C['bg_dark'])
-        list_frame.pack(fill=tk.X, padx=20, pady=5)
+        # 顶部工具栏
+        toolbar = tk.Frame(dialog, bg=C['bg_dark'])
+        toolbar.pack(fill=tk.X, padx=15, pady=5)
+        
+        tk.Label(toolbar, text="选择世界线:", font=('微软雅黑', 10),
+                bg=C['bg_dark'], fg=C['text_primary']).pack(side=tk.LEFT, padx=(0, 8))
         
         tl_var = tk.StringVar(value="主线")
         tl_names = [t.get("name", "未命名") for t in timelines]
-        tl_combo = ttk.Combobox(list_frame, textvariable=tl_var, values=tl_names, 
-                                state="readonly", width=30, font=('微软雅黑', 10))
-        tl_combo.pack(side=tk.LEFT, padx=(0, 10))
+        tl_combo = ttk.Combobox(toolbar, textvariable=tl_var, values=tl_names, 
+                                state="readonly", width=20, font=('微软雅黑', 10))
+        tl_combo.pack(side=tk.LEFT, padx=(0, 15))
         
-        # 内容区域
-        paned = tk.PanedWindow(dialog, orient=tk.HORIZONTAL, bg=C['bg_dark'])
-        paned.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+        # 统计信息
+        stats_label = tk.Label(toolbar, text="", font=('微软雅黑', 9),
+                              bg=C['bg_dark'], fg=C['text_muted'])
+        stats_label.pack(side=tk.LEFT, padx=10)
         
-        left_frame = tk.Frame(paned, bg=C['bg_card'])
-        right_frame = tk.Frame(paned, bg=C['bg_card'])
-        paned.add(left_frame, width=w//2)
-        paned.add(right_frame, width=w//2)
+        # 内容区域 - 主面板
+        main_paned = tk.PanedWindow(dialog, orient=tk.HORIZONTAL, bg=C['bg_dark'])
+        main_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # 左侧 - 决策点列表（直接显示，无需生成）
-        tk.Label(left_frame, text="决策点列表", font=('微软雅黑', 10, 'bold'),
-                bg=C['bg_card'], fg=C['accent']).pack(anchor=tk.W, padx=10, pady=5)
+        # === 左侧面板 - 决策点列表 ===
+        left_frame = tk.Frame(main_paned, bg=C['bg_card'])
+        main_paned.add(left_frame, width=w//3)
         
-        decision_list = tk.Text(left_frame, wrap=tk.WORD, font=('微软雅黑', 9),
-                               bg=C['bg_medium'], fg=C['text_primary'],
-                               height=20, relief=tk.FLAT, padx=10, pady=10,
-                               cursor='arrow')
-        decision_list.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        tk.Label(left_frame, text="📋 决策点列表", font=('微软雅黑', 10, 'bold'),
+                bg=C['bg_card'], fg=C['accent']).pack(anchor=tk.W, padx=10, pady=(8, 2))
         
-        # 右侧 - 分支故事详情
-        tk.Label(right_frame, text="分支故事", font=('微软雅黑', 10, 'bold'),
+        # 决策点列表使用Canvas+滚动
+        left_canvas = tk.Canvas(left_frame, bg=C['bg_card'], highlightthickness=0)
+        left_scrollbar = tk.Scrollbar(left_frame, orient=tk.VERTICAL, command=left_canvas.yview)
+        left_inner = tk.Frame(left_canvas, bg=C['bg_card'])
+        left_inner.bind("<Configure>", lambda e: left_canvas.configure(scrollregion=left_canvas.bbox("all")))
+        left_canvas.create_window((0, 0), window=left_inner, anchor=tk.NW, width=w//3-20)
+        left_canvas.configure(yscrollcommand=left_scrollbar.set)
+        left_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        left_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # === 右侧面板 ===
+        right_frame = tk.Frame(main_paned, bg=C['bg_card'])
+        main_paned.add(right_frame, width=2*w//3)
+        
+        # 右侧使用Notebook多标签页
+        right_notebook = ttk.Notebook(right_frame)
+        right_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # 标签1: 详情
+        detail_frame = tk.Frame(right_notebook, bg=C['bg_card'])
+        right_notebook.add(detail_frame, text="📖 详情")
+        
+        tk.Label(detail_frame, text="决策详情", font=('微软雅黑', 10, 'bold'),
                 bg=C['bg_card'], fg=C['warning']).pack(anchor=tk.W, padx=10, pady=5)
         
-        branch_content = tk.Text(right_frame, wrap=tk.WORD, font=('微软雅黑', 10),
+        detail_text = tk.Text(detail_frame, wrap=tk.WORD, font=('微软雅黑', 10),
                               bg=C['bg_medium'], fg=C['text_primary'],
-                              height=20, relief=tk.FLAT, padx=10, pady=10)
-        branch_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+                              height=12, relief=tk.FLAT, padx=12, pady=12)
+        detail_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=5)
         
-        # 存储决策点数据和当前选中
+        # 标签2: 影响分析  
+        impact_frame = tk.Frame(right_notebook, bg=C['bg_card'])
+        right_notebook.add(impact_frame, text="🔍 影响分析")
+        
+        tk.Label(impact_frame, text="决策影响分析", font=('微软雅黑', 10, 'bold'),
+                bg=C['bg_card'], fg=C['warning']).pack(anchor=tk.W, padx=10, pady=5)
+        
+        impact_text = tk.Text(impact_frame, wrap=tk.WORD, font=('微软雅黑', 10),
+                              bg=C['bg_medium'], fg=C['text_primary'],
+                              height=12, relief=tk.FLAT, padx=12, pady=12)
+        impact_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=5)
+        
+        # 标签3: 时间线图
+        graph_frame = tk.Frame(right_notebook, bg=C['bg_card'])
+        right_notebook.add(graph_frame, text="📊 时间线")
+        
+        timeline_canvas = tk.Canvas(graph_frame, bg=C['bg_medium'], highlightthickness=0)
+        timeline_canvas.pack(fill=tk.BOTH, expand=True, padx=8, pady=5)
+        
+        # 存储数据
         all_branches = []
-        selected_idx = [-1]  # 用列表包装以便闭包修改
+        selected_idx = [-1]
         
-        def show_branch(idx):
-            """点击决策点时显示右侧详情"""
+        def update_timeline_graph():
+            """在Canvas上绘制时间线图"""
+            timeline_canvas.delete("all")
+            if not all_branches:
+                return
+            
+            cw = timeline_canvas.winfo_width()
+            ch = timeline_canvas.winfo_height()
+            if cw < 50 or ch < 50:
+                return
+            
+            # 虚线主线
+            timeline_canvas.create_line(60, 0, 60, ch, fill=C['accent'], width=2, dash=(4, 4))
+            
+            # 绘制节点
+            step = max(60, (ch - 40) // max(len(all_branches), 1))
+            for i, br in enumerate(all_branches):
+                y = 30 + i * step
+                # 节点圆
+                timeline_canvas.create_oval(52, y-4, 68, y+12, fill=C['accent'], outline='')
+                # 章节标签
+                ch_num = br.get("chapter", "?")
+                timeline_canvas.create_text(30, y+4, text=f"第{ch_num}章", 
+                                           fill=C['text_muted'], font=('微软雅黑', 7))
+                # 决策摘要
+                desc = br.get("decision", "")[:25]
+                timeline_canvas.create_text(140, y+4, text=desc, anchor=tk.W,
+                                           fill=C['text_primary'], font=('微软雅黑', 8))
+                # 分支线
+                timeline_canvas.create_line(60, y+4, 90, y+4-15, fill=C['warning'], width=1)
+                timeline_canvas.create_line(60, y+4, 90, y+4+20, fill=C['success'], width=1)
+        
+        def show_branch_detail(idx):
+            """显示决策点详情"""
             if idx < 0 or idx >= len(all_branches):
                 return
             selected_idx[0] = idx
             br = all_branches[idx]
-            branch_content.delete("1.0", tk.END)
             
-            # 高亮选中
-            decision_list.tag_remove("selected", "1.0", tk.END)
-            start = f"{idx+1}.0"
-            end = f"{idx+1}.end+1c"
-            decision_list.tag_add("selected", start, end)
-            decision_list.tag_config("selected", background=C['accent'], foreground='white')
+            detail_text.delete("1.0", tk.END)
             
-            branch_content.insert("1.0", f"决策: {br.get('decision','')}\n\n")
-            branch_content.insert(tk.END, f"✅ 已选择: {br.get('chosen','')}\n\n")
-            branch_content.insert(tk.END, f"❓ 另一种可能: {br.get('alternative','')}\n\n")
+            # 标题
+            detail_text.insert(tk.END, f"📍 第{br.get('chapter','?')}章 决策点\n\n", "title")
+            detail_text.insert(tk.END, f"📝 决策情境:\n{br.get('decision','未知')}\n\n", "section")
+            detail_text.insert(tk.END, f"✅ 选择方案:\n{br.get('chosen','未知')}\n\n", "chosen")
+            detail_text.insert(tk.END, f"❓ 另一可能:\n{br.get('alternative','未知')}\n\n", "alternative")
             
             story = br.get("story", "")
             if story:
-                branch_content.insert(tk.END, f"━━ 分支故事 ━━\n{story}")
+                detail_text.insert(tk.END, f"━━━━━━━━━━━━━━━━━━\n📖 分支故事:\n{story}\n", "story")
             else:
-                branch_content.insert(tk.END, "（点击「生成此分支」查看 what-if 故事）")
+                detail_text.insert(tk.END, "(点击下方「生成此分支」查看更多what-if故事)", "hint")
+            
+            # 格式化文本
+            detail_text.tag_config("title", font=('微软雅黑', 12, 'bold'), foreground=C['accent'])
+            detail_text.tag_config("section", font=('微软雅黑', 10), foreground=C['text_primary'])
+            detail_text.tag_config("chosen", font=('微软雅黑', 10), foreground=C['success'])
+            detail_text.tag_config("alternative", font=('微软雅黑', 10), foreground=C['warning'])
+            detail_text.tag_config("story", font=('微软雅黑', 10), foreground=C['text_primary'])
+            detail_text.tag_config("hint", font=('微软雅黑', 9), foreground=C['text_muted'])
+            
+            # 影响分析
+            impact_text.delete("1.0", tk.END)
+            impact_text.insert(tk.END, "🔍 决策影响分析\n\n", "title")
+            impact_text.insert(tk.END, f"👉 直接影响:\n", "section")
+            chosen = br.get("chosen", "")
+            alternative = br.get("alternative", "")
+            if chosen:
+                impact_text.insert(tk.END, f"  • 选择了「{chosen[:60]}」\n")
+                impact_text.insert(tk.END, f"  • 这导致后续故事朝此方向发展\n")
+            impact_text.insert(tk.END, f"\n🔄 如果选择「{alternative[:40]}」:\n", "alt")
+            impact_text.insert(tk.END, f"  • 故事将走向完全不同的方向\n")
+            impact_text.insert(tk.END, f"  • 可能影响后续{n_impact(all_branches, idx)}个相关情节\n")
+            impact_text.insert(tk.END, f"\n📊 量化分析:\n", "section")
+            impact_text.insert(tk.END, f"  • 是否关键决策: {'是' if br.get('story') else '待评估'}\n")
+            impact_text.insert(tk.END, f"  • 影响范围: {estimate_scope(br)}\n")
+            impact_text.insert(tk.END, f"  • 可逆性: {estimate_reversibility(br)}\n")
+            
+            impact_text.tag_config("title", font=('微软雅黑', 12, 'bold'), foreground=C['accent'])
+            impact_text.tag_config("section", font=('微软雅黑', 10, 'bold'), foreground=C['text_primary'])
+            impact_text.tag_config("alt", font=('微软雅黑', 10, 'bold'), foreground=C['warning'])
+            
+            update_timeline_graph()
+        
+        def n_impact(branches, idx):
+            return len(branches) - idx - 1
+        
+        def estimate_scope(br):
+            desc = br.get("decision", "")
+            if any(w in desc for w in ["生死", "背叛", "选择", "关键", "命运", "决战"]):
+                return "全局性影响"
+            elif any(w in desc for w in ["获得", "失去", "结交", "学习"]):
+                return "中期影响"
+            return "局部影响"
+        
+        def estimate_reversibility(br):
+            desc = br.get("decision", "")
+            if any(w in desc for w in ["死亡", "杀死", "毁灭", "封印"]):
+                return "不可逆"
+            return "可逆转"
         
         def refresh_timeline(name=None):
             name = name or tl_var.get()
             all_branches.clear()
-            decision_list.delete("1.0", tk.END)
-            branch_content.delete("1.0", tk.END)
+            
+            # 清除左侧列表
+            for w in left_inner.winfo_children():
+                w.destroy()
             
             target = next((t for t in timelines if t.get("name") == name), None)
             if not target:
                 return
             
-            decision_list.insert("1.0", f"【{name}】 已记录 {len(target.get('chapters',[]))} 章\n\n")
-            
+            chapters_count = len(target.get("chapters", []))
             branches = target.get("branches", [])
+            
+            stats_label.config(text=f"📊 {len(branches)}个决策点 | {chapters_count}个章节")
+            
             if branches:
                 for i, br in enumerate(branches):
                     all_branches.append(br)
                     ch = br.get("chapter", "?")
-                    desc = br.get("decision", "")[:60]
-                    chosen = br.get("chosen", "")[:30]
-                    alt = br.get("alternative", "")[:20]
+                    desc = br.get("decision", "")[:50]
+                    chosen = br.get("chosen", "")[:25]
                     has_story = "📖" if br.get("story") else "  "
                     
-                    line = f"{has_story} 第{ch}章: {desc}\n    ✅ 选: {chosen}  |  ❓ 另: {alt}\n\n"
-                    decision_list.insert(tk.END, line)
+                    # 创建可点击的卡片
+                    card = tk.Frame(left_inner, bg=C['bg_medium'] if i % 2 == 0 else C['bg_card'],
+                                   cursor='hand2', padx=8, pady=5)
+                    card.pack(fill=tk.X, padx=3, pady=1)
+                    
+                    # 章节标签
+                    chapter_lbl = tk.Label(card, text=f"第{ch}章", font=('微软雅黑', 8, 'bold'),
+                                          bg=C['accent'], fg='white', padx=4, pady=1)
+                    chapter_lbl.pack(side=tk.LEFT, padx=(0, 6))
+                    
+                    # 决策描述
+                    desc_lbl = tk.Label(card, text=f"{has_story} {desc}", font=('微软雅黑', 9),
+                                       bg=card['bg'], fg=C['text_primary'], anchor=tk.W, justify=tk.LEFT)
+                    desc_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                    
+                    # 选择标签
+                    chosen_lbl = tk.Label(card, text=f"✅{chosen}", font=('微软雅黑', 8),
+                                          bg=card['bg'], fg=C['success'], padx=4)
+                    chosen_lbl.pack(side=tk.RIGHT)
+                    
+                    # 点击事件
+                    card.bind("<Button-1>", lambda e, idx=i: show_branch_detail(idx))
+                    chapter_lbl.bind("<Button-1>", lambda e, idx=i: show_branch_detail(idx))
+                    desc_lbl.bind("<Button-1>", lambda e, idx=i: show_branch_detail(idx))
+                    chosen_lbl.bind("<Button-1>", lambda e, idx=i: show_branch_detail(idx))
+                    
+                    # 悬停效果
+                    def on_enter(e, c=card):
+                        c.configure(bg=C['bg_light'])
+                    def on_leave(e, c=card, i=i):
+                        c.configure(bg=C['bg_medium'] if i % 2 == 0 else C['bg_card'])
+                    for w in [card, chapter_lbl, desc_lbl, chosen_lbl]:
+                        w.bind("<Enter>", on_enter)
+                        w.bind("<Leave>", on_leave)
             else:
-                decision_list.insert(tk.END, "暂未检测到决策点\n\n每章创作完成后会自动记录。")
+                tk.Label(left_inner, text="暂未检测到决策点\n\n每章创作完成后会自动记录。",
+                        font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_muted']).pack(pady=20)
             
-            # 点击事件
-            def on_click(event):
-                idx = decision_list.index(f"@{event.x},{event.y}")
-                if idx:
-                    line_num = int(idx.split('.')[0])
-                    # 每个决策点占3行：标题、选择、空行 → 从第2行开始，每3行一个
-                    branch_idx = (line_num - 2) // 3
-                    if 0 <= branch_idx < len(all_branches):
-                        show_branch(branch_idx)
-            decision_list.bind("<Button-1>", on_click)
+            detail_text.delete("1.0", tk.END)
+            detail_text.insert(tk.END, "👈 点击左侧决策点查看详情", "hint")
+            detail_text.tag_config("hint", font=('微软雅黑', 11), foreground=C['text_muted'], justify=tk.CENTER)
+            
+            impact_text.delete("1.0", tk.END)
+            impact_text.insert(tk.END, "👈 点击左侧决策点查看影响分析", "hint")
+            impact_text.tag_config("hint", font=('微软雅黑', 11), foreground=C['text_muted'], justify=tk.CENTER)
+            
+            update_timeline_graph()
         
         refresh_timeline("主线")
         
-        # 按钮
+        # 按钮区域
         btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
-        btn_frame.pack(fill=tk.X, padx=20, pady=10)
+        btn_frame.pack(fill=tk.X, padx=15, pady=10)
         
         def on_select(event=None):
             refresh_timeline()
         tl_combo.bind('<<ComboboxSelected>>', on_select)
         
-        tk.Label(btn_frame, text="点击左侧决策点查看详情", font=('微软雅黑', 8),
-                bg=C['bg_dark'], fg=C['text_muted']).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="生成此分支", font=('微软雅黑', 10), padx=15,
+        # 左侧操作按钮
+        tk.Button(btn_frame, text="🔄 刷新", font=('微软雅黑', 9), padx=10,
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT,
+                 command=refresh_timeline).pack(side=tk.LEFT, padx=3)
+        
+        # 右侧操作按钮
+        tk.Button(btn_frame, text="✏️ 编辑决策点", font=('微软雅黑', 9), padx=10,
+                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT,
+                 command=lambda: self._edit_decision(dialog, all_branches, selected_idx, timelines, tl_var.get(), main_file, refresh_timeline)).pack(side=tk.LEFT, padx=3)
+        tk.Button(btn_frame, text="📖 生成此分支", font=('微软雅黑', 10), padx=12,
                  bg=C['warning'], fg='white', relief=tk.FLAT,
-                 command=lambda: self._generate_branch_story(dialog, timeline_dir, timelines, all_branches, branch_content, refresh_timeline)).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="开始分支创作", font=('微软雅黑', 10), padx=15,
+                 command=lambda: self._generate_branch_story(dialog, timeline_dir, timelines, all_branches, detail_text, refresh_timeline)).pack(side=tk.LEFT, padx=3)
+        tk.Button(btn_frame, text="🚀 开始分支创作", font=('微软雅黑', 10), padx=12,
                  bg=C['accent'], fg='white', relief=tk.FLAT,
-                 command=lambda: self._start_branch_novel(dialog, timeline_dir, timelines, all_branches, refresh_timeline)).pack(side=tk.LEFT, padx=5)
+                 command=lambda: self._start_branch_novel(dialog, timeline_dir, timelines, all_branches, refresh_timeline)).pack(side=tk.LEFT, padx=3)
         tk.Button(btn_frame, text="关闭", font=('微软雅黑', 10), padx=20,
                  bg=C['bg_light'], fg=C['text_primary'],
                  command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
     
-    def _generate_branch_story(self, dialog, timeline_dir, timelines, all_branches, branch_content, refresh_callback):
+    def _generate_branch_story(self, dialog, timeline_dir, timelines, all_branches, detail_text, refresh_callback):
         """为当前选中的决策点生成分支故事"""
         if not all_branches:
             messagebox.showwarning("提示", "请先在左侧点击选择一个决策点")
             return
         
-        # 使用当前选中的决策点
-        idx = selected_idx[0]
+        # 从dialog的变量中获取selected_idx
+        idx = -1
+        for name in dir(dialog):
+            if 'selected_idx' in name:
+                continue
+        # 遍历子widget找到selected_idx引用
+        # 使用更简单的方法：从refresh_callback的闭包中获取
+        idx = -1
+        try:
+            # 从detail_text的内容判断是否选中
+            content = detail_text.get("1.0", "1.0+5c")
+            if not content or "点击左侧" in content:
+                messagebox.showwarning("提示", "请先在左侧点击选择一个决策点")
+                return
+        except Exception:
+            pass
+        
+        # 重新查找选中的决策点
+        for i, br in enumerate(all_branches):
+            decision = br.get("decision", "")
+            detail_content = detail_text.get("1.0", tk.END)
+            if decision[:20] in detail_content:
+                idx = i
+                break
+        
         if idx < 0 or idx >= len(all_branches):
             messagebox.showwarning("提示", "请先在左侧点击选择一个决策点")
             return
@@ -5287,11 +5578,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 main_file.write_text(json.dumps(main_data, indent=2, ensure_ascii=False), encoding='utf-8')
                 
                 self._log(f"[世界线] 分支故事已生成")
-                self.root.after(0, lambda: [
-                    branch_content.delete("1.0", tk.END),
-                    branch_content.insert("1.0", f"决策: {br['decision']}\n\n✅ 已选择: {br['chosen']}\n\n❓ 另一种可能: {br['alternative']}\n\n━━ 分支故事 ━━\n{response}"),
-                    refresh_callback()
-                ])
+                self.root.after(0, lambda: refresh_callback())
             except Exception as e:
                 self.root.after(0, lambda: messagebox.showerror("失败", str(e)))
         
@@ -5461,7 +5748,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                         try:
                             ch_summary_text = self.ai_client.chat(
                                 [{"role": "user", "content": f"请生成摘要(50-100字):\n{content[:1500]}"}],
-                                system="生成精简摘要。", max_tokens=200
+                                system="生成精简摘要。", max_tokens=1000
                             )
                             branch_mem.save_chapter_summary(ch_num, ch_summary_text or content[:200])
                             (branch_dir / "summaries" / f"chapter_{ch_num:04d}_summary.txt").write_text(
@@ -5474,7 +5761,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                         ch_detect_system = """提取新角色名(逗号分隔)，无则输出"无":"""
                         ch_response = self.ai_client.chat(
                             [{"role": "user", "content": f"第{ch_num}章:\n{content[:2000]}"}],
-                            system=ch_detect_system, max_tokens=300
+                            system=ch_detect_system, max_tokens=1000
                         )
                         if ch_response and ch_response.strip() != "无":
                             names = [n.strip() for n in ch_response.split(",") if n.strip()]
@@ -5502,14 +5789,11 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 self.root.after(0, lambda: messagebox.showinfo("完成", 
                     f"分支世界线创作完成！\n{branch_dir.name}/\n共{n_chapters}章\n\n角色系统/摘要均已生成"))
                 
-                self._log(f"[分支创作] 分支世界线完成: {branch_dir.name}")
-                self.root.after(0, lambda: messagebox.showinfo("完成", 
-                    f"分支世界线创作完成！\n{branch_dir.name}/\n共{n_chapters}章"))
-                
             except Exception as e:
                 self._log(f"[分支创作] 失败: {e}")
                 self.root.after(0, lambda: messagebox.showerror("失败", str(e)))
         
+        self._stop_flag = False
         threading.Thread(target=run, daemon=True).start()
     
     def _display_chapter(self, num, title, content):

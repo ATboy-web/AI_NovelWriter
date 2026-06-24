@@ -45,6 +45,14 @@ public class MainActivity extends Activity {
     private PowerManager.WakeLock wakeLock;
     private KeepAliveService keepAliveService;
     private boolean serviceBound = false;
+    
+    // 共享OkHttpClient单例（连接池复用）
+    private static final okhttp3.OkHttpClient httpClient = new okhttp3.OkHttpClient.Builder()
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .build();
 
     private ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
@@ -78,8 +86,12 @@ public class MainActivity extends Activity {
             // Keep screen on
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-            // Initialize novels directory
-            novelsDir = new File(getExternalFilesDir(null), "AI_NovelWriter");
+            // Initialize novels directory (外部存储不可用时回退到内部存储)
+            File externalDir = getExternalFilesDir(null);
+            if (externalDir == null) {
+                externalDir = getFilesDir();
+            }
+            novelsDir = new File(externalDir, "AI_NovelWriter");
             if (!novelsDir.exists()) {
                 novelsDir.mkdirs();
             }
@@ -106,11 +118,11 @@ public class MainActivity extends Activity {
             settings.setDomStorageEnabled(true);
             settings.setAllowFileAccess(true);
             settings.setAllowContentAccess(true);
-            settings.setAllowFileAccessFromFileURLs(true);
-            settings.setAllowUniversalAccessFromFileURLs(true);
+            settings.setAllowFileAccessFromFileURLs(false);  // 安全：禁止跨文件访问
+            settings.setAllowUniversalAccessFromFileURLs(false);  // 安全：禁止通用访问
             settings.setDatabaseEnabled(true);
             settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
             settings.setMediaPlaybackRequiresUserGesture(false);
             settings.setLoadWithOverviewMode(true);
             settings.setUseWideViewPort(true);
@@ -121,7 +133,7 @@ public class MainActivity extends Activity {
             webView.setBackgroundColor(0xFF1a1a2e);
 
             // Disable debugging in production
-            WebView.setWebContentsDebuggingEnabled(false);
+            WebView.setWebContentsDebuggingEnabled(false); // Release mode: disable debugging
 
             // Add JavascriptInterface
             webView.addJavascriptInterface(new NovelFileInterface(), "NovelFS");
@@ -130,7 +142,12 @@ public class MainActivity extends Activity {
             webView.setWebViewClient(new WebViewClient() {
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                    return false;
+                    // 只允许本地asset文件和data URL
+                    if (url.startsWith("file:///android_asset/") || url.startsWith("data:")) {
+                        return false;
+                    }
+                    // 阻止所有其他URL（包括javascript:、http://、https://等）
+                    return true;
                 }
 
                 @Override
@@ -176,8 +193,25 @@ public class MainActivity extends Activity {
         if (webView != null && webView.canGoBack()) {
             webView.goBack();
         } else {
-            // Move to background instead of closing
             moveTaskToBack(true);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (webView != null) {
+            webView.onPause();
+            webView.pauseTimers();  // 暂停JS定时器，省电
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (webView != null) {
+            webView.onResume();
+            webView.resumeTimers();
         }
     }
 
@@ -283,6 +317,9 @@ public class MainActivity extends Activity {
 
         @Override
         public void onDestroy() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                stopForeground(true);
+            }
             super.onDestroy();
             Log.d(TAG, "KeepAlive service destroyed");
         }
@@ -297,6 +334,7 @@ public class MainActivity extends Activity {
         private volatile int lastStatusCode = 0;
         private volatile boolean requestComplete = false;
         private volatile Exception lastException = null;
+        private final Object fileLock = new Object();  // 文件操作锁
         
         /**
          * Validate and sanitize path to prevent path traversal
@@ -364,22 +402,24 @@ public class MainActivity extends Activity {
         
         @JavascriptInterface
         public boolean writeFile(String novelName, String relativePath, String content) {
-            try {
-                File file = getSafeFile(novelName, relativePath);
-                if (file == null) return false;
-                
-                File parentDir = file.getParentFile();
-                if (parentDir != null && !parentDir.exists()) {
-                    parentDir.mkdirs();
+            synchronized (fileLock) {
+                try {
+                    File file = getSafeFile(novelName, relativePath);
+                    if (file == null) return false;
+
+                    File parentDir = file.getParentFile();
+                    if (parentDir != null && !parentDir.exists()) {
+                        parentDir.mkdirs();
+                    }
+                    try (FileWriter writer = new FileWriter(file)) {
+                        writer.write(content);
+                        writer.flush();
+                    }
+                    return true;
+                } catch (IOException e) {
+                    Log.e(TAG, "Failed to write file: " + e.getMessage());
+                    return false;
                 }
-                try (FileWriter writer = new FileWriter(file)) {
-                    writer.write(content);
-                    writer.flush();
-                }
-                return true;
-            } catch (IOException e) {
-                Log.e(TAG, "Failed to write file: " + e.getMessage());
-                return false;
             }
         }
         
@@ -406,15 +446,15 @@ public class MainActivity extends Activity {
         
         @JavascriptInterface
         public boolean fileExists(String novelName, String relativePath) {
-            File file = new File(novelsDir, novelName + "/" + relativePath);
-            return file.exists();
+            File file = getSafeFile(novelName, relativePath);
+            return file != null && file.exists();
         }
         
         @JavascriptInterface
         public String[] listFiles(String novelName, String relativePath) {
             try {
-                File dir = new File(novelsDir, novelName + "/" + relativePath);
-                if (!dir.exists() || !dir.isDirectory()) {
+                File dir = getSafeFile(novelName, relativePath);
+                if (dir == null || !dir.exists() || !dir.isDirectory()) {
                     return new String[0];
                 }
                 return dir.list();
@@ -427,8 +467,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public boolean deleteFile(String novelName, String relativePath) {
             try {
-                File file = new File(novelsDir, novelName + "/" + relativePath);
-                return file.exists() && file.delete();
+                File file = getSafeFile(novelName, relativePath);
+                return file != null && file.exists() && file.delete();
             } catch (Exception e) {
                 Log.e(TAG, "Failed to delete file: " + e.getMessage());
                 return false;
@@ -451,7 +491,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public boolean deleteNovel(String novelName) {
             try {
-                File novelDir = new File(novelsDir, novelName);
+                File novelDir = getSafeFile(novelName, "");  // 安全：使用路径校验
+                if (novelDir == null) return false;
                 return deleteRecursive(novelDir);
             } catch (Exception e) {
                 Log.e(TAG, "Failed to delete novel: " + e.getMessage());
@@ -480,8 +521,8 @@ public class MainActivity extends Activity {
         public void acquireWakeLock() {
             try {
                 if (wakeLock != null && !wakeLock.isHeld()) {
-                    wakeLock.acquire(24 * 60 * 60 * 1000L); // 24 hours
-                    Log.d(TAG, "Wake lock acquired (24h)");
+                    wakeLock.acquire(30 * 60 * 1000L); // 30 minutes
+                    Log.d(TAG, "Wake lock acquired (30min)");
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Failed to acquire wake lock: " + e.getMessage());
@@ -536,51 +577,52 @@ public class MainActivity extends Activity {
         }
         
         /**
-         * Test API with a minimal POST request
-         * Returns response or error
+         * Test API with a minimal POST request using OkHttp
+         * Returns response or error (async version)
          */
         @JavascriptInterface
-        public String testApiPost(String urlStr, String authHeader) {
-            HttpURLConnection conn = null;
-            try {
-                URL url = new URL(urlStr);
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setRequestProperty("Accept", "application/json");
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14)");
-                if (authHeader != null && !authHeader.isEmpty()) {
-                    conn.setRequestProperty("Authorization", authHeader);
-                }
-                conn.setDoOutput(true);
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(30000);
-                
-                // Minimal request body
+        public void testApiPostAsync(String urlStr, String authHeader) {
+            new Thread(() -> {
+                okhttp3.MediaType JSON = okhttp3.MediaType.get("application/json; charset=utf-8");
                 String body = "{\"model\":\"deepseek-chat\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":5}";
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(body.getBytes("UTF-8"));
+                okhttp3.RequestBody requestBody = okhttp3.RequestBody.create(body, JSON);
+                
+                okhttp3.Request.Builder requestBuilder = new okhttp3.Request.Builder()
+                    .url(urlStr)
+                    .post(requestBody)
+                    .header("Accept", "application/json");
+                
+                if (authHeader != null && !authHeader.isEmpty()) {
+                    requestBuilder.header("Authorization", authHeader);
                 }
                 
-                int code = conn.getResponseCode();
-                StringBuilder response = new StringBuilder();
-                try (BufferedReader br = new BufferedReader(new InputStreamReader(
-                        code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream(), "UTF-8"))) {
-                    String line;
-                    while ((line = br.readLine()) != null) response.append(line);
+                try (okhttp3.Response response = httpClient.newCall(requestBuilder.build()).execute()) {
+                    int code = response.code();
+                    String responseBody = response.body() != null ? response.body().string() : "";
+                    lastTestResult = "OK:" + code + ":" + responseBody.substring(0, Math.min(200, responseBody.length()));
+                } catch (java.net.SocketTimeoutException e) {
+                    lastTestResult = "ERROR:超时(15秒)";
+                } catch (Exception e) {
+                    lastTestResult = "ERROR:" + e.getClass().getSimpleName() + ":" + e.getMessage();
                 }
-                return "OK:" + code + ":" + response.toString().substring(0, Math.min(200, response.length()));
-            } catch (java.net.SocketTimeoutException e) {
-                return "ERROR:超时";
-            } catch (Exception e) {
-                return "ERROR:" + e.getClass().getSimpleName() + ":" + e.getMessage();
-            } finally {
-                if (conn != null) try { conn.disconnect(); } catch (Exception e) {}
-            }
+                testComplete = true;
+            }).start();
         }
         
+        private volatile String lastTestResult = null;
+        private volatile boolean testComplete = false;
+        
+        @JavascriptInterface
+        public boolean isTestComplete() { return testComplete; }
+        
+        @JavascriptInterface
+        public String getTestResult() { return lastTestResult; }
+        
+        @JavascriptInterface
+        public void resetTest() { testComplete = false; lastTestResult = null; }
+        
         /**
-         * Start async HTTP POST request in background thread
+         * Start async HTTP POST request using OkHttp (reliable timeout)
          * JavaScript should poll isRequestComplete() and then get results
          */
         @JavascriptInterface
@@ -590,116 +632,42 @@ public class MainActivity extends Activity {
             lastError = null;
             lastStatusCode = 0;
             
-            Log.d(TAG, "startAsyncHttp: url=" + urlStr + ", authLen=" + (authHeader != null ? authHeader.length() : 0));
+            Log.d(TAG, "startAsyncHttp: url=" + urlStr);
             
             new Thread(() -> {
-                int maxRetries = 2;
+                okhttp3.MediaType JSON = okhttp3.MediaType.get("application/json; charset=utf-8");
+                okhttp3.RequestBody body = okhttp3.RequestBody.create(jsonBody, JSON);
                 
-                for (int attempt = 1; attempt <= maxRetries; attempt++) {
-                    HttpURLConnection conn = null;
-                    Thread timeoutThread = null;
-                    try {
-                        URL url = new URL(urlStr);
-                        conn = (HttpURLConnection) url.openConnection();
-                        
-                        // Configure SSL for HTTPS
-                        if (conn instanceof javax.net.ssl.HttpsURLConnection) {
-                            try {
-                                javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getInstance("TLSv1.2");
-                                sslContext.init(null, null, new java.security.SecureRandom());
-                                ((javax.net.ssl.HttpsURLConnection) conn).setSSLSocketFactory(sslContext.getSocketFactory());
-                            } catch (Exception sslE) {
-                                Log.w(TAG, "SSL config failed: " + sslE.getMessage());
-                            }
-                        }
-                        
-                        conn.setRequestMethod("POST");
-                        conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                        conn.setRequestProperty("Accept", "application/json");
-                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36");
-                        conn.setRequestProperty("Connection", "close");
-                        
-                        if (authHeader != null && !authHeader.isEmpty()) {
-                            conn.setRequestProperty("Authorization", authHeader);
-                        }
-                        
-                        conn.setDoOutput(true);
-                        conn.setDoInput(true);
-                        conn.setConnectTimeout(10000);  // 10s connect
-                        conn.setReadTimeout(45000);     // 45s read
-                        conn.setInstanceFollowRedirects(false);
-                        
-                        Log.d(TAG, "HTTP attempt " + attempt + ": connecting...");
-                        
-                        // Write request body
-                        try (OutputStream os = conn.getOutputStream()) {
-                            os.write(jsonBody.getBytes("UTF-8"));
-                            os.flush();
-                        }
-                        
-                        // Hard timeout - force disconnect after 60 seconds
-                        final HttpURLConnection connRef = conn;
-                        timeoutThread = new Thread(() -> {
-                            try {
-                                Thread.sleep(60000);
-                                Log.w(TAG, "Hard timeout! Forcing disconnect...");
-                                try { connRef.disconnect(); } catch (Exception e) {}
-                            } catch (InterruptedException e) {
-                                // Expected when request completes
-                            }
-                        });
-                        timeoutThread.setDaemon(true);
-                        timeoutThread.start();
-                        
-                        // Read response
-                        int responseCode = conn.getResponseCode();
-                        Log.d(TAG, "HTTP Response: " + responseCode);
-                        
-                        StringBuilder response = new StringBuilder();
-                        try (BufferedReader br = new BufferedReader(
-                                new InputStreamReader(
-                                    responseCode >= 200 && responseCode < 300 
-                                        ? conn.getInputStream() 
-                                        : conn.getErrorStream(), 
-                                    "UTF-8"))) {
-                            String line;
-                            while ((line = br.readLine()) != null) {
-                                response.append(line);
-                            }
-                        }
-                        
-                        lastResponse = response.toString();
-                        lastError = null;
-                        lastStatusCode = responseCode;
-                        Log.d(TAG, "HTTP success: " + lastResponse.length() + " chars");
-                        break; // Success
-                        
-                    } catch (java.net.SocketTimeoutException e) {
-                        Log.e(TAG, "Timeout (attempt " + attempt + "): " + e.getMessage());
-                        lastError = "连接超时，请检查网络";
-                        lastStatusCode = -1;
-                    } catch (java.net.ConnectException e) {
-                        Log.e(TAG, "Connect failed: " + e.getMessage());
-                        lastError = "无法连接服务器: " + e.getMessage();
-                        lastStatusCode = -1;
-                        break;
-                    } catch (Exception e) {
-                        Log.e(TAG, "HTTP error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-                        lastError = e.getMessage();
-                        lastStatusCode = -1;
-                    } finally {
-                        if (timeoutThread != null) {
-                            timeoutThread.interrupt();
-                        }
-                        if (conn != null) {
-                            try { conn.disconnect(); } catch (Exception e) {}
-                        }
-                    }
-                    
-                    if (attempt < maxRetries) {
-                        try { Thread.sleep(2000); } catch (InterruptedException e) { break; }
-                    }
+                okhttp3.Request.Builder requestBuilder = new okhttp3.Request.Builder()
+                    .url(urlStr)
+                    .post(body)
+                    .header("Accept", "application/json");
+                
+                if (authHeader != null && !authHeader.isEmpty()) {
+                    requestBuilder.header("Authorization", authHeader);
                 }
+                
+                try (okhttp3.Response response = httpClient.newCall(requestBuilder.build()).execute()) {
+                    
+                    lastStatusCode = response.code();
+                    lastResponse = response.body() != null ? response.body().string() : "";
+                    lastError = null;
+                    Log.d(TAG, "OkHttp success: " + lastStatusCode + ", " + lastResponse.length() + " chars");
+                    
+                } catch (java.net.SocketTimeoutException e) {
+                    Log.e(TAG, "OkHttp timeout: " + e.getMessage());
+                    lastError = "连接超时(15秒)";
+                    lastStatusCode = -1;
+                } catch (java.net.ConnectException e) {
+                    Log.e(TAG, "OkHttp connect failed: " + e.getMessage());
+                    lastError = "无法连接: " + e.getMessage();
+                    lastStatusCode = -1;
+                } catch (Exception e) {
+                    Log.e(TAG, "OkHttp error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                    lastError = e.getMessage() != null ? e.getMessage() : "未知错误";
+                    lastStatusCode = -1;
+                }
+                
                 requestComplete = true;
                 Log.d(TAG, "HTTP done: status=" + lastStatusCode);
             }).start();

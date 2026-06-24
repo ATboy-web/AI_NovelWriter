@@ -449,28 +449,34 @@ class NovelAgent:
             response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=1000)
             if response:
                 import re
-                # 尝试提取JSON对象（非贪婪匹配）
-                match = re.search(r'\{[^{}]*\}', response)
+                # Strategy 1: 括号深度追踪（最可靠）
+                start = response.find('{')
+                if start >= 0:
+                    depth = 0
+                    end_idx = -1
+                    for i in range(start, len(response)):
+                        if response[i] == '{': depth += 1
+                        elif response[i] == '}':
+                            depth -= 1
+                            if depth == 0:
+                                end_idx = i + 1
+                                break
+                    if end_idx > start:
+                        json_str = response[start:end_idx]
+                        json_str = re.sub(r',\s*}', '}', json_str)
+                        json_str = re.sub(r',\s*]', ']', json_str)
+                        try:
+                            return json.loads(json_str)
+                        except json.JSONDecodeError:
+                            pass
+                
+                # Strategy 2: 正则匹配
+                match = re.search(r'\{[\s\S]*\}', response)
                 if match:
                     try:
                         return json.loads(match.group())
                     except json.JSONDecodeError:
-                        # 如果非贪婪匹配失败，尝试贪婪匹配
-                        match = re.search(r'\{[\s\S]*\}', response)
-                        if match:
-                            json_str = match.group()
-                            # 移除JSON后面的多余内容
-                            depth = 0
-                            end_idx = 0
-                            for i, c in enumerate(json_str):
-                                if c == '{': depth += 1
-                                elif c == '}': 
-                                    depth -= 1
-                                    if depth == 0:
-                                        end_idx = i + 1
-                                        break
-                            if end_idx > 0:
-                                return json.loads(json_str[:end_idx])
+                        pass
         except Exception as e:
             self.log(f"[PlotDesigner] 分析失败: {e}")
         return {"type": "writing", "pace": "medium", "foreshadowing": []}
@@ -600,7 +606,18 @@ class NovelAgent:
     "is_acceptable": true/false      // 是否可接受
 }}"""
         
-        prompt = f"请审校第{chapter_num}章内容：\n\n{content[:4000]}"
+        # 采样：开头2000 + 中间1000 + 结尾1000，覆盖全文
+        sample_parts = []
+        if len(content) > 4000:
+            sample_parts.append(content[:2000])
+            mid = len(content) // 2
+            sample_parts.append(content[mid-500:mid+500])
+            sample_parts.append(content[-1000:])
+            sample = "\n...（中间省略）...\n".join(sample_parts)
+        else:
+            sample = content
+        
+        prompt = f"请审校第{chapter_num}章内容：\n\n{sample}"
         response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
         
         try:
@@ -1048,7 +1065,7 @@ class NovelAgent:
         system = f"你是专业故事架构师。为{chapter_count}章长篇规划故事弧线。输出简洁文本。"
         prompt = f"类型:{genre} 标题:{title} 概念:{concept[:200]}\n为{chapter_count}章规划: 1.开端(前15%) 2.发展(15-70%) 3.高潮(70-90%) 4.结局(90-100%)。每段50字。"
         try:
-            response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=500)
+            response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=1500)
             return response or ""
         except Exception as e:
             self.log(f"[故事弧线规划] 失败: {e}")
@@ -1120,34 +1137,56 @@ class NovelAgent:
     
     def finalize_chapter(self, chapter_num: int, content: str):
         """定稿章节 + 更新记忆 + 角色属性变化"""
-        # 章节摘要
-        summary = self.ai.chat(
-            [{"role": "user", "content": f"请生成摘要（100-200字）：\n{content[:2000]}"}],
-            system="你是故事摘要助手。", max_tokens=300
-        )
-        self.memory.save_chapter_summary(chapter_num, summary)
+        summary = content[:200]  # 默认摘要
         
-        # 全局摘要
-        old = self.memory.get_global_summary()
-        new = self.ai.chat(
-            [{"role": "user", "content": f"更新全局摘要：\n旧：{old}\n新章节：{summary}"}],
-            system="你是故事摘要助手。", max_tokens=500
-        )
-        self.memory.save_global_summary(new)
+        # 章节摘要（带异常保护）
+        try:
+            result = self.ai.chat(
+                [{"role": "user", "content": f"请生成摘要（100-200字）：\n{content[:2000]}"}],
+                system="你是故事摘要助手。", max_tokens=1000
+            )
+            if result:
+                summary = result
+                self.memory.save_chapter_summary(chapter_num, summary)
+        except Exception as e:
+            self.log(f"[定稿] 摘要生成失败: {e}")
+            self.memory.save_chapter_summary(chapter_num, summary)
         
-        # 关键词索引
-        kw = self.ai.chat([{"role": "user", "content": f"提取10个关键词，逗号分隔：\n{content[:1000]}"}],
-                         system="提取关键词。", max_tokens=200)
-        keywords = [k.strip() for k in (kw or "").split(",") if k.strip()]
-        self.memory.update_index(chapter_num, keywords)
+        # 全局摘要（带异常保护）
+        try:
+            old = self.memory.get_global_summary()
+            new = self.ai.chat(
+                [{"role": "user", "content": f"更新全局摘要：\n旧：{old}\n新章节：{summary}"}],
+                system="你是故事摘要助手。", max_tokens=1500
+            )
+            if new:
+                self.memory.save_global_summary(new)
+        except Exception as e:
+            self.log(f"[定稿] 全局摘要更新失败: {e}")
+        
+        # 关键词索引（带异常保护）
+        try:
+            kw = self.ai.chat([{"role": "user", "content": f"提取10个关键词，逗号分隔：\n{content[:1000]}"}],
+                             system="提取关键词。", max_tokens=1000)
+            keywords = [k.strip() for k in (kw or "").split(",") if k.strip()]
+            self.memory.update_index(chapter_num, keywords)
+        except Exception as e:
+            self.log(f"[定稿] 关键词提取失败: {e}")
+            keywords = []
         
         # 添加记忆块
-        self.memory.add_chunk("plot", summary, importance=8, 
-                             tags=keywords[:5] if keywords else [])
-        self.memory.add_event(chapter_num, summary, "story")
+        try:
+            self.memory.add_chunk("plot", summary, importance=8, 
+                                 tags=keywords[:5] if keywords else [])
+            self.memory.add_event(chapter_num, summary, "story")
+        except Exception as e:
+            self.log(f"[定稿] 记忆块添加失败: {e}")
         
         # 角色属性变化检测
-        self._update_character_progression(chapter_num, content, summary)
+        try:
+            self._update_character_progression(chapter_num, content, summary)
+        except Exception as e:
+            self.log(f"[定稿] 角色变化检测失败: {e}")
         
         self.log(f"[智能体] 第{chapter_num}章定稿完成")
     
@@ -1204,11 +1243,16 @@ class NovelAgent:
 变化包括正面和负面的。没有变化就输出{{"updates":[]}}。
 **必须检测所有出现的角色，不止主角。只输出JSON，不要其他文字！**"""
             
-            # 增加采样字数到3000字，max_tokens到1200
-            sample = content[:3000] if len(content) > 3000 else content
+            # 采样策略：开头2000 + 中间1000 + 结尾1000，覆盖全文
+            if len(content) > 4000:
+                mid = len(content) // 2
+                sample = content[:2000] + "\n...(中间省略)...\n" + content[mid-500:mid+500] + "\n...(省略)...\n" + content[-1000:]
+            else:
+                sample = content
+            
             response = self.ai.chat(
-                [{"role": "user", "content": f"章节摘要: {summary}\n内容片段: {sample}"}],
-                system=system, max_tokens=1200
+                [{"role": "user", "content": f"章节摘要: {summary}\n内容片段: {sample}\n\n请直接输出JSON，不要分析过程。"}],
+                system=system, max_tokens=3000
             )
             if not response:
                 return
@@ -1216,21 +1260,31 @@ class NovelAgent:
             import re
             data = None
             
-            # Strategy 1: 直接正则提取JSON（非贪婪匹配）
-            match = re.search(r'\{[^{}]*\}', response)
-            if match:
-                json_str = match.group()
-                json_str = re.sub(r',\s*}', '}', json_str)
-                json_str = re.sub(r',\s*]', ']', json_str)
-                try:
-                    data = json.loads(json_str)
-                except json.JSONDecodeError:
-                    pass
+            # Strategy 1: 括号深度追踪（最可靠，提取完整外层JSON）
+            start = response.find('{')
+            if start >= 0:
+                depth = 0
+                end_idx = -1
+                for i in range(start, len(response)):
+                    if response[i] == '{': depth += 1
+                    elif response[i] == '}':
+                        depth -= 1
+                        if depth == 0:
+                            end_idx = i + 1
+                            break
+                if end_idx > start:
+                    json_str = response[start:end_idx]
+                    json_str = re.sub(r',\s*}', '}', json_str)
+                    json_str = re.sub(r',\s*]', ']', json_str)
+                    try:
+                        data = json.loads(json_str)
+                    except json.JSONDecodeError:
+                        pass
             
-            # Strategy 1b: 如果非贪婪匹配失败，使用括号深度追踪
+            # Strategy 2: 如果括号追踪失败，尝试正则提取
             if not data:
-                start = response.find('{')
-                if start >= 0:
+                match = re.search(r'\{[\s\S]*\}', response)
+                if match:
                     depth = 0
                     end_idx = -1
                     for i in range(start, len(response)):
@@ -1716,7 +1770,7 @@ class NovelAgent:
                         completion = self.ai.chat(
                             [{"role": "user", "content": f"以下是一段未完成的小说段落，请补充一个自然的收尾（20-60字）：\n{context}"}],
                             system="你是作家。续写上面的段落，补充一个自然的收尾。只输出补全文字，不要重复已有内容。",
-                            max_tokens=200
+                            max_tokens=1000
                         )
                         if completion and len(completion) > 5:
                             # 去重：检查补全内容是否与已有内容重复

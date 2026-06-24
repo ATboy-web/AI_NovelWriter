@@ -607,17 +607,20 @@ class AIClient:
         message = choices[0].get("message", {})
         content = message.get("content", "")
         reasoning = message.get("reasoning_content", "")
+        finish_reason = choices[0].get("finish_reason", "")
         
         # 如果有思考内容，记录到日志
         if reasoning:
             self._log_thinking(reasoning)
         
-        # 如果content为空但reasoning有内容（DeepSeek思考模式），使用reasoning
+        # content为空时的处理
         if not content or len(content.strip()) == 0:
-            if reasoning and len(reasoning.strip()) > 10:
-                self._log(f"[提示] content为空，使用reasoning_content作为结果 (len={len(reasoning)})")
+            # 如果finish_reason是"length"且有reasoning_content，说明思考模式用完了token
+            # 此时reasoning_content包含有用的分析结果，可以作为降级返回
+            if finish_reason == "length" and reasoning and len(reasoning.strip()) > 10:
+                self._log(f"[提示] 思考模式耗尽token (reasoning_len={len(reasoning)})，使用reasoning_content作为结果")
                 return reasoning
-            raise Exception(f"OpenAI兼容API返回空内容: {json.dumps(result, ensure_ascii=False)[:200]}")
+            raise Exception(f"OpenAI兼容API返回空内容 (reasoning_len={len(reasoning)}, finish={finish_reason}): {json.dumps(result, ensure_ascii=False)[:200]}")
         
         return content
     
@@ -696,17 +699,19 @@ class AIClient:
         message = choices[0].get("message", {})
         content = message.get("content", "")
         reasoning = message.get("reasoning_content", "")
+        finish_reason = choices[0].get("finish_reason", "")
         
         # 如果有思考内容，记录到日志
         if reasoning:
             self._log_thinking(reasoning)
         
-        # 如果content为空但reasoning有内容，使用reasoning作为结果
+        # content为空时的处理
         if not content or len(content.strip()) == 0:
-            if reasoning and len(reasoning.strip()) > 10:
-                self._log(f"[提示] content为空，使用reasoning_content作为结果")
+            # 如果finish_reason是"length"且有reasoning_content，说明思考模式用完了token
+            if finish_reason == "length" and reasoning and len(reasoning.strip()) > 10:
+                self._log(f"[提示] 思考模式耗尽token，使用reasoning_content作为结果")
                 return reasoning
-            raise Exception(f"DeepSeek返回空内容: {json.dumps(result, ensure_ascii=False)[:200]}")
+            raise Exception(f"DeepSeek返回空内容 (reasoning_len={len(reasoning)}, finish={finish_reason})")
         
         return content
     

@@ -1276,7 +1276,7 @@ function loadSettings() {
     // 回填表单
     document.getElementById('api-endpoint').value = appState.apiEndpoint;
     document.getElementById('api-key').value = appState.apiKey;
-    document.getElementById('api-model').value = appState.apiModel || 'gpt-4o';
+    document.getElementById('api-model').value = appState.apiModel || 'deepseek-v4-flash';
     document.getElementById('desktop-url').value = appState.desktopUrl;
     document.getElementById('desktop-token').value = appState.desktopToken;
     
@@ -2413,7 +2413,7 @@ function callAI(prompt, maxTokens) {
     addLog('api', 'API调用开始', '端点: ' + appState.apiEndpoint + ' | 模型: ' + (appState.apiModel || 'default'));
     
     var requestBody = JSON.stringify({
-      model: appState.apiModel || 'gpt-4o',
+      model: appState.apiModel || 'deepseek-v4-flash',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: maxTokens || 2000
     });
@@ -2735,7 +2735,7 @@ function executeTool(toolId) {
   else if (toolId === 'worldview') maxTokens = 3000;
   
   var reqBody = JSON.stringify({
-    model: appState.apiModel || 'gpt-4o',
+    model: appState.apiModel || 'deepseek-v4-flash',
     messages: [{ role: 'user', content: prompt }],
     max_tokens: maxTokens
   });

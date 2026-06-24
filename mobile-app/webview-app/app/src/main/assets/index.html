@@ -1361,7 +1361,7 @@ function testApiConnection() {
   // 快速API测试（30秒超时）
   if (window.NovelFS && window.NovelFS.testApiPost) {
     var headers = buildApiHeaders(key, endpoint);
-    var authHeader = headers['Authorization'] || headers['api-key'] || '';
+    var authHeader = headers['Authorization'] || headers['api-key'] || headers['x-api-key'] || '';
     
     addLog('api', '快速API测试', '开始...');
     
@@ -1393,7 +1393,7 @@ function testApiConnection() {
   // 降级：使用原生HTTP测试API
   if (window.NovelFS && window.NovelFS.startAsyncHttp) {
     var headers = buildApiHeaders(key, endpoint);
-    var authHeader = headers['Authorization'] || headers['api-key'] || '';
+    var authHeader = headers['Authorization'] || headers['api-key'] || headers['x-api-key'] || '';
     
     var reqBody = JSON.stringify({
       model: model,
@@ -1404,7 +1404,10 @@ function testApiConnection() {
     addLog('api', '使用原生HTTP测试', '');
     window.NovelFS.startAsyncHttp(endpoint, reqBody, authHeader);
     
+    var testElapsed = 0;
+    var testMaxWait = 60000; // 60秒超时
     var pollTimer = setInterval(function() {
+      testElapsed += 500;
       if (window.NovelFS.isRequestComplete()) {
         clearInterval(pollTimer);
         
@@ -1435,6 +1438,10 @@ function testApiConnection() {
           statusEl.innerHTML = '<div class="status-bar status-err">❌ 连接失败：' + hint + '</div>';
           addLog('error', 'API连接失败', hint + ' | ' + endpoint);
         }
+      } else if (testElapsed >= testMaxWait) {
+        clearInterval(pollTimer);
+        statusEl.innerHTML = '<div class="status-bar status-err">❌ 测试超时（60秒）</div>';
+        addLog('error', 'API测试超时', '60秒未响应');
       }
     }, 500);
   }
@@ -2359,6 +2366,17 @@ function fallbackCopy(text) {
 function deleteNovel(id) {
   if (!confirm('确定删除这部小说吗？')) return;
   var novels = getNovels();
+  var novel = novels.find(function(n) { return n.id === id; });
+  
+  // 删除文件系统中的数据
+  if (novel && novel.fsPath && window.NovelFS && window.NovelFS.deleteNovel) {
+    try {
+      window.NovelFS.deleteNovel(novel.fsPath);
+    } catch(e) {
+      console.error('删除文件失败:', e);
+    }
+  }
+  
   novels = novels.filter(function(n) { return n.id !== id; });
   saveNovels(novels);
   renderNovelsList();
@@ -2369,7 +2387,7 @@ function updateProgress(stepId, text) {
   var el = document.getElementById('progress-steps');
   var steps = el.innerHTML;
   if (steps.indexOf(stepId) >= 0) {
-    steps = steps.replace(new RegExp(stepId + '.*?</div>', 'g'), stepId + '">' + text + '</div>');
+    steps = steps.replace(new RegExp(stepId + '[\\s\\S]*?</div>', 'g'), stepId + '">' + text + '</div>');
   } else {
     steps += '<div id="' + stepId + '">' + text + '</div>';
   }
@@ -2406,7 +2424,7 @@ function callAI(prompt, maxTokens) {
     // 使用异步原生HTTP请求
     if (window.NovelFS && window.NovelFS.startAsyncHttp) {
       try {
-        var authHeader = headers['Authorization'] || headers['api-key'] || '';
+        var authHeader = headers['Authorization'] || headers['api-key'] || headers['x-api-key'] || '';
         
         addLog('api', '启动异步HTTP请求', '认证头: ' + (authHeader ? authHeader.substring(0, 20) + '...' : '无'));
         addDiagLog('HTTP_START', { authLen: authHeader.length, method: 'POST' });
@@ -2717,14 +2735,14 @@ function executeTool(toolId) {
   else if (toolId === 'worldview') maxTokens = 3000;
   
   var reqBody = JSON.stringify({
-    model: appState.apiModel || 'deepseek-chat',
+    model: appState.apiModel || 'gpt-4o',
     messages: [{ role: 'user', content: prompt }],
     max_tokens: maxTokens
   });
   
   // 使用原生HTTP请求
   if (window.NovelFS && window.NovelFS.startAsyncHttp) {
-    var authHeader = headers['Authorization'] || headers['api-key'] || '';
+    var authHeader = headers['Authorization'] || headers['api-key'] || headers['x-api-key'] || '';
     window.NovelFS.startAsyncHttp(appState.apiEndpoint, reqBody, authHeader);
     
     var pollTimer = setInterval(function() {

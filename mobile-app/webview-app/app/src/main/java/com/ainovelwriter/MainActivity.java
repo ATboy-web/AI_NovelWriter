@@ -433,8 +433,11 @@ public class MainActivity extends Activity {
                 StringBuilder sb = new StringBuilder();
                 try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
                     String line;
+                    boolean first = true;
                     while ((line = reader.readLine()) != null) {
-                        sb.append(line).append("\n");
+                        if (!first) sb.append("\n");
+                        sb.append(line);
+                        first = false;
                     }
                 }
                 return sb.toString();

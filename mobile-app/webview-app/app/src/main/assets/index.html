@@ -2382,6 +2382,16 @@ function callAI(prompt, maxTokens) {
     var headers = buildApiHeaders(appState.apiKey, appState.apiEndpoint);
     var t0 = Date.now();
     
+    // 诊断日志 - 记录API调用开始
+    addDiagLog('API_START', {
+      endpoint: appState.apiEndpoint,
+      model: appState.apiModel || 'default',
+      promptLen: prompt.length,
+      maxTokens: maxTokens || 2000,
+      online: navigator.onLine,
+      timestamp: t0
+    });
+    
     addLog('api', 'API调用开始', '端点: ' + appState.apiEndpoint + ' | 模型: ' + (appState.apiModel || 'default'));
     
     var requestBody = JSON.stringify({
@@ -2391,6 +2401,7 @@ function callAI(prompt, maxTokens) {
     });
     
     addLog('api', '请求体大小', requestBody.length + ' 字节');
+    addDiagLog('API_REQUEST', { bodySize: requestBody.length, bodyPreview: requestBody.substring(0, 200) });
     
     // 使用异步原生HTTP请求
     if (window.NovelFS && window.NovelFS.startAsyncHttp) {
@@ -2398,11 +2409,13 @@ function callAI(prompt, maxTokens) {
         var authHeader = headers['Authorization'] || headers['api-key'] || '';
         
         addLog('api', '启动异步HTTP请求', '认证头: ' + (authHeader ? authHeader.substring(0, 20) + '...' : '无'));
+        addDiagLog('HTTP_START', { authLen: authHeader.length, method: 'POST' });
+        
         window.NovelFS.startAsyncHttp(appState.apiEndpoint, requestBody, authHeader);
         
         // 轮询等待结果
-        var pollInterval = 500; // 每500ms检查一次
-        var maxWait = 180000; // 最长等待3分钟
+        var pollInterval = 500;
+        var maxWait = 180000;
         var elapsed = 0;
         
         var pollTimer = setInterval(function() {
@@ -2413,11 +2426,23 @@ function callAI(prompt, maxTokens) {
             
             var duration = Date.now() - t0;
             var statusCode = window.NovelFS.getLastStatusCode();
+            var responseStr = window.NovelFS.getLastResponse();
+            var errorMsg = window.NovelFS.getLastError();
+            
+            // 诊断日志 - 记录响应
+            addDiagLog('HTTP_RESPONSE', {
+              statusCode: statusCode,
+              durationMs: duration,
+              responseLen: responseStr ? responseStr.length : 0,
+              error: errorMsg || null,
+              responsePreview: responseStr ? responseStr.substring(0, 300) : null
+            });
+            
             addLog('api', 'HTTP请求完成', '状态码: ' + statusCode + ' | 耗时: ' + (duration/1000).toFixed(1) + '秒');
             
             if (statusCode >= 200 && statusCode < 300) {
-              var responseStr = window.NovelFS.getLastResponse();
               if (!responseStr) {
+                addDiagLog('API_ERROR', { error: '响应为空', statusCode: statusCode });
                 reject(new Error('响应为空'));
                 return;
               }
@@ -2425,21 +2450,41 @@ function callAI(prompt, maxTokens) {
               try {
                 var data = JSON.parse(responseStr);
                 var content = data.choices && data.choices[0] ? data.choices[0].message.content : '';
+                var reasoning = data.choices && data.choices[0] ? data.choices[0].message.reasoning_content : '';
+                
+                // 诊断日志 - 记录AI响应详情
+                addDiagLog('AI_RESPONSE', {
+                  contentLen: content ? content.length : 0,
+                  reasoningLen: reasoning ? reasoning.length : 0,
+                  finishReason: data.choices && data.choices[0] ? data.choices[0].finish_reason : 'unknown',
+                  usage: data.usage || null,
+                  contentPreview: content ? content.substring(0, 100) : null
+                });
+                
                 if (!content) {
+                  if (reasoning && reasoning.length > 10) {
+                    addDiagLog('AI_FALLBACK', { reason: 'content为空，使用reasoning', reasoningLen: reasoning.length });
+                    addLog('success', 'API调用成功(降级)', '使用思考内容: ' + reasoning.length + '字');
+                    resolve(reasoning);
+                    return;
+                  }
+                  addDiagLog('API_ERROR', { error: 'AI返回空内容', data: JSON.stringify(data).substring(0, 200) });
                   reject(new Error('AI返回空内容'));
                   return;
                 }
                 addLog('success', 'API调用成功', '响应长度: ' + content.length + '字');
                 resolve(content);
               } catch(e) {
+                addDiagLog('API_ERROR', { error: 'JSON解析失败', message: e.message, response: responseStr.substring(0, 200) });
                 addLog('error', 'JSON解析失败', responseStr.substring(0, 200));
                 reject(new Error('响应解析失败'));
               }
             } else if (statusCode === -1) {
-              var errorMsg = window.NovelFS.getLastError() || '未知错误';
+              addDiagLog('NETWORK_ERROR', { error: errorMsg, durationMs: duration, endpoint: appState.apiEndpoint });
               addLog('error', '网络错误', errorMsg);
               reject(new Error('网络错误: ' + errorMsg));
             } else {
+              addDiagLog('HTTP_ERROR', { statusCode: statusCode, response: responseStr ? responseStr.substring(0, 200) : null });
               var hint = '';
               if (statusCode === 402) hint = '账户余额不足';
               else if (statusCode === 401) hint = 'API密钥无效';
@@ -2450,10 +2495,10 @@ function callAI(prompt, maxTokens) {
             }
           } else if (elapsed >= maxWait) {
             clearInterval(pollTimer);
+            addDiagLog('TIMEOUT', { elapsedMs: elapsed, maxWaitMs: maxWait });
             addLog('error', '请求超时', '3分钟未响应');
             reject(new Error('请求超时，请检查网络'));
           } else {
-            // 更新进度
             if (elapsed % 5000 === 0) {
               addLog('api', '等待响应中...', (elapsed/1000).toFixed(0) + '秒');
             }
@@ -2461,10 +2506,12 @@ function callAI(prompt, maxTokens) {
         }, pollInterval);
         
       } catch(e) {
+        addDiagLog('EXCEPTION', { error: e.message, stack: e.stack });
         addLog('error', '异步HTTP异常', e.message);
         reject(new Error('请求失败: ' + e.message));
       }
     } else {
+      addDiagLog('ERROR', { error: 'NovelFS不可用', hasNovelFS: !!window.NovelFS });
       addLog('error', '原生HTTP不可用', 'NovelFS.startAsyncHttp不存在');
       reject(new Error('原生HTTP接口不可用'));
     }
@@ -2485,7 +2532,7 @@ function callAI(prompt, maxTokens) {
 // ===== 工具函数 =====
 function escapeHtml(text) {
   if (!text) return '';
-  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // ===== 写作工具系统 =====
@@ -2992,7 +3039,8 @@ function importFromFileSystem() {
     var type = meta.type || '未知';
     var chapters = meta.chapterCount || '?';
     
-    html += '<div class="list-item" style="cursor:pointer;" onclick="importNovel(\'' + dirName + '\')">' +
+    var safeDirName = dirName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    html += '<div class="list-item" style="cursor:pointer;" onclick="importNovel(\'' + safeDirName + '\')">' +
       '<div class="item-icon">📖</div>' +
       '<div class="item-info">' +
         '<div class="item-title">' + escapeHtml(title) + '</div>' +

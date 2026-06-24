@@ -216,7 +216,7 @@ class CharacterProfile:
         
         # 降级循环 (exp 可以为负)
         while self.exp < 0 and self.level > 1:
-            self.exp_to_next = int(self.exp_to_next / 1.5)  # 回退升级时的exp_to_next
+            self.exp_to_next = round(self.exp_to_next / 1.5)  # 回退升级时的exp_to_next
             self.level -= 1
             self.exp += self.exp_to_next
             levels_lost += 1

@@ -1307,17 +1307,18 @@ class NovelAgent:
             if not data:
                 match = re.search(r'\{[\s\S]*\}', response)
                 if match:
+                    s_start = match.start()
                     depth = 0
                     end_idx = -1
-                    for i in range(start, len(response)):
+                    for i in range(s_start, len(response)):
                         if response[i] == '{': depth += 1
-                        elif response[i] == '}': 
+                        elif response[i] == '}':
                             depth -= 1
                             if depth == 0:
                                 end_idx = i + 1
                                 break
-                    if end_idx > start:
-                        json_str = response[start:end_idx]
+                    if end_idx > s_start:
+                        json_str = response[s_start:end_idx]
                         json_str = re.sub(r',\s*}', '}', json_str)
                         json_str = re.sub(r',\s*]', ']', json_str)
                         try:
@@ -1325,7 +1326,7 @@ class NovelAgent:
                         except json.JSONDecodeError:
                             pass
             
-            # Strategy 2: 移除markdown代码块后重试
+            # Strategy 3: 移除markdown代码块后重试
             if not data:
                 cleaned = response.strip()
                 if cleaned.startswith("```json"):
@@ -1788,9 +1789,9 @@ class NovelAgent:
                     self.log(f"[Writer] 第{chapter_num}章末段不完整，尝试补全...")
                     try:
                         # 取最后500字作为上下文，让AI更好地理解语境
-                        context = result[-500:]
+                        last_paragraph = result[-500:]
                         completion = self.ai.chat(
-                            [{"role": "user", "content": f"以下是一段未完成的小说段落，请补充一个自然的收尾（20-60字）：\n{context}"}],
+                            [{"role": "user", "content": f"以下是一段未完成的小说段落，请补充一个自然的收尾（20-60字）：\n{last_paragraph}"}],
                             system="你是作家。续写上面的段落，补充一个自然的收尾。只输出补全文字，不要重复已有内容。",
                             max_tokens=1000
                         )

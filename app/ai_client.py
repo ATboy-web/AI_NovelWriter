@@ -679,9 +679,9 @@ class AIClient:
             "temperature": temperature
         }
         
-        # 添加思考模式参数
+        # 添加思考模式参数（直接展开到payload顶层）
         if thinking_enabled:
-            payload["extra_body"] = {"thinking": {"type": "enabled"}}
+            payload["thinking"] = {"type": "enabled"}
             payload["reasoning_effort"] = reasoning_effort
             # 思考模式下不支持temperature
             payload.pop("temperature", None)

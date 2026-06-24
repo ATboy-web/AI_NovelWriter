@@ -1358,27 +1358,47 @@ function testApiConnection() {
   addLog('api', '测试API连接', endpoint + ' | Model: ' + model);
   statusEl.innerHTML = '<div class="status-bar status-warn">⏳ 正在测试...</div>';
   
-  // 先测试基本网络连通性
-  if (window.NovelFS && window.NovelFS.testConnection) {
-    addLog('api', '测试基本连通性', endpoint.split('/v1')[0]);
-    var testResult = window.NovelFS.testConnection(endpoint.split('/v1')[0]);
-    addLog('api', '连通性测试结果', testResult);
+  // 快速API测试（30秒超时）
+  if (window.NovelFS && window.NovelFS.testApiPost) {
+    var headers = buildApiHeaders(key, endpoint);
+    var authHeader = headers['Authorization'] || headers['api-key'] || '';
     
-    if (testResult.indexOf('ERROR:') === 0) {
-      statusEl.innerHTML = '<div class="status-bar status-err">❌ 网络不通：' + testResult.substring(6) + '</div>';
-      return;
-    }
+    addLog('api', '快速API测试', '开始...');
+    
+    // 在后台线程测试
+    setTimeout(function() {
+      var result = window.NovelFS.testApiPost(endpoint, authHeader);
+      addLog('api', 'API测试结果', result);
+      
+      if (result.indexOf('OK:') === 0) {
+        var parts = result.split(':');
+        var code = parts[1];
+        statusEl.innerHTML = '<div class="status-bar status-ok">✅ API可达！状态码: ' + code + '</div>';
+        appState.apiEndpoint = endpoint;
+        appState.apiKey = key;
+        appState.apiModel = model;
+        appState.apiConfigured = true;
+        saveSettingsToDisk();
+        checkApiReady();
+        addLog('success', 'API连接成功', '模型: ' + model);
+        showToast('API连接成功！');
+      } else {
+        statusEl.innerHTML = '<div class="status-bar status-err">❌ ' + result + '</div>';
+        addLog('error', 'API测试失败', result);
+      }
+    }, 100);
+    return;
   }
   
-  // 使用原生HTTP测试API
+  // 降级：使用原生HTTP测试API
   if (window.NovelFS && window.NovelFS.startAsyncHttp) {
     var headers = buildApiHeaders(key, endpoint);
     var authHeader = headers['Authorization'] || headers['api-key'] || '';
     
     var reqBody = JSON.stringify({
       model: model,
-      messages: [{ role: 'user', content: '你好，请回复"连接成功"' }],
-      max_tokens: 10
+      messages: [{ role: 'user', content: 'hi' }],
+      max_tokens: 5
     });
     
     addLog('api', '使用原生HTTP测试', '');
@@ -2649,59 +2669,65 @@ function executeTool(toolId) {
   else if (toolId === 'outline' || toolId === 'characters') maxTokens = 4000;
   else if (toolId === 'worldview') maxTokens = 3000;
   
-  fetch(appState.apiEndpoint, {
-    method: 'POST',
-    headers: headers,
-    body: JSON.stringify({
-      model: appState.apiModel || 'deepseek-v4-flash',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: maxTokens
-    })
-  })
-  .then(function(r) {
-    r.clone().text().then(function(txt) {
-      diagApiCall('TOOL', toolId, {}, vals, r.status, txt, null, Date.now() - t0);
-    });
-    if (!r.ok) {
-      var hint = '';
-      if (r.status === 402) hint = ' | ⚠️ 账户余额不足，请充值';
-      else if (r.status === 401) hint = ' | API密钥无效';
-      else if (r.status === 404) hint = ' | 端点不存在';
-      throw new Error('HTTP ' + r.status + hint);
-    }
-    return r.json();
-  })
-  .then(function(data) {
-    var content = data.choices && data.choices[0] ? data.choices[0].message.content : '生成失败';
-    var duration = ((Date.now() - t0) / 1000).toFixed(1);
-    
-    addLog('success', config.title + ' 完成', '耗时' + duration + '秒');
-    
-    // 根据工具类型显示不同的操作按钮
-    var actionButtons = '<button class="btn btn-primary" style="font-size:10px;padding:3px 8px;" onclick="copyToolResult()">📋 复制</button>';
-    if (toolId === 'worldview' || toolId === 'characters' || toolId === 'outline') {
-      actionButtons += ' <button class="btn btn-success" style="font-size:10px;padding:3px 8px;" onclick="saveToolToCreation(\'' + toolId + '\')">💾 保存到创作</button>';
-    }
-    
-    resultEl.innerHTML = '<div class="card">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
-        '<h3>📋 生成结果</h3>' +
-        actionButtons +
-      '</div>' +
-      '<textarea id="tool-result-text" class="input-field" style="white-space:pre-wrap;font-size:13px;line-height:1.6;min-height:200px;max-height:400px;overflow-y:auto;">' +
-        escapeHtml(content) +
-      '</textarea>' +
-      '<p style="font-size:10px;color:var(--text-muted);margin-top:6px;">耗时: ' + duration + '秒 | ' + content.length + '字</p>' +
-    '</div>';
-  })
-  .catch(function(e) {
-    addLog('error', config.title + ' 失败', e.message);
-    diagError('executeTool:' + toolId, e);
-    resultEl.innerHTML = '<div class="card" style="border-left:3px solid var(--danger);">' +
-      '<p style="color:var(--danger);">❌ 生成失败: ' + escapeHtml(e.message) + '</p>' +
-      '<p style="font-size:11px;color:var(--text-muted);">请检查API设置和账户余额</p>' +
-    '</div>';
+  var reqBody = JSON.stringify({
+    model: appState.apiModel || 'deepseek-chat',
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: maxTokens
   });
+  
+  // 使用原生HTTP请求
+  if (window.NovelFS && window.NovelFS.startAsyncHttp) {
+    var authHeader = headers['Authorization'] || headers['api-key'] || '';
+    window.NovelFS.startAsyncHttp(appState.apiEndpoint, reqBody, authHeader);
+    
+    var pollTimer = setInterval(function() {
+      if (window.NovelFS.isRequestComplete()) {
+        clearInterval(pollTimer);
+        
+        var statusCode = window.NovelFS.getLastStatusCode();
+        var response = window.NovelFS.getLastResponse();
+        var error = window.NovelFS.getLastError();
+        var duration = ((Date.now() - t0) / 1000).toFixed(1);
+        
+        if (statusCode >= 200 && statusCode < 300 && response) {
+          try {
+            var data = JSON.parse(response);
+            var content = data.choices && data.choices[0] ? data.choices[0].message.content : '生成失败';
+            
+            addLog('success', config.title + ' 完成', '耗时' + duration + '秒');
+            
+            var actionButtons = '<button class="btn btn-primary" style="font-size:10px;padding:3px 8px;" onclick="copyToolResult()">📋 复制</button>';
+            if (toolId === 'worldview' || toolId === 'characters' || toolId === 'outline') {
+              actionButtons += ' <button class="btn btn-success" style="font-size:10px;padding:3px 8px;" onclick="saveToolToCreation(\'' + toolId + '\')">💾 保存到创作</button>';
+            }
+            
+            resultEl.innerHTML = '<div class="card">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+                '<h3>📋 生成结果</h3>' +
+                actionButtons +
+              '</div>' +
+              '<textarea id="tool-result-text" class="input-field" style="white-space:pre-wrap;font-size:13px;line-height:1.6;min-height:200px;max-height:400px;overflow-y:auto;">' +
+                escapeHtml(content) +
+              '</textarea>' +
+              '<p style="font-size:10px;color:var(--text-muted);margin-top:6px;">耗时: ' + duration + '秒 | ' + content.length + '字</p>' +
+            '</div>';
+          } catch(e) {
+            addLog('error', config.title + ' 失败', 'JSON解析失败');
+            resultEl.innerHTML = '<div class="card" style="border-left:3px solid var(--danger);"><p style="color:var(--danger);">❌ 响应解析失败</p></div>';
+          }
+        } else {
+          var hint = error || '未知错误';
+          addLog('error', config.title + ' 失败', hint);
+          resultEl.innerHTML = '<div class="card" style="border-left:3px solid var(--danger);">' +
+            '<p style="color:var(--danger);">❌ 生成失败: ' + escapeHtml(hint) + '</p>' +
+            '<p style="font-size:11px;color:var(--text-muted);">请检查API设置和账户余额</p>' +
+          '</div>';
+        }
+      }
+    }, 500);
+  } else {
+    resultEl.innerHTML = '<div class="card" style="border-left:3px solid var(--danger);"><p style="color:var(--danger);">❌ 原生HTTP不可用</p></div>';
+  }
 }
 
 function copyToolResult() {

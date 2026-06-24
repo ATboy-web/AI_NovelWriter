@@ -507,25 +507,75 @@ public class MainActivity extends Activity {
         }
         
         /**
-         * Test network connectivity
-         * Returns: "OK" or error message
+         * Test network connectivity to API endpoint
+         * Returns: "OK:statusCode" or "ERROR:message"
          */
         @JavascriptInterface
         public String testConnection(String urlStr) {
+            HttpURLConnection conn = null;
             try {
                 URL url = new URL(urlStr);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("GET");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(10000);
-                conn.setRequestProperty("User-Agent", "AINovelWriter/2.13.1 Android");
+                conn.setConnectTimeout(8000);  // 8s
+                conn.setReadTimeout(8000);     // 8s
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14)");
+                conn.setInstanceFollowRedirects(false);
                 
                 int code = conn.getResponseCode();
-                conn.disconnect();
                 return "OK:" + code;
+            } catch (java.net.SocketTimeoutException e) {
+                return "ERROR:连接超时(8秒)";
+            } catch (java.net.ConnectException e) {
+                return "ERROR:无法连接: " + e.getMessage();
             } catch (Exception e) {
-                Log.e(TAG, "Test connection failed: " + e.getMessage());
-                return "ERROR:" + e.getMessage();
+                return "ERROR:" + e.getClass().getSimpleName() + ": " + e.getMessage();
+            } finally {
+                if (conn != null) try { conn.disconnect(); } catch (Exception e) {}
+            }
+        }
+        
+        /**
+         * Test API with a minimal POST request
+         * Returns response or error
+         */
+        @JavascriptInterface
+        public String testApiPost(String urlStr, String authHeader) {
+            HttpURLConnection conn = null;
+            try {
+                URL url = new URL(urlStr);
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Accept", "application/json");
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14)");
+                if (authHeader != null && !authHeader.isEmpty()) {
+                    conn.setRequestProperty("Authorization", authHeader);
+                }
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(30000);
+                
+                // Minimal request body
+                String body = "{\"model\":\"deepseek-chat\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":5}";
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(body.getBytes("UTF-8"));
+                }
+                
+                int code = conn.getResponseCode();
+                StringBuilder response = new StringBuilder();
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(
+                        code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream(), "UTF-8"))) {
+                    String line;
+                    while ((line = br.readLine()) != null) response.append(line);
+                }
+                return "OK:" + code + ":" + response.toString().substring(0, Math.min(200, response.length()));
+            } catch (java.net.SocketTimeoutException e) {
+                return "ERROR:超时";
+            } catch (Exception e) {
+                return "ERROR:" + e.getClass().getSimpleName() + ":" + e.getMessage();
+            } finally {
+                if (conn != null) try { conn.disconnect(); } catch (Exception e) {}
             }
         }
         
@@ -543,35 +593,31 @@ public class MainActivity extends Activity {
             Log.d(TAG, "startAsyncHttp: url=" + urlStr + ", authLen=" + (authHeader != null ? authHeader.length() : 0));
             
             new Thread(() -> {
-                int maxRetries = 3;
+                int maxRetries = 2;
                 
                 for (int attempt = 1; attempt <= maxRetries; attempt++) {
                     HttpURLConnection conn = null;
+                    Thread timeoutThread = null;
                     try {
                         URL url = new URL(urlStr);
                         conn = (HttpURLConnection) url.openConnection();
                         
-                        // For HTTPS, configure SSL
+                        // Configure SSL for HTTPS
                         if (conn instanceof javax.net.ssl.HttpsURLConnection) {
-                            javax.net.ssl.HttpsURLConnection httpsConn = (javax.net.ssl.HttpsURLConnection) conn;
-                            // Use default SSL (don't trust all certs in production)
-                            // Only override if needed
                             try {
-                                // Try to use the system's default SSL context first
                                 javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getInstance("TLSv1.2");
                                 sslContext.init(null, null, new java.security.SecureRandom());
-                                httpsConn.setSSLSocketFactory(sslContext.getSocketFactory());
+                                ((javax.net.ssl.HttpsURLConnection) conn).setSSLSocketFactory(sslContext.getSocketFactory());
                             } catch (Exception sslE) {
-                                Log.w(TAG, "SSL config failed, using defaults: " + sslE.getMessage());
+                                Log.w(TAG, "SSL config failed: " + sslE.getMessage());
                             }
                         }
                         
                         conn.setRequestMethod("POST");
                         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                         conn.setRequestProperty("Accept", "application/json");
-                        conn.setRequestProperty("User-Agent", "AINovelWriter/2.13.1 Android");
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36");
                         conn.setRequestProperty("Connection", "close");
-                        conn.setRequestProperty("Accept-Encoding", "identity");
                         
                         if (authHeader != null && !authHeader.isEmpty()) {
                             conn.setRequestProperty("Authorization", authHeader);
@@ -579,11 +625,11 @@ public class MainActivity extends Activity {
                         
                         conn.setDoOutput(true);
                         conn.setDoInput(true);
-                        conn.setConnectTimeout(30000);  // 30s connect
-                        conn.setReadTimeout(120000);     // 2min read
-                        conn.setInstanceFollowRedirects(true);
+                        conn.setConnectTimeout(10000);  // 10s connect
+                        conn.setReadTimeout(45000);     // 45s read
+                        conn.setInstanceFollowRedirects(false);
                         
-                        Log.d(TAG, "HTTP attempt " + attempt + ": connecting to " + urlStr + "...");
+                        Log.d(TAG, "HTTP attempt " + attempt + ": connecting...");
                         
                         // Write request body
                         try (OutputStream os = conn.getOutputStream()) {
@@ -591,10 +637,24 @@ public class MainActivity extends Activity {
                             os.flush();
                         }
                         
-                        int responseCode = conn.getResponseCode();
-                        Log.d(TAG, "HTTP Response: " + responseCode + " (attempt " + attempt + ")");
+                        // Hard timeout - force disconnect after 60 seconds
+                        final HttpURLConnection connRef = conn;
+                        timeoutThread = new Thread(() -> {
+                            try {
+                                Thread.sleep(60000);
+                                Log.w(TAG, "Hard timeout! Forcing disconnect...");
+                                try { connRef.disconnect(); } catch (Exception e) {}
+                            } catch (InterruptedException e) {
+                                // Expected when request completes
+                            }
+                        });
+                        timeoutThread.setDaemon(true);
+                        timeoutThread.start();
                         
                         // Read response
+                        int responseCode = conn.getResponseCode();
+                        Log.d(TAG, "HTTP Response: " + responseCode);
+                        
                         StringBuilder response = new StringBuilder();
                         try (BufferedReader br = new BufferedReader(
                                 new InputStreamReader(
@@ -616,45 +676,32 @@ public class MainActivity extends Activity {
                         
                     } catch (java.net.SocketTimeoutException e) {
                         Log.e(TAG, "Timeout (attempt " + attempt + "): " + e.getMessage());
-                        lastException = e;
-                        if (attempt == maxRetries) {
-                            lastError = "连接超时，请检查网络或API端点";
-                            lastStatusCode = -1;
-                        } else {
-                            try { Thread.sleep(2000); } catch (InterruptedException ie) { break; }
-                        }
-                    } catch (java.net.ConnectException e) {
-                        Log.e(TAG, "Connect failed (attempt " + attempt + "): " + e.getMessage());
-                        lastException = e;
-                        lastError = "无法连接到服务器: " + e.getMessage();
+                        lastError = "连接超时，请检查网络";
                         lastStatusCode = -1;
-                        break; // Don't retry on connect failure
-                    } catch (java.net.SocketException e) {
-                        Log.e(TAG, "Socket error (attempt " + attempt + "): " + e.getMessage());
-                        lastException = e;
-                        if (attempt == maxRetries) {
-                            lastError = "网络连接被中断: " + e.getMessage();
-                            lastStatusCode = -1;
-                        } else {
-                            try { Thread.sleep(3000); } catch (InterruptedException ie) { break; }
-                        }
+                    } catch (java.net.ConnectException e) {
+                        Log.e(TAG, "Connect failed: " + e.getMessage());
+                        lastError = "无法连接服务器: " + e.getMessage();
+                        lastStatusCode = -1;
+                        break;
                     } catch (Exception e) {
-                        Log.e(TAG, "HTTP error (attempt " + attempt + "): " + e.getClass().getSimpleName() + ": " + e.getMessage());
-                        lastException = e;
-                        if (attempt == maxRetries) {
-                            lastError = e.getMessage();
-                            lastStatusCode = -1;
-                        } else {
-                            try { Thread.sleep(2000); } catch (InterruptedException ie) { break; }
-                        }
+                        Log.e(TAG, "HTTP error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                        lastError = e.getMessage();
+                        lastStatusCode = -1;
                     } finally {
-                        if (conn != null) {
-                            conn.disconnect();
+                        if (timeoutThread != null) {
+                            timeoutThread.interrupt();
                         }
+                        if (conn != null) {
+                            try { conn.disconnect(); } catch (Exception e) {}
+                        }
+                    }
+                    
+                    if (attempt < maxRetries) {
+                        try { Thread.sleep(2000); } catch (InterruptedException e) { break; }
                     }
                 }
                 requestComplete = true;
-                Log.d(TAG, "HTTP request done: status=" + lastStatusCode);
+                Log.d(TAG, "HTTP done: status=" + lastStatusCode);
             }).start();
         }
         

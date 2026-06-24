@@ -162,7 +162,11 @@ class CharacterProfile:
         self.max_hp = data.get("max_hp", 100)
         self.mp = data.get("mp", 50)
         self.max_mp = data.get("max_mp", 50)
-        self.attributes = data.get("attributes", {k: v["value"] for k, v in self.DEFAULT_ATTRIBUTES.items()})
+        self.attributes = data.get("attributes", {})
+        # 确保默认属性存在
+        for attr, info in self.DEFAULT_ATTRIBUTES.items():
+            if attr not in self.attributes:
+                self.attributes[attr] = info["value"]
         self.weapon = data.get("weapon")
         self.armor = data.get("armor")
         self.accessory = data.get("accessory")
@@ -238,7 +242,7 @@ class CharacterProfile:
     
     def _on_level_down(self):
         """降级惩罚"""
-        for attr in self.attributes:
+        for attr in list(self.attributes.keys()):
             loss = random.randint(0, 2)
             self.attributes[attr] = max(self.attributes[attr] - loss, 5)
         self.max_hp = max(self.max_hp - random.randint(10, 30), 100)
@@ -249,9 +253,9 @@ class CharacterProfile:
     
     def _on_level_up(self):
         self.exp_to_next = int(self.exp_to_next * 1.5)
-        for attr in self.attributes:
-            self.attributes[attr] = min(self.attributes[attr] + random.randint(1, 3),
-                                       self.DEFAULT_ATTRIBUTES[attr]["max"])
+        for attr in list(self.attributes.keys()):
+            max_val = self.DEFAULT_ATTRIBUTES.get(attr, {}).get("max", 999)
+            self.attributes[attr] = min(self.attributes[attr] + random.randint(1, 3), max_val)
         self.max_hp += random.randint(20, 50)
         self.max_mp += random.randint(10, 30)
         self.hp = self.max_hp

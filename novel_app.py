@@ -4132,8 +4132,12 @@ class NovelWriterApp(
 
 重要：只输出JSON，不要任何其他文字！"""
 
-            # 截取章节内容（取前2000字分析，减少token消耗）
-            sample = content[:2000] if len(content) > 2000 else content
+            # 采样策略：开头+中间+结尾，覆盖全文角色行为
+            if len(content) > 3000:
+                mid = len(content) // 2
+                sample = content[:1500] + "\n...\n" + content[mid-500:mid+500] + "\n...\n" + content[-1000:]
+            else:
+                sample = content
             
             # 重试机制（增加到3次）
             response = None
@@ -4851,10 +4855,10 @@ class NovelWriterApp(
                                 break
                             except Exception as te:
                                 err_msg = str(te).lower()
-                                # 更全面的超时判断
+                                # 超时判断（只匹配明确的超时错误）
                                 is_timeout = any(kw in err_msg for kw in [
-                                    "time", "timeout", "timed out", "deadline",
-                                    "connect", "read", "write", "reset"
+                                    "timeout", "timed out", "deadline exceeded",
+                                    "request timed out", "connection timed out"
                                 ])
                                 if is_timeout and attempt < 2:
                                     wait_time = (attempt + 1) * 5  # 指数退避: 5s, 10s
@@ -4866,32 +4870,37 @@ class NovelWriterApp(
                         # 🛡️ 原子写入章节（防止断电损坏）
                         chapter_file = chapters_dir / f"chapter_{ch_num:04d}.txt"
                         self._atomic_write(chapter_file, content)
-
-                        # 定稿
-                        self.agent.finalize_chapter(ch_num, content)
                         
-                        # 自动检测决策点（记录到主世界线）
-                        self._auto_detect_decisions(ch_num, content)
-                        
-                        # 自动检测新角色
-                        self._auto_detect_characters(ch_num, content)
-                        
-                        # 角色EXP奖励
-                        self._award_chapter_exp(ch_num, content)
-                        
-                        # 名场面检测 (auto-generate)
-                        if self.config.get("auto_detect_scene", True):
-                            self._detect_and_prompt_image(content, ch_num)
-
-                        # 更新UI（第一章立即显示，之后每5章显示）
+                        # 章节写入成功即为成功
+                        generated += 1
                         batch_count += 1
+                        
+                        # 更新UI（第一章立即显示，之后每5章显示）
                         if generated == 1 or batch_count % 5 == 0 or ch_num == total:
                             self.root.after(0, lambda c=content, n=ch_num, t=chapter_info.get("title", ""): self._display_chapter(n, t, c))
-                            self._log(f"第{ch_num}章创作完成 (进度: {generated+1}/{total-skipped}, 全书: {ch_num}/{display_total})")
+                            self._log(f"第{ch_num}章创作完成 (进度: {generated}/{total-skipped}, 全书: {ch_num}/{display_total})")
                         else:
                             self._log(f"第{ch_num}章创作完成")
                         
-                        generated += 1
+                        # 后处理（单独try-except，不影响成功计数）
+                        try:
+                            # 定稿
+                            self.agent.finalize_chapter(ch_num, content)
+                            
+                            # 自动检测决策点
+                            self._auto_detect_decisions(ch_num, content)
+                            
+                            # 自动检测新角色
+                            self._auto_detect_characters(ch_num, content)
+                            
+                            # 角色EXP奖励
+                            self._award_chapter_exp(ch_num, content)
+                            
+                            # 名场面检测
+                            if self.config.get("auto_detect_scene", True):
+                                self._detect_and_prompt_image(content, ch_num)
+                        except Exception as post_err:
+                            self._log(f"[后处理] 第{ch_num}章部分后处理失败: {post_err}")
                         
                         # 每10章释放一次内存 + 保存快照
                         if generated % 10 == 0:

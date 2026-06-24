@@ -660,6 +660,18 @@ class NovelAgent:
 3. 修改时注意不要破坏整体的连贯性
 4. 回应每一个具体问题"""
         
+        # 计算需要的token数（中文约2 tokens/字，需要输出完整章节）
+        original_len = len(original)
+        # 修订需要输出完整章节，所以max_tokens要足够大
+        needed_tokens = max(8192, int(original_len * 2.5))
+        
+        # 采样策略：开头2000 + 中间1000 + 结尾2000，让AI了解全文结构
+        if original_len > 5000:
+            mid = original_len // 2
+            original_sample = original[:2000] + "\n...(中间省略)...\n" + original[mid-500:mid+500] + "\n...(省略)...\n" + original[-2000:]
+        else:
+            original_sample = original
+        
         prompt = f"""请修订第{chapter_num}章内容。
 
 审校反馈：
@@ -667,12 +679,22 @@ class NovelAgent:
 问题（需修改）：{json.dumps(issues, ensure_ascii=False)}
 建议（参考）：{json.dumps(suggestions, ensure_ascii=False)}
 
-原文：
-{original[-4000:] if len(original) > 4000 else original}
+原文（共{original_len}字）：
+{original_sample}
 
-修订要求：请输出完整的修订后文本，直接输出正文："""
+修订要求：
+1. 输出完整的修订后文本（不少于{original_len}字）
+2. 针对审校反馈的问题进行修改
+3. 保持原文的优点和情节连贯性
+4. 直接输出正文，不要输出分析过程："""
         
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4096)
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=needed_tokens)
+        
+        # 如果修订后字数明显变短，可能是AI截断了，返回原文
+        if response and len(response) < original_len * 0.5:
+            self.log(f"[Writer] 修订后字数({len(response)})过短，保留原文({original_len}字)")
+            return original
+        
         self.log(f"[Writer] 修订完成，字数：{len(response) if response else 0}")
         return response or original
     

@@ -4078,7 +4078,7 @@ class NovelWriterApp(
                     self._log(f"[角色EXP] 第{attempt+1}次调用AI...")
                     response = self.ai_client.chat(
                         [{"role": "user", "content": simple_prompt}],
-                        system=system_prompt, max_tokens=600
+                        system=system_prompt, max_tokens=1500
                     )
                     
                     # 详细日志

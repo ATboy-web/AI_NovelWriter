@@ -491,7 +491,8 @@ class AIClient:
             
             # 记录空响应（帮助调试）
             if not result or len(result.strip()) == 0:
-                self._log(f"[提示] AI服务响应较慢，可能需要等待 (model={model}, latency={latency:.1f}s)")
+                self._log(f"[提示] AI服务返回空响应 (model={model}, latency={latency:.1f}s)")
+                raise Exception(f"AI服务返回空响应 (model={model})")
             
             return result
             
@@ -602,7 +603,23 @@ class AIClient:
         choices = result.get("choices", [])
         if not choices:
             raise Exception(f"OpenAI兼容API返回无choices: {json.dumps(result, ensure_ascii=False)[:200]}")
-        return choices[0].get("message", {}).get("content", "")
+        
+        message = choices[0].get("message", {})
+        content = message.get("content", "")
+        reasoning = message.get("reasoning_content", "")
+        
+        # 如果有思考内容，记录到日志
+        if reasoning:
+            self._log_thinking(reasoning)
+        
+        # 如果content为空但reasoning有内容（DeepSeek思考模式），使用reasoning
+        if not content or len(content.strip()) == 0:
+            if reasoning and len(reasoning.strip()) > 10:
+                self._log(f"[提示] content为空，使用reasoning_content作为结果 (len={len(reasoning)})")
+                return reasoning
+            raise Exception(f"OpenAI兼容API返回空内容: {json.dumps(result, ensure_ascii=False)[:200]}")
+        
+        return content
     
     def _chat_ollama(self, messages, system, model, max_tokens, temperature) -> str:
         full_messages = [{"role": "system", "content": system}] if system else []
@@ -648,6 +665,10 @@ class AIClient:
         full_messages = [{"role": "system", "content": system}] if system else []
         full_messages.extend(messages)
         
+        # 小请求禁用思考模式（避免token被思考过程耗尽）
+        if max_tokens < 1000:
+            thinking_enabled = False
+        
         payload = {
             "model": model,
             "messages": full_messages,
@@ -674,11 +695,18 @@ class AIClient:
         
         message = choices[0].get("message", {})
         content = message.get("content", "")
+        reasoning = message.get("reasoning_content", "")
         
         # 如果有思考内容，记录到日志
-        reasoning = message.get("reasoning_content")
         if reasoning:
             self._log_thinking(reasoning)
+        
+        # 如果content为空但reasoning有内容，使用reasoning作为结果
+        if not content or len(content.strip()) == 0:
+            if reasoning and len(reasoning.strip()) > 10:
+                self._log(f"[提示] content为空，使用reasoning_content作为结果")
+                return reasoning
+            raise Exception(f"DeepSeek返回空内容: {json.dumps(result, ensure_ascii=False)[:200]}")
         
         return content
     

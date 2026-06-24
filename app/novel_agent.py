@@ -446,12 +446,31 @@ class NovelAgent:
         system = "你是专业情节设计师。分析章节大纲，输出JSON: {\"type\": \"opening/writing/action/dialogue/ending\", \"pace\": \"slow/medium/fast\", \"foreshadowing\": []}"
         prompt = f"第{chapter_num}章: {title}\n大纲: {outline[:500]}"
         try:
-            response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=300)
+            response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=1000)
             if response:
                 import re
-                match = re.search(r'\{[\s\S]*\}', response)
+                # 尝试提取JSON对象（非贪婪匹配）
+                match = re.search(r'\{[^{}]*\}', response)
                 if match:
-                    return json.loads(match.group())
+                    try:
+                        return json.loads(match.group())
+                    except json.JSONDecodeError:
+                        # 如果非贪婪匹配失败，尝试贪婪匹配
+                        match = re.search(r'\{[\s\S]*\}', response)
+                        if match:
+                            json_str = match.group()
+                            # 移除JSON后面的多余内容
+                            depth = 0
+                            end_idx = 0
+                            for i, c in enumerate(json_str):
+                                if c == '{': depth += 1
+                                elif c == '}': 
+                                    depth -= 1
+                                    if depth == 0:
+                                        end_idx = i + 1
+                                        break
+                            if end_idx > 0:
+                                return json.loads(json_str[:end_idx])
         except Exception as e:
             self.log(f"[PlotDesigner] 分析失败: {e}")
         return {"type": "writing", "pace": "medium", "foreshadowing": []}
@@ -1197,17 +1216,38 @@ class NovelAgent:
             import re
             data = None
             
-            # Strategy 1: 直接正则提取JSON
-            match = re.search(r'\{[\s\S]*\}', response)
+            # Strategy 1: 直接正则提取JSON（非贪婪匹配）
+            match = re.search(r'\{[^{}]*\}', response)
             if match:
                 json_str = match.group()
-                # 修复常见JSON错误
                 json_str = re.sub(r',\s*}', '}', json_str)
                 json_str = re.sub(r',\s*]', ']', json_str)
                 try:
                     data = json.loads(json_str)
                 except json.JSONDecodeError:
                     pass
+            
+            # Strategy 1b: 如果非贪婪匹配失败，使用括号深度追踪
+            if not data:
+                start = response.find('{')
+                if start >= 0:
+                    depth = 0
+                    end_idx = -1
+                    for i in range(start, len(response)):
+                        if response[i] == '{': depth += 1
+                        elif response[i] == '}': 
+                            depth -= 1
+                            if depth == 0:
+                                end_idx = i + 1
+                                break
+                    if end_idx > start:
+                        json_str = response[start:end_idx]
+                        json_str = re.sub(r',\s*}', '}', json_str)
+                        json_str = re.sub(r',\s*]', ']', json_str)
+                        try:
+                            data = json.loads(json_str)
+                        except json.JSONDecodeError:
+                            pass
             
             # Strategy 2: 移除markdown代码块后重试
             if not data:

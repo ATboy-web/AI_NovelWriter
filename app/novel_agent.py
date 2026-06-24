@@ -1342,8 +1342,39 @@ class NovelAgent:
                     except json.JSONDecodeError:
                         pass
             
+            # Strategy 4: 逐字段提取（处理AI返回思考文本+JSON混合的情况）
+            if not data:
+                try:
+                    # 提取 "updates" 数组内容
+                    updates_match = re.search(r'"updates"\s*:\s*\[([\s\S]*?)\]', response)
+                    if updates_match:
+                        updates_str = updates_match.group(1)
+                        # 提取每个 {name:..., change:..., reason:...} 对象
+                        update_items = re.finditer(r'\{[^{}]*"name"\s*:\s*"([^"]*)"[^{}]*\}', updates_str)
+                        updates = []
+                        for m in update_items:
+                            obj_str = m.group(0)
+                            name = re.search(r'"name"\s*:\s*"([^"]*)"', obj_str)
+                            change = re.search(r'"change"\s*:\s*"([^"]*)"', obj_str)
+                            reason = re.search(r'"reason"\s*:\s*"([^"]*)"', obj_str)
+                            if name:
+                                updates.append({
+                                    "name": name.group(1),
+                                    "change": change.group(1) if change else "",
+                                    "reason": reason.group(1) if reason else ""
+                                })
+                        if updates:
+                            data = {"updates": updates}
+                except Exception:
+                    pass
+            
             if not data:
                 self.log(f"[角色成长] JSON解析失败，跳过本章")
+                _diag.log("WARN", "character_growth_parse_failed", {
+                    "chapter": chapter_num,
+                    "response_preview": response[:200] if response else "null",
+                    "response_len": len(response) if response else 0
+                })
                 return
             
             # 保存到记忆

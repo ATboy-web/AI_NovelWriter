@@ -20,7 +20,8 @@ def _safe_import(module_name: str, class_name: str):
 
 # 核心模块（必须可用）
 from .config import AppConfig
-from .ai_client import AIClient
+from .ai_client import AIClient, token_stats
+from .writing_skills import writing_skill_manager
 
 # 可选/条件导入的模块
 ImageGenerator = _safe_import("app.image_generator", "ImageGenerator")
@@ -34,7 +35,9 @@ UIStyle = _safe_import("app.ui_style", "UIStyle")
 
 __all__ = [
     "AppConfig",
-    "AIClient", 
+    "AIClient",
+    "token_stats",
+    "writing_skill_manager",
     "ImageGenerator",
     "SceneDetector",
     "MemoryManager",

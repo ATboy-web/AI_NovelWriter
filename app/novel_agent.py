@@ -147,6 +147,50 @@ class NovelAgent:
         
         self.log("[智能体] Hello-Agents架构 v3.0: 5Agent+工具系统+动态上下文+标准协议")
     
+    def _get_writing_style_prompt(self) -> str:
+        """获取写作风格提示词（基于写作技能模块的配置）"""
+        try:
+            from app.writing_skills import writing_skill_manager
+            config = writing_skill_manager.style_config
+            
+            style_parts = []
+            
+            # 描写细腻度
+            if config.descriptiveness >= 8:
+                style_parts.append("描写要华丽细腻，注重细节和感官描写")
+            elif config.descriptiveness <= 3:
+                style_parts.append("描写要简洁有力，避免过多修饰")
+            
+            # 对话比例
+            if config.dialogue_ratio >= 8:
+                style_parts.append("以对话驱动情节，对话占比要高")
+            elif config.dialogue_ratio <= 3:
+                style_parts.append("以叙述为主，减少对话比例")
+            
+            # 节奏
+            if config.pacing >= 8:
+                style_parts.append("节奏要快，情节紧凑，减少铺垫")
+            elif config.pacing <= 3:
+                style_parts.append("节奏要慢，注重氛围营造和心理描写")
+            
+            # 情感深度
+            if config.emotional_depth >= 8:
+                style_parts.append("深入描写角色内心世界和情感变化")
+            elif config.emotional_depth <= 3:
+                style_parts.append("情感描写要克制，点到为止")
+            
+            # 动作强度
+            if config.action_intensity >= 8:
+                style_parts.append("战斗场面要激烈热血，动作描写要有冲击力")
+            elif config.action_intensity <= 3:
+                style_parts.append("战斗场面要简洁，避免过度暴力描写")
+            
+            if style_parts:
+                return "、".join(style_parts) + "。"
+            return ""
+        except Exception:
+            return ""
+    
     def _register_tools(self):
         """注册标准化工具"""
         self.tools.register(Tool("detect_scenes", "检测名场面",
@@ -164,6 +208,38 @@ class NovelAgent:
         self.tools.register(Tool("get_outline", "获取章节大纲",
             lambda chapter_num=0: self.memory.get_meta("outline", {}).get(str(chapter_num), "无"),
             category="general"))
+        # 写作技能工具
+        self.tools.register(Tool("check_ai_slop", "检查AI写作痕迹",
+            lambda content="": self._call_anti_slop_check(content),
+            category="reviewer"))
+        self.tools.register(Tool("get_kg_context", "获取知识图谱上下文",
+            lambda character=None: self._get_knowledge_graph_context(character),
+            category="writer"))
+    
+    def _call_anti_slop_check(self, content: str) -> list:
+        """调用写作技能进行去AI味检查"""
+        try:
+            from app.writing_skills import writing_skill_manager
+            issues = writing_skill_manager.anti_slop.check_text(content)
+            
+            # 收集所有问题
+            all_issues = []
+            for issue_type, issue_list in issues.items():
+                if issue_list and issue_type != "suggestions":
+                    all_issues.extend(issue_list[:3])  # 每类最多3个
+            
+            return all_issues
+        except Exception as e:
+            self.log(f"[写作技能] 去AI味检查失败: {e}")
+            return []
+    
+    def _get_knowledge_graph_context(self, character: str = None) -> str:
+        """从知识图谱获取上下文"""
+        try:
+            from app.writing_skills import writing_skill_manager
+            return writing_skill_manager.knowledge_graph.to_context_string(character)
+        except Exception:
+            return ""
     
     def _record_conversation(self, agent: str, action: str, content: str):
         """记录智能体对话 - 使用标准AgentMessage协议"""
@@ -249,6 +325,17 @@ class NovelAgent:
                 text = self._compress_text(rag_text, min(int(max_chars * ratio["rag"]), max_chars - used), keep_tail=False)
                 if text and len(text) > 20:
                     parts.append(f"【相关记忆】\n{text}")
+        
+        # 写作技能上下文（知识图谱、写作技巧）
+        try:
+            from app.writing_skills import writing_skill_manager
+            skills_context = writing_skill_manager.get_writing_context()
+            if skills_context and len(skills_context) > 20:
+                text = self._compress_text(skills_context, min(500, max_chars - used), keep_tail=False)
+                if text:
+                    parts.append(f"【写作参考】\n{text}")
+        except Exception:
+            pass
         
         # 🔧 修复: ContextOptimizer.optimize 接口不匹配导致上下文被静默丢弃
         # 原代码: ContextOptimizer.optimize({"内容": ...}) 只接受 "内容" 键
@@ -405,6 +492,13 @@ class NovelAgent:
             # 工具调用: 一致性检查
             self.tools.call("check_consistency", content=content[:500])
             
+            # 调用写作技能: 去AI味检查
+            slop_issues = self._call_anti_slop_check(content)
+            if slop_issues:
+                review.setdefault("issues", []).extend(slop_issues)
+                review["overall_score"] = max(0, review.get("overall_score", 70) - len(slop_issues) * 2)
+                self.log(f"[写作技能] 发现{len(slop_issues)}个AI写作痕迹，扣分")
+            
             self.log(f"[Editor] 质量裁定：{review.get('overall_score', 0)}分")
             self._record_conversation("Editor", "judge", 
                 f"评分{review.get('overall_score', 0)}，阈值{self.QUALITY_THRESHOLD}")
@@ -509,6 +603,9 @@ class NovelAgent:
 {context}
 {protagonist_hint}
 
+【写作风格要求】
+{self._get_writing_style_prompt()}
+
 【正向要求 - 你必须做到】
 1. 【最重要】必须紧接前一章结尾继续，保持时间、地点、情节的绝对连贯！
 2. 角色行为符合其性格设定，保持人物形象一致
@@ -531,7 +628,14 @@ class NovelAgent:
 7. 禁止突然跳出故事视角（如"读者可能会想"）
 8. 禁止使用过多的"的"、"了"、"着"等助词堆砌
 9. 禁止对话过于书面化，要口语化、自然
-10. 禁止场景转换生硬，要有过渡"""
+10. 禁止场景转换生硬，要有过渡
+
+【AI写作痕迹禁止 - 必须避免】
+1. 禁止以"在这个世界上"、"在这个时代"等开头
+2. 禁止过度使用"然而"、"不过"、"尽管如此"等过渡词
+3. 禁止以"故事才刚刚开始"、"命运的齿轮开始转动"等结尾
+4. 禁止形容词堆砌（如"美丽动人可爱"）
+5. 要用具体动作和细节展示，不要直接告诉读者"""
         
         # 直接使用传入的前一章结尾（从generate_with_collaboration提取，未被压缩）
         if not prev_ending and "【前一章" in str(context):
@@ -548,7 +652,9 @@ class NovelAgent:
         if word_count > 3000:
             return self._generate_long_chapter(chapter_num, chapter_title, chapter_outline, word_count, context, prev_ending)
         
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4096)
+        # 动态计算max_tokens：中文约2 tokens/字，预留足够空间
+        max_tokens = max(word_count * 2, 8192)
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=max_tokens)
         self.log(f"[Writer] 第{chapter_num}章初稿完成，字数：{len(response) if response else 0}")
         return response or ""
     
@@ -592,6 +698,13 @@ class NovelAgent:
 7. 是否有明显的错别字或语病
 8. 是否有过于冗长、拖沓的段落
 
+【AI写作痕迹检查 - 必须扣分】
+1. 是否以"在这个世界上"、"在这个时代"等开头
+2. 是否过度使用"然而"、"不过"、"尽管如此"等过渡词
+3. 是否以"故事才刚刚开始"、"命运的齿轮开始转动"等结尾
+4. 是否有形容词堆砌（如"美丽动人可爱"）
+5. 是否有AI式的元叙述（如"读者可能会想"）
+
 请以JSON格式输出审校结果：
 {{
     "character_consistency": 0-100,  // 角色行为一致性
@@ -618,7 +731,7 @@ class NovelAgent:
             sample = content
         
         prompt = f"请审校第{chapter_num}章内容：\n\n{sample}"
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
         
         try:
             return self._parse_json_response(response or "{}", {"overall_score": 70, "issues": [], "suggestions": []})
@@ -865,9 +978,11 @@ class NovelAgent:
     "attributes": {{
       "力量": 随机值,
       "敏捷": 随机值,
+      "体质": 随机值,
       "智力": 随机值,
-      "体力": 随机值,
-      "魅力": 随机值
+      "精神": 随机值,
+      "魅力": 随机值,
+      "幸运": 随机值
     }},
     "relationship_to_main": "与主角的关系",
     "goal": "单一字符串，表示角色核心目标（如：成为最强武者），禁止使用数组！"
@@ -1209,6 +1324,20 @@ class NovelAgent:
             self._update_character_progression(chapter_num, content, summary)
         except Exception as e:
             self.log(f"[定稿] 角色变化检测失败: {e}")
+        
+        # 写作技能学习（从成功章节中学习）
+        try:
+            from app.writing_skills import writing_skill_manager
+            # 提取角色名
+            chars = list(self.memory.get_characters().keys())[:10]
+            writing_skill_manager.learn_from_chapter(content, chapter_num, chars, success=True)
+            # 更新知识图谱
+            for char_name in chars:
+                if char_name not in writing_skill_manager.knowledge_graph.entities:
+                    writing_skill_manager.knowledge_graph.add_entity(char_name, "character")
+            self.log(f"[写作技能] 已学习第{chapter_num}章模式")
+        except Exception as e:
+            self.log(f"[写作技能] 学习失败: {e}")
         
         self.log(f"[智能体] 第{chapter_num}章定稿完成")
     

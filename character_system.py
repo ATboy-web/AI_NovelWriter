@@ -546,9 +546,11 @@ class CharacterSystem:
         return False
     
     def save_character(self, name: str = None):
+        import re
         name = name or self.active_name
         if name and name in self.characters and self.save_dir:
-            f = self.save_dir / f"{name}.json"
+            safe_name = re.sub(r'[<>:"/\\|?*]', '_', name)
+            f = self.save_dir / f"{safe_name}.json"
             with open(f, 'w', encoding='utf-8') as fp:
                 json.dump(self.characters[name].to_dict(), fp, indent=2, ensure_ascii=False)
     

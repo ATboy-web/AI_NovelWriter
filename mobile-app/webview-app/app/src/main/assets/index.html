@@ -2433,7 +2433,7 @@ function callAI(prompt, maxTokens) {
         
         // 轮询等待结果
         var pollInterval = 500;
-        var maxWait = 180000;
+        var maxWait = 300000;  // 5分钟超时（匹配OkHttp readTimeout）
         var elapsed = 0;
         
         var pollTimer = setInterval(function() {
@@ -2470,19 +2470,29 @@ function callAI(prompt, maxTokens) {
                 var content = data.choices && data.choices[0] ? data.choices[0].message.content : '';
                 var reasoning = data.choices && data.choices[0] ? data.choices[0].message.reasoning_content : '';
                 
+                // 提取Token使用量
+                var usage = data.usage || {};
+                var promptTokens = usage.prompt_tokens || 0;
+                var completionTokens = usage.completion_tokens || 0;
+                var totalTokens = usage.total_tokens || (promptTokens + completionTokens);
+                
+                // 累计Token消耗
+                if (!window._totalTokens) window._totalTokens = 0;
+                window._totalTokens += totalTokens;
+                
                 // 诊断日志 - 记录AI响应详情
                 addDiagLog('AI_RESPONSE', {
                   contentLen: content ? content.length : 0,
                   reasoningLen: reasoning ? reasoning.length : 0,
                   finishReason: data.choices && data.choices[0] ? data.choices[0].finish_reason : 'unknown',
-                  usage: data.usage || null,
+                  usage: usage,
                   contentPreview: content ? content.substring(0, 100) : null
                 });
                 
                 if (!content) {
                   if (reasoning && reasoning.length > 10) {
                     addDiagLog('AI_FALLBACK', { reason: 'content为空，使用reasoning', reasoningLen: reasoning.length });
-                    addLog('success', 'API调用成功(降级)', '使用思考内容: ' + reasoning.length + '字');
+                    addLog('success', 'API调用成功(降级)', '使用思考内容: ' + reasoning.length + '字 | Token: ' + totalTokens + '(累计:' + window._totalTokens + ')');
                     resolve(reasoning);
                     return;
                   }
@@ -2490,7 +2500,7 @@ function callAI(prompt, maxTokens) {
                   reject(new Error('AI返回空内容'));
                   return;
                 }
-                addLog('success', 'API调用成功', '响应长度: ' + content.length + '字');
+                addLog('success', 'API调用成功', '响应长度: ' + content.length + '字 | Token: ' + totalTokens + '(累计:' + window._totalTokens + ')');
                 resolve(content);
               } catch(e) {
                 addDiagLog('API_ERROR', { error: 'JSON解析失败', message: e.message, response: responseStr.substring(0, 200) });

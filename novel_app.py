@@ -51,11 +51,12 @@ from app.character_manager import CharacterManagerMixin
 from app.settings_manager import SettingsManagerMixin
 from app.note_manager_ui import NoteManagerMixin
 from app.reader_manager import ReaderManagerMixin
+from app.writing_skills_panel import WritingSkillsPanelMixin
 
 
 class NovelWriterApp(
     UIManagerMixin, CharacterManagerMixin, SettingsManagerMixin,
-    NoteManagerMixin, ReaderManagerMixin,
+    NoteManagerMixin, ReaderManagerMixin, WritingSkillsPanelMixin,
     ElementsPanelMixin, BridgesPanelMixin, DescriptionsPanelMixin,
     DialoguePanelMixin, StoryFlowPanelMixin, StylePanelMixin,
     AdaptPanelMixin, WebSearchPanelMixin, MemoryVizPanelMixin,
@@ -717,6 +718,11 @@ class NovelWriterApp(
         
         # 阅读管理器内容
         self._build_reader_ui(reader_frame)
+        
+        # === 写作技能页 ===
+        writing_skills_frame = tk.Frame(self.notebook, bg=C['bg_dark'])
+        self.notebook.add(writing_skills_frame, text=" 写作技能 ")
+        self._create_writing_skills_panel(writing_skills_frame)
     
     def _build_reader_ui(self, parent):
         """构建阅读管理器界面"""
@@ -1233,7 +1239,10 @@ class NovelWriterApp(
         for name, info in chars.items():
             if isinstance(info, dict):
                 char_data = {"name": name, **info}
-                with open(chars_dir / f"{name}.json", 'w', encoding='utf-8') as f:
+                # 文件名安全处理
+                import re
+                safe_name = re.sub(r'[<>:"/\\|?*]', '_', name)
+                with open(chars_dir / f"{safe_name}.json", 'w', encoding='utf-8') as f:
                     json.dump(char_data, f, indent=2, ensure_ascii=False)
                 count += 1
         if count > 0:
@@ -1245,10 +1254,15 @@ class NovelWriterApp(
             provider = self.config.get("api_provider", "ollama")
             model = self.config.get("model", "")
             img_status = " + 文生图" if self.image_gen.is_configured() else ""
-            text = f"{provider}/{model}{img_status}"
+            
+            # Token消耗统计
+            from app.ai_client import token_stats
+            token_display = token_stats.get_display()
+            
+            text = f"{provider}/{model}{img_status} | {token_display}"
             self.status_indicator.config(text=text, fg='#10b981')
             if hasattr(self, 'ai_status_label'):
-                self.ai_status_label.config(text=text, fg=C['success'] if hasattr(self, 'C') else '#10b981')
+                self.ai_status_label.config(text=text, fg=UIStyle.COLORS.get('success', '#10b981'))
         else:
             self.status_indicator.config(text="未配置AI", fg='#ffd700')
             if hasattr(self, 'ai_status_label'):
@@ -1829,20 +1843,6 @@ class NovelWriterApp(
         
         # 🛡️ 检查是否有未完成的生成任务（断电恢复）
         self._check_recovery()
-        
-        # 切换到章节内容标签页
-        try:
-            for i in range(self.notebook.index("end")):
-                tab_text = self.notebook.tab(i, "text").strip()
-                if tab_text == "章节内容":
-                    self.notebook.select(i)
-                    self._log(f"已切换到标签页: {tab_text}")
-                    break
-        except Exception as e:
-            self._log(f"切换标签页失败: {e}")
-        
-        self._sync_characters_from_memory()
-        self._log(f"已打开小说《{meta.get('title', '未知')}》")
         
         # 显示进度提示
         if total_chapters and completed_chapters > 0:
@@ -3874,6 +3874,7 @@ class NovelWriterApp(
     def _stop_generate(self):
         """停止自动创作"""
         self._auto_running = False
+        self._stop_flag = True
         self._log("已请求停止自动创作，正在完成当前章节...")
     
     def _auto_detect_decisions(self, chapter_num: int, content: str):
@@ -4333,6 +4334,44 @@ class NovelWriterApp(
                 "exp": int(m.group(3)),
                 "detail": m.group(4)
             }
+        
+        # Strategy 4: 处理截断的JSON（AI响应被截断的情况）
+        if not result:
+            # 尝试提取部分数据：{"角色名": {"action": "行为", "exp": 数值, "detail": ...
+            partial_pattern = r'"([^"]+)"\s*:\s*\{\s*"action"\s*:\s*"([^"]*)"[^}]*"exp"\s*:\s*(-?\d+)'
+            for m in re.finditer(partial_pattern, response):
+                result[m.group(1)] = {
+                    "action": m.group(2),
+                    "exp": int(m.group(3)),
+                    "detail": ""
+                }
+        
+        # Strategy 5: 尝试补全截断的JSON后解析
+        if not result and response.strip().startswith('{'):
+            # 尝试补全JSON
+            truncated = response.strip()
+            # 计算缺少的闭合括号
+            open_braces = truncated.count('{') - truncated.count('}')
+            open_brackets = truncated.count('[') - truncated.count(']')
+            # 补全
+            completed = truncated
+            if not completed.endswith('"'):
+                completed += '"'
+            completed += '}' * open_braces + ']' * open_brackets
+            try:
+                data = json.loads(completed)
+                if isinstance(data, dict):
+                    # 验证数据格式
+                    for key, val in data.items():
+                        if isinstance(val, dict) and 'exp' in val:
+                            result[key] = {
+                                "action": val.get("action", ""),
+                                "exp": int(val.get("exp", 0)),
+                                "detail": val.get("detail", "")
+                            }
+            except (json.JSONDecodeError, ValueError):
+                pass
+        
         return result
     
     def _regen_current_chapter(self):

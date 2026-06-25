@@ -8,6 +8,7 @@ AI客户端模块 v2.0 - 生产级AI服务接口
 - 性能监控
 - 流式输出支持
 - 专业创作框架
+- Token消耗统计
 """
 
 import time
@@ -15,6 +16,7 @@ import threading
 import json
 from typing import Dict, List, Optional, Callable, Any
 from functools import wraps
+from dataclasses import dataclass, field
 
 import httpx
 
@@ -26,6 +28,46 @@ try:
     _diag_logger = get_logger()
 except Exception:
     _diag_logger = None
+
+
+@dataclass
+class TokenStats:
+    """Token消耗统计"""
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    total_tokens: int = 0
+    request_count: int = 0
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    
+    def record(self, prompt_tokens: int, completion_tokens: int):
+        with self._lock:
+            self.total_prompt_tokens += prompt_tokens
+            self.total_completion_tokens += completion_tokens
+            self.total_tokens += (prompt_tokens + completion_tokens)
+            self.request_count += 1
+    
+    def get_summary(self) -> Dict:
+        with self._lock:
+            return {
+                "total_tokens": self.total_tokens,
+                "prompt_tokens": self.total_prompt_tokens,
+                "completion_tokens": self.total_completion_tokens,
+                "request_count": self.request_count
+            }
+    
+    def get_display(self) -> str:
+        """返回用户友好的显示文本"""
+        with self._lock:
+            if self.total_tokens >= 1000000:
+                return f"{self.total_tokens/1000000:.1f}M tokens ({self.request_count}次调用)"
+            elif self.total_tokens >= 1000:
+                return f"{self.total_tokens/1000:.1f}K tokens ({self.request_count}次调用)"
+            else:
+                return f"{self.total_tokens} tokens ({self.request_count}次调用)"
+
+
+# 全局Token统计实例
+token_stats = TokenStats()
 
 
 def retry_with_backoff(max_retries=3, base_delay=1, max_delay=30):
@@ -608,6 +650,15 @@ class AIClient:
         content = message.get("content", "")
         reasoning = message.get("reasoning_content", "")
         finish_reason = choices[0].get("finish_reason", "")
+        
+        # 记录Token使用量
+        usage = result.get("usage", {})
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
+        total_tokens = usage.get("total_tokens", 0)
+        if total_tokens > 0:
+            token_stats.record(prompt_tokens, completion_tokens)
+            self._log(f"[Token] 本次: {total_tokens} (输入:{prompt_tokens} 输出:{completion_tokens}) | 累计: {token_stats.total_tokens}")
         
         # 如果有思考内容，记录到日志
         if reasoning:

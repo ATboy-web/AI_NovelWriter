@@ -49,7 +49,7 @@ public class MainActivity extends Activity {
     // 共享OkHttpClient单例（连接池复用）
     private static final okhttp3.OkHttpClient httpClient = new okhttp3.OkHttpClient.Builder()
         .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(300, java.util.concurrent.TimeUnit.SECONDS)  // 5分钟读取超时（长章节生成需要）
         .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build();
@@ -659,7 +659,7 @@ public class MainActivity extends Activity {
                     
                 } catch (java.net.SocketTimeoutException e) {
                     Log.e(TAG, "OkHttp timeout: " + e.getMessage());
-                    lastError = "连接超时(15秒)";
+                    lastError = "请求超时(5分钟)";
                     lastStatusCode = -1;
                 } catch (java.net.ConnectException e) {
                     Log.e(TAG, "OkHttp connect failed: " + e.getMessage());

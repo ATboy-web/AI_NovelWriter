@@ -141,6 +141,16 @@ class NovelAgent:
         # 启用优化器模块
         self.orchestrator = AgentOrchestrator(ai_client, log_callback)
         
+        # 加载写作技能数据（如果存在）
+        try:
+            from app.writing_skills import writing_skill_manager
+            if memory and hasattr(memory, 'novel_dir'):
+                skills_dir = str(memory.novel_dir / "writing_skills")
+                writing_skill_manager.load_all(skills_dir)
+                self.log("[写作技能] 已加载历史数据")
+        except Exception:
+            pass
+        
         # 工具注册中心（参考MCP协议）
         self.tools = ToolRegistry()
         self._register_tools()
@@ -1085,7 +1095,7 @@ class NovelAgent:
                             "background": f"《{t}》中的{name}", "appearance": "待AI展开",
                             "weapon": {"name": "未设定", "quality": "普通", "desc": "待展开"},
                             "skill_suggestions": [], "attributes": {"力量":50,"敏捷":50,"智力":50,"体力":50,"魅力":50},
-                            "relationship_to_main": f"与主角{protagonist or '林风'}的关系待展开", "goal": "待AI展开"
+                            "relationship_to_main": f"与主角的关系待展开", "goal": "待AI展开"
                         }
                         existing.add(name)
                         added += 1
@@ -1330,7 +1340,8 @@ class NovelAgent:
             from app.writing_skills import writing_skill_manager
             # 提取角色名
             chars = list(self.memory.get_characters().keys())[:10]
-            writing_skill_manager.learn_from_chapter(content, chapter_num, chars, success=True)
+            novel_dir = str(self.memory.novel_dir) if self.memory else None
+            writing_skill_manager.learn_from_chapter(content, chapter_num, chars, success=True, novel_dir=novel_dir)
             # 更新知识图谱
             for char_name in chars:
                 if char_name not in writing_skill_manager.knowledge_graph.entities:

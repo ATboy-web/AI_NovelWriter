@@ -58,6 +58,7 @@ a = Analysis(
         'httpx',
         'json',
         'threading',
+        'webbrowser',
         'loguru',
     ],
     hookspath=[],

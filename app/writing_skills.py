@@ -333,6 +333,60 @@ class AntiSlopProcessor:
 5. 世界观要服务于爱情
 6. 要有独特的浪漫元素
 """,
+            "纯爱": """
+纯爱小说写作技巧：
+1. 感情发展要细腻真实
+2. 男性角色要有深度
+3. 社会压力和内心挣扎要体现
+4. 甜蜜和虐心要平衡
+5. 配角要丰满
+6. 结局要温暖人心
+""",
+            "耽美": """
+耽美小说写作技巧：
+1. 男性角色塑造要立体
+2. 感情发展要有层次
+3. 社会议题要适度涉及
+4. 攻受性格要鲜明
+5. 甜蜜和虐心要平衡
+6. 避免刻板印象
+""",
+            "百合": """
+百合小说写作技巧：
+1. 女性角色要有独立人格
+2. 感情发展要细腻
+3. 女性之间的互动要真实
+4. 社会压力要适度体现
+5. 甜蜜和日常要平衡
+6. 避免男性凝视视角
+""",
+            "穿书": """
+穿书小说写作技巧：
+1. 原著设定要清晰
+2. 穿越者的现代思维要体现
+3. 改变剧情要有逻辑
+4. 原著角色要保持一致性
+5. 系统或金手指要合理
+6. 要有爽点和反转
+""",
+            "重生": """
+重生小说写作技巧：
+1. 前世记忆要合理运用
+2. 改变命运要有代价
+3. 复仇要有策略
+4. 亲情友情要重视
+5. 避免过度开挂
+6. 结局要圆满
+""",
+            "年代文": """
+年代文写作技巧：
+1. 时代背景要准确
+2. 生活细节要真实
+3. 人物要符合时代特征
+4. 价值观要符合年代
+5. 要有时代特色的食物和物品
+6. 避免现代词汇
+""",
         }
         return tips.get(main_genre, tips["玄幻"])
 
@@ -636,7 +690,8 @@ class WritingSkillManager:
         return '\n'.join(context_parts)
     
     def learn_from_chapter(self, chapter_content: str, chapter_num: int, 
-                          characters: List[str], success: bool = True):
+                          characters: List[str], success: bool = True, 
+                          novel_dir: str = None):
         """从章节学习，创建写作技能"""
         if success:
             # 提取成功的写作模式
@@ -659,6 +714,18 @@ class WritingSkillManager:
                     self.knowledge_graph.add_entity(char, "character")
                 self.knowledge_graph.entities[char]["mentions"] = \
                     self.knowledge_graph.entities[char].get("mentions", 0) + 1
+            
+            # 自动保存到磁盘
+            if novel_dir:
+                try:
+                    import os
+                    skills_dir = os.path.join(novel_dir, "writing_skills")
+                    os.makedirs(skills_dir, exist_ok=True)
+                    
+                    self.knowledge_graph.save(os.path.join(skills_dir, "knowledge_graph.json"))
+                    self.time_memory.save(os.path.join(skills_dir, "time_memory.json"))
+                except Exception as e:
+                    print(f"[写作技能] 自动保存失败: {e}")
     
     def save_all(self, base_dir: str):
         """保存所有数据"""

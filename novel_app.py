@@ -8,6 +8,7 @@ import re
 import time
 import shutil
 import threading
+import webbrowser
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -1354,7 +1355,7 @@ class NovelWriterApp(
                 "tags": ["异能", "都市"],
                 "template": "一场意外让{name}获得了{ability}的能力，从此生活发生了翻天覆地的变化。",
                 "vars": {
-                    "name": ("主角名", "林风"),
+                    "name": ("主角名", ""),
                     "ability": ("能力", "透视")
                 }
             },
@@ -1428,6 +1429,7 @@ class NovelWriterApp(
             "现代言情-豪门总裁", "现代言情-都市婚恋", "现代言情-职场丽人", "现代言情-娱乐圈", "现代言情-军婚甜宠",
             "幻想言情-异世恋歌", "幻想言情-快穿攻略", "幻想言情-魔法幻情", "幻想言情-星际恋歌", "幻想言情-兽世奇缘",
             "纯爱-古代纯爱", "纯爱-现代纯爱", "纯爱-幻想纯爱", "纯爱-星际纯爱", "纯爱-电竞纯爱",
+            "耽美-古代耽美", "耽美-现代耽美", "耽美-校园耽美", "耽美-娱乐圈耽美",
             "浪漫青春-青春校园", "浪漫青春-疼痛成长", "浪漫青春-纯爱唯美", "浪漫青春-暗恋成真", "浪漫青春-双向奔赴",
             "仙侠奇缘-古典仙缘", "仙侠奇缘-修仙情劫", "仙侠奇缘-洪荒情缘", "仙侠奇缘-凡人仙缘",
             "悬疑灵异-推理侦探", "悬疑灵异-恐怖惊悚", "悬疑灵异-灵异鬼怪", "悬疑灵异-法医档案",
@@ -3909,24 +3911,84 @@ class NovelWriterApp(
             if not response:
                 return
             
-            match = re.search(r'\{[\s\S]*\}', response)
-            if not match:
+            # 多策略JSON解析
+            data = None
+            
+            # Strategy 1: 括号深度追踪
+            start = response.find('{')
+            if start >= 0:
+                depth = 0
+                end_idx = -1
+                for i in range(start, len(response)):
+                    if response[i] == '{': depth += 1
+                    elif response[i] == '}':
+                        depth -= 1
+                        if depth == 0:
+                            end_idx = i + 1
+                            break
+                if end_idx > start:
+                    json_str = response[start:end_idx]
+                    # 修复常见JSON问题
+                    json_str = re.sub(r',\s*}', '}', json_str)
+                    json_str = re.sub(r',\s*]', ']', json_str)
+                    # 修复未转义的引号
+                    json_str = json_str.replace('\n', '\\n').replace('\r', '\\r')
+                    try:
+                        data = json.loads(json_str)
+                    except json.JSONDecodeError:
+                        pass
+            
+            # Strategy 2: 清理markdown后重试
+            if not data:
+                cleaned = response.strip()
+                if cleaned.startswith("```json"):
+                    cleaned = cleaned[7:]
+                elif cleaned.startswith("```"):
+                    cleaned = cleaned[3:]
+                if cleaned.endswith("```"):
+                    cleaned = cleaned[:-3]
+                match = re.search(r'\{[\s\S]*\}', cleaned.strip())
+                if match:
+                    try:
+                        data = json.loads(match.group())
+                    except json.JSONDecodeError:
+                        pass
+            
+            # Strategy 3: 正则提取decisions数组
+            if not data:
+                match = re.search(r'"decisions"\s*:\s*\[([\s\S]*?)\]', response)
+                if match:
+                    try:
+                        decisions_str = '[{' + match.group(1) + '}]'
+                        decisions_str = re.sub(r',\s*}', '}', decisions_str)
+                        decisions_str = re.sub(r',\s*]', ']', decisions_str)
+                        data = {"decisions": json.loads(decisions_str)}
+                    except json.JSONDecodeError:
+                        pass
+            
+            if not data:
                 return
             
-            data = json.loads(match.group())
             decisions = data.get("decisions", [])
             if not decisions:
                 return
             
             for d in decisions:
+                if not isinstance(d, dict):
+                    continue
+                desc = d.get('desc', d.get('description', ''))
+                chosen = d.get('chosen', d.get('choice', ''))
+                alternative = d.get('alternative', d.get('other', ''))
+                if not desc or not chosen:
+                    continue
                 main_data["events"].append(
-                    f"第{chapter_num}章: {d['desc'][:80]} → 选择了「{d['chosen'][:30]}」"
+                    f"第{chapter_num}章: {desc[:80]} → 选择了「{chosen[:30]}」"
                 )
                 main_data.setdefault("branches", []).append({
                     "chapter": chapter_num,
-                    "decision": d['desc'][:100],
-                    "chosen": d['chosen'][:50],
-                    "alternative": d['alternative'][:50],
+                    "decision": desc[:100],
+                    "chosen": chosen[:50],
+                    "alternative": alternative[:50],
                     "story": "",  # 分支故事，初始为空
                 })
             
@@ -4129,7 +4191,7 @@ class NovelWriterApp(
 
 输出格式（严格JSON，键为角色名，值为action/exp/detail）：
 {{"角色名": {{"action": "行为类别(+/-)", "exp": 经验值(正数或负数), "detail": "行为简述(15字内)"}}}}
-示例: {{"林风": {{"action": "战斗失败", "exp": -50, "detail": "被强敌击败重伤"}}}}
+示例: {{"主角名": {{"action": "战斗失败", "exp": -50, "detail": "被强敌击败重伤"}}}}
 
 重要：只输出JSON，不要任何其他文字！"""
 
@@ -4673,6 +4735,21 @@ class NovelWriterApp(
                             char_files = list(characters_dir.glob("*.json"))
                         if char_files:
                             self._log(f"角色生成完成 ({len(char_files)}个角色)")
+                            # 🔒 提取主角名并保存到meta.json
+                            protagonist = ""
+                            for name, info in (chars or {}).items():
+                                if isinstance(info, dict) and info.get("category") == "主角":
+                                    protagonist = name
+                                    break
+                            if not protagonist and chars:
+                                # 如果没有标记为主角，取第一个角色
+                                protagonist = next(iter(chars.keys()), "")
+                            if protagonist:
+                                meta["protagonist"] = protagonist
+                                with open(self.current_novel_dir / "meta.json", 'w', encoding='utf-8') as f:
+                                    json.dump(meta, f, indent=2, ensure_ascii=False)
+                                self.memory.save_meta("protagonist", protagonist)
+                                self._log(f"[角色] 主角已锁定: {protagonist}")
                         else:
                             self._log("[错误] 角色生成完全失败，无法恢复")
                     except Exception as e:
@@ -4855,13 +4932,25 @@ class NovelWriterApp(
                                 if resp:
                                     m = re.search(r'\[[\s\S]*\]', resp)
                                     if m:
-                                        new_batch = json.loads(m.group())
-                                        with self._state_lock:
-                                            for item in new_batch:
-                                                idx = item["chapter"] - 1
-                                                if idx < len(self.outline):
-                                                    self.outline[idx]["title"] = item.get("title", f"第{item['chapter']}章")
-                                                    self.outline[idx]["summary"] = item.get("summary", f"第{item['chapter']}章情节")
+                                        try:
+                                            # 修复常见JSON问题
+                                            json_str = m.group()
+                                            json_str = re.sub(r',\s*}', '}', json_str)
+                                            json_str = re.sub(r',\s*]', ']', json_str)
+                                            new_batch = json.loads(json_str)
+                                        except json.JSONDecodeError:
+                                            self._log(f"[大纲] JSON解析失败，跳过批量更新")
+                                            new_batch = []
+                                        
+                                        if new_batch:
+                                            with self._state_lock:
+                                                for item in new_batch:
+                                                    if not isinstance(item, dict) or "chapter" not in item:
+                                                        continue
+                                                    idx = item["chapter"] - 1
+                                                    if idx < len(self.outline):
+                                                        self.outline[idx]["title"] = item.get("title", f"第{item['chapter']}章")
+                                                        self.outline[idx]["summary"] = item.get("summary", f"第{item['chapter']}章情节")
                                             # 保存已更新的 outline.json
                                             outline_file = self.current_novel_dir / "outline.json"
                                             with open(outline_file, 'w', encoding='utf-8') as f:
@@ -5743,11 +5832,54 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 if not response:
                     return
                 
-                match = re.search(r'\{[\s\S]*\}', response)
-                if not match:
+                # 多策略JSON解析
+                outline_data = None
+                
+                # Strategy 1: 括号深度追踪
+                start = response.find('{')
+                if start >= 0:
+                    depth = 0
+                    end_idx = -1
+                    for i in range(start, len(response)):
+                        if response[i] == '{': depth += 1
+                        elif response[i] == '}':
+                            depth -= 1
+                            if depth == 0:
+                                end_idx = i + 1
+                                break
+                    if end_idx > start:
+                        json_str = response[start:end_idx]
+                        json_str = re.sub(r',\s*}', '}', json_str)
+                        json_str = re.sub(r',\s*]', ']', json_str)
+                        try:
+                            outline_data = json.loads(json_str)
+                        except json.JSONDecodeError:
+                            pass
+                
+                # Strategy 2: 清理markdown后重试
+                if not outline_data:
+                    cleaned = response.strip()
+                    if cleaned.startswith("```json"):
+                        cleaned = cleaned[7:]
+                    elif cleaned.startswith("```"):
+                        cleaned = cleaned[3:]
+                    if cleaned.endswith("```"):
+                        cleaned = cleaned[:-3]
+                    match = re.search(r'\{[\s\S]*\}', cleaned.strip())
+                    if match:
+                        try:
+                            outline_data = json.loads(match.group())
+                        except json.JSONDecodeError:
+                            pass
+                
+                if not outline_data:
+                    self._log(f"[分支创作] 大纲JSON解析失败")
                     return
-                outline_data = json.loads(match.group())
+                
                 outline = outline_data.get("outline", [])
+                if not outline:
+                    self._log(f"[分支创作] 大纲为空")
+                    return
                 
                 (branch_dir / "outline.json").write_text(
                     json.dumps(outline, indent=2, ensure_ascii=False), encoding='utf-8')
@@ -8202,7 +8334,36 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
     
     def _show_about(self):
         """显示关于"""
-        messagebox.showinfo("关于", "AI自动写小说系统 v2.0\n\n功能：\n- AI API（Ollama/OpenAI/DeepSeek/Claude）\n- 长上下文记忆\n- 智能体自动创作\n- 文生图（ComfyUI/SD WebUI）\n- 名场面自动检测")
+        about_text = (
+            "AI自动写小说系统 v2.0\n\n"
+            "功能：\n"
+            "- AI API（Ollama/OpenAI/DeepSeek/Claude）\n"
+            "- 长上下文记忆\n"
+            "- 智能体自动创作\n"
+            "- 文生图（ComfyUI/SD WebUI）\n"
+            "- 名场面自动检测\n\n"
+            "开源地址：\n"
+            "https://github.com/ATboy-web/AI_NovelWriter"
+        )
+        dialog = tk.Toplevel(self.root)
+        dialog.title("关于")
+        dialog.geometry("420x320")
+        dialog.resizable(False, False)
+        
+        frame = tk.Frame(dialog, padx=20, pady=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        tk.Label(frame, text="AI自动写小说系统 v2.0", font=("微软雅黑", 14, "bold")).pack(anchor=tk.W)
+        tk.Label(frame, text="功能：AI API / 长上下文记忆 / 智能体创作 / 文生图 / 名场面检测", 
+                font=("微软雅黑", 10), fg="#666", wraplength=380, justify=tk.LEFT).pack(anchor=tk.W, pady=(5, 10))
+        
+        tk.Label(frame, text="开源地址：", font=("微软雅黑", 10)).pack(anchor=tk.W)
+        link = tk.Label(frame, text="https://github.com/ATboy-web/AI_NovelWriter", 
+                       font=("微软雅黑", 10), fg="#2563eb", cursor="hand2")
+        link.pack(anchor=tk.W)
+        link.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/ATboy-web/AI_NovelWriter"))
+        
+        tk.Button(frame, text="关闭", command=dialog.destroy, width=10).pack(pady=(15, 0))
     
     def _on_close(self):
         """关闭应用"""

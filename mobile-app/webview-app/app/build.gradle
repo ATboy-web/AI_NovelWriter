@@ -4,14 +4,14 @@ plugins {
 
 android {
     namespace 'com.ainovelwriter'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.ainovelwriter.app"
         minSdk 24
-        targetSdk 34
-        versionCode 27
-        versionName "2.12.3"
+        targetSdk 35
+        versionCode 29
+        versionName "3.0.1"
     }
 
     signingConfigs {
@@ -38,14 +38,11 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    // Don't compress assets
     aaptOptions {
-        noCompress "js", "bundle", "png", "jpg", "jpeg", "gif", "ttf", "otf", "woff", "woff2", "json"
+        noCompress "js", "css", "html", "json", "bundle", "png", "jpg", "jpeg", "gif", "ttf", "otf", "woff", "woff2"
     }
 }
 
 dependencies {
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'androidx.webkit:webkit:1.8.0'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 }

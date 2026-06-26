@@ -1,5 +1,5 @@
 """
-AI客户端模块 v2.0 - 生产级AI服务接口
+AI客户端模块 v3.0 - 生产级AI服务接口
 
 特性：
 - 自动重试与指数退避
@@ -9,6 +9,7 @@ AI客户端模块 v2.0 - 生产级AI服务接口
 - 流式输出支持
 - 专业创作框架
 - Token消耗统计
+- 多模型深度思考模式 (DeepSeek/GLM/Qwen/Kimi)
 """
 
 import time
@@ -491,30 +492,43 @@ class AIClient:
         thinking_enabled = kwargs.get("thinking_enabled", self.config.get("thinking_enabled", True))
         reasoning_effort = kwargs.get("reasoning_effort", self.config.get("reasoning_effort", "high"))
         
+        # 自动检测模型类型，选择正确的provider
+        detected_provider = self._detect_provider(provider, model)
+        
         start = time.time()
         error = False
         
         # 🔍 AI诊断日志: 记录API调用
         if _diag_logger:
             _diag_logger.api_call(
-                provider=provider, 
+                provider=detected_provider, 
                 endpoint=f"chat/{model}",
                 request_data={
                     "model": model, "messages": messages,
                     "system": system, "max_tokens": max_tokens,
                     "temperature": temperature,
+                    "thinking_enabled": thinking_enabled,
                     "messages_count": len(messages)
                 }
             )
         
         try:
-            if provider == "ollama":
+            if detected_provider == "ollama":
                 result = self._chat_ollama(messages, system, model, max_tokens, temperature)
-            elif provider == "claude":
+            elif detected_provider == "claude":
                 result = self._chat_claude(messages, system, model, max_tokens, temperature)
-            elif provider == "deepseek":
+            elif detected_provider == "deepseek":
                 result = self._chat_deepseek(messages, system, model, max_tokens, temperature, 
                                             thinking_enabled, reasoning_effort)
+            elif detected_provider == "glm":
+                result = self._chat_glm(messages, system, model, max_tokens, temperature,
+                                       thinking_enabled, reasoning_effort)
+            elif detected_provider == "qwen":
+                result = self._chat_qwen(messages, system, model, max_tokens, temperature,
+                                        thinking_enabled)
+            elif detected_provider == "kimi":
+                result = self._chat_kimi(messages, system, model, max_tokens, temperature,
+                                        thinking_enabled)
             else:
                 result = self._chat_openai(messages, system, model, max_tokens, temperature)
             
@@ -524,7 +538,7 @@ class AIClient:
             # 🔍 成功日志
             if _diag_logger:
                 _diag_logger.api_call(
-                    provider=provider, endpoint=f"chat/{model}",
+                    provider=detected_provider, endpoint=f"chat/{model}",
                     request_data={"model": model, "messages_count": len(messages)},
                     response_data={"status": "success", "result_len": len(result),
                                   "content_preview": result[:200]},
@@ -771,3 +785,183 @@ class AIClient:
         # 截取前500字记录
         preview = reasoning[:500] + "..." if len(reasoning) > 500 else reasoning
         print(f"[思考过程] {preview}")
+    
+    # ==================== 模型自动检测 ====================
+    
+    def _detect_provider(self, provider: str, model: str) -> str:
+        """根据模型名称自动检测provider，避免用户手动配置错误"""
+        model_lower = model.lower()
+        
+        # GLM系列（智谱）
+        if model_lower.startswith("glm"):
+            return "glm"
+        
+        # Qwen系列（通义千问）- 包含qwen、qwq
+        if "qwen" in model_lower or "qwq" in model_lower:
+            return "qwen"
+        
+        # Kimi系列（月之暗面）
+        if "kimi" in model_lower:
+            return "kimi"
+        
+        # DeepSeek系列
+        if "deepseek" in model_lower:
+            return "deepseek"
+        
+        # Claude系列
+        if "claude" in model_lower or "anthropic" in model_lower:
+            return "claude"
+        
+        # 回退到用户配置的provider
+        return provider
+    
+    # ==================== 智谱GLM深度思考 ====================
+    
+    def _chat_glm(self, messages, system, model, max_tokens, temperature,
+                   thinking_enabled=True, reasoning_effort="max") -> str:
+        """智谱GLM API调用 - 支持深度思考模式
+        
+        支持模型: GLM-5.2, GLM-5.1, GLM-5, GLM-5-Turbo, GLM-4.7, GLM-4.6, GLM-4.5
+        参数:
+        - thinking.type: "enabled"(默认)/"disabled"
+        - reasoning_effort: "max"/"xhigh"/"high"/"medium"/"low"/"minimal"/"none" (仅GLM-5.2+)
+        """
+        full_messages = [{"role": "system", "content": system}] if system else []
+        full_messages.extend(messages)
+        
+        # 小请求禁用思考模式
+        if max_tokens < 1000:
+            thinking_enabled = False
+        
+        payload = {
+            "model": model,
+            "messages": full_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature
+        }
+        
+        # 添加深度思考参数
+        if thinking_enabled:
+            payload["thinking"] = {"type": "enabled"}
+            # GLM-5.2及以上支持reasoning_effort
+            model_lower = model.lower()
+            if any(v in model_lower for v in ["5.2", "5.1"]):
+                payload["reasoning_effort"] = reasoning_effort
+            # 思考模式下temperature必须为1.0
+            payload["temperature"] = 1.0
+        
+        response = self.client.post("/chat/completions", json=payload)
+        response.raise_for_status()
+        
+        return self._parse_thinking_response(response.json(), "GLM")
+    
+    # ==================== 通义千问Qwen深度思考 ====================
+    
+    def _chat_qwen(self, messages, system, model, max_tokens, temperature,
+                    thinking_enabled=True) -> str:
+        """通义千问Qwen API调用 - 支持深度思考模式
+        
+        支持模型: qwen3.7-max, qwen3.6-max-preview, qwen3-max, qwen-plus, qwq-plus等
+        参数:
+        - enable_thinking: true/false
+        - thinking_budget: 思考token上限
+        """
+        full_messages = [{"role": "system", "content": system}] if system else []
+        full_messages.extend(messages)
+        
+        # 小请求禁用思考模式
+        if max_tokens < 1000:
+            thinking_enabled = False
+        
+        payload = {
+            "model": model,
+            "messages": full_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature
+        }
+        
+        # Qwen思考模式参数（通过extra_body或顶层传递）
+        if thinking_enabled:
+            payload["enable_thinking"] = True
+            # 设置思考token预算为max_tokens的50%
+            payload["thinking_budget"] = max_tokens // 2
+        
+        response = self.client.post("/chat/completions", json=payload)
+        response.raise_for_status()
+        
+        return self._parse_thinking_response(response.json(), "Qwen")
+    
+    # ==================== Kimi深度思考 ====================
+    
+    def _chat_kimi(self, messages, system, model, max_tokens, temperature,
+                    thinking_enabled=True) -> str:
+        """Kimi API调用 - 支持深度思考模式
+        
+        支持模型: kimi-k2.7-code(始终思考), kimi-k2.6, kimi-k2.5
+        参数:
+        - thinking.type: "enabled"(默认)/"disabled"
+        - thinking.keep: "all"(保留历史思考)/null(不保留)
+        """
+        full_messages = [{"role": "system", "content": system}] if system else []
+        full_messages.extend(messages)
+        
+        # kimi-k2.7-code始终开启思考，不接受thinking参数
+        model_lower = model.lower()
+        is_k27 = "k2.7" in model_lower
+        
+        payload = {
+            "model": model,
+            "messages": full_messages,
+            "max_tokens": max_tokens
+        }
+        
+        # kimi思考模型不支持temperature参数
+        if not is_k27 and thinking_enabled:
+            payload["thinking"] = {"type": "enabled", "keep": "all"}
+        
+        response = self.client.post("/chat/completions", json=payload)
+        response.raise_for_status()
+        
+        return self._parse_thinking_response(response.json(), "Kimi")
+    
+    # ==================== 统一响应解析 ====================
+    
+    def _parse_thinking_response(self, result: dict, provider_name: str) -> str:
+        """统一解析支持思考模式的API响应
+        
+        所有支持思考模式的模型（DeepSeek/GLM/Qwen/Kimi）都使用相同的响应格式：
+        - message.content: 最终回答
+        - message.reasoning_content: 思考过程
+        """
+        choices = result.get("choices", [])
+        if not choices:
+            raise Exception(f"{provider_name}返回无choices: {json.dumps(result, ensure_ascii=False)[:200]}")
+        
+        message = choices[0].get("message", {})
+        content = message.get("content", "")
+        reasoning = message.get("reasoning_content", "")
+        finish_reason = choices[0].get("finish_reason", "")
+        
+        # 记录Token使用量
+        usage = result.get("usage", {})
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
+        total_tokens = usage.get("total_tokens", 0)
+        if total_tokens > 0:
+            token_stats.record(prompt_tokens, completion_tokens)
+            self._log(f"[Token] 本次: {total_tokens} (输入:{prompt_tokens} 输出:{completion_tokens}) | 累计: {token_stats.total_tokens}")
+        
+        # 如果有思考内容，记录到日志
+        if reasoning:
+            self._log_thinking(reasoning)
+        
+        # content为空时的处理
+        if not content or len(content.strip()) == 0:
+            # 如果finish_reason是"length"且有reasoning_content，说明思考模式用完了token
+            # 此时reasoning_content包含有用的分析结果，可以作为降级返回
+            if finish_reason == "length" and reasoning and len(reasoning.strip()) > 10:
+                self._log(f"[提示] {provider_name}思考模式耗尽token (reasoning_len={len(reasoning)})，使用reasoning_content作为结果")
+                return reasoning
+            raise Exception(f"{provider_name}返回空内容 (reasoning_len={len(reasoning)}, finish={finish_reason}): {json.dumps(result, ensure_ascii=False)[:200]}")
+        
+        return content

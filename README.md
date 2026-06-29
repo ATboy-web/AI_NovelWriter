@@ -1,5 +1,9 @@
 # AI小说创作工坊 v2.14.2
 
+[![CI](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml/badge.svg)](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT%20Modified-green.svg)](LICENSE)
+
 基于AI的智能小说创作系统 — 支持15种小说类型的全自动创作，5Agent协作架构，世界线分支系统
 
 ## 功能特性
@@ -98,6 +102,12 @@ pyinstaller --onefile --windowed --name AI_NovelWriter \
 python -m pytest tests/ -v
 ```
 
+## 贡献
+
+欢迎贡献！请阅读 [贡献指南](CONTRIBUTING.md) 了解如何参与项目开发。
+
 ## 许可证
 
-MIT License - 详见 [LICENSE](LICENSE)
+MIT Modified License - 详见 [LICENSE](LICENSE)
+
+**商用需注明来源**：任何商业使用请注明项目名称和 GitHub 链接。

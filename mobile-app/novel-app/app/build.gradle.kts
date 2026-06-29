@@ -3,6 +3,13 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Load signing properties from local file (not committed to git)
+val signingProperties = java.util.Properties()
+val signingFile = rootProject.file("mobile-app/novel-app/signing.properties")
+if (signingFile.exists()) {
+    signingProperties.load(signingFile.inputStream())
+}
+
 android {
     namespace = "com.ainovelwriter"
     compileSdk = 35
@@ -18,9 +25,9 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file("${project.rootDir}/../ai-novel-writer-release.keystore")
-            storePassword = "ainovel123"
-            keyAlias = "ainovelwriter"
-            keyPassword = "ainovel123"
+            storePassword = signingProperties.getProperty("KEYSTORE_PASSWORD", "")
+            keyAlias = signingProperties.getProperty("KEY_ALIAS", "ainovelwriter")
+            keyPassword = signingProperties.getProperty("KEY_PASSWORD", "")
             isV1SigningEnabled = true
             isV2SigningEnabled = true
         }

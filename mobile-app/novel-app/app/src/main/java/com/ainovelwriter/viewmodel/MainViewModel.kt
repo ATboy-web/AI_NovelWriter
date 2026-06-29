@@ -112,6 +112,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // endregion
 
+    // region Helper
+
+    /** 检查是否有当前小说，如果没有则提示用户 */
+    private fun requireNovel(): NovelData? {
+        val novel = _state.value.currentNovel
+        if (novel == null) {
+            userLog("⚠️ 请先到「书架」页面创建或打开一本小说")
+        }
+        return novel
+    }
+
+    // endregion
+
     // region Chapter editing
 
     fun setEditingChapter(chapter: Chapter?) {
@@ -145,7 +158,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Step 4: 逐章生成
      */
     fun autoGenerate() {
-        val novel = _state.value.currentNovel ?: return
+        val novel = requireNovel() ?: return
         if (_state.value.isGenerating) {
             userLog("⚠️ 正在生成中，请等待")
             return
@@ -267,7 +280,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // region Individual Generation Steps (可单独调用)
 
     fun generateWorld() {
-        val novel = _state.value.currentNovel ?: return
+        val novel = requireNovel() ?: return
         launchAI("构建世界观") {
             val updated = generateWorldInternal(novel)
             _state.value = _state.value.copy(currentNovel = updated)
@@ -275,7 +288,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun generateCharacters() {
-        val novel = _state.value.currentNovel ?: return
+        val novel = requireNovel() ?: return
         launchAI("生成角色") {
             val updated = generateCharactersInternal(novel)
             _state.value = _state.value.copy(currentNovel = updated)
@@ -283,7 +296,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun generateOutline() {
-        val novel = _state.value.currentNovel ?: return
+        val novel = requireNovel() ?: return
         launchAI("生成大纲") {
             val updated = generateOutlineInternal(novel)
             _state.value = _state.value.copy(currentNovel = updated)
@@ -291,7 +304,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun generateOverallOutline() {
-        val novel = _state.value.currentNovel ?: return
+        val novel = requireNovel() ?: return
         launchAI("生成整体大纲") {
             val updated = generateOverallOutlineInternal(novel)
             _state.value = _state.value.copy(currentNovel = updated)
@@ -299,7 +312,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun generateStoryOutline() {
-        val novel = _state.value.currentNovel ?: return
+        val novel = requireNovel() ?: return
         launchAI("生成故事大纲") {
             val updated = generateStoryOutlineInternal(novel)
             _state.value = _state.value.copy(currentNovel = updated)
@@ -308,7 +321,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** 整合素材：用已有的世界观/角色/概念生成大纲，不强制补全 */
     fun integrateSettings() {
-        val novel = _state.value.currentNovel ?: return
+        val novel = requireNovel() ?: return
         if (_state.value.isGenerating) {
             userLog("⚠️ 正在生成中，请等待")
             return
@@ -482,8 +495,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun antiSlopCheck() {
         // 支持从编辑器或工具面板调用
+        val novel = requireNovel() ?: return
         val chapter = _state.value.editingChapter
-            ?: _state.value.currentNovel?.chapters?.maxByOrNull { it.chapterNum }
+            ?: novel.chapters.maxByOrNull { it.chapterNum }
         if (chapter == null) {
             userLog("⚠️ 没有可检查的章节")
             return
@@ -517,7 +531,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun generateSynopsis() {
-        val novel = _state.value.currentNovel ?: return
+        val novel = requireNovel() ?: return
         launchAI("生成简介") {
             val prompt = buildString {
                 appendLine("请为小说《${novel.meta.title}》生成500字以内的作品简介。")
@@ -537,7 +551,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun styleTransfer(targetStyle: String) {
-        val novel = _state.value.currentNovel ?: return
+        val novel = requireNovel() ?: return
         val chapter = _state.value.editingChapter
             ?: novel.chapters.maxByOrNull { it.chapterNum }
         if (chapter == null) {
@@ -590,7 +604,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // region Export
 
     fun exportTxt() {
-        val novel = _state.value.currentNovel ?: return
+        val novel = requireNovel() ?: return
         viewModelScope.launch {
             try {
                 val content = buildString {

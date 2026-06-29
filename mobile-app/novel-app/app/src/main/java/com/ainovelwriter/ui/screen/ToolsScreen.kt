@@ -31,7 +31,6 @@ data class ToolItem(
     val icon: ImageVector,
     val description: String,
     val color: Color,
-    val requiresNovel: Boolean = true,
     val requiresAPI: Boolean = true,
     val action: (MainViewModel) -> Unit
 )
@@ -46,10 +45,10 @@ private val tools = listOf(
     ToolItem("去AI味", Icons.Default.FindInPage, "检查AI痕迹", Warning) { vm -> vm.antiSlopCheck() },
     ToolItem("风格转换", Icons.Default.Palette, "转换文风", AccentPurple) { vm -> vm.styleTransfer("古风") },
     ToolItem("整合素材", Icons.Default.Hub, "已有素材→生成大纲", AccentAmber) { vm -> vm.integrateSettings() },
-    ToolItem("情景对话", Icons.Default.Forum, "多角色对话", AccentCyan, requiresNovel = false) { vm -> vm.generateDialogue("主角", "日常") },
+    ToolItem("情景对话", Icons.Default.Forum, "多角色对话", AccentCyan) { vm -> vm.generateDialogue("主角", "日常") },
     ToolItem("书籍简介", Icons.Default.AutoStories, "生成简介", AccentPink) { vm -> vm.generateSynopsis() },
     ToolItem("导出TXT", Icons.Default.FileDownload, "导出小说", AccentEmerald) { vm -> vm.exportTxt() },
-    ToolItem("Token用量", Icons.Default.DataUsage, "API统计", Text3, requiresNovel = false, requiresAPI = false) { }
+    ToolItem("Token用量", Icons.Default.DataUsage, "API统计", Text3, requiresAPI = false) { }
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,41 +76,23 @@ fun ToolsScreen(viewModel: MainViewModel) {
             }
         }
 
-        // Status hints
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            // API not configured hint
-            if (state.aiConfig.apiKey.isEmpty()) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Warning.copy(alpha = 0.1f)),
-                    shape = RoundedCornerShape(10.dp)
+        // API status hint
+        val hasAPI = state.aiConfig.apiKey.isNotEmpty()
+        if (!hasAPI) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = Warning.copy(alpha = 0.1f)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(Icons.Default.Warning, null, tint = Warning, modifier = Modifier.size(18.dp))
-                        Text("请先在设置中填写API Key", style = MaterialTheme.typography.labelMedium.copy(color = Warning))
-                    }
-                }
-            }
-            // No novel hint
-            if (state.currentNovel == null) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = AccentAmber.copy(alpha = 0.1f)),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.Default.Info, null, tint = AccentAmber, modifier = Modifier.size(18.dp))
-                            Text("请先创建或打开小说", style = MaterialTheme.typography.labelMedium.copy(color = AccentAmber, fontWeight = FontWeight.SemiBold))
-                        }
-                        Text("大部分工具需要小说才能使用", style = MaterialTheme.typography.labelSmall.copy(color = Text4), modifier = Modifier.padding(start = 26.dp, top = 4.dp))
+                    Icon(Icons.Default.Warning, null, tint = Warning, modifier = Modifier.size(18.dp))
+                    Column {
+                        Text("需要配置API", style = MaterialTheme.typography.labelMedium.copy(color = Warning, fontWeight = FontWeight.SemiBold))
+                        Text("请到「设置」页面填写API Key并保存", style = MaterialTheme.typography.labelSmall.copy(color = Text4))
                     }
                 }
             }
@@ -134,9 +115,8 @@ fun ToolsScreen(viewModel: MainViewModel) {
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(tools) { tool ->
-                val hasNovel = state.currentNovel != null
                 val hasAPI = state.aiConfig.apiKey.isNotEmpty()
-                val enabled = (!tool.requiresNovel || hasNovel) && (!tool.requiresAPI || hasAPI) && !state.isGenerating
+                val enabled = (!tool.requiresAPI || hasAPI) && !state.isGenerating
                 ToolCard(
                     tool = tool,
                     enabled = enabled,

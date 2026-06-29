@@ -13,6 +13,7 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "Pillow>=9.0",
     "chromadb>=0.4.0",
+    "cryptography>=41.0",
 ]
 
 [tool.pytest.ini_options]

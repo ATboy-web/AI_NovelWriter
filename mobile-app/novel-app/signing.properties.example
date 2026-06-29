@@ -1,0 +1,7 @@
+# Android Signing Configuration
+# Copy this file to signing.properties and fill in your values
+# DO NOT commit signing.properties to version control
+
+KEYSTORE_PASSWORD=your_keystore_password_here
+KEY_ALIAS=ainovelwriter
+KEY_PASSWORD=your_key_password_here

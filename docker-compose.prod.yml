@@ -1,0 +1,130 @@
+# AI自动写小说系统 - 生产环境Docker Compose配置
+# 使用方法: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+version: '3.8'
+
+services:
+  # PostgreSQL数据库 - 生产配置
+  postgres:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # 生产环境不暴露端口到宿主机
+    ports: !override []
+
+  # Redis缓存 - 生产配置
+  redis:
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    # 生产环境不暴露端口到宿主机
+    ports: !override []
+
+  # AI模型服务 - 生产配置
+  ai-service:
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    # 生产环境不暴露端口到宿主机
+    ports: !override []
+
+  # 小说生成服务 - 生产配置
+  novel-service:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    # 生产环境不暴露端口到宿主机
+    ports: !override []
+
+  # Nginx反向代理 - 生产配置
+  nginx:
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # Prometheus - 生产配置
+  prometheus:
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    # 生产环境不暴露端口到宿主机
+    ports: !override []
+
+  # Grafana - 生产配置
+  grafana:
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    # 生产环境不暴露端口到宿主机
+    ports: !override []
+
+  # Alertmanager - 生产配置
+  alertmanager:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    # 生产环境不暴露端口到宿主机
+    ports: !override []
+
+  # Loki - 生产配置
+  loki:
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    # 生产环境不暴露端口到宿主机
+    ports: !override []

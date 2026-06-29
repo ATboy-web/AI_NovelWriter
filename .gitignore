@@ -24,11 +24,16 @@ Thumbs.db
 
 # Expo
 .expo/
+
+# Signing & Security (NEVER commit these)
+*.keystore
 *.jks
 *.p8
 *.p12
 *.key
 *.mobileprovision
+mobile-app/**/local.properties
+mobile-app/**/signing.properties
 
 # Android
 android/app/build/
@@ -39,7 +44,7 @@ android/local.properties
 ios/Pods/
 ios/build/
 
-# Environment
+# Environment (NEVER commit .env with real credentials)
 .env
 .env.local
 .env.production

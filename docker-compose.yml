@@ -8,9 +8,9 @@ services:
     image: postgres:15-alpine
     container_name: ai-novel-postgres
     environment:
-      POSTGRES_DB: ai_novel
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-ai_novel}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请设置POSTGRES_PASSWORD环境变量}
     ports:
       - "5432:5432"
     volumes:
@@ -49,7 +49,7 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ai_novel
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?请设置POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_novel}
       - REDIS_URL=redis://redis:6379/0
       - LOCAL_MODEL_PATH=/app/models/local
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -75,7 +75,7 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ai_novel
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?请设置POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_novel}
       - REDIS_URL=redis://redis:6379/0
       - AI_SERVICE_URL=http://ai-service:8001
     depends_on:
@@ -146,7 +146,7 @@ services:
     ports:
       - "3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?请设置GRAFANA_ADMIN_PASSWORD环境变量}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana:/etc/grafana/provisioning

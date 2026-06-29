@@ -1,4 +1,5 @@
 # Prometheus配置文件
+# AI Novel Writer Infrastructure Monitoring
 
 global:
   scrape_interval: 15s
@@ -12,7 +13,8 @@ rule_files:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: []
+        - targets:
+          - alertmanager:9093
 
 # 监控目标
 scrape_configs:
@@ -20,6 +22,12 @@ scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+
+  # 系统指标 (Node Exporter)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 30s
 
   # AI模型服务监控
   - job_name: 'ai-service'
@@ -35,30 +43,27 @@ scrape_configs:
     metrics_path: '/metrics'
     scrape_interval: 30s
 
-  # 前端服务监控
-  - job_name: 'frontend'
-    static_configs:
-      - targets: ['frontend:3000']
-    metrics_path: '/metrics'
-    scrape_interval: 30s
-
-  # Nginx监控
+  # Nginx监控 (需要启用stub_status)
   - job_name: 'nginx'
     static_configs:
       - targets: ['nginx:80']
     metrics_path: '/nginx_status'
     scrape_interval: 30s
 
-  # PostgreSQL监控
+  # PostgreSQL监控 (需要postgres_exporter)
   - job_name: 'postgres'
     static_configs:
-      - targets: ['postgres:5432']
-    metrics_path: '/metrics'
+      - targets: ['postgres-exporter:9187']
     scrape_interval: 30s
 
-  # Redis监控
+  # Redis监控 (需要redis_exporter)
   - job_name: 'redis'
     static_configs:
-      - targets: ['redis:6379']
-    metrics_path: '/metrics'
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 30s
+
+  # 容器监控 (cAdvisor)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
     scrape_interval: 30s

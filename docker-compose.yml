@@ -1,8 +1,11 @@
 # AI自动写小说系统 - Docker Compose配置
+# 生产环境配置
 
 version: '3.8'
 
 services:
+  # ==================== 数据层 ====================
+  
   # PostgreSQL数据库
   postgres:
     image: postgres:15-alpine
@@ -17,29 +20,42 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
-      - ai-novel-network
+      - backend-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Redis缓存
   redis:
     image: redis:7-alpine
     container_name: ai-novel-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
-      - ai-novel-network
+      - backend-net
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ==================== 应用层 ====================
+  
   # AI模型服务
   ai-service:
     build:
@@ -50,7 +66,7 @@ services:
       - "8001:8001"
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?请设置POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_novel}
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
       - LOCAL_MODEL_PATH=/app/models/local
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY}
@@ -63,8 +79,14 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - ai-novel-network
+      - backend-net
+      - frontend-net
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 小说生成服务
   novel-service:
@@ -76,8 +98,10 @@ services:
       - "8002:8002"
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?请设置POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_novel}
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
       - AI_SERVICE_URL=http://ai-service:8001
+    volumes:
+      - ./logs/novel-service:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,8 +110,14 @@ services:
       ai-service:
         condition: service_started
     networks:
-      - ai-novel-network
+      - backend-net
+      - frontend-net
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 前端服务
   frontend:
@@ -104,12 +134,17 @@ services:
       - ai-service
       - novel-service
     networks:
-      - ai-novel-network
+      - frontend-net
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Nginx反向代理
   nginx:
-    image: nginx:alpine
+    image: nginx:1.25-alpine
     container_name: ai-novel-nginx
     ports:
       - "80:80"
@@ -123,47 +158,200 @@ services:
       - ai-service
       - novel-service
     networks:
-      - ai-novel-network
+      - frontend-net
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==================== 监控层 ====================
+  
+  # Node Exporter - 系统指标
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: ai-novel-node-exporter
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - monitoring-net
     restart: unless-stopped
 
-  # 监控服务
+  # PostgreSQL Exporter
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: ai-novel-postgres-exporter
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?请设置POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_novel}?sslmode=disable"
+    depends_on:
+      - postgres
+    networks:
+      - backend-net
+      - monitoring-net
+    restart: unless-stopped
+
+  # Redis Exporter
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.58.0
+    container_name: ai-novel-redis-exporter
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    depends_on:
+      - redis
+    networks:
+      - backend-net
+      - monitoring-net
+    restart: unless-stopped
+
+  # cAdvisor - 容器监控
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: ai-novel-cadvisor
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+    networks:
+      - monitoring-net
+    restart: unless-stopped
+
+  # Prometheus
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.53.0
     container_name: ai-novel-prometheus
     ports:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml
       - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
     networks:
-      - ai-novel-network
+      - monitoring-net
+      - backend-net
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Alertmanager
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: ai-novel-alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - monitoring-net
     restart: unless-stopped
 
-  # Grafana监控面板
+  # Grafana
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.1.0
     container_name: ai-novel-grafana
     ports:
       - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?请设置GRAFANA_ADMIN_PASSWORD环境变量}
+      - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana:/etc/grafana/provisioning
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
       - prometheus
     networks:
-      - ai-novel-network
+      - monitoring-net
+      - frontend-net
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Loki - 日志聚合
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: ai-novel-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitoring-net
     restart: unless-stopped
 
-# 数据卷
+  # Promtail - 日志收集
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: ai-novel-promtail
+    volumes:
+      - ./monitoring/promtail.yml:/etc/promtail/config.yml
+      - /var/log:/var/log
+      - ./logs:/app/logs
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - monitoring-net
+    restart: unless-stopped
+
+# ==================== 数据卷 ====================
 volumes:
   postgres_data:
   redis_data:
   prometheus_data:
   grafana_data:
+  alertmanager_data:
+  loki_data:
 
-# 网络
+# ==================== 网络 ====================
 networks:
-  ai-novel-network:
+  # 前端网络 - 对外暴露的服务
+  frontend-net:
     driver: bridge
+  
+  # 后端网络 - 内部服务通信
+  backend-net:
+    driver: bridge
+    internal: true
+  
+  # 监控网络 - 监控组件通信
+  monitoring-net:
+    driver: bridge
+    internal: true

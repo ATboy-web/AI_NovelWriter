@@ -1,0 +1,93 @@
+# Promtail配置文件
+# AI Novel Writer 日志收集配置
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # 系统日志
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: syslog
+          __path__: /var/log/syslog
+  
+  # 应用日志 - AI服务
+  - job_name: ai-service
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: ai-service
+          service: ai-service
+          __path__: /app/logs/ai-service/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            msg: msg
+            time: time
+      - labels:
+          level:
+      - timestamp:
+          source: time
+          format: RFC3339
+
+  # 应用日志 - 小说服务
+  - job_name: novel-service
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: novel-service
+          service: novel-service
+          __path__: /app/logs/novel-service/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            msg: msg
+            time: time
+      - labels:
+          level:
+      - timestamp:
+          source: time
+          format: RFC3339
+
+  # Nginx访问日志
+  - job_name: nginx-access
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx
+          log_type: access
+          __path__: /var/log/nginx/access.log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<remote_addr>[\w\.]+) - (?P<remote_user>[^ ]*) \[(?P<time_local>.*)\] "(?P<method>\w+) (?P<request_uri>[^ ]*) HTTP/(?P<http_version>[^"]*)" (?P<status>\d+) (?P<body_bytes_sent>\d+) "(?P<http_referer>[^"]*)" "(?P<http_user_agent>[^"]*)"'
+      - labels:
+          method:
+          status:
+      - timestamp:
+          source: time_local
+          format: 02/Jan/2006:15:04:05 -0700
+
+  # Nginx错误日志
+  - job_name: nginx-error
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx
+          log_type: error
+          __path__: /var/log/nginx/error.log

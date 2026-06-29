@@ -1,0 +1,68 @@
+# Alertmanager配置文件
+# AI Novel Writer 告警通知配置
+
+global:
+  smtp_smarthost: 'smtp.example.com:587'
+  smtp_from: 'alertmanager@example.com'
+  smtp_auth_username: 'alertmanager@example.com'
+  smtp_auth_password: '<password>'
+
+# 告警路由
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'default'
+  
+  routes:
+    # 关键告警 - 立即通知
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 5s
+      repeat_interval: 15m
+    
+    # 警告 - 正常通知
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      repeat_interval: 1h
+
+# 告警接收器
+receivers:
+  # 默认接收器
+  - name: 'default'
+    email_configs:
+      - to: 'admin@example.com'
+        send_resolved: true
+
+  # 关键告警接收器
+  - name: 'critical-alerts'
+    email_configs:
+      - to: 'admin@example.com'
+        send_resolved: true
+    webhook_configs:
+      # 钉钉 webhook (需要部署 prometheus-webhook-dingtalk)
+      # - url: 'http://dingtalk:8060/dingtalk/ops/send'
+      #   send_resolved: true
+    
+    # 企业微信 webhook
+    # webhook_configs:
+    #   - url: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=<your-key>'
+    #     send_resolved: true
+
+  # 警告接收器
+  - name: 'warning-alerts'
+    email_configs:
+      - to: 'admin@example.com'
+        send_resolved: true
+
+# 告警抑制规则
+inhibit_rules:
+  # 当存在关键告警时，抑制同一服务的警告
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'cluster', 'service']

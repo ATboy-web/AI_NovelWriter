@@ -69,37 +69,93 @@ ai-novel-writer/
 │   ├── novel_agent.py        # 5Agent协作智能体
 │   ├── agent_orchestrator.py # 智能体编排器
 │   ├── memory_manager.py     # 记忆管理系统
+│   ├── secure_config.py      # 安全配置（API密钥加密存储）
 │   ├── config.py             # 配置管理
-│   ├── scene_detector.py     # 名场面检测
-│   ├── note_manager.py       # 笔记管理
-│   ├── reading_manager.py    # 阅读管理器
-│   ├── fullscreen_writer.py  # 全屏写作模式
 │   └── ...                   # 更多模块
 ├── backend/                  # 后端服务 (FastAPI)
-├── mobile-app/               # 移动端 (WebView)
-├── installer/                # 打包配置
-├── CHANGELOG.md              # 更新日志
+│   ├── ai-service/           # AI模型服务
+│   └── novel-service/        # 小说生成服务
+├── mobile-app/               # 移动端 (Kotlin原生)
+├── monitoring/               # 监控配置
+│   ├── prometheus.yml        # Prometheus配置
+│   ├── alertmanager.yml      # 告警管理配置
+│   ├── promtail.yml          # 日志收集配置
+│   └── grafana/              # Grafana仪表板
+├── scripts/                  # 运维脚本
+│   └── backup/               # 备份脚本
+├── tests/                    # 测试用例
+├── docs/                     # 文档
+│   └── API.md                # API文档
+├── docker-compose.yml        # Docker编排
+├── .github/workflows/        # CI/CD流水线
 ├── CONTRIBUTING.md           # 贡献指南
-└── LICENSE                   # MIT 许可证
+└── LICENSE                   # MIT Modified许可证
 ```
 
 ## 开发
 
 ```bash
 # 安装依赖
-pip install httpx loguru python-docx pypdf ebooklib markdown beautifulsoup4 Pillow chromadb
+pip install -e ".[dev]"
 
-# 运行
+# 运行桌面版
 python novel_app.py
-
-# 打包 EXE
-pip install pyinstaller
-pyinstaller --onefile --windowed --name AI_NovelWriter \
-  --add-data "app;app" --add-data "backend;backend" \
-  novel_app.py
 
 # 运行测试
 python -m pytest tests/ -v
+
+# 代码质量检查
+ruff check app/ tests/
+```
+
+## Docker 部署
+
+```bash
+# 1. 配置环境变量
+cp .env.example .env
+# 编辑 .env 文件，设置数据库密码等
+
+# 2. 启动服务
+docker-compose up -d
+
+# 3. 查看服务状态
+docker-compose ps
+
+# 4. 访问服务
+# - 前端: http://localhost:3000
+# - AI服务: http://localhost:8001
+# - 小说服务: http://localhost:8002
+# - Prometheus: http://localhost:9090
+# - Grafana: http://localhost:3001
+```
+
+## 基础设施
+
+### 监控系统
+- **Prometheus**: 指标采集和存储
+- **Grafana**: 可视化仪表板
+- **Alertmanager**: 告警通知
+- **Loki + Promtail**: 日志聚合
+
+### 备份系统
+```bash
+# 执行全量备份
+./scripts/backup/backup-scheduler.sh full
+
+# 安装定时备份（每天凌晨2点）
+./scripts/backup/backup-scheduler.sh install '0 2 * * *'
+
+# 查看备份状态
+./scripts/backup/backup-scheduler.sh status
+```
+
+### 测试
+```bash
+# 运行所有测试
+python -m pytest tests/ -v
+
+# 运行带覆盖率的测试
+python -m pytest tests/ --cov=app --cov-report=html
 ```
 
 ## 贡献

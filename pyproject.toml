@@ -39,3 +39,23 @@ ignore = ["E501"]  # 忽略行长度限制
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "app/panels/*",
+    "app/fullscreen_writer.py",
+    "app/ui_manager.py",
+    "app/ui_style.py",
+    "app/navigation.py",
+    "app/design_tokens.py",
+    "app/note_manager_ui.py",
+    "app/reader_manager.py",
+    "app/writing_skills_panel.py",
+    "app/settings_manager.py",
+    "app/character_manager.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+precision = 1

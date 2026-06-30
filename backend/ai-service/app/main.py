@@ -19,6 +19,14 @@ from .core.model_manager import ModelManager
 from .core.inference_engine import InferenceEngine
 from .api.routes import router as api_router
 
+# 导入中间件
+from .middleware import (
+    DynamicRateLimiter, RateLimitConfig,
+    AuthMiddleware, JWTConfig,
+    RequestLogger, RequestLoggerConfig,
+    PerformanceMonitor
+)
+
 # 创建FastAPI应用
 app = FastAPI(
     title="AI模型服务",
@@ -36,6 +44,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 添加请求日志中间件
+app.add_middleware(RequestLogger, config=RequestLoggerConfig())
+
+# 添加动态限流中间件
+app.add_middleware(DynamicRateLimiter, config=RateLimitConfig())
+
+# 添加认证中间件（可选，通过环境变量控制）
+if settings.ENABLE_AUTH:
+    app.add_middleware(AuthMiddleware, config=JWTConfig())
 
 # 包含API路由
 app.include_router(api_router, prefix="/api/v1")
@@ -281,6 +299,45 @@ def ensure_romance_emotion(content: str) -> str:
     # 简单的情感检查
     # 实际实现中可以添加更复杂的情感分析
     return content
+
+@app.get("/metrics", tags=["监控"])
+async def get_metrics():
+    """获取性能指标"""
+    from .middleware.logging import performance_monitor
+    return performance_monitor.get_metrics()
+
+@app.get("/api/v1/rate-limit/info", tags=["限流"])
+async def get_rate_limit_info(request: Request):
+    """获取限流信息"""
+    from .middleware.rate_limiter import RateLimitInfo, DynamicRateLimiter, RateLimitConfig
+    
+    limiter = DynamicRateLimiter(app, RateLimitConfig())
+    rate_info = RateLimitInfo(limiter)
+    
+    # 获取客户端ID
+    client_ip = request.client.host if request.client else "unknown"
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+    
+    client_id = f"ip:{client_ip}"
+    
+    # 获取各类别的使用情况
+    usage = {}
+    for category in ["health", "default", "generate", "generate_long", "model_manage"]:
+        usage[category] = await rate_info.get_usage(client_id, category)
+    
+    return {
+        "client_id": client_id,
+        "usage": usage,
+        "limits": {
+            "generate": {
+                "short_chapter": {"max_requests": 10, "window": 60},
+                "long_chapter": {"max_requests": 5, "window": 60},
+                "very_long_chapter": {"max_requests": 3, "window": 60},
+            }
+        }
+    }
 
 @app.on_event("startup")
 async def startup_event():

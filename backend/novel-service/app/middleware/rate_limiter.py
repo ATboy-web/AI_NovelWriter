@@ -15,18 +15,21 @@ from loguru import logger
 class RateLimitConfig:
     """限流配置"""
     
+    # 是否启用限流（默认关闭）
+    ENABLED = False
+    
     # 默认限流规则 (requests, seconds)
     DEFAULT_RULES = {
         # 健康检查 - 宽松限制
-        "health": (100, 60),
-        # 普通API - 标准限制
-        "default": (30, 60),
-        # 生成类API - 根据字数动态调整
-        "generate": (10, 60),
-        # 大章节生成 - 更宽松限制
-        "generate_long": (5, 60),
-        # 模型管理 - 严格限制
-        "model_manage": (20, 60),
+        "health": (10000, 60),
+        # 普通API - 宽松限制
+        "default": (10000, 60),
+        # 生成类API - 宽松限制
+        "generate": (10000, 60),
+        # 大章节生成 - 宽松限制
+        "generate_long": (10000, 60),
+        # 模型管理 - 宽松限制
+        "model_manage": (10000, 60),
     }
     
     # 章节字数阈值
@@ -36,9 +39,9 @@ class RateLimitConfig:
     # 用户级别乘数
     USER_LEVEL_MULTIPLIERS = {
         "free": 1.0,
-        "basic": 2.0,
-        "premium": 5.0,
-        "unlimited": 100.0,  # 几乎无限制
+        "basic": 1.0,
+        "premium": 1.0,
+        "unlimited": 1.0,
     }
 
 
@@ -192,6 +195,10 @@ class DynamicRateLimiter(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next):
         """处理请求"""
+        # 如果限流未启用，直接放行
+        if not self.config.ENABLED:
+            return await call_next(request)
+        
         # 跳过不需要限流的路径
         if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
             return await call_next(request)

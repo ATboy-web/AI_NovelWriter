@@ -78,8 +78,21 @@ class ReadingManager:
         if ext not in self.SUPPORTED_FORMATS:
             return None
         
+        # 路径安全检查 - 防止路径遍历攻击
+        try:
+            resolved = path.resolve()
+            books_resolved = self.books_dir.resolve()
+            if not str(resolved).startswith(str(books_resolved)):
+                # 如果文件不在书库目录内，使用时间戳前缀避免覆盖
+                import time
+                safe_name = f"{int(time.time())}_{path.name}"
+            else:
+                safe_name = path.name
+        except (OSError, ValueError):
+            safe_name = path.name
+        
         # 复制到书库
-        dest = self.books_dir / path.name
+        dest = self.books_dir / safe_name
         shutil.copy2(path, dest)
         
         # 提取元数据

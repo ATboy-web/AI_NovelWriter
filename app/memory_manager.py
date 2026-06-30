@@ -4,6 +4,7 @@
 
 import json
 import time
+import threading
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -77,6 +78,9 @@ class MemoryManager:
         self._character_activity = self._load_character_activity()
         self._current_page = 0  # 当前chunks页
         self._chunks_cache = []  # 当前页的chunks缓存
+        
+        # 线程锁 - 保护共享状态
+        self._lock = threading.Lock()
     
     # ===== 初始化加载方法 =====
     
@@ -236,20 +240,21 @@ class MemoryManager:
     
     def update_character_activity(self, char_name: str, chapter_num: int):
         """更新角色活跃度"""
-        if char_name not in self._character_activity:
-            self._character_activity[char_name] = {
-                "appearances": [],
-                "last_seen": chapter_num,
-                "importance": 5
-            }
-        activity = self._character_activity[char_name]
-        if chapter_num not in activity["appearances"]:
-            activity["appearances"].append(chapter_num)
-            # 只保留最近100次出场
-            if len(activity["appearances"]) > 100:
-                activity["appearances"] = activity["appearances"][-100:]
-        activity["last_seen"] = chapter_num
-        self._save_character_activity()
+        with self._lock:
+            if char_name not in self._character_activity:
+                self._character_activity[char_name] = {
+                    "appearances": [],
+                    "last_seen": chapter_num,
+                    "importance": 5
+                }
+            activity = self._character_activity[char_name]
+            if chapter_num not in activity["appearances"]:
+                activity["appearances"].append(chapter_num)
+                # 只保留最近100次出场
+                if len(activity["appearances"]) > 100:
+                    activity["appearances"] = activity["appearances"][-100:]
+            activity["last_seen"] = chapter_num
+            self._save_character_activity()
     
     def get_active_characters(self, chapter_num: int, window: int = 50) -> List[str]:
         """获取最近活跃的角色（按活跃度排序）"""
@@ -268,15 +273,16 @@ class MemoryManager:
     
     def _update_inverted_index(self, doc_id: str, content: str):
         """更新倒排索引"""
-        keywords = self._extract_keywords(content)
-        for kw in keywords:
-            if kw not in self._inverted_index:
-                self._inverted_index[kw] = []
-            if doc_id not in self._inverted_index[kw]:
-                self._inverted_index[kw].append(doc_id)
-        # 定期保存（每100次更新保存一次）
-        if len(self._inverted_index) % 100 == 0:
-            self._save_inverted_index()
+        with self._lock:
+            keywords = self._extract_keywords(content)
+            for kw in keywords:
+                if kw not in self._inverted_index:
+                    self._inverted_index[kw] = []
+                if doc_id not in self._inverted_index[kw]:
+                    self._inverted_index[kw].append(doc_id)
+            # 定期保存（每100次更新保存一次）
+            if len(self._inverted_index) % 100 == 0:
+                self._save_inverted_index()
     
     def retrieve_relevant(self, query: str, top_k: int = 5) -> List[Dict]:
         """RAG检索：使用倒排索引快速查找
@@ -594,26 +600,28 @@ class MemoryManager:
     
     def _update_score(self, item_id: str, item_type: str, importance: int = 5):
         """更新记忆评分"""
-        if item_id not in self._scores:
-            self._scores[item_id] = {
-                "type": item_type,
-                "importance": importance,
-                "references": 0,
-                "created_at": datetime.now().isoformat(),
-            }
-        self._scores[item_id]["importance"] = max(
-            self._scores[item_id].get("importance", 5), importance
-        )
-        self._save_scores()
+        with self._lock:
+            if item_id not in self._scores:
+                self._scores[item_id] = {
+                    "type": item_type,
+                    "importance": importance,
+                    "references": 0,
+                    "created_at": datetime.now().isoformat(),
+                }
+            self._scores[item_id]["importance"] = max(
+                self._scores[item_id].get("importance", 5), importance
+            )
+            self._save_scores()
     
     def _increment_reference(self, item_id: str):
         """增加引用计数"""
-        if item_id not in self._scores:
-            self._scores[item_id] = {"type": "unknown", "importance": 5, "references": 0,
-                                      "created_at": datetime.now().isoformat()}
-        self._scores[item_id]["references"] = self._scores[item_id].get("references", 0) + 1
-        self._scores[item_id]["last_referenced"] = datetime.now().isoformat()
-        self._save_scores()
+        with self._lock:
+            if item_id not in self._scores:
+                self._scores[item_id] = {"type": "unknown", "importance": 5, "references": 0,
+                                          "created_at": datetime.now().isoformat()}
+            self._scores[item_id]["references"] = self._scores[item_id].get("references", 0) + 1
+            self._scores[item_id]["last_referenced"] = datetime.now().isoformat()
+            self._save_scores()
     
     def _save_scores(self):
         with open(self.scores_file, 'w', encoding='utf-8') as f:

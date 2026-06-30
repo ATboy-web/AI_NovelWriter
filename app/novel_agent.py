@@ -599,9 +599,10 @@ class NovelAgent:
         settings = self.memory.get_settings()
         if settings and isinstance(settings, dict):
             world = settings.get("world", {})
-            known = world.get("已知区域", [])[:3]
-            if known:
-                return f"世界观场景: {', '.join(known)}"
+            if isinstance(world, dict):
+                known = world.get("已知区域", [])[:3]
+                if known:
+                    return f"世界观场景: {', '.join(known)}"
         return ""
     
     def _writer_generate(self, chapter_num: int, chapter_title: str, 

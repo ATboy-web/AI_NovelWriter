@@ -9,6 +9,9 @@ from pathlib import Path
 class AppConfig:
     """应用配置"""
     
+    # 敏感字段列表 - 这些字段应该使用SecureConfig加密存储
+    SENSITIVE_FIELDS = ['api_key', 'img_api_key', 'secret_key']
+    
     def __init__(self):
         self.config_dir = Path.home() / ".ai_novel_writer"
         self.config_dir.mkdir(exist_ok=True)
@@ -16,6 +19,14 @@ class AppConfig:
         self.novels_dir = self.config_dir / "novels"
         self.novels_dir.mkdir(exist_ok=True)
         self.config = self._load()
+        
+        # 尝试加载SecureConfig用于敏感字段
+        self._secure_config = None
+        try:
+            from .secure_config import SecureConfig
+            self._secure_config = SecureConfig()
+        except Exception:
+            pass
     
     def _load(self) -> dict:
         if self.config_file.exists():
@@ -48,8 +59,17 @@ class AppConfig:
             json.dump(self.config, f, indent=2, ensure_ascii=False)
     
     def get(self, key: str, default=None):
+        # 如果有SecureConfig且是敏感字段，优先从SecureConfig获取
+        if self._secure_config and key in self.SENSITIVE_FIELDS:
+            value = self._secure_config.get(key)
+            if value:
+                return value
         return self.config.get(key, default)
     
     def set(self, key: str, value):
-        self.config[key] = value
+        # 如果是敏感字段且有SecureConfig，使用SecureConfig加密存储
+        if self._secure_config and key in self.SENSITIVE_FIELDS:
+            self._secure_config.set(key, value)
+        else:
+            self.config[key] = value
         self.save()

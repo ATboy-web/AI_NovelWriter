@@ -21,6 +21,13 @@ from .agent_orchestrator import AgentOrchestrator
 from .memory_manager import MemoryManager
 from .config import AppConfig
 
+# 诊断日志
+try:
+    from .diagnostic_logger import get_logger
+    _diag = get_logger()
+except Exception:
+    _diag = None
+
 
 # ===== 标准化通信协议 (参考 MCP/A2A) =====
 
@@ -1510,11 +1517,12 @@ class NovelAgent:
             
             if not data:
                 self.log(f"[角色成长] JSON解析失败，跳过本章")
-                _diag.log("WARN", "character_growth_parse_failed", {
-                    "chapter": chapter_num,
-                    "response_preview": response[:200] if response else "null",
-                    "response_len": len(response) if response else 0
-                })
+                if _diag:
+                    _diag.log("WARN", "character_growth_parse_failed", {
+                        "chapter": chapter_num,
+                        "response_preview": response[:200] if response else "null",
+                        "response_len": len(response) if response else 0
+                    })
                 return
             
             # 保存到记忆

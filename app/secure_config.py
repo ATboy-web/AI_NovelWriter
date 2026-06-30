@@ -56,8 +56,16 @@ class SecureConfig:
         try:
             return self.fernet.decrypt(encrypted_value.encode()).decode()
         except Exception as e:
-            logger.warning(f"解密失败，可能是旧格式配置: {e}")
-            return encrypted_value  # 返回原始值，可能是未加密的旧配置
+            # 如果解密失败，检查是否是旧格式的未加密配置
+            # Fernet token 格式: base64编码，以gAAAAA开头
+            if encrypted_value.startswith('gAAAAA'):
+                # 看起来是加密的但解密失败，返回空字符串
+                logger.error(f"解密失败，密钥可能已损坏: {e}")
+                return ""
+            else:
+                # 可能是旧格式的未加密配置，向后兼容
+                logger.warning(f"检测到未加密的旧格式配置，建议重新保存以加密")
+                return encrypted_value
     
     def _load(self) -> dict:
         """加载配置"""

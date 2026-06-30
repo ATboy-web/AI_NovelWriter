@@ -1,5 +1,5 @@
 """
-ai_client.py 深度测试 - 真正调用方法
+ai_client.py 深度测试 - 真正调用所有方法
 """
 
 import sys
@@ -9,7 +9,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
-from app.ai_client import TokenStats, AIMetrics, PromptManager, retry_with_backoff
+from unittest.mock import MagicMock, patch, PropertyMock
+from app.ai_client import TokenStats, AIMetrics, PromptManager, retry_with_backoff, AIClient
 
 
 class TestTokenStatsDeep:
@@ -99,6 +100,7 @@ class TestAIMetricsDeep:
         assert m.total_requests == 0
         assert m.total_tokens == 0
         assert m.errors == 0
+        assert m.total_cost == 0.0
 
     def test_record(self):
         m = AIMetrics()
@@ -135,6 +137,13 @@ class TestAIMetricsDeep:
             m.record(100, 0.1)
         assert len(m._latency_samples) <= 100
 
+    def test_error_rate(self):
+        m = AIMetrics()
+        m.record(100, 0.5, error=False)
+        m.record(100, 0.5, error=True)
+        summary = m.get_summary()
+        assert summary["error_rate"] == 0.5
+
 
 class TestPromptManagerDeep:
     """PromptManager 深度测试"""
@@ -148,13 +157,21 @@ class TestPromptManagerDeep:
         assert "system" in PromptManager.NOVEL_PROMPTS["writer"]
 
     def test_get_prompt(self):
-        if hasattr(PromptManager, 'get_prompt'):
-            prompt = PromptManager.get_prompt("writer")
-            assert isinstance(prompt, str)
+        prompt = PromptManager.get_prompt("writer")
+        assert isinstance(prompt, str)
+        assert len(prompt) > 0
 
-    def test_get_system_prompt(self):
-        if hasattr(PromptManager, 'get_system_prompt'):
-            prompt = PromptManager.get_system_prompt("writer")
+    def test_get_prompt_with_kwargs(self):
+        prompt = PromptManager.get_prompt("writer")
+        assert isinstance(prompt, str)
+
+    def test_get_prompt_unknown(self):
+        prompt = PromptManager.get_prompt("unknown_name")
+        assert prompt == ""
+
+    def test_all_prompt_keys(self):
+        for key in PromptManager.NOVEL_PROMPTS:
+            prompt = PromptManager.get_prompt(key)
             assert isinstance(prompt, str)
 
 
@@ -211,3 +228,78 @@ class TestRetryWithBackoffDeep:
             raise TypeError("type")
         with pytest.raises(TypeError):
             type_error()
+
+
+class TestAIClientDeep:
+    """AIClient 深度测试"""
+
+    def test_providers_exist(self):
+        assert "ollama" in AIClient.PROVIDERS
+        assert "openai" in AIClient.PROVIDERS
+        assert "deepseek" in AIClient.PROVIDERS
+        assert "claude" in AIClient.PROVIDERS
+
+    def test_fallback_chain_exist(self):
+        assert "gpt-4o" in AIClient.FALLBACK_CHAIN
+        assert "deepseek-v4-pro" in AIClient.FALLBACK_CHAIN
+
+    def test_init_no_config(self):
+        config = MagicMock()
+        config.get.return_value = ""
+        client = AIClient(config)
+        assert client.is_configured() is False
+
+    def test_init_ollama(self):
+        config = MagicMock()
+        config.get.side_effect = lambda key, default="": {
+            "api_provider": "ollama",
+            "api_key": "",
+            "api_base": "http://localhost:11434",
+        }.get(key, default)
+        client = AIClient(config)
+        assert client.is_configured() is True
+
+    def test_init_deepseek(self):
+        config = MagicMock()
+        config.get.side_effect = lambda key, default="": {
+            "api_provider": "deepseek",
+            "api_key": "test-key",
+            "api_base": "https://api.deepseek.com",
+        }.get(key, default)
+        client = AIClient(config)
+        assert client.is_configured() is True
+
+    def test_init_claude(self):
+        config = MagicMock()
+        config.get.side_effect = lambda key, default="": {
+            "api_provider": "claude",
+            "api_key": "test-key",
+            "api_base": "",
+        }.get(key, default)
+        client = AIClient(config)
+        assert client.is_configured() is True
+
+    def test_chat_not_configured(self):
+        config = MagicMock()
+        config.get.return_value = ""
+        client = AIClient(config)
+        with pytest.raises(Exception, match="未配置"):
+            client.chat([{"role": "user", "content": "test"}])
+
+    def test_get_ollama_models_not_available(self):
+        config = MagicMock()
+        config.get.side_effect = lambda key, default="": {
+            "api_provider": "ollama",
+            "api_key": "",
+            "api_base": "http://localhost:11434",
+        }.get(key, default)
+        client = AIClient(config)
+        models = client.get_ollama_models()
+        assert isinstance(models, list)
+
+    def test_metrics_exist(self):
+        config = MagicMock()
+        config.get.return_value = ""
+        client = AIClient(config)
+        assert client.metrics is not None
+        assert isinstance(client.metrics, AIMetrics)

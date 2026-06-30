@@ -155,8 +155,8 @@ class NovelAgent:
                 skills_dir = str(memory.novel_dir / "writing_skills")
                 writing_skill_manager.load_all(skills_dir)
                 self.log("[写作技能] 已加载历史数据")
-        except Exception:
-            pass
+        except Exception as e:
+            self.log(f"[写作技能] 加载失败: {e}")
         
         # 工具注册中心（参考MCP协议）
         self.tools = ToolRegistry()
@@ -205,7 +205,8 @@ class NovelAgent:
             if style_parts:
                 return "、".join(style_parts) + "。"
             return ""
-        except Exception:
+        except Exception as e:
+            self.log(f"[写作风格] 获取失败: {e}")
             return ""
     
     def _register_tools(self):
@@ -255,7 +256,8 @@ class NovelAgent:
         try:
             from app.writing_skills import writing_skill_manager
             return writing_skill_manager.knowledge_graph.to_context_string(character)
-        except Exception:
+        except Exception as e:
+            self.log(f"[知识图谱] 获取上下文失败: {e}")
             return ""
     
     def _record_conversation(self, agent: str, action: str, content: str):
@@ -351,8 +353,8 @@ class NovelAgent:
                 text = self._compress_text(skills_context, min(500, max_chars - used), keep_tail=False)
                 if text:
                     parts.append(f"【写作参考】\n{text}")
-        except Exception:
-            pass
+        except Exception as e:
+            self.log(f"[写作技能] 获取上下文失败: {e}")
         
         # 🔧 修复: ContextOptimizer.optimize 接口不匹配导致上下文被静默丢弃
         # 原代码: ContextOptimizer.optimize({"内容": ...}) 只接受 "内容" 键

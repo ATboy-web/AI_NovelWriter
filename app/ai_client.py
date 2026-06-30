@@ -533,7 +533,9 @@ class AIClient:
                 result = self._chat_openai(messages, system, model, max_tokens, temperature)
             
             latency = time.time() - start
-            self.metrics.record(len(result), latency)
+            # 估算token数：中文约1.5-2 tokens/字，英文约0.75 tokens/word
+            estimated_tokens = int(len(result) * 1.5)
+            self.metrics.record(estimated_tokens, latency)
             
             # 🔍 成功日志
             if _diag_logger:
@@ -570,19 +572,22 @@ class AIClient:
                 self._log(f"模型降级: {model} -> {fallback_model}")
                 # 不修改持久化配置，只在本次请求中使用降级模型
                 model = fallback_model
+                # 重新检测降级后的provider
+                fallback_provider = self._detect_provider(provider, model)
                 # 重试时不递归，直接调用对应方法
                 try:
-                    if provider == "ollama":
+                    if fallback_provider == "ollama":
                         result = self._chat_ollama(messages, system, model, max_tokens, temperature)
-                    elif provider == "claude":
+                    elif fallback_provider == "claude":
                         result = self._chat_claude(messages, system, model, max_tokens, temperature)
-                    elif provider == "deepseek":
+                    elif fallback_provider == "deepseek":
                         result = self._chat_deepseek(messages, system, model, max_tokens, temperature,
                                                     thinking_enabled, reasoning_effort)
                     else:
                         result = self._chat_openai(messages, system, model, max_tokens, temperature)
                     latency = time.time() - start
-                    self.metrics.record(len(result), latency)
+                    estimated_tokens = int(len(result) * 1.5)
+                    self.metrics.record(estimated_tokens, latency)
                     return result
                 except Exception as fallback_error:
                     # 降级模型也失败，记录并抛出原始错误
@@ -782,9 +787,11 @@ class AIClient:
     
     def _log_thinking(self, reasoning: str):
         """记录思考过程"""
-        # 截取前500字记录
-        preview = reasoning[:500] + "..." if len(reasoning) > 500 else reasoning
-        print(f"[思考过程] {preview}")
+        if _diag_logger:
+            _diag_logger.log("THINKING", "reasoning_content", {
+                "preview": reasoning[:500],
+                "length": len(reasoning)
+            })
     
     # ==================== 模型自动检测 ====================
     

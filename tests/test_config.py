@@ -85,13 +85,15 @@ class TestAppConfig:
         """测试保存持久化"""
         monkeypatch.setattr('pathlib.Path.home', lambda: config_dir.parent)
         
-        # 创建并保存配置
+        # 创建并保存配置（使用非敏感字段测试持久化）
         config1 = AppConfig()
-        config1.set("api_key", "sk-test-key")
+        config1.set("model", "gpt-4-turbo")
+        config1.set("temperature", 0.9)
         
         # 重新加载
         config2 = AppConfig()
-        assert config2.get("api_key") == "sk-test-key"
+        assert config2.get("model") == "gpt-4-turbo"
+        assert config2.get("temperature") == 0.9
     
     def test_load_existing_config(self, config_dir, monkeypatch):
         """测试加载已存在的配置"""

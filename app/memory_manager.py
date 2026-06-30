@@ -696,26 +696,29 @@ class MemoryManager:
                      '看', '好', '自己', '这', '他', '她', '它', '们', '那', '被', '把',
                      '可以', '这个', '那个', '什么', '怎么', '因为', '所以', '但是', '然后'}
         
-        # 提取2-4字词组
-        keywords = []
-        cleaned = ''
+        # 提取2-4字词组（优化版本：使用集合去重，减少内存分配）
+        cleaned = []
         for c in text:
             if '\u4e00' <= c <= '\u9fff' or c.isalnum():
-                cleaned += c
+                cleaned.append(c)
             else:
-                cleaned += ' '
+                cleaned.append(' ')
+        cleaned = ''.join(cleaned)
         
-        # 提取词组
-        for i in range(len(cleaned)):
+        # 使用集合去重，避免重复计数
+        seen = set()
+        keywords = []
+        text_len = len(cleaned)
+        for i in range(text_len):
             for l in [2, 3, 4]:
-                if i + l <= len(cleaned):
+                if i + l <= text_len:
                     word = cleaned[i:i+l]
-                    if word not in stopwords and all('\u4e00' <= c <= '\u9fff' for c in word):
+                    if word not in stopwords and word not in seen and all('\u4e00' <= c <= '\u9fff' for c in word):
+                        seen.add(word)
                         keywords.append(word)
         
-        # 去重并排序
-        counted = Counter(keywords)
-        return [word for word, _ in counted.most_common(30)]
+        # 按出现位置排序（前面的更重要）
+        return keywords[:30]
     
     def get_settings(self) -> dict:
         if self.settings_file.exists():

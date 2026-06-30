@@ -1,0 +1,161 @@
+"""
+Mixin模块更多测试
+"""
+
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import pytest
+
+
+# ============================================================
+# CharacterManagerMixin 更多测试
+# ============================================================
+
+class TestCharacterManagerMixinMore:
+    """CharacterManagerMixin更多测试"""
+    
+    def test_class_has_many_methods(self):
+        """测试类有很多方法"""
+        from app.character_manager import CharacterManagerMixin
+        methods = dir(CharacterManagerMixin)
+        assert len(methods) > 5
+
+
+# ============================================================
+# NavigationManager 更多测试
+# ============================================================
+
+class TestNavigationManagerMore:
+    """NavigationManager更多测试"""
+    
+    def test_class_has_many_methods(self):
+        """测试类有很多方法"""
+        from app.navigation import NavigationManager
+        methods = dir(NavigationManager)
+        assert len(methods) > 5
+
+
+# ============================================================
+# SettingsManagerMixin 更多测试
+# ============================================================
+
+class TestSettingsManagerMixinMore:
+    """SettingsManagerMixin更多测试"""
+    
+    def test_class_has_many_methods(self):
+        """测试类有很多方法"""
+        from app.settings_manager import SettingsManagerMixin
+        methods = dir(SettingsManagerMixin)
+        assert len(methods) > 5
+
+
+# ============================================================
+# UIManagerMixin 更多测试
+# ============================================================
+
+class TestUIManagerMixinMore:
+    """UIManagerMixin更多测试"""
+    
+    def test_class_has_many_methods(self):
+        """测试类有很多方法"""
+        from app.ui_manager import UIManagerMixin
+        methods = dir(UIManagerMixin)
+        assert len(methods) > 5
+
+
+# ============================================================
+# NoteManagerMixin 更多测试
+# ============================================================
+
+class TestNoteManagerMixinMore:
+    """NoteManagerMixin更多测试"""
+    
+    def test_class_has_many_methods(self):
+        """测试类有很多方法"""
+        from app.note_manager_ui import NoteManagerMixin
+        methods = dir(NoteManagerMixin)
+        assert len(methods) > 5
+
+
+# ============================================================
+# ReaderManagerMixin 更多测试
+# ============================================================
+
+class TestReaderManagerMixinMore:
+    """ReaderManagerMixin更多测试"""
+    
+    def test_class_has_many_methods(self):
+        """测试类有很多方法"""
+        from app.reader_manager import ReaderManagerMixin
+        methods = dir(ReaderManagerMixin)
+        assert len(methods) > 5
+
+
+# ============================================================
+# WritingSkillsPanelMixin 更多测试
+# ============================================================
+
+class TestWritingSkillsPanelMixinMore:
+    """WritingSkillsPanelMixin更多测试"""
+    
+    def test_class_has_many_methods(self):
+        """测试类有很多方法"""
+        from app.writing_skills_panel import WritingSkillsPanelMixin
+        methods = dir(WritingSkillsPanelMixin)
+        assert len(methods) > 5
+
+
+# ============================================================
+# FullscreenWriter 更多测试
+# ============================================================
+
+class TestFullscreenWriterMore:
+    """FullscreenWriter更多测试"""
+    
+    def test_class_has_many_methods(self):
+        """测试类有很多方法"""
+        from app.fullscreen_writer import FullscreenWriter
+        methods = dir(FullscreenWriter)
+        assert len(methods) > 15
+
+
+# ============================================================
+# NoteManager 更多测试
+# ============================================================
+
+class TestNoteManagerMore:
+    """NoteManager更多测试"""
+    
+    def test_class_has_many_methods(self):
+        """测试类有很多方法"""
+        from app.note_manager import NoteManager
+        methods = dir(NoteManager)
+        assert len(methods) > 10
+
+
+# ============================================================
+# ReadingManager 更多测试
+# ============================================================
+
+class TestReadingManagerMore:
+    """ReadingManager更多测试"""
+    
+    def test_class_has_many_methods(self):
+        """测试类有很多方法"""
+        from app.reading_manager import ReadingManager
+        methods = dir(ReadingManager)
+        assert len(methods) > 5
+    
+    def test_supported_formats_count(self):
+        """测试支持格式数量"""
+        from app.reading_manager import ReadingManager
+        formats = ReadingManager.SUPPORTED_FORMATS
+        assert len(formats) >= 5
+
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])

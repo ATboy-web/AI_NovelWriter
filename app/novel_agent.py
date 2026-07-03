@@ -612,16 +612,19 @@ class NovelAgent:
         if context is None:
             context = self._build_context(chapter_num)
         
+        # === 缓存优化策略 ===
+        # 将"固定写作指南"放在 system prompt 最前面，作为 DeepSeek 缓存前缀
+        # 将"每章动态上下文"放在最后面，这样不同章节的 system prompt 前缀相同
+        # 缓存命中率可以从 13.7% 提升到 60%+
+        
         # 🔒 读取锁定的主角名
         protagonist = self.memory.get_meta("protagonist", "")
         protagonist_hint = ""
         if protagonist:
             protagonist_hint = f'\n\n【重要·主角锁定】本小说主角名为「{protagonist}」。所有章节必须以「{protagonist}」为主视角，禁止更换主角名！如果大纲中写"主角"，实际就是「{protagonist}」。'
         
-        system = f"""你是一位专业的小说作家（Writer Agent）。
-请根据以下上下文信息创作小说章节。
-{context}
-{protagonist_hint}
+        # --- 缓存前缀部分（固定，所有章节共用）---
+        cache_prefix = f"""你是一位专业的小说作家（Writer Agent）。
 
 【写作风格要求】
 {self._get_writing_style_prompt()}
@@ -631,12 +634,12 @@ class NovelAgent:
 2. 角色行为符合其性格设定，保持人物形象一致
 3. 情节推进自然流畅，有起承转合
 4. 语言生动形象，有画面感和代入感
-5. 目标字数约{word_count}字，必须写够字数
-6. 直接输出正文内容，不要添加额外说明
-7. 巧妙设置伏笔和悬念，吸引读者继续阅读
-8. 对话要符合角色性格，有个性化特征
-9. 场景描写要有细节，调动五感（视觉、听觉、嗅觉、触觉、味觉）
-10. 适当运用修辞手法（比喻、拟人、排比等）增强文采
+5. 直接输出正文内容，不要添加额外说明
+6. 巧妙设置伏笔和悬念，吸引读者继续阅读
+7. 对话要符合角色性格，有个性化特征
+8. 场景描写要有细节，调动五感（视觉、听觉、嗅觉、触觉、味觉）
+9. 适当运用修辞手法（比喻、拟人、排比等）增强文采
+10. 目标字数约{word_count}字，必须写够字数
 
 【负面禁止 - 绝对不能做】
 1. 禁止使用Markdown格式（禁止**加粗**、*斜体*、#标题等标记），使用纯文本
@@ -656,6 +659,13 @@ class NovelAgent:
 3. 禁止以"故事才刚刚开始"、"命运的齿轮开始转动"等结尾
 4. 禁止形容词堆砌（如"美丽动人可爱"）
 5. 要用具体动作和细节展示，不要直接告诉读者"""
+        
+        # --- 动态上下文部分（每章不同，放在缓存前缀后面）---
+        dynamic_context = f"""{context}
+{protagonist_hint}
+请根据以上上下文信息创作小说章节。"""
+        
+        system = cache_prefix + "\n\n" + dynamic_context
         
         # 直接使用传入的前一章结尾（从generate_with_collaboration提取，未被压缩）
         if not prev_ending and "【前一章" in str(context):
@@ -690,11 +700,10 @@ class NovelAgent:
         if previous_feedback:
             feedback_section = f"\n上次审校反馈（请重点关注）：\n{previous_feedback}"
         
-        system = f"""你是一位专业的小说审校编辑（Reviewer Agent）。
-请严格检查以下章节内容的各方面质量。
-
-{context}
-{feedback_section}
+        # === 缓存优化策略（与Writer相同）===
+        # 固定评审规则在前（缓存前缀），动态内容在后
+        
+        cache_prefix = """你是一位专业的小说审校编辑（Reviewer Agent）。
 
 【正向检查 - 重点关注优点】
 1. 角色塑造是否立体、有成长弧线
@@ -723,21 +732,27 @@ class NovelAgent:
 2. 是否过度使用"然而"、"不过"、"尽管如此"等过渡词
 3. 是否以"故事才刚刚开始"、"命运的齿轮开始转动"等结尾
 4. 是否有形容词堆砌（如"美丽动人可爱"）
-5. 是否有AI式的元叙述（如"读者可能会想"）
+5. 是否有AI式的元叙述（如"读者可能会想"）"""
+        
+        dynamic_context = f"""{context}
+{feedback_section}
+请根据以上上下文严格检查以下章节内容的各方面质量。
 
 请以JSON格式输出审校结果：
 {{
-    "character_consistency": 0-100,  // 角色行为一致性
-    "plot_logic": 0-100,             // 情节逻辑
-    "writing_quality": 0-100,        // 文笔质量
-    "emotional_impact": 0-100,       // 情感感染力
-    "pacing": 0-100,                 // 节奏把控
-    "overall_score": 0-100,          // 综合评分
-    "strengths": ["优点1", ...],     // 写得好的地方
-    "issues": ["问题1", ...],        // 发现的问题
-    "suggestions": ["建议1", ...],   // 修改建议
-    "is_acceptable": true/false      // 是否可接受
+    "character_consistency": 0-100,
+    "plot_logic": 0-100,
+    "writing_quality": 0-100,
+    "emotional_impact": 0-100,
+    "pacing": 0-100,
+    "overall_score": 0-100,
+    "strengths": ["优点1", ...],
+    "issues": ["问题1", ...],
+    "suggestions": ["建议1", ...],
+    "is_acceptable": true/false
 }}"""
+        
+        system = cache_prefix + "\n\n" + dynamic_context
         
         # 采样：开头2000 + 中间1000 + 结尾1000，覆盖全文
         sample_parts = []

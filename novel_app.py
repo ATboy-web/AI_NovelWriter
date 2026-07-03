@@ -4983,6 +4983,10 @@ class NovelWriterApp(
                                 break
                             except Exception as te:
                                 err_msg = str(te).lower()
+                                # 认证错误不重试，立即抛出
+                                if "401" in err_msg or "authorization" in err_msg:
+                                    self._log(f"[错误] API认证失败 (401)，请检查API Key!")
+                                    raise
                                 # 超时判断（只匹配明确的超时错误）
                                 is_timeout = any(kw in err_msg for kw in [
                                     "timeout", "timed out", "deadline exceeded",
@@ -5044,6 +5048,14 @@ class NovelWriterApp(
                         self._log(f"第{ch_num}章创作失败: {e}")
                         self._log(f"[DEBUG] Traceback:\n{tb[:500]}")
                         failed += 1
+                        
+                        # 认证错误立即停止整个批次
+                        if "401" in str(e) or "Authorization" in str(e):
+                            self._log(f"[错误] API认证失败，停止所有创作。请检查API Key设置。")
+                            self._log(f"当前API配置: provider={self.config.get('api_provider')}, "
+                                     f"base_url={self.config.get('api_base')}")
+                            break
+                        
                         continue
                 
                 # 更新进度显示 — 使用真实总章数

@@ -98,28 +98,26 @@ class TestAIMetricsDeep:
     def test_init(self):
         m = AIMetrics()
         assert m.total_requests == 0
-        assert m.total_tokens == 0
         assert m.errors == 0
         assert m.total_cost == 0.0
 
     def test_record(self):
         m = AIMetrics()
-        m.record(100, 0.5, cost=0.01)
+        m.record(0.5, cost=0.01)
         assert m.total_requests == 1
-        assert m.total_tokens == 100
         assert m.total_cost == 0.01
 
     def test_record_error(self):
         m = AIMetrics()
-        m.record(0, 0.1, error=True)
+        m.record(0.1, error=True)
         assert m.errors == 1
 
     def test_get_summary(self):
         m = AIMetrics()
-        m.record(100, 0.5, cost=0.01)
+        m.record(0.5, cost=0.01)
         summary = m.get_summary()
         assert "requests" in summary
-        assert "tokens" in summary
+        assert "tokens_total" in summary
         assert "cost_usd" in summary
         assert "errors" in summary
         assert "error_rate" in summary
@@ -127,20 +125,20 @@ class TestAIMetricsDeep:
 
     def test_avg_latency(self):
         m = AIMetrics()
-        m.record(100, 0.5)
-        m.record(100, 1.5)
+        m.record(0.5)
+        m.record(1.5)
         assert abs(m.avg_latency - 1.0) < 0.01
 
     def test_latency_samples_limit(self):
         m = AIMetrics()
         for i in range(150):
-            m.record(100, 0.1)
+            m.record(0.1)
         assert len(m._latency_samples) <= 100
 
     def test_error_rate(self):
         m = AIMetrics()
-        m.record(100, 0.5, error=False)
-        m.record(100, 0.5, error=True)
+        m.record(0.5, error=False)
+        m.record(0.5, error=True)
         summary = m.get_summary()
         assert summary["error_rate"] == 0.5
 

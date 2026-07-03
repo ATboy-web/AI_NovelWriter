@@ -92,21 +92,22 @@ def retry_with_backoff(max_retries=3, base_delay=1, max_delay=30):
 
 
 class AIMetrics:
-    """AI服务性能监控"""
+    """AI服务性能监控 - 聚焦延迟、成本、错误率。
+    Token统计由全局 TokenStats 统一管理，避免数据重复。
+    """
     
     def __init__(self):
         self._lock = threading.Lock()
         self.total_requests = 0
-        self.total_tokens = 0
         self.total_cost = 0.0
         self.errors = 0
         self.avg_latency = 0
         self._latency_samples = []
     
-    def record(self, tokens: int, latency: float, cost: float = 0, error: bool = False):
+    def record(self, latency: float, cost: float = 0, error: bool = False):
+        """记录请求指标（token由TokenStats统一管理）"""
         with self._lock:
             self.total_requests += 1
-            self.total_tokens += tokens
             self.total_cost += cost
             if error:
                 self.errors += 1
@@ -117,9 +118,14 @@ class AIMetrics:
     
     def get_summary(self) -> dict:
         with self._lock:
+            # 合并 TokenStats 的 token 数据
+            token_summary = token_stats.get_summary()
             return {
                 "requests": self.total_requests,
-                "tokens": self.total_tokens,
+                "tokens_total": token_summary["total_tokens"],
+                "tokens_prompt": token_summary["prompt_tokens"],
+                "tokens_completion": token_summary["completion_tokens"],
+                "tokens_requests": token_summary["request_count"],
                 "cost_usd": round(self.total_cost, 4),
                 "errors": self.errors,
                 "error_rate": round(self.errors / max(self.total_requests, 1), 4),
@@ -533,9 +539,7 @@ class AIClient:
                 result = self._chat_openai(messages, system, model, max_tokens, temperature)
             
             latency = time.time() - start
-            # 估算token数：中文约1.5-2 tokens/字，英文约0.75 tokens/word
-            estimated_tokens = int(len(result) * 1.5)
-            self.metrics.record(estimated_tokens, latency)
+            self.metrics.record(latency)
             
             # 🔍 成功日志
             if _diag_logger:
@@ -557,7 +561,7 @@ class AIClient:
         except Exception as e:
             error = True
             latency = time.time() - start
-            self.metrics.record(0, latency, error=True)
+            self.metrics.record(latency, error=True)
             
             # 🔍 失败日志
             if _diag_logger:
@@ -586,13 +590,12 @@ class AIClient:
                     else:
                         result = self._chat_openai(messages, system, model, max_tokens, temperature)
                     latency = time.time() - start
-                    estimated_tokens = int(len(result) * 1.5)
-                    self.metrics.record(estimated_tokens, latency)
+                    self.metrics.record(latency)
                     return result
                 except Exception as fallback_error:
                     # 降级模型也失败，记录并抛出原始错误（保留完整错误链）
                     self._log(f"降级模型 {model} 也失败: {fallback_error}")
-                    self.metrics.record(0, time.time() - start, error=True)
+                    self.metrics.record(time.time() - start, error=True)
                     raise e from fallback_error  # 保留完整错误链
             
             raise
@@ -919,12 +922,14 @@ class AIClient:
         payload = {
             "model": model,
             "messages": full_messages,
-            "max_tokens": max_tokens
+            "max_tokens": max_tokens,
+            "temperature": temperature
         }
         
         # kimi思考模型不支持temperature参数
         if not is_k27 and thinking_enabled:
             payload["thinking"] = {"type": "enabled", "keep": "all"}
+            payload.pop("temperature", None)  # 思考模式下移除temperature
         
         response = self.client.post("/chat/completions", json=payload)
         response.raise_for_status()

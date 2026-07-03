@@ -501,6 +501,14 @@ class AIClient:
         # 自动检测模型类型，选择正确的provider
         detected_provider = self._detect_provider(provider, model)
         
+        # 前置检查：API Key有效性
+        api_key = self.config.get("api_key", "")
+        if detected_provider != "ollama" and (not api_key or len(api_key.strip()) < 8):
+            msg = (f"API Key未配置或无效 (provider={detected_provider}, "
+                   f"key_len={len(api_key)}). 请在设置中填写有效的API Key。")
+            self._log(f"[错误] {msg}")
+            raise Exception(msg)
+        
         start = time.time()
         error = False
         
@@ -563,6 +571,21 @@ class AIClient:
             latency = time.time() - start
             self.metrics.record(latency, error=True)
             
+            # 检查是否为认证错误（不可重试）
+            is_auth_error = False
+            if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+                status = e.response.status_code
+                if status == 401:
+                    is_auth_error = True
+                    self._log(f"[错误] API认证失败 (401) - 请检查API Key是否有效、是否过期。"
+                             f" provider={provider}, model={model}")
+                elif status == 403:
+                    is_auth_error = True
+                    self._log(f"[错误] API权限不足 (403) - 请检查API Key是否有访问该模型的权限。"
+                             f" provider={provider}, model={model}")
+                elif status == 429:
+                    self._log(f"[错误] API请求过于频繁 (429) - 请稍后重试。")
+            
             # 🔍 失败日志
             if _diag_logger:
                 _diag_logger.api_call(
@@ -570,6 +593,10 @@ class AIClient:
                     request_data={"model": model, "messages_count": len(messages)},
                     error=e, duration_ms=latency * 1000
                 )
+            
+            # 认证错误不重试、不降级
+            if is_auth_error:
+                raise
             
             fallback_model = self.FALLBACK_CHAIN.get(model)
             if fallback_model:

@@ -1112,10 +1112,20 @@ class NovelAgent:
         if protagonist:
             prompt = f"主角名：{protagonist}\n" + prompt
         
-        # 重试3次，处理AI返回空响应的情况
+        # 重试3次，处理AI返回空响应的情况（但不重试认证错误）
         response = None
         for attempt in range(3):
-            response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=12000)
+            try:
+                response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=12000)
+            except Exception as e:
+                if "401" in str(e) or "Authorization" in str(e) or "API Key" in str(e):
+                    raise  # 认证错误不重试
+                if attempt < 2:
+                    self.log(f"[角色] 调用失败({attempt+1}/3): {e}，重试...")
+                    time.sleep(3)
+                    continue
+                raise
+            
             if response and len(response) > 50:
                 break
             if attempt < 2:
@@ -2040,6 +2050,9 @@ class NovelAgent:
                         parts.append(response)
                         break
                 except Exception as e:
+                    # 认证错误不重试
+                    if "401" in str(e) or "Authorization" in str(e) or "API Key" in str(e):
+                        raise
                     self.log(f"[Writer] 第{chapter_num}章第{i+1}段 重试{attempt+1}: {e}")
                     if attempt == 2:
                         return title_line + ("\n\n".join(parts) if parts else "（生成失败）")

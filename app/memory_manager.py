@@ -258,16 +258,17 @@ class MemoryManager:
     
     def get_active_characters(self, chapter_num: int, window: int = 50) -> List[str]:
         """获取最近活跃的角色（按活跃度排序）"""
-        active = []
-        for name, activity in self._character_activity.items():
-            last_seen = activity.get("last_seen", 0)
-            if chapter_num - last_seen <= window:
-                count = len([c for c in activity.get("appearances", []) if c >= chapter_num - window])
-                active.append((name, count, last_seen))
-        
-        # 按出场次数排序
-        active.sort(key=lambda x: x[1], reverse=True)
-        return [name for name, _, _ in active[:10]]  # 返回前10个活跃角色
+        with self._lock:
+            active = []
+            for name, activity in self._character_activity.items():
+                last_seen = activity.get("last_seen", 0)
+                if chapter_num - last_seen <= window:
+                    count = len([c for c in activity.get("appearances", []) if c >= chapter_num - window])
+                    active.append((name, count, last_seen))
+            
+            # 按出场次数排序
+            active.sort(key=lambda x: x[1], reverse=True)
+            return [name for name, _, _ in active[:10]]  # 返回前10个活跃角色
     
     # ===== RAG检索 - 倒排索引优化 =====
     
@@ -507,7 +508,8 @@ class MemoryManager:
                     chunk["updated_at"] = datetime.now().isoformat()
                     self._save_chunks_page(page, page_chunks)
                     return
-        self._save_inverted_index()
+        with self._lock:
+            self._save_inverted_index()
     
     # ===== 事件时间线（分页存储）=====
     

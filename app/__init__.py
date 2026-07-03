@@ -5,18 +5,29 @@ AI_NovelWriter 应用包
 import importlib
 import sys
 
+
+class _ImportStub:
+    """安全导入占位类 - 在实例化时抛出明确的 ImportError"""
+    _import_error = ""
+    
+    def __init__(self, *args, **kwargs):
+        raise ImportError(
+            f"Module not available (import failed: {self._import_error}). "
+            "Please install missing dependencies."
+        )
+
+
 # 安全导入：避免缺失可选依赖时整个包导入失败
 def _safe_import(module_name: str, class_name: str):
-    """安全导入，失败时返回占位类型"""
+    """安全导入，失败时返回占位类型（实例化时会报错）"""
     try:
         mod = importlib.import_module(module_name)
         return getattr(mod, class_name)
     except (ImportError, AttributeError) as e:
         import warnings
         warnings.warn(f"Failed to import {class_name} from {module_name}: {e}")
-        # 返回一个占位类型，避免 NameError
-        return type(class_name, (), {"__init__": lambda self, *a, **kw: None,
-                                       "_import_error": str(e)})
+        # 创建占位类型，实例化时报错而非静默失败
+        return type(class_name, (_ImportStub,), {"_import_error": str(e)})
 
 # 核心模块（必须可用）
 from .config import AppConfig

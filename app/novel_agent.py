@@ -150,7 +150,7 @@ class NovelAgent:
         
         # 加载写作技能数据（如果存在）
         try:
-            from app.writing_skills import writing_skill_manager
+            from .writing_skills import writing_skill_manager
             if memory and hasattr(memory, 'novel_dir'):
                 skills_dir = str(memory.novel_dir / "writing_skills")
                 writing_skill_manager.load_all(skills_dir)
@@ -167,7 +167,7 @@ class NovelAgent:
     def _get_writing_style_prompt(self) -> str:
         """获取写作风格提示词（基于写作技能模块的配置）"""
         try:
-            from app.writing_skills import writing_skill_manager
+            from .writing_skills import writing_skill_manager
             config = writing_skill_manager.style_config
             
             style_parts = []
@@ -237,7 +237,7 @@ class NovelAgent:
     def _call_anti_slop_check(self, content: str) -> list:
         """调用写作技能进行去AI味检查"""
         try:
-            from app.writing_skills import writing_skill_manager
+            from .writing_skills import writing_skill_manager
             issues = writing_skill_manager.anti_slop.check_text(content)
             
             # 收集所有问题
@@ -254,7 +254,7 @@ class NovelAgent:
     def _get_knowledge_graph_context(self, character: str = None) -> str:
         """从知识图谱获取上下文"""
         try:
-            from app.writing_skills import writing_skill_manager
+            from .writing_skills import writing_skill_manager
             return writing_skill_manager.knowledge_graph.to_context_string(character)
         except Exception as e:
             self.log(f"[知识图谱] 获取上下文失败: {e}")
@@ -364,7 +364,7 @@ class NovelAgent:
         
         # 写作技能上下文（知识图谱、写作技巧）
         try:
-            from app.writing_skills import writing_skill_manager
+            from .writing_skills import writing_skill_manager
             skills_context = writing_skill_manager.get_writing_context()
             if skills_context and len(skills_context) > 20:
                 text = self._compress_text(skills_context, min(500, max_chars - used), keep_tail=False)
@@ -1435,7 +1435,7 @@ class NovelAgent:
         
         # 写作技能学习（从成功章节中学习）
         try:
-            from app.writing_skills import writing_skill_manager
+            from .writing_skills import writing_skill_manager
             # 提取角色名
             chars = list(self.memory.get_characters().keys())[:10]
             novel_dir = str(self.memory.novel_dir) if self.memory else None

@@ -112,7 +112,7 @@ class TestAIClientDeepSeek:
             "reasoning_effort": "high",
         }.get(key, default)
         
-        respx.post("https://api.deepseek.com/chat/completions").mock(
+        respx.post("https://api.deepseek.com/v1/chat/completions").mock(
             return_value=httpx.Response(200, json={
                 "choices": [{"message": {"content": "DeepSeek回复", "reasoning_content": ""}}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
@@ -135,7 +135,7 @@ class TestAIClientDeepSeek:
             "reasoning_effort": "high",
         }.get(key, default)
         
-        respx.post("https://api.deepseek.com/chat/completions").mock(
+        respx.post("https://api.deepseek.com/v1/chat/completions").mock(
             return_value=httpx.Response(200, json={
                 "choices": [{"message": {"content": "回复", "reasoning_content": "思考过程"}}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}

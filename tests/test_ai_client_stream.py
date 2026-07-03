@@ -255,7 +255,7 @@ class TestChatDeepSeek:
             "reasoning_effort": "high",
         }.get(key, default)
         
-        respx.post("https://api.deepseek.com/chat/completions").mock(
+        respx.post("https://api.deepseek.com/v1/chat/completions").mock(
             return_value=httpx.Response(200, json={
                 "choices": [{"message": {"content": "DeepSeek response", "reasoning_content": ""}}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
@@ -278,7 +278,7 @@ class TestChatDeepSeek:
             "reasoning_effort": "high",
         }.get(key, default)
         
-        respx.post("https://api.deepseek.com/chat/completions").mock(
+        respx.post("https://api.deepseek.com/v1/chat/completions").mock(
             return_value=httpx.Response(200, json={
                 "choices": [{"message": {"content": "response", "reasoning_content": "thinking"}}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
@@ -301,7 +301,7 @@ class TestChatDeepSeek:
             "reasoning_effort": "high",
         }.get(key, default)
         
-        respx.post("https://api.deepseek.com/chat/completions").mock(
+        respx.post("https://api.deepseek.com/v1/chat/completions").mock(
             return_value=httpx.Response(200, json={
                 "choices": [{"message": {"content": "", "reasoning_content": "x" * 20}, "finish_reason": "length"}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}

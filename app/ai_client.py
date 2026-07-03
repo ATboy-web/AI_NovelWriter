@@ -465,6 +465,9 @@ class AIClient:
         elif provider == "ollama":
             self.client = httpx.Client(base_url=base_url, timeout=300.0)
         elif api_key:
+            # OpenAI兼容API需要/v1前缀，自动补全（但已有/v1则不重复添加）
+            if "/v1" not in base_url.rstrip("/") and "/v1/" not in base_url:
+                base_url = base_url.rstrip("/") + "/v1"
             self.client = httpx.Client(
                 base_url=base_url,
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},

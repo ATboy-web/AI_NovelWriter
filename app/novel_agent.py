@@ -315,9 +315,26 @@ class NovelAgent:
         chars = self.memory.get_characters()
         if chars:
             active_names = self.memory.get_active_characters(chapter_num, window=50)
-            text = self._compress_active_characters(chars, active_names, int(max_chars * ratio["chars"]))
+            # 过滤：只保留最近活跃的角色，排除"无名小卒"中已不活跃的
+            important_chars = {}
+            for name in active_names:
+                if name in chars:
+                    info = chars[name]
+                    if isinstance(info, dict):
+                        category = info.get("category", "")
+                        # "无名小卒"只有活跃时才显示，不活跃则跳过
+                        if category == "无名小卒" and name not in active_names:
+                            continue
+                    important_chars[name] = info
+            # 合并：活跃角色 + 主角/关键人物
+            for name, info in chars.items():
+                if name not in important_chars and isinstance(info, dict):
+                    if info.get("category") in ("主角", "女主角", "男主角", "关键人物"):
+                        important_chars[name] = info
+            
+            text = self._compress_active_characters(important_chars, active_names, int(max_chars * ratio["chars"]))
             if text:
-                section = f"【活跃角色】\n{text}"
+                section = f"【当前剧情线角色】（共{len(important_chars)}人，请勿无故引入新角色）\n{text}"
                 parts.append(section)
                 used += len(section)
         
@@ -356,6 +373,12 @@ class NovelAgent:
         except Exception as e:
             self.log(f"[写作技能] 获取上下文失败: {e}")
         
+        # === 伏笔追踪 ===
+        unresolved = self._get_unresolved_plots()
+        if unresolved and used + len(unresolved) < max_chars:
+            parts.insert(1, unresolved)  # 插入到全局摘要后面，确保AI看到
+            used += len(unresolved)
+        
         # 🔧 修复: ContextOptimizer.optimize 接口不匹配导致上下文被静默丢弃
         # 原代码: ContextOptimizer.optimize({"内容": ...}) 只接受 "内容" 键
         # 但 optimize 迭代 COMPRESSION_RATIOS 键 (global_summary, volume_summary, ...) 
@@ -370,39 +393,87 @@ class NovelAgent:
         return result
     
     def _compress_active_characters(self, chars: dict, active_names: List[str], budget: int) -> str:
-        """压缩活跃角色信息"""
+        """压缩活跃角色信息 - 按等级优先显示"""
         result = []
         used = 0
         
-        # 优先显示活跃角色
-        for name in active_names:
+        # 角色等级优先级
+        PRIORITY_RANKS = {"主角": 0, "女主角": 0, "男主角": 0, "关键人物": 1, "配角": 2, "无名小卒": 3}
+        
+        # 按优先级排序
+        def char_priority(name):
+            if name not in chars:
+                return 99
+            info = chars.get(name, {})
+            if isinstance(info, dict):
+                return PRIORITY_RANKS.get(info.get("category", "无名小卒"), 3)
+            return 3
+        
+        # 优先显示活跃角色（按等级排序）
+        sorted_active = sorted(active_names, key=char_priority)
+        for name in sorted_active:
             if used >= budget:
                 break
             if name in chars:
                 info = chars[name]
                 if isinstance(info, dict):
+                    category = info.get("category", "未知")
                     personality = info.get("personality", "")[:30]
-                    line = f"- {name}: {personality}"
+                    faction = info.get("faction", "")
+                    line = f"- [{category}] {name}: {personality}"
+                    if faction:
+                        line += f" (阵营:{faction})"
                 else:
                     line = f"- {name}: {str(info)[:50]}"
                 if used + len(line) <= budget:
                     result.append(line)
                     used += len(line)
         
-        # 如果还有空间，添加其他重要角色
+        # 如果空间够，添加主角/关键人物（即使不活跃）
         if used < budget:
-            for name, info in list(chars.items())[:5]:
-                if name not in active_names and used < budget:
-                    if isinstance(info, dict):
+            for name, info in chars.items():
+                if used >= budget or name in active_names:
+                    continue
+                if isinstance(info, dict):
+                    category = info.get("category", "")
+                    if category in ("主角", "女主角", "男主角", "关键人物"):
                         personality = info.get("personality", "")[:20]
-                        line = f"- {name}: {personality}"
-                    else:
-                        line = f"- {name}: {str(info)[:30]}"
-                    if used + len(line) <= budget:
-                        result.append(line)
-                        used += len(line)
+                        line = f"- [{category}] {name}: {personality}"
+                        if used + len(line) <= budget:
+                            result.append(line)
+                            used += len(line)
         
-        return "\n".join(result)
+        return "\n".join(result) if result else ""
+    
+    def _get_unresolved_plots(self) -> str:
+        """获取未回收的伏笔/剧情线索"""
+        try:
+            gs = self.memory.get_global_summary()
+            if not gs:
+                return ""
+            
+            # 从全局摘要中提取伏笔关键词
+            foreshadow_keywords = ["伏笔", "悬念", "暗示", "预示", "未解之谜", "神秘", "秘密", 
+                                  "阴谋", "真相", "预言", "轮回", "宿命", "传承", "使命"]
+            
+            unresolved = []
+            for keyword in foreshadow_keywords:
+                if keyword in gs:
+                    # 找到包含关键词的句子
+                    sentences = gs.replace("。", "。\n").replace("！", "！\n").replace("？", "？\n").split("\n")
+                    for s in sentences:
+                        if keyword in s and len(s) > 10:
+                            unresolved.append(s.strip())
+                            if len(unresolved) >= 8:
+                                break
+                if len(unresolved) >= 8:
+                    break
+            
+            if unresolved:
+                return "【未回收伏笔/悬念】\n" + "\n".join(unresolved[:8])
+            return ""
+        except Exception:
+            return ""
     
     # ===== 压缩方法 =====
     
@@ -652,6 +723,8 @@ class NovelAgent:
 8. 禁止使用过多的"的"、"了"、"着"等助词堆砌
 9. 禁止对话过于书面化，要口语化、自然
 10. 禁止场景转换生硬，要有过渡
+11. 【重要】禁止无故引入新角色！必须使用【当前剧情线角色】中已有的角色
+12. 【重要】如果必须引入新角色，必须给出明确的出场原因和后续作用
 
 【AI写作痕迹禁止 - 必须避免】
 1. 禁止以"在这个世界上"、"在这个时代"等开头

@@ -192,9 +192,12 @@ class SceneDetector:
         """检测内容中的名场面"""
         scenes = []
         
+        # 优化：将分句操作提升到循环外部，避免重复O(N)操作
+        sentences = content.replace("。", "。\n").replace("！", "！\n").replace("？", "？\n").split("\n")
+        
         for keyword in SceneDetector.SCENE_KEYWORDS:
             if keyword in content:
-                for sentence in content.replace("。", "。\n").replace("！", "！\n").replace("？", "？\n").split("\n"):
+                for sentence in sentences:
                     if keyword in sentence and len(sentence.strip()) > 10:
                         scene_type = SceneDetector._classify_scene(sentence)
                         desc = sentence.strip()[:200]

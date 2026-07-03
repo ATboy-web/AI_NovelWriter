@@ -590,10 +590,10 @@ class AIClient:
                     self.metrics.record(estimated_tokens, latency)
                     return result
                 except Exception as fallback_error:
-                    # 降级模型也失败，记录并抛出原始错误
+                    # 降级模型也失败，记录并抛出原始错误（保留完整错误链）
                     self._log(f"降级模型 {model} 也失败: {fallback_error}")
                     self.metrics.record(0, time.time() - start, error=True)
-                    raise e  # 抛出原始错误
+                    raise e from fallback_error  # 保留完整错误链
             
             raise
     

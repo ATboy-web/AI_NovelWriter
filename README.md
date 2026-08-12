@@ -1,3 +1,5 @@
+
+
 # AI小说创作工坊 v2.14.2
 
 [![CI](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml/badge.svg)](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml)
@@ -75,6 +77,7 @@ ai-novel-writer/
 ├── backend/                  # 后端服务 (FastAPI)
 │   ├── ai-service/           # AI模型服务
 │   └── novel-service/        # 小说生成服务
+├── frontend-react/           # 前端界面 (React + Vite)
 ├── mobile-app/               # 移动端 (Kotlin原生)
 ├── monitoring/               # 监控配置
 │   ├── prometheus.yml        # Prometheus配置

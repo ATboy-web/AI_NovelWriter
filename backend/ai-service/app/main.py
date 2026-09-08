@@ -3,7 +3,7 @@ AI模型服务 - 核心应用
 支持本地模型（llama.cpp）和云端API（GPT/Claude）集成
 """
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
@@ -75,14 +75,14 @@ class ModelType(str, Enum):
 
 class GenerationRequest(BaseModel):
     """生成请求模型"""
-    prompt: str = Field(..., description="生成提示词")
+    prompt: str = Field(..., description="生成提示词", min_length=1, max_length=50000)
     model_type: ModelType = Field(ModelType.LOCAL, description="模型类型")
-    model_name: Optional[str] = Field(None, description="具体模型名称")
-    max_tokens: int = Field(1000, description="最大生成token数")
-    temperature: float = Field(0.7, description="生成温度")
-    top_p: float = Field(0.9, description="Top-p采样参数")
-    novel_type: str = Field("scifi", description="小说类型")
-    chapter_count: int = Field(1, description="章节数量")
+    model_name: Optional[str] = Field(None, description="具体模型名称", max_length=100)
+    max_tokens: int = Field(1000, description="最大生成token数", ge=1, le=200000)
+    temperature: float = Field(0.7, description="生成温度", ge=0.0, le=2.0)
+    top_p: float = Field(0.9, description="Top-p采样参数", ge=0.0, le=1.0)
+    novel_type: str = Field("scifi", description="小说类型", max_length=50)
+    chapter_count: int = Field(1, description="章节数量", ge=1, le=1000)
 
 class GenerationResponse(BaseModel):
     """生成响应模型"""
@@ -173,7 +173,7 @@ async def generate_text(request: GenerationRequest):
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
+        raise _internal_error(e)
 
 @app.get("/models", tags=["模型管理"])
 async def list_models():
@@ -186,7 +186,7 @@ async def list_models():
             "count": len(models)
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取模型列表失败: {str(e)}")
+        raise _internal_error(e)
 
 @app.post("/models/{model_type}/load", tags=["模型管理"])
 async def load_model(model_type: ModelType, model_name: Optional[str] = None):
@@ -199,7 +199,7 @@ async def load_model(model_type: ModelType, model_name: Optional[str] = None):
             "details": result
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"模型加载失败: {str(e)}")
+        raise _internal_error(e)
 
 @app.post("/models/{model_type}/unload", tags=["模型管理"])
 async def unload_model(model_type: ModelType, model_name: Optional[str] = None):
@@ -212,7 +212,7 @@ async def unload_model(model_type: ModelType, model_name: Optional[str] = None):
             "details": result
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"模型卸载失败: {str(e)}")
+        raise _internal_error(e)
 
 @app.get("/models/{model_type}/status", tags=["模型管理"])
 async def get_model_status(model_type: ModelType, model_name: Optional[str] = None):
@@ -226,7 +226,7 @@ async def get_model_status(model_type: ModelType, model_name: Optional[str] = No
             "status": status
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取模型状态失败: {str(e)}")
+        raise _internal_error(e)
 
 @app.post("/generate/novel", tags=["小说生成"])
 async def generate_novel_chapter(request: GenerationRequest):
@@ -255,7 +255,7 @@ async def generate_novel_chapter(request: GenerationRequest):
         return response
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"小说生成失败: {str(e)}")
+        raise _internal_error(e)
 
 def build_novel_prompt(prompt: str, novel_type: str, chapter_count: int) -> str:
     """构建小说生成提示词"""
@@ -374,3 +374,10 @@ if __name__ == "__main__":
         reload=settings.DEBUG,
         workers=settings.WORKERS
     )
+
+def _internal_error(e: Exception):
+    """通用内部错误处理：记录详细错误到日志，仅返回通用提示给客户端。"""
+    import logging
+    logging.getLogger(__name__).error(f"请求处理失败: {e}", exc_info=True)
+    return HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+

@@ -6837,8 +6837,13 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 
                 # 询问是否打开
                 if messagebox.askyesno("成功", f"已导出为{formats[fmt]['name']}格式\n\n{result}\n\n是否打开文件？"):
-                    import subprocess
-                    subprocess.Popen(['start', result], shell=True)
+                    # 使用 os.startfile 安全打开文件（不经过 shell，避免命令注入）
+                    import os
+                    try:
+                        os.startfile(result)
+                    except Exception as e:
+                        self._log(f"打开文件失败: {e}")
+                        messagebox.showinfo("提示", f"文件已保存到：\n{result}")
             else:
                 messagebox.showerror("错误", "格式转换失败")
         

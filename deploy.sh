@@ -44,12 +44,23 @@ check_env() {
     source .env
     
     if [ -z "$DB_PASSWORD" ] || [ "$DB_PASSWORD" = "your_secure_db_password_here" ]; then
-        echo -e "${RED}错误: 请设置 DB_PASSWORD${NC}"
+        echo -e "${RED}错误: 请设置 DB_PASSWORD（不能用占位符）${NC}"
         exit 1
     fi
     
-    if [ -z "$JWT_SECRET" ] || [ "$JWT_SECRET" = "your_jwt_secret_key_here_at_least_32_chars" ]; then
-        echo -e "${RED}错误: 请设置 JWT_SECRET${NC}"
+    if [ -z "$REDIS_PASSWORD" ] || [ "$REDIS_PASSWORD" = "your_secure_redis_password_here" ]; then
+        echo -e "${RED}错误: 请设置 REDIS_PASSWORD（不能用占位符）${NC}"
+        exit 1
+    fi
+    
+    if [ -z "$JWT_SECRET" ] || [ "$JWT_SECRET" = "your_jwt_secret_key_here_at_least_32_chars" ] || [ ${#JWT_SECRET} -lt 32 ]; then
+        echo -e "${RED}错误: JWT_SECRET 必须为至少 32 字符的随机字符串${NC}"
+        echo "可用命令生成: openssl rand -hex 32"
+        exit 1
+    fi
+    
+    if [ -z "$GRAFANA_PASSWORD" ] || [ "$GRAFANA_PASSWORD" = "your_grafana_password_here" ]; then
+        echo -e "${RED}错误: 请设置 GRAFANA_PASSWORD（不能用占位符）${NC}"
         exit 1
     fi
     

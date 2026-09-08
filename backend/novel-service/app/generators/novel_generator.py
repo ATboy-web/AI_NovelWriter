@@ -9,6 +9,8 @@ from datetime import datetime
 from enum import Enum
 import json
 from abc import ABC, abstractmethod
+from urllib.parse import urlparse
+import ipaddress
 
 class NovelType(str, Enum):
     # 基础类型
@@ -33,8 +35,11 @@ class NovelType(str, Enum):
 class NovelGenerator(ABC):
     """小说生成器基类"""
     
+    # 允许的 AI 服务主机白名单（防 SSRF）
+    ALLOWED_AI_SERVICE_HOSTS = {"localhost", "127.0.0.1", "::1"}
+    
     def __init__(self, ai_service_url: str = "http://localhost:8001"):
-        self.ai_service_url = ai_service_url
+        self.ai_service_url = self._validate_ai_service_url(ai_service_url)
         self.novel_type = None
         self.title = ""
         self.synopsis = ""
@@ -42,6 +47,25 @@ class NovelGenerator(ABC):
         self.characters: List[Dict[str, Any]] = []
         self.outline: Dict[str, Any] = {}
         self.metadata: Dict[str, Any] = {}
+    
+    @classmethod
+    def _validate_ai_service_url(cls, url: str) -> str:
+        """校验 AI 服务地址，防止 SSRF。
+
+        仅允许 http/https 协议且主机为本机回环地址（localhost/127.0.0.1/::1）。
+        拒绝任意内网 IP、云元数据地址（169.254.169.254）、公网地址。
+        """
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("AI服务地址协议非法，仅允许 http/https")
+        hostname = (parsed.hostname or "").lower()
+        if hostname in cls.ALLOWED_AI_SERVICE_HOSTS:
+            return url
+        # 允许 IPv6 回环的带方括号形式
+        if hostname == "::1" or hostname == "0:0:0:0:0:0:0:1":
+            return url
+        # 拒绝 IP 地址（含内网、云元数据地址）与任意主机名
+        raise ValueError(f"AI服务地址 {hostname} 不在允许的白名单内，已阻止 SSRF 请求")
         
     @abstractmethod
     async def generate_outline(self, title: str, synopsis: str, chapter_count: int = 10) -> Dict[str, Any]:

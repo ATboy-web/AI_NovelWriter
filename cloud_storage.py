@@ -648,22 +648,57 @@ class CloudStorageManager:
     
     def __init__(self, config_file: Path = None):
         self.config_file = config_file or Path.home() / ".ai_novel_writer" / "cloud_config.json"
+        self._secure_config = None
+        try:
+            from app.secure_config import SecureConfig
+            self._secure_config = SecureConfig()
+        except Exception:
+            self._secure_config = None
         self.config = self._load_config()
         self.providers: Dict[str, CloudProvider] = {}
         self._init_providers()
     
+    # 需要加密存储的敏感字段（云盘凭据）
+    _SENSITIVE_FIELDS = {"password", "access_token", "refresh_token", "cookie", "token"}
+    
     def _load_config(self) -> Dict:
         """加载配置"""
+        config = {}
         if self.config_file.exists():
             with open(self.config_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return {}
+                config = json.load(f)
+        # 解密敏感字段
+        return self._transform_config(config, decrypt=True)
     
     def _save_config(self):
-        """保存配置"""
+        """保存配置（敏感字段加密后落盘）"""
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_to_save = self._transform_config(self.config, decrypt=False)
         with open(self.config_file, 'w', encoding='utf-8') as f:
-            json.dump(self.config, f, indent=2, ensure_ascii=False)
+            json.dump(config_to_save, f, indent=2, ensure_ascii=False)
+    
+    def _transform_config(self, config: Dict, decrypt: bool) -> Dict:
+        """递归加密/解密配置中的敏感字段。
+
+        敏感字段使用 Fernet 加密，避免云盘凭据明文落盘。
+        """
+        if not self._secure_config:
+            return config
+        result = {}
+        for key, value in config.items():
+            if isinstance(value, dict):
+                result[key] = self._transform_config(value, decrypt)
+            elif key in self._SENSITIVE_FIELDS and isinstance(value, str) and value:
+                try:
+                    if decrypt:
+                        result[key] = self._secure_config._decrypt(value) or ""
+                    else:
+                        result[key] = self._secure_config._encrypt(value)
+                except Exception:
+                    result[key] = value
+            else:
+                result[key] = value
+        return result
     
     def _init_providers(self):
         """初始化云存储提供商"""

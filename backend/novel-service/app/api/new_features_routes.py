@@ -44,7 +44,7 @@ async def search_vector(request: VectorSearchRequest):
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"向量搜索失败: {str(e)}")
+        raise _internal_error(e)
 
 class VectorAddRequest(BaseModel):
     """向量添加请求"""
@@ -69,7 +69,7 @@ async def add_to_vector(request: VectorAddRequest):
         return {"success": result}
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"添加到向量数据库失败: {str(e)}")
+        raise _internal_error(e)
 
 # ==================== 一致性审校 API ====================
 
@@ -119,7 +119,7 @@ async def check_consistency(request: ConsistencyCheckRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "一致性检查失败"))
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"一致性检查失败: {str(e)}")
+        raise _internal_error(e)
 
 # ==================== 定稿系统 API ====================
 
@@ -181,7 +181,7 @@ async def finalize_chapter(request: FinalizeChapterRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "定稿失败"))
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"定稿失败: {str(e)}")
+        raise _internal_error(e)
 
 @router.get("/finalization/summary/{novel_id}", tags=["定稿系统"])
 async def get_novel_summary(novel_id: str):
@@ -201,7 +201,7 @@ async def get_novel_summary(novel_id: str):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取摘要失败: {str(e)}")
+        raise _internal_error(e)
 
 # ==================== 对话推演 API ====================
 
@@ -257,7 +257,7 @@ async def generate_dialogue_api(request: DialogueRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "对话生成失败"))
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"对话生成失败: {str(e)}")
+        raise _internal_error(e)
 
 class ContinueDialogueRequest(BaseModel):
     """继续对话请求"""
@@ -282,7 +282,7 @@ async def continue_dialogue_api(request: ContinueDialogueRequest):
         return result
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"继续对话失败: {str(e)}")
+        raise _internal_error(e)
 
 # ==================== 故事流推演 API ====================
 
@@ -336,7 +336,7 @@ async def generate_story_flow_api(request: StoryFlowRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "故事流推演失败"))
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"故事流推演失败: {str(e)}")
+        raise _internal_error(e)
 
 class BranchingScenariosRequest(BaseModel):
     """分支场景请求"""
@@ -363,7 +363,7 @@ async def generate_branching_scenarios_api(request: BranchingScenariosRequest):
         return result
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"分支场景生成失败: {str(e)}")
+        raise _internal_error(e)
 
 class ConflictEscalationRequest(BaseModel):
     """冲突升级请求"""
@@ -388,7 +388,7 @@ async def generate_conflict_escalation_api(request: ConflictEscalationRequest):
         return result
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"冲突升级生成失败: {str(e)}")
+        raise _internal_error(e)
 
 # ==================== 风格转换 API ====================
 
@@ -434,7 +434,7 @@ async def transfer_style_api(request: StyleTransferRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "风格转换失败"))
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"风格转换失败: {str(e)}")
+        raise _internal_error(e)
 
 class ImitateAuthorRequest(BaseModel):
     """模仿作家请求"""
@@ -457,7 +457,7 @@ async def imitate_author_style_api(request: ImitateAuthorRequest):
         return result
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"风格模仿失败: {str(e)}")
+        raise _internal_error(e)
 
 @router.get("/style-transfer/templates", tags=["风格转换"])
 async def get_style_templates():
@@ -473,7 +473,7 @@ async def get_style_templates():
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取风格模板失败: {str(e)}")
+        raise _internal_error(e)
 
 # ==================== 事物描写库 API ====================
 
@@ -519,7 +519,7 @@ async def generate_description_api(request: DescriptionRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "描写生成失败"))
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"描写生成失败: {str(e)}")
+        raise _internal_error(e)
 
 class SceneDescriptionRequest(BaseModel):
     """场景描写请求"""
@@ -546,7 +546,7 @@ async def generate_scene_description_api(request: SceneDescriptionRequest):
         return result
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"场景描写生成失败: {str(e)}")
+        raise _internal_error(e)
 
 @router.get("/description/search", tags=["事物描写库"])
 async def search_descriptions_api(query: str, category: Optional[str] = None):
@@ -566,7 +566,7 @@ async def search_descriptions_api(query: str, category: Optional[str] = None):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"搜索描写失败: {str(e)}")
+        raise _internal_error(e)
 
 @router.get("/description/categories", tags=["事物描写库"])
 async def get_description_categories():
@@ -582,7 +582,7 @@ async def get_description_categories():
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取描写类别失败: {str(e)}")
+        raise _internal_error(e)
 
 # ==================== 角色桥段库 API ====================
 
@@ -622,7 +622,7 @@ async def generate_bridge_api(request: BridgeRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "桥段生成失败"))
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"桥段生成失败: {str(e)}")
+        raise _internal_error(e)
 
 class CombineBridgesRequest(BaseModel):
     """组合桥段请求"""
@@ -645,7 +645,7 @@ async def combine_bridges_api(request: CombineBridgesRequest):
         return result
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"桥段组合失败: {str(e)}")
+        raise _internal_error(e)
 
 @router.get("/bridge/search", tags=["角色桥段库"])
 async def search_bridges_api(query: str, category: Optional[str] = None):
@@ -665,7 +665,7 @@ async def search_bridges_api(query: str, category: Optional[str] = None):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"搜索桥段失败: {str(e)}")
+        raise _internal_error(e)
 
 @router.get("/bridge/categories", tags=["角色桥段库"])
 async def get_bridge_categories():
@@ -681,7 +681,7 @@ async def get_bridge_categories():
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取桥段类别失败: {str(e)}")
+        raise _internal_error(e)
 
 # ==================== 健康检查 API ====================
 
@@ -752,3 +752,10 @@ async def new_features_health_check():
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }
+
+def _internal_error(e: Exception):
+    """通用内部错误处理：记录详细错误到日志，仅返回通用提示给客户端。"""
+    import logging
+    logging.getLogger(__name__).error(f"请求处理失败: {e}", exc_info=True)
+    return HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+

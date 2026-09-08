@@ -518,11 +518,21 @@ class CharacterSystem:
             return name
         return None
     
+    @staticmethod
+    def _sanitize_name(name: str) -> str:
+        """消毒角色名，防止路径遍历（文件名用于磁盘路径）"""
+        import re
+        # 移除路径分隔符与危险字符
+        safe = re.sub(r'[<>:"/\\|?*]', '_', name)
+        # 移除目录穿越序列
+        safe = safe.replace('..', '_')
+        return safe
+
     def delete_character(self, name: str) -> bool:
         if name in self.characters:
             del self.characters[name]
             if self.save_dir:
-                f = self.save_dir / f"{name}.json"
+                f = self.save_dir / f"{self._sanitize_name(name)}.json"
                 if f.exists():
                     f.unlink()
             if self.active_name == name:
@@ -536,7 +546,7 @@ class CharacterSystem:
             char.name = new_name
             self.characters[new_name] = char
             if self.save_dir:
-                old_file = self.save_dir / f"{old_name}.json"
+                old_file = self.save_dir / f"{self._sanitize_name(old_name)}.json"
                 if old_file.exists():
                     old_file.unlink()
             if self.active_name == old_name:
@@ -546,10 +556,9 @@ class CharacterSystem:
         return False
     
     def save_character(self, name: str = None):
-        import re
         name = name or self.active_name
         if name and name in self.characters and self.save_dir:
-            safe_name = re.sub(r'[<>:"/\\|?*]', '_', name)
+            safe_name = self._sanitize_name(name)
             f = self.save_dir / f"{safe_name}.json"
             with open(f, 'w', encoding='utf-8') as fp:
                 json.dump(self.characters[name].to_dict(), fp, indent=2, ensure_ascii=False)

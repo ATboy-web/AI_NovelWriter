@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 30
     
+    # 认证配置 - 默认启用认证中间件
+    ENABLE_AUTH: bool = Field(default=True, env="ENABLE_AUTH")
+    # 合法 API Key（逗号分隔，可选 `key:level` 格式），从环境变量读取
+    API_KEYS: str = Field(default="", env="API_KEYS")
+    
     @field_validator("SECRET_KEY")
     @classmethod
     def validate_secret_key(cls, v: str) -> str:

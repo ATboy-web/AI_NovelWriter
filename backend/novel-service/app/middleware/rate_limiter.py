@@ -165,32 +165,28 @@ class DynamicRateLimiter(BaseHTTPMiddleware):
         return max_requests, window
     
     def _get_user_level(self, request: Request) -> str:
-        """从请求中获取用户级别"""
-        # 从JWT token或header中获取
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            # TODO: 解析JWT获取用户级别
-            # 这里暂时从header获取
-            return request.headers.get("X-User-Level", "free")
+        """从已认证的请求状态获取用户级别（可信来源，防伪造）"""
+        # 优先使用认证中间件写入的 request.state.user（已通过 JWT/API Key 校验）
+        user = getattr(request.state, "user", None)
+        if user and isinstance(user, dict):
+            return user.get("level", "free")
         return "free"
     
     def _get_client_id(self, request: Request) -> str:
-        """获取客户端标识"""
-        # 优先使用用户ID，其次使用IP
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            # TODO: 解析JWT获取用户ID
-            user_id = request.headers.get("X-User-Id")
-            if user_id:
-                return f"user:{user_id}"
+        """获取客户端标识。
+
+        仅信任可信来源：
+        - 用户 ID 来自认证中间件写入的 request.state.user（已校验）
+        - IP 来自 ASGI 服务器的 request.client.host（socket 层真实地址）
+        不再信任客户端可控的 X-Forwarded-For / X-User-Id 头。
+        """
+        # 优先使用已认证的用户 ID
+        user = getattr(request.state, "user", None)
+        if user and isinstance(user, dict) and user.get("user_id"):
+            return f"user:{user.get('user_id')}"
         
-        # 使用IP地址
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            client_ip = forwarded.split(",")[0].strip()
-        else:
-            client_ip = request.client.host if request.client else "unknown"
-        
+        # 使用 socket 层真实 IP
+        client_ip = request.client.host if request.client else "unknown"
         return f"ip:{client_ip}"
     
     async def dispatch(self, request: Request, call_next):

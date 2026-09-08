@@ -512,14 +512,14 @@ class AIClient:
         start = time.time()
         error = False
         
-        # 🔍 AI诊断日志: 记录API调用
+        # 🔍 AI诊断日志: 记录API调用（不传入消息全文，仅记录元数据，避免泄露创作内容）
         if _diag_logger:
             _diag_logger.api_call(
                 provider=detected_provider, 
                 endpoint=f"chat/{model}",
                 request_data={
-                    "model": model, "messages": messages,
-                    "system": system, "max_tokens": max_tokens,
+                    "model": model,
+                    "max_tokens": max_tokens,
                     "temperature": temperature,
                     "thinking_enabled": thinking_enabled,
                     "messages_count": len(messages)

@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from ..generators.novel_generator import NovelType
+from ..generators.novel_generator import NovelType, NovelGenerator
 
 # 创建路由器
 router = APIRouter()
@@ -62,6 +62,9 @@ async def analyze_style(request: StyleAnalysisRequest):
         import httpx
         import time
         
+        # 校验 AI 服务地址，防 SSRF
+        NovelGenerator._validate_ai_service_url(request.ai_service_url)
+        
         start_time = time.time()
         
         # 调用AI服务进行风格分析
@@ -105,7 +108,7 @@ async def analyze_style(request: StyleAnalysisRequest):
             )
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"风格分析失败: {str(e)}")
+        raise _internal_error(e)
 
 @router.post("/optimize/content", response_model=ContentOptimizationResponse, tags=["内容优化"])
 async def optimize_content(request: ContentOptimizationRequest):
@@ -113,6 +116,9 @@ async def optimize_content(request: ContentOptimizationRequest):
     try:
         import httpx
         import time
+        
+        # 校验 AI 服务地址，防 SSRF
+        NovelGenerator._validate_ai_service_url(request.ai_service_url)
         
         start_time = time.time()
         
@@ -175,7 +181,7 @@ async def optimize_content(request: ContentOptimizationRequest):
             )
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"内容优化失败: {str(e)}")
+        raise _internal_error(e)
 
 @router.post("/check/continuity", response_model=ContinuityCheckResponse, tags=["质量检查"])
 async def check_continuity(request: ContinuityCheckRequest):
@@ -183,6 +189,9 @@ async def check_continuity(request: ContinuityCheckRequest):
     try:
         import httpx
         import time
+        
+        # 校验 AI 服务地址，防 SSRF
+        NovelGenerator._validate_ai_service_url(request.ai_service_url)
         
         start_time = time.time()
         
@@ -252,7 +261,7 @@ async def check_continuity(request: ContinuityCheckRequest):
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"连贯性检查失败: {str(e)}")
+        raise _internal_error(e)
 
 @router.get("/supported-types", tags=["小说类型"])
 async def get_supported_types():
@@ -314,3 +323,10 @@ async def get_statistics():
             "status": "running"
         }
     }
+
+def _internal_error(e: Exception):
+    """通用内部错误处理：记录详细错误到日志，仅返回通用提示给客户端。"""
+    import logging
+    logging.getLogger(__name__).error(f"请求处理失败: {e}", exc_info=True)
+    return HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+

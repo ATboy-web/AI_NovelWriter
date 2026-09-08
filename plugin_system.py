@@ -4,6 +4,7 @@
 
 import json
 import importlib.util
+import re
 import sys
 import shutil
 import zipfile
@@ -12,6 +13,11 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime
 from urllib.parse import urlparse
+
+
+# 插件名安全白名单：仅允许字母、数字、中文、下划线、连字符、点
+# 禁止路径分隔符与目录穿越字符（/ \ .. 等）
+_PLUGIN_NAME_PATTERN = re.compile(r'^[\w\u4e00-\u9fff.\-]+$')
 
 
 class Plugin:
@@ -171,6 +177,43 @@ class PluginManager:
                 providers.append(provider)
         return providers
     
+    @staticmethod
+    def _sanitize_plugin_name(name: str) -> Optional[str]:
+        """消毒插件名，防止路径遍历（Zip Slip / 目录穿越）
+
+        仅允许字母、数字、中文、下划线、连字符、点。
+        拒绝含路径分隔符、`..`、盘符等危险字符的名称。
+
+        Returns:
+            消毒后的安全名称；若名称非法返回 None。
+        """
+        if not name:
+            return None
+        name = name.strip()
+        # 拒绝空名、路径分隔符、目录穿越、盘符
+        if not name or len(name) > 64:
+            return None
+        if not _PLUGIN_NAME_PATTERN.match(name):
+            return None
+        # 禁止以点开头（隐藏目录）或包含 ..
+        if name.startswith('.') or '..' in name:
+            return None
+        return name
+
+    @staticmethod
+    def _safe_extract(zip_ref: zipfile.ZipFile, dest: Path):
+        """安全解压 ZIP，防止 Zip Slip（路径穿越）
+
+        逐个校验成员路径，确保解析后仍位于目标目录内。
+        """
+        dest = dest.resolve()
+        for member in zip_ref.infolist():
+            # 解析成员路径并确保不越界
+            target = (dest / member.filename).resolve()
+            if not str(target).startswith(str(dest)):
+                raise ValueError(f"检测到不安全的ZIP路径: {member.filename}")
+        zip_ref.extractall(str(dest))
+
     def install_plugin(self, source: str) -> Dict[str, Any]:
         """
         安装插件
@@ -188,11 +231,19 @@ class PluginManager:
         try:
             # 判断来源类型
             if source.startswith(("http://", "https://")):
-                return self._install_from_url(source)
+                result = self._install_from_url(source)
             elif source.endswith(".zip"):
-                return self._install_from_zip(source)
+                result = self._install_from_zip(source)
             else:
-                return self._install_from_directory(source)
+                result = self._install_from_directory(source)
+            
+            # 成功安装后附加安全提示：插件代码以应用同等权限运行
+            if result.get("success"):
+                result["security_warning"] = (
+                    "插件代码将以应用同等权限运行，可能访问本地文件与配置。"
+                    "请确保插件来源可信。"
+                )
+            return result
         except Exception as e:
             return {
                 "success": False,
@@ -244,9 +295,9 @@ class PluginManager:
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir)
                 
-                # 解压ZIP文件
+                # 解压ZIP文件（安全解压，防 Zip Slip）
                 with zipfile.ZipFile(str(zip_file), 'r') as zip_ref:
-                    zip_ref.extractall(str(temp_path))
+                    self._safe_extract(zip_ref, temp_path)
                 
                 # 查找插件目录（可能在子目录中）
                 plugin_dir = self._find_plugin_dir(temp_path)
@@ -261,9 +312,17 @@ class PluginManager:
                 if config_file.exists():
                     with open(config_file, 'r', encoding='utf-8') as f:
                         config = json.load(f)
-                    plugin_name = config.get("name", plugin_dir.name)
+                    raw_name = config.get("name", plugin_dir.name)
                 else:
-                    plugin_name = plugin_dir.name
+                    raw_name = plugin_dir.name
+                
+                # 消毒插件名，防止路径遍历
+                plugin_name = self._sanitize_plugin_name(raw_name)
+                if not plugin_name:
+                    return {
+                        "success": False,
+                        "message": f"插件名 '{raw_name}' 非法，仅允许字母、数字、中文、下划线、连字符"
+                    }
                 
                 # 检查是否已安装
                 if plugin_name in self.plugins:
@@ -342,7 +401,13 @@ class PluginManager:
             with open(config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
             
-            plugin_name = config.get("name", source_dir.name)
+            raw_name = config.get("name", source_dir.name)
+            plugin_name = self._sanitize_plugin_name(raw_name)
+            if not plugin_name:
+                return {
+                    "success": False,
+                    "message": f"插件名 '{raw_name}' 非法，仅允许字母、数字、中文、下划线、连字符"
+                }
             
             # 检查是否已安装
             if plugin_name in self.plugins:

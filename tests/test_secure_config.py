@@ -95,7 +95,7 @@ class TestSecureConfig:
         assert secure_config.get("app_name") == "AI小说写作助手"
     
     def test_backward_compatibility(self, config_dir):
-        """测试向后兼容性（未加密的旧配置）"""
+        """测试明文旧格式配置：敏感字段被安全清空（不再降级接受明文）"""
         import json
         
         # 模拟旧的未加密配置
@@ -108,9 +108,9 @@ class TestSecureConfig:
         config_file = config_dir / "config.json"
         config_file.write_text(json.dumps(old_config, indent=2))
         
-        # 加载配置，应该能读取旧的未加密密钥
+        # 加载配置：明文敏感字段不再被接受，安全清空
         config = SecureConfig(config_dir)
-        assert config.get_api_key() == "sk-old-plain-key"
+        assert config.get_api_key() == ""
     
     def test_get_nonexistent_key(self, secure_config):
         """测试获取不存在的键"""

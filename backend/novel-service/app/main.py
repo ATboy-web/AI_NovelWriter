@@ -67,11 +67,11 @@ if HAS_NEW_FEATURES and new_features_router:
 
 class NovelRequest(BaseModel):
     """小说生成请求"""
-    title: str = Field(..., description="小说标题")
-    synopsis: str = Field(..., description="小说简介")
+    title: str = Field(..., description="小说标题", max_length=200)
+    synopsis: str = Field(..., description="小说简介", max_length=20000)
     novel_type: NovelType = Field(NovelType.SCIFI, description="小说类型")
-    chapter_count: int = Field(10, description="章节数量")
-    ai_service_url: str = Field("http://localhost:8001", description="AI服务地址")
+    chapter_count: int = Field(10, description="章节数量", ge=1, le=500)
+    ai_service_url: str = Field("http://localhost:8001", description="AI服务地址", max_length=200)
 
 class NovelResponse(BaseModel):
     """小说生成响应"""
@@ -86,10 +86,10 @@ class NovelResponse(BaseModel):
 class ChapterRequest(BaseModel):
     """章节生成请求"""
     novel_type: NovelType = Field(NovelType.SCIFI, description="小说类型")
-    chapter_title: str = Field(..., description="章节标题")
-    chapter_outline: str = Field(..., description="章节大纲")
-    previous_content: Optional[str] = Field(None, description="前文内容")
-    ai_service_url: str = Field("http://localhost:8001", description="AI服务地址")
+    chapter_title: str = Field(..., description="章节标题", max_length=200)
+    chapter_outline: str = Field(..., description="章节大纲", max_length=50000)
+    previous_content: Optional[str] = Field(None, description="前文内容", max_length=200000)
+    ai_service_url: str = Field("http://localhost:8001", description="AI服务地址", max_length=200)
 
 class ChapterResponse(BaseModel):
     """章节生成响应"""
@@ -103,10 +103,10 @@ class ChapterResponse(BaseModel):
 class CharacterRequest(BaseModel):
     """人物生成请求"""
     novel_type: NovelType = Field(NovelType.SCIFI, description="小说类型")
-    character_name: str = Field(..., description="人物姓名")
-    character_role: str = Field(..., description="人物角色")
+    character_name: str = Field(..., description="人物姓名", max_length=100)
+    character_role: str = Field(..., description="人物角色", max_length=100)
     character_traits: List[str] = Field(..., description="人物特征")
-    ai_service_url: str = Field("http://localhost:8001", description="AI服务地址")
+    ai_service_url: str = Field("http://localhost:8001", description="AI服务地址", max_length=200)
 
 class CharacterResponse(BaseModel):
     """人物生成响应"""
@@ -118,10 +118,10 @@ class CharacterResponse(BaseModel):
 class OutlineRequest(BaseModel):
     """大纲生成请求"""
     novel_type: NovelType = Field(NovelType.SCIFI, description="小说类型")
-    title: str = Field(..., description="小说标题")
-    synopsis: str = Field(..., description="小说简介")
-    chapter_count: int = Field(10, description="章节数量")
-    ai_service_url: str = Field("http://localhost:8001", description="AI服务地址")
+    title: str = Field(..., description="小说标题", max_length=200)
+    synopsis: str = Field(..., description="小说简介", max_length=20000)
+    chapter_count: int = Field(10, description="章节数量", ge=1, le=500)
+    ai_service_url: str = Field("http://localhost:8001", description="AI服务地址", max_length=200)
 
 class OutlineResponse(BaseModel):
     """大纲生成响应"""
@@ -185,7 +185,7 @@ async def generate_novel(request: NovelRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "小说生成失败"))
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"小说生成失败: {str(e)}")
+        raise _internal_error(e)
 
 @app.post("/generate/chapter", response_model=ChapterResponse, tags=["章节生成"])
 async def generate_chapter(request: ChapterRequest):
@@ -219,7 +219,7 @@ async def generate_chapter(request: ChapterRequest):
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"章节生成失败: {str(e)}")
+        raise _internal_error(e)
 
 @app.post("/generate/character", response_model=CharacterResponse, tags=["人物生成"])
 async def generate_character(request: CharacterRequest):
@@ -250,7 +250,7 @@ async def generate_character(request: CharacterRequest):
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"人物生成失败: {str(e)}")
+        raise _internal_error(e)
 
 @app.post("/generate/outline", response_model=OutlineResponse, tags=["大纲生成"])
 async def generate_outline(request: OutlineRequest):
@@ -283,7 +283,7 @@ async def generate_outline(request: OutlineRequest):
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"大纲生成失败: {str(e)}")
+        raise _internal_error(e)
 
 @app.get("/novel-types", tags=["小说类型"])
 async def get_novel_types():
@@ -365,3 +365,10 @@ if __name__ == "__main__":
         reload=settings.DEBUG,
         workers=settings.WORKERS
     )
+
+def _internal_error(e: Exception):
+    """通用内部错误处理：记录详细错误到日志，仅返回通用提示给客户端。"""
+    import logging
+    logging.getLogger(__name__).error(f"请求处理失败: {e}", exc_info=True)
+    return HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+

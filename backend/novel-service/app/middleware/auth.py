@@ -2,6 +2,8 @@
 JWT认证中间件 - 提供API认证和授权功能
 """
 
+import os
+import secrets
 import time
 from typing import Optional, Dict, List
 from datetime import datetime, timedelta
@@ -22,8 +24,8 @@ except ImportError:
 class JWTConfig:
     """JWT配置"""
     
-    # 密钥（生产环境应从环境变量读取）
-    SECRET_KEY = "your-secret-key-change-in-production"
+    # 密钥从环境变量读取，禁止硬编码。未配置时生产环境将拒绝启动。
+    SECRET_KEY = os.getenv("SECRET_KEY", "")
     ALGORITHM = "HS256"
     
     # Token过期时间
@@ -47,11 +49,45 @@ class JWTConfig:
     ]
 
 
+def _load_api_keys() -> Dict[str, Dict]:
+    """从环境变量 API_KEYS 加载合法 API Key。
+
+    格式：逗号分隔的 `key:level` 或裸 `key`（默认 level=basic）。
+    例如：`API_KEYS=sk-abc123:premium,sk-def456`
+    """
+    raw = os.getenv("API_KEYS", "")
+    result: Dict[str, Dict] = {}
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if ":" in item:
+            key, level = item.split(":", 1)
+        else:
+            key, level = item, "basic"
+        key = key.strip()
+        if key:
+            result[key] = {
+                "user_id": f"apikey-{key[:8]}",
+                "username": "apikey",
+                "role": "user",
+                "level": level.strip() or "basic",
+            }
+    return result
+
+
 class JWTManager:
     """JWT管理器"""
     
     def __init__(self, config: Optional[JWTConfig] = None):
         self.config = config or JWTConfig()
+        if not self.config.SECRET_KEY:
+            logger.warning("SECRET_KEY 未配置，JWT 签名密钥缺失。请在环境变量中设置 SECRET_KEY。")
+    
+    def _require_secret(self):
+        """确保签名密钥已配置，否则拒绝签名/验签"""
+        if not self.config.SECRET_KEY:
+            raise RuntimeError("SECRET_KEY 未配置，无法进行 JWT 签名/验签")
     
     def create_access_token(
         self, 
@@ -61,6 +97,7 @@ class JWTManager:
         """创建访问Token"""
         if not JWT_AVAILABLE:
             raise RuntimeError("jwt库未安装")
+        self._require_secret()
         
         to_encode = data.copy()
         
@@ -87,6 +124,7 @@ class JWTManager:
         """创建刷新Token"""
         if not JWT_AVAILABLE:
             raise RuntimeError("jwt库未安装")
+        self._require_secret()
         
         to_encode = data.copy()
         expire = datetime.utcnow() + timedelta(
@@ -109,6 +147,8 @@ class JWTManager:
         """验证Token"""
         if not JWT_AVAILABLE:
             raise RuntimeError("jwt库未安装")
+        if not self.config.SECRET_KEY:
+            return None
         
         try:
             payload = jwt.decode(
@@ -122,19 +162,6 @@ class JWTManager:
             return None
         except jwt.InvalidTokenError as e:
             logger.warning(f"无效Token: {e}")
-            return None
-    
-    def decode_token_without_verification(self, token: str) -> Optional[Dict]:
-        """解码Token（不验证签名，用于调试）"""
-        if not JWT_AVAILABLE:
-            return None
-        
-        try:
-            return jwt.decode(
-                token, 
-                options={"verify_signature": False}
-            )
-        except Exception:
             return None
 
 
@@ -244,18 +271,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return response
     
     async def _verify_api_key(self, api_key: str) -> Optional[Dict]:
-        """验证API Key"""
-        # TODO: 实现API Key验证逻辑
-        # 这里只是示例，实际应该查询数据库
-        valid_api_keys = {
-            "test-api-key": {
-                "user_id": "test-user",
-                "username": "test",
-                "role": "user",
-                "level": "basic"
-            }
-        }
-        
+        """验证API Key（从环境变量 API_KEYS 读取合法密钥）"""
+        if not api_key:
+            return None
+        valid_api_keys = _load_api_keys()
+        if not valid_api_keys:
+            logger.warning("API_KEYS 未配置，API Key 认证不可用")
+            return None
         return valid_api_keys.get(api_key)
 
 

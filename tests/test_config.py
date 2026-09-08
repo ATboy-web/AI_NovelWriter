@@ -96,7 +96,7 @@ class TestAppConfig:
         assert config2.get("temperature") == 0.9
     
     def test_load_existing_config(self, config_dir, monkeypatch):
-        """测试加载已存在的配置"""
+        """测试加载已存在的配置（明文敏感字段被安全清空）"""
         monkeypatch.setattr('pathlib.Path.home', lambda: config_dir.parent)
         
         # 创建配置文件
@@ -112,7 +112,8 @@ class TestAppConfig:
         # 加载配置
         config = AppConfig()
         assert config.get("api_provider") == "openai"
-        assert config.get("api_key") == "sk-existing-key"
+        # 明文敏感字段不再被接受，安全清空
+        assert config.get("api_key") == ""
         assert config.get("model") == "gpt-4"
     
     def test_load_preserves_extra_keys(self, config_dir, monkeypatch):

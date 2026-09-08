@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "./logs/novel-service.log"
     
+    # 安全/认证配置
+    SECRET_KEY: str = Field(default="", env="SECRET_KEY")
+    ENABLE_AUTH: bool = Field(default=True, env="ENABLE_AUTH")
+    API_KEYS: str = Field(default="", env="API_KEYS")
+    
     # 性能配置
     MAX_CONCURRENT_GENERATIONS: int = 5
     GENERATION_TIMEOUT: int = 300  # 5分钟

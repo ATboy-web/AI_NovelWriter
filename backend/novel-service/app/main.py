@@ -320,11 +320,8 @@ async def get_rate_limit_info(request: Request):
     limiter = DynamicRateLimiter(app, RateLimitConfig())
     rate_info = RateLimitInfo(limiter)
     
-    # 获取客户端ID
+    # 获取客户端ID（仅信任 socket 层真实地址，不信任 X-Forwarded-For）
     client_ip = request.client.host if request.client else "unknown"
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
     
     client_id = f"ip:{client_ip}"
     

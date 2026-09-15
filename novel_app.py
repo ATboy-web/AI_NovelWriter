@@ -37,7 +37,7 @@ from app.navigation import NavigationManager
 # ==================== 从 app 包导入核心类 ====================
 from app import (AppConfig, AIClient, ImageGenerator, SceneDetector,
                  MemoryManager, NoteManager, FullscreenWriter,
-                 NovelAgent, ReadingManager, UIStyle)
+                 NovelAgent, ReadingManager, UIStyle, __version__)
 
 from app.panels import (ElementsPanelMixin, BridgesPanelMixin,
                         DescriptionsPanelMixin, DialoguePanelMixin,
@@ -8346,7 +8346,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
     def _show_about(self):
         """显示关于"""
         about_text = (
-            "AI自动写小说系统 v2.0\n\n"
+            f"AI自动写小说系统 v{__version__}\n\n"
             "功能：\n"
             "- AI API（Ollama/OpenAI/DeepSeek/Claude）\n"
             "- 长上下文记忆\n"

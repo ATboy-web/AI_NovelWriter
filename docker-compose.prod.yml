@@ -6,7 +6,7 @@ version: '3.8'
 services:
   # Nginx 反向代理
   nginx:
-    image: nginx:alpine
+    image: nginx:1.25-alpine
     container_name: novel-nginx
     ports:
       - "80:80"
@@ -123,7 +123,7 @@ services:
 
   # Prometheus 监控
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.53.0
     container_name: novel-prometheus
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
@@ -132,7 +132,7 @@ services:
 
   # Grafana 可视化
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.1.0
     container_name: novel-grafana
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}

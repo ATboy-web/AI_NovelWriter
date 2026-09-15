@@ -1,4 +1,4 @@
-# AI小说创作工坊 v2.14.2
+# AI小说创作工坊 v2.16.0
 
 [![CI](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml/badge.svg)](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -42,7 +42,7 @@
 
 | 平台 | 版本 | 大小 | 链接 |
 |------|------|------|------|
-| Windows | v2.14.2 | ~97MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
+| Windows | v2.16.0 | ~97MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
 | Android | v2.12.3 | ~2.4MB | [AI_NovelWriter.apk](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.12.3) |
 
 ## 快速开始

@@ -4,6 +4,31 @@ AI_NovelWriter 应用包
 """
 import importlib
 import sys
+from pathlib import Path as _Path
+
+
+# P3-1: 单一版本源。优先读取已安装包元数据，其次读取 pyproject.toml，
+# 冻结(EXE)环境下回退到构建时注入的常量。
+_FALLBACK_VERSION = "2.16.0"
+
+
+def _load_version() -> str:
+    try:
+        from importlib.metadata import version as _v
+        return _v("ai-novel-writer")
+    except Exception:
+        pass
+    try:
+        import tomllib
+        _pyproject = _Path(__file__).resolve().parent.parent / "pyproject.toml"
+        with open(_pyproject, "rb") as _f:
+            return tomllib.load(_f)["project"]["version"]
+    except Exception:
+        pass
+    return _FALLBACK_VERSION
+
+
+__version__ = _load_version()
 
 
 class _ImportStub:
@@ -45,6 +70,7 @@ ReadingManager = _safe_import("app.reading_manager", "ReadingManager")
 UIStyle = _safe_import("app.ui_style", "UIStyle")
 
 __all__ = [
+    "__version__",
     "AppConfig",
     "AIClient",
     "token_stats",

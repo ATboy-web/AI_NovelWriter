@@ -4,6 +4,8 @@
 
 import json
 import time
+import atexit
+import weakref
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -15,6 +17,29 @@ try:
 except ImportError:
     import logging
     logger = logging.getLogger(__name__)
+
+
+# P0-1 配套：模块级 weakref 注册表 + 单一 atexit 钩子。
+# 避免每个实例各自 atexit.register(self.flush) 造成对象被强引用无法回收、
+# 且进程退出时对已删除目录重复落盘报错。
+_flush_registry = weakref.WeakSet()
+_atexit_registered = False
+
+
+def _register_flush(mm):
+    global _atexit_registered
+    _flush_registry.add(mm)
+    if not _atexit_registered:
+        atexit.register(_flush_all_on_exit)
+        _atexit_registered = True
+
+
+def _flush_all_on_exit():
+    for mm in list(_flush_registry):
+        try:
+            mm.flush()
+        except Exception:
+            pass
 
 
 class MemoryManager:
@@ -36,6 +61,17 @@ class MemoryManager:
     """
     
     VOLUME_SIZE = 100  # 每卷100章
+    
+    # P1-1: 中文常见停用词提为类常量，避免每次调用重建
+    _STOPWORDS = frozenset({
+        '的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一',
+        '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有',
+        '看', '好', '自己', '这', '他', '她', '它', '们', '那', '被', '把',
+        '可以', '这个', '那个', '什么', '怎么', '因为', '所以', '但是', '然后',
+    })
+    # 有界关键词缓存（跨实例共享纯函数结果）
+    _KW_CACHE: Dict[str, tuple] = {}
+    _KW_CACHE_MAX = 512
     
     def __init__(self, novel_dir: Path):
         self.novel_dir = novel_dir
@@ -79,8 +115,35 @@ class MemoryManager:
         self._current_page = 0  # 当前chunks页
         self._chunks_cache = []  # 当前页的chunks缓存
         
-        # 线程锁 - 保护共享状态
-        self._lock = threading.Lock()
+        # 线程锁 - 保护共享状态（RLock：允许同一线程嵌套获取，如 add_chunk→merge_chunk）
+        self._lock = threading.RLock()
+        
+        # P0-1: 倒排索引落盘使用独立写入计数器（此前用词典大小 %100，词表饱和后永不落盘）
+        self._index_write_count = 0
+        self._index_save_interval = 50
+        # P1-5: 评分批量落盘，避免每次引用都全量写盘
+        self._scores_dirty = 0
+        self._scores_save_threshold = 20
+        # P1-6: chunk_id -> 页码 内存索引，避免 _merge_chunk 全量扫描
+        self._chunk_page_index: Dict[str, int] = {}
+        self._chunk_index_built = False
+        
+        # 退出时强制落盘，避免索引/评分丢失（模块级 WeakSet 注册，单钩子）
+        _register_flush(self)
+    
+    def flush(self):
+        """强制将内存状态落盘（索引 + 评分）"""
+        try:
+            # 目录可能已被清理（如临时目录），此时无需落盘
+            if not self.memory_dir.exists():
+                return
+            with self._lock:
+                self._save_inverted_index()
+                if self._scores_dirty:
+                    self._save_scores()
+                    self._scores_dirty = 0
+        except Exception as e:
+            logger.warning(f"[记忆] flush 落盘失败: {e}")
     
     # ===== 初始化加载方法 =====
     
@@ -281,8 +344,9 @@ class MemoryManager:
                     self._inverted_index[kw] = []
                 if doc_id not in self._inverted_index[kw]:
                     self._inverted_index[kw].append(doc_id)
-            # 定期保存（每100次更新保存一次）
-            if len(self._inverted_index) % 100 == 0:
+            # P0-1: 用独立写入计数器决定落盘时机（每 N 次写入落盘一次）
+            self._index_write_count += 1
+            if self._index_write_count % self._index_save_interval == 0:
                 self._save_inverted_index()
     
     def retrieve_relevant(self, query: str, top_k: int = 5) -> List[Dict]:
@@ -294,22 +358,40 @@ class MemoryManager:
         if not query_keywords:
             return []
         
-        # 使用倒排索引快速找到候选文档
-        candidate_ids = set()
-        for kw in query_keywords:
-            if kw in self._inverted_index:
-                candidate_ids.update(self._inverted_index[kw])
+        # 使用倒排索引快速找到候选文档（加锁读取共享索引）
+        with self._lock:
+            candidate_ids = set()
+            for kw in query_keywords:
+                if kw in self._inverted_index:
+                    candidate_ids.update(self._inverted_index[kw])
         
         # 如果没有索引，降级为遍历章节摘要
         if not candidate_ids:
             return self._fallback_search(query_keywords, top_k)
         
+        # P1-2: 限制候选规模，避免超长命中集导致大量文件读盘
+        if len(candidate_ids) > 300:
+            candidate_ids = list(candidate_ids)[:300]
+        
+        # P1-2: 单次调用内缓存已读取的文档内容
+        doc_cache: Dict[str, str] = {}
+        
         # 计算候选文档的相关性
         scored = []
         for doc_id in candidate_ids:
-            content = self._get_document_content(doc_id)
+            content = doc_cache.get(doc_id)
+            if content is None:
+                content = self._get_document_content(doc_id)
+                doc_cache[doc_id] = content
             if content:
-                chunk = {"id": doc_id, "content": content}
+                # P1-4: 从 _scores 回填 created_at / importance，恢复 freshness/importance 权重
+                meta = self._scores.get(doc_id, {})
+                chunk = {
+                    "id": doc_id,
+                    "content": content,
+                    "created_at": meta.get("created_at", ""),
+                    "importance": meta.get("importance", 5),
+                }
                 score = self._calculate_relevance(chunk, query_keywords)
                 if score > 0:
                     scored.append({**chunk, "relevance": score})
@@ -317,20 +399,27 @@ class MemoryManager:
         scored.sort(key=lambda x: x["relevance"], reverse=True)
         top = scored[:top_k]
         
+        # P1-5: 引用计数在内存累加，按阈值批量落盘（见 _increment_reference）
         for chunk in top:
             self._increment_reference(chunk.get("id", ""))
         
         return top
     
     def _fallback_search(self, query_keywords: set, top_k: int) -> List[Dict]:
-        """降级搜索：遍历最近的章节摘要"""
+        """降级搜索：遍历最近的章节摘要（P1-3: 仅扫摘要、限制数量）"""
         scored = []
         chapters = sorted(self.chapters_dir.glob("chapter_*.txt"), reverse=True)
-        for ch_file in chapters[:200]:  # 只搜索最近200章
+        for ch_file in chapters[:100]:  # 只搜索最近100章摘要（摘要文件，非全文）
             try:
                 content = ch_file.read_text(encoding='utf-8')
                 doc_id = ch_file.stem
-                chunk = {"id": doc_id, "content": content}
+                meta = self._scores.get(doc_id, {})
+                chunk = {
+                    "id": doc_id,
+                    "content": content,
+                    "created_at": meta.get("created_at", ""),
+                    "importance": meta.get("importance", 5),
+                }
                 score = self._calculate_relevance(chunk, query_keywords)
                 if score > 0:
                     scored.append({**chunk, "relevance": score})
@@ -441,36 +530,57 @@ class MemoryManager:
     
     def add_chunk(self, chunk_type: str, content: str, importance: int = 5, 
                   tags: List[str] = None, related_to: List[str] = None):
-        """添加记忆块（分页存储）"""
-        # 去重检查（只检查最近几页）
-        existing = self._find_similar_chunk(content)
-        if existing:
-            self._merge_chunk(existing["id"], content, tags)
-            return existing["id"]
-        
-        chunk = {
-            "id": f"{chunk_type}_{int(time.time() * 1000)}",
-            "type": chunk_type,
-            "content": content,
-            "importance": importance,
-            "tags": tags or [],
-            "related_to": related_to or [],
-            "created_at": datetime.now().isoformat(),
-            "references": 0,
-        }
-        
-        # 找到当前页
-        total = self._get_total_chunk_count()
-        current_page = total // 100
-        page_chunks = self._get_chunks_page(current_page)
-        page_chunks.append(chunk)
-        self._save_chunks_page(current_page, page_chunks)
-        
-        # 更新倒排索引
-        self._update_inverted_index(chunk["id"], content)
-        self._update_score(chunk["id"], chunk_type, importance)
-        
-        return chunk["id"]
+        """添加记忆块（分页存储，P1-6: 读改写加锁 + 维护页索引）"""
+        with self._lock:
+            # 去重检查（只检查最近几页）
+            existing = self._find_similar_chunk(content)
+            if existing:
+                self._merge_chunk(existing["id"], content, tags)
+                return existing["id"]
+            
+            chunk = {
+                "id": f"{chunk_type}_{int(time.time() * 1000)}",
+                "type": chunk_type,
+                "content": content,
+                "importance": importance,
+                "tags": tags or [],
+                "related_to": related_to or [],
+                "created_at": datetime.now().isoformat(),
+                "references": 0,
+            }
+            
+            # 找到当前页
+            total = self._get_total_chunk_count()
+            current_page = total // 100
+            page_chunks = self._get_chunks_page(current_page)
+            page_chunks.append(chunk)
+            self._save_chunks_page(current_page, page_chunks)
+            
+            # 维护 id -> page 内存索引
+            if self._chunk_index_built:
+                self._chunk_page_index[chunk["id"]] = current_page
+            
+            # 更新倒排索引
+            self._update_inverted_index(chunk["id"], content)
+            self._update_score(chunk["id"], chunk_type, importance)
+            
+            return chunk["id"]
+    
+    def _ensure_chunk_index(self):
+        """P1-6: 构建并缓存 chunk_id -> page 的内存索引（一次扫描）"""
+        if self._chunk_index_built:
+            return
+        for page_file in sorted(self.chunks_dir.glob("page_*.json")):
+            try:
+                page_num = int(page_file.stem.split("_")[1])
+            except (ValueError, IndexError):
+                continue
+            try:
+                for chunk in json.loads(page_file.read_text(encoding='utf-8')):
+                    self._chunk_page_index[chunk.get("id", "")] = page_num
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+        self._chunk_index_built = True
     
     def _find_similar_chunk(self, content: str, threshold: float = 0.7) -> Optional[Dict]:
         """查找相似的记忆块（只检查最近几页）"""
@@ -493,22 +603,27 @@ class MemoryManager:
         return None
     
     def _merge_chunk(self, chunk_id: str, new_content: str, new_tags: List[str] = None):
-        """合并记忆块"""
-        # 查找chunk所在的页
-        total = self._get_total_chunk_count()
-        max_page = total // 100
-        for page in range(max_page + 1):
-            page_chunks = self._get_chunks_page(page)
-            for chunk in page_chunks:
-                if chunk["id"] == chunk_id:
-                    if new_content not in chunk["content"]:
-                        chunk["content"] += f"\n\n[更新]\n{new_content}"
-                    if new_tags:
-                        chunk["tags"] = list(set(chunk.get("tags", []) + new_tags))
-                    chunk["updated_at"] = datetime.now().isoformat()
-                    self._save_chunks_page(page, page_chunks)
-                    return
+        """合并记忆块（P1-6: 优先用 id->page 索引，回退时才全量扫描）"""
         with self._lock:
+            self._ensure_chunk_index()
+            page = self._chunk_page_index.get(chunk_id)
+            if page is not None:
+                pages_to_try = [page]
+            else:
+                total = self._get_total_chunk_count()
+                pages_to_try = list(range(total // 100 + 1))
+            
+            for p in pages_to_try:
+                page_chunks = self._get_chunks_page(p)
+                for chunk in page_chunks:
+                    if chunk["id"] == chunk_id:
+                        if new_content not in chunk["content"]:
+                            chunk["content"] += f"\n\n[更新]\n{new_content}"
+                        if new_tags:
+                            chunk["tags"] = list(set(chunk.get("tags", []) + new_tags))
+                        chunk["updated_at"] = datetime.now().isoformat()
+                        self._save_chunks_page(p, page_chunks)
+                        return
             self._save_inverted_index()
     
     # ===== 事件时间线（分页存储）=====
@@ -601,7 +716,7 @@ class MemoryManager:
     # ===== 记忆评分和衰减 =====
     
     def _update_score(self, item_id: str, item_type: str, importance: int = 5):
-        """更新记忆评分"""
+        """更新记忆评分（P1-5: 批量落盘）"""
         with self._lock:
             if item_id not in self._scores:
                 self._scores[item_id] = {
@@ -613,17 +728,24 @@ class MemoryManager:
             self._scores[item_id]["importance"] = max(
                 self._scores[item_id].get("importance", 5), importance
             )
-            self._save_scores()
+            self._mark_scores_dirty()
     
     def _increment_reference(self, item_id: str):
-        """增加引用计数"""
+        """增加引用计数（P1-5: 内存累加，按阈值批量落盘）"""
         with self._lock:
             if item_id not in self._scores:
                 self._scores[item_id] = {"type": "unknown", "importance": 5, "references": 0,
                                           "created_at": datetime.now().isoformat()}
             self._scores[item_id]["references"] = self._scores[item_id].get("references", 0) + 1
             self._scores[item_id]["last_referenced"] = datetime.now().isoformat()
+            self._mark_scores_dirty()
+    
+    def _mark_scores_dirty(self):
+        """标记评分已变更；达到阈值时批量落盘（调用方需持锁）"""
+        self._scores_dirty += 1
+        if self._scores_dirty >= self._scores_save_threshold:
             self._save_scores()
+            self._scores_dirty = 0
     
     def _save_scores(self):
         with open(self.scores_file, 'w', encoding='utf-8') as f:
@@ -691,13 +813,18 @@ class MemoryManager:
     
     @staticmethod
     def _extract_keywords(text: str) -> List[str]:
-        """提取关键词（简易分词）"""
-        # 中文常见停用词
-        stopwords = {'的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一',
-                     '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有',
-                     '看', '好', '自己', '这', '他', '她', '它', '们', '那', '被', '把',
-                     '可以', '这个', '那个', '什么', '怎么', '因为', '所以', '但是', '然后'}
+        """提取关键词（简易分词）
         
+        P1-1: 命中缓存直接返回，避免同一文本在 update_index / calculate_relevance /
+        find_similar_chunk 中被重复分词；停用词为类常量，不再每次重建。
+        """
+        if not text:
+            return []
+        cached = MemoryManager._KW_CACHE.get(text)
+        if cached is not None:
+            return list(cached)
+        
+        stopwords = MemoryManager._STOPWORDS
         # 提取2-4字词组（优化版本：使用集合去重，减少内存分配）
         cleaned = []
         for c in text:
@@ -712,7 +839,7 @@ class MemoryManager:
         keywords = []
         text_len = len(cleaned)
         for i in range(text_len):
-            for l in [2, 3, 4]:
+            for l in (2, 3, 4):
                 if i + l <= text_len:
                     word = cleaned[i:i+l]
                     if word not in stopwords and word not in seen and all('\u4e00' <= c <= '\u9fff' for c in word):
@@ -720,7 +847,13 @@ class MemoryManager:
                         keywords.append(word)
         
         # 按出现位置排序（前面的更重要）
-        return keywords[:30]
+        result = keywords[:30]
+        # 有界缓存：仅在文本长度可控时缓存，避免海量长文本占用内存
+        if len(text) <= 4000:
+            if len(MemoryManager._KW_CACHE) >= MemoryManager._KW_CACHE_MAX:
+                MemoryManager._KW_CACHE.clear()
+            MemoryManager._KW_CACHE[text] = tuple(result)
+        return result
     
     def get_settings(self) -> dict:
         if self.settings_file.exists():

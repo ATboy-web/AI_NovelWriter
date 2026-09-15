@@ -47,17 +47,11 @@ from app.panels import (ElementsPanelMixin, BridgesPanelMixin,
                         BatchOpsPanelMixin, ChapterAnalysisPanelMixin)
 
 # ==================== 新增模块化管理器 ====================
-from app.ui_manager import UIManagerMixin
-from app.character_manager import CharacterManagerMixin
-from app.settings_manager import SettingsManagerMixin
-from app.note_manager_ui import NoteManagerMixin
-from app.reader_manager import ReaderManagerMixin
 from app.writing_skills_panel import WritingSkillsPanelMixin
 
 
 class NovelWriterApp(
-    UIManagerMixin, CharacterManagerMixin, SettingsManagerMixin,
-    NoteManagerMixin, ReaderManagerMixin, WritingSkillsPanelMixin,
+    WritingSkillsPanelMixin,
     ElementsPanelMixin, BridgesPanelMixin, DescriptionsPanelMixin,
     DialoguePanelMixin, StoryFlowPanelMixin, StylePanelMixin,
     AdaptPanelMixin, WebSearchPanelMixin, MemoryVizPanelMixin,

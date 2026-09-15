@@ -1,5 +1,12 @@
 # AI_NovelWriter 单一 CI/CD 流水线
-# 合并原 build.yml / ci.yml / ci-cd.yml 三个高度重叠的工作流
+#
+# 本文件是仓库唯一的工作流。原 build.yml 与 ci-cd.yml 已于 2026-09 删除：
+#   - 三者触发条件与作业高度重叠，同时启用会让每次 push 跑三套流水线；
+#   - ci-cd.yml 引用不存在的根 requirements.txt，其 lint/test 必然失败，
+#     导致 CI 状态不可信、回归无法拦截；
+#   - ci-cd.yml 的 build/deploy 作业为死代码（上游 test 恒失败故从未执行），
+#     且与 docker-compose.prod.yml 的源码 build 模式不匹配
+#     （对 build-only 服务执行 docker-compose pull 无效）。
 #
 # 触发：
 #   push / PR        -> lint + test + android + security

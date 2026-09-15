@@ -84,8 +84,8 @@ services:
   # 前端服务
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
+      context: ./frontend-react
+      dockerfile: Dockerfile
     container_name: novel-frontend
     restart: always
 

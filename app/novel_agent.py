@@ -357,25 +357,33 @@ class NovelAgent:
             ec_budget = int(max_chars * ratio["extra"])
             # keep_tail=True: 保留结尾（前一章结尾是连贯性关键）
             ec_text = self._compress_text(extra_context, ec_budget, keep_tail=True)
-            parts.append(f"【创作指引】\n{ec_text}")
-            used += len(ec_text)
+            ec_section = f"【创作指引】\n{ec_text}"
+            parts.append(ec_section)
+            used += len(ec_section)  # P2-7: 计入段标题，避免预算失真
             
             # 同时做RAG检索补充
             relevant = self.memory.retrieve_relevant(extra_context, top_k=3)
             if relevant:
                 rag_text = "\n".join([f"- {r.get('content', '')[:100]}" for r in relevant])
-                text = self._compress_text(rag_text, min(int(max_chars * ratio["rag"]), max_chars - used), keep_tail=False)
+                # P2-7: 预算下限钳位到 0，防止 max_chars-used 为负
+                rag_budget = max(0, min(int(max_chars * ratio["rag"]), max_chars - used))
+                text = self._compress_text(rag_text, rag_budget, keep_tail=False)
                 if text and len(text) > 20:
-                    parts.append(f"【相关记忆】\n{text}")
+                    rag_section = f"【相关记忆】\n{text}"
+                    parts.append(rag_section)
+                    used += len(rag_section)
         
         # 写作技能上下文（知识图谱、写作技巧）
         try:
             from .writing_skills import writing_skill_manager
             skills_context = writing_skill_manager.get_writing_context()
             if skills_context and len(skills_context) > 20:
-                text = self._compress_text(skills_context, min(500, max_chars - used), keep_tail=False)
+                skill_budget = max(0, min(500, max_chars - used))
+                text = self._compress_text(skills_context, skill_budget, keep_tail=False)
                 if text:
-                    parts.append(f"【写作参考】\n{text}")
+                    skill_section = f"【写作参考】\n{text}"
+                    parts.append(skill_section)
+                    used += len(skill_section)
         except Exception as e:
             self.log(f"[写作技能] 获取上下文失败: {e}")
         

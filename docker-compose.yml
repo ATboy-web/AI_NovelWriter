@@ -122,11 +122,11 @@ services:
   # 前端服务
   frontend:
     build:
-      context: ./frontend
+      context: ./frontend-react
       dockerfile: Dockerfile
     container_name: ai-novel-frontend
     ports:
-      - "3000:3000"
+      - "3000:80"
     environment:
       - REACT_APP_API_URL=http://localhost:8001
       - REACT_APP_NOVEL_SERVICE_URL=http://localhost:8002

@@ -4,15 +4,15 @@
 """
 
 import asyncio
-from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
-import json
-import os
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
 from .config import settings
+
 
 class ModelStatus(str, Enum):
     UNLOADED = "unloaded"
@@ -271,8 +271,8 @@ class ModelManager:
         
         # Claude模型不需要预加载，只需验证连接
         try:
-            # 简单测试连接
-            message = await self.claude_client.messages.create(
+            # 简单测试连接（仅探测可用性，无需使用返回内容）
+            await self.claude_client.messages.create(
                 model=model_name or "claude-3-sonnet-20240229",
                 max_tokens=10,
                 messages=[{"role": "user", "content": "test"}]

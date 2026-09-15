@@ -2,14 +2,15 @@
 动态限流中间件 - 支持根据请求类型和用户级别动态调整限流策略
 """
 
-import time
 import asyncio
-from typing import Dict, Optional, Tuple
+import time
 from collections import defaultdict
-from fastapi import Request, Response, HTTPException
+from typing import Dict, Optional, Tuple
+
+from fastapi import Request
+from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-from loguru import logger
 
 
 class RateLimitConfig:

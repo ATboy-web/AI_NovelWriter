@@ -4,10 +4,10 @@
 
 from .vector_manager import (
     VectorStoreManager,
-    get_vector_store_manager,
     add_chapter_to_vector_store,
+    get_chapter_context,
+    get_vector_store_manager,
     search_novel_content,
-    get_chapter_context
 )
 
 __all__ = [

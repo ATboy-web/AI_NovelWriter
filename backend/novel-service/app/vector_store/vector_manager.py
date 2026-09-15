@@ -3,12 +3,12 @@
 用于存储和检索历史内容，确保剧情连贯性
 """
 
-import os
-import json
-import threading
-from typing import List, Dict, Any, Optional
-from datetime import datetime
 import hashlib
+import os
+import threading
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 
 class VectorStoreManager:
     """向量数据库管理器"""

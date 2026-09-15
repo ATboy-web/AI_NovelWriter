@@ -3,11 +3,13 @@
 检测角色行为、剧情矛盾等逻辑冲突
 """
 
+import json
 import re
 import threading
-from typing import List, Dict, Any, Optional
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
 
 class ConflictType(str, Enum):
     """冲突类型"""

@@ -3,14 +3,14 @@
 """
 
 from .description_manager import (
-    DescriptionManager,
     DescriptionCategory,
+    DescriptionManager,
     DescriptionStyle,
-    get_description_manager,
+    enhance_description,
     generate_description,
     generate_scene_description,
-    enhance_description,
-    search_descriptions
+    get_description_manager,
+    search_descriptions,
 )
 
 __all__ = [

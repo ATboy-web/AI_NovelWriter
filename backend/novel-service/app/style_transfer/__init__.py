@@ -6,11 +6,11 @@ from .style_transfer_manager import (
     StyleTransferManager,
     StyleType,
     TransferMode,
-    get_style_transfer_manager,
+    adapt_to_genre,
     analyze_style,
-    transfer_style,
+    get_style_transfer_manager,
     imitate_author_style,
-    adapt_to_genre
+    transfer_style,
 )
 
 __all__ = [

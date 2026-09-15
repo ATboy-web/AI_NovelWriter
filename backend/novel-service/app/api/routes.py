@@ -2,11 +2,13 @@
 小说生成服务API路由
 """
 
+from datetime import datetime
+from typing import Any, Dict, List
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
-from datetime import datetime
-from ..generators.novel_generator import NovelType, NovelGenerator
+
+from ..generators.novel_generator import NovelGenerator, NovelType
 
 # 创建路由器
 router = APIRouter()
@@ -59,8 +61,9 @@ class ContinuityCheckResponse(BaseModel):
 async def analyze_style(request: StyleAnalysisRequest):
     """分析文本风格"""
     try:
-        import httpx
         import time
+
+        import httpx
         
         # 校验 AI 服务地址，防 SSRF
         NovelGenerator._validate_ai_service_url(request.ai_service_url)
@@ -114,8 +117,9 @@ async def analyze_style(request: StyleAnalysisRequest):
 async def optimize_content(request: ContentOptimizationRequest):
     """优化内容"""
     try:
-        import httpx
         import time
+
+        import httpx
         
         # 校验 AI 服务地址，防 SSRF
         NovelGenerator._validate_ai_service_url(request.ai_service_url)
@@ -187,8 +191,9 @@ async def optimize_content(request: ContentOptimizationRequest):
 async def check_continuity(request: ContinuityCheckRequest):
     """检查内容连贯性"""
     try:
-        import httpx
         import time
+
+        import httpx
         
         # 校验 AI 服务地址，防 SSRF
         NovelGenerator._validate_ai_service_url(request.ai_service_url)

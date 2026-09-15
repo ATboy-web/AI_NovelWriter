@@ -1,8 +1,8 @@
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-import asyncio
 import sys
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 # 将 novel-service 目录加入路径（目录名含连字符，无法直接 import）
 _novel_service_dir = str(Path(__file__).resolve().parent.parent / "novel-service")
@@ -12,8 +12,13 @@ if _novel_service_dir not in sys.path:
 # 确保从正确的 app 包导入（novel-service/app 而非根目录/app）
 try:
     from app.generators.novel_generator import (
-        NovelType, NovelGenerator, GenericNovelGenerator, NovelGeneratorFactory,
-        SciFiNovelGenerator, MysteryNovelGenerator, RomanceNovelGenerator
+        GenericNovelGenerator,
+        MysteryNovelGenerator,
+        NovelGenerator,
+        NovelGeneratorFactory,
+        NovelType,
+        RomanceNovelGenerator,
+        SciFiNovelGenerator,
     )
 except ImportError:
     # 如果导入失败，尝试使用完整路径

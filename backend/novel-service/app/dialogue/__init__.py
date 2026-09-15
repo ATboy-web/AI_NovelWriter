@@ -6,9 +6,9 @@ from .dialogue_manager import (
     DialogueManager,
     DialogueStyle,
     DialogueType,
-    get_dialogue_manager,
+    continue_dialogue,
     generate_dialogue,
-    continue_dialogue
+    get_dialogue_manager,
 )
 
 __all__ = [

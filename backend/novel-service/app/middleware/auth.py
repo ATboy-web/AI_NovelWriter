@@ -5,8 +5,8 @@
 """
 from shared.middleware.auth import *  # noqa: F401,F403
 from shared.middleware.auth import (  # noqa: F401
+    AuthDependencies,
     AuthMiddleware,
     JWTConfig,
     JWTManager,
-    AuthDependencies,
 )

@@ -5,8 +5,8 @@
 """
 from shared.middleware.logging import *  # noqa: F401,F403
 from shared.middleware.logging import (  # noqa: F401
+    PerformanceMonitor,
     RequestLogger,
     RequestLoggerConfig,
-    PerformanceMonitor,
     performance_monitor,
 )

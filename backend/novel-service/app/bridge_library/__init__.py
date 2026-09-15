@@ -3,14 +3,14 @@
 """
 
 from .bridge_manager import (
-    BridgeManager,
     BridgeCategory,
+    BridgeManager,
     BridgeTone,
-    get_bridge_manager,
-    generate_bridge,
     combine_bridges,
+    generate_bridge,
     generate_bridge_with_variation,
-    search_bridges
+    get_bridge_manager,
+    search_bridges,
 )
 
 __all__ = [

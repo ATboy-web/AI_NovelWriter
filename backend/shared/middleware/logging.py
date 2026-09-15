@@ -2,12 +2,13 @@
 请求日志中间件 - 记录API请求和响应信息
 """
 
-import time
 import json
-from typing import Optional, Dict, Any
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
+import time
+from typing import Any, Dict, Optional
+
+from fastapi import Request
 from loguru import logger
+from starlette.middleware.base import BaseHTTPMiddleware
 
 
 class RequestLoggerConfig:

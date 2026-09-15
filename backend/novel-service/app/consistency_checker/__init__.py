@@ -3,11 +3,11 @@
 """
 
 from .consistency_checker import (
-    ConsistencyChecker,
-    ConflictType,
     ConflictSeverity,
+    ConflictType,
+    ConsistencyChecker,
+    check_chapter_consistency,
     get_consistency_checker,
-    check_chapter_consistency
 )
 
 __all__ = [

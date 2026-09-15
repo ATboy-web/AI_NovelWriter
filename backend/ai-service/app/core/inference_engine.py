@@ -3,14 +3,14 @@
 负责实际调用模型进行文本生成
 """
 
-import asyncio
-from typing import Dict, Any, Optional
-from datetime import datetime
 import time
+from datetime import datetime
+from typing import Any, Dict, Optional
+
 from loguru import logger
 
-from .config import settings
 from .model_manager import ModelManager
+
 
 class InferenceEngine:
     """推理引擎"""
@@ -360,7 +360,7 @@ class InferenceEngine:
                     content = content[first_period + 1:].strip()
         
         # 确保章节标题存在
-        if not content.startswith(f"第") and not content.startswith(chapter_title):
+        if not content.startswith("第") and not content.startswith(chapter_title):
             content = f"{chapter_title}\n\n{content}"
         
         return content
@@ -394,8 +394,8 @@ class InferenceEngine:
             local_status = "unavailable"
             if local_model:
                 try:
-                    # 简单测试
-                    test_response = local_model.create_completion(
+                    # 简单测试（仅探测可用性，无需使用返回内容）
+                    local_model.create_completion(
                         prompt="测试",
                         max_tokens=5,
                         temperature=0.1
@@ -408,8 +408,8 @@ class InferenceEngine:
             openai_status = "unavailable"
             if openai_client:
                 try:
-                    # 简单测试
-                    test_response = await openai_client.chat.completions.create(
+                    # 简单测试（仅探测可用性，无需使用返回内容）
+                    await openai_client.chat.completions.create(
                         model="gpt-3.5-turbo",
                         messages=[{"role": "user", "content": "test"}],
                         max_tokens=5
@@ -421,8 +421,8 @@ class InferenceEngine:
             claude_status = "unavailable"
             if claude_client:
                 try:
-                    # 简单测试
-                    test_response = await claude_client.messages.create(
+                    # 简单测试（仅探测可用性，无需使用返回内容）
+                    await claude_client.messages.create(
                         model="claude-3-haiku-20240307",
                         max_tokens=5,
                         messages=[{"role": "user", "content": "test"}]

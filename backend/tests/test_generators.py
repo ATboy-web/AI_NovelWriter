@@ -83,7 +83,7 @@ class TestGenericNovelGenerator:
             NovelType.SCIFI, "科幻",
             ["未来科技", "太空探索", "人工智能"],
             "硬科幻风格",
-            ai_service_url="http://test:8001"
+            ai_service_url="http://localhost:8001"
         )
     
     @pytest.mark.asyncio

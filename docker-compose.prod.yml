@@ -62,10 +62,12 @@ services:
     container_name: novel-service
     environment:
       - NODE_ENV=production
+      - APP_ENV=production
       - DATABASE_URL=postgresql://novel:${DB_PASSWORD}@postgres:5432/noveldb
       - REDIS_URL=redis://redis:6379
       - AI_SERVICE_URL=http://ai-service:8001
-      - JWT_SECRET=${JWT_SECRET}
+      - SECRET_KEY=${JWT_SECRET:?请先设置 JWT_SECRET（见 .env.example）}
+      - API_KEYS=${API_KEYS:-}
       - LOG_LEVEL=info
     volumes:
       - novel-data:/app/data

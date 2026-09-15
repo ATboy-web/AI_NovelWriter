@@ -2,11 +2,14 @@
 小说生成服务配置文件
 """
 
-from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator
-from typing import List, Optional
 import os
+import secrets
+from typing import List
+
 from loguru import logger
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     """应用配置"""
@@ -22,7 +25,11 @@ class Settings(BaseSettings):
     
     @property
     def is_production(self) -> bool:
-        return self.ENV == "production"
+        # 兼容 APP_ENV / ENV / NODE_ENV 三种约定：
+        # docker-compose.prod.yml 用 NODE_ENV=production（Node 惯例）注入，
+        # 而原实现只认 APP_ENV/ENV，导致生产安全校验（SECRET_KEY 必填、
+        # CORS 禁 "*"）在真实部署中从未生效。
+        return self.ENV == "production" or os.getenv("NODE_ENV", "").lower() == "production"
     
     # CORS配置 - 生产环境应限制来源
     CORS_ORIGINS: List[str] = Field(
@@ -55,6 +62,27 @@ class Settings(BaseSettings):
     SECRET_KEY: str = Field(default="", env="SECRET_KEY")
     ENABLE_AUTH: bool = Field(default=True, env="ENABLE_AUTH")
     API_KEYS: str = Field(default="", env="API_KEYS")
+    
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, v: str) -> str:
+        """解析签名密钥，并在生产环境强制要求显式配置。
+
+        与 ai-service 行为保持一致（原 novel-service 缺少该校验，
+        导致生产环境可在无密钥状态下启动，鉴权必然失败）。
+        """
+        # 变量名兼容：.env.example / docker-compose.prod.yml / deploy.sh 均使用
+        # JWT_SECRET，此处作为 SECRET_KEY 的别名回退。
+        v = v or os.getenv("JWT_SECRET", "")
+        if not v:
+            if (
+                os.getenv("APP_ENV", "").lower() == "production"
+                or os.getenv("NODE_ENV", "").lower() == "production"
+            ):
+                raise ValueError("生产环境必须配置SECRET_KEY环境变量")
+            logger.warning("SECRET_KEY未配置，使用临时密钥（仅限开发环境）")
+            return secrets.token_urlsafe(32)
+        return v
     
     # 性能配置
     MAX_CONCURRENT_GENERATIONS: int = 5

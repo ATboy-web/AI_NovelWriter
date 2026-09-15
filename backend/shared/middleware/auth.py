@@ -3,15 +3,13 @@ JWT认证中间件 - 提供API认证和授权功能
 """
 
 import os
-import secrets
-import time
-from typing import Optional, Dict, List
 from datetime import datetime, timedelta
-from fastapi import Request, Response, HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Dict, List, Optional
+
+from fastapi import HTTPException, Request
+from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-from loguru import logger
 
 try:
     import jwt
@@ -25,14 +23,18 @@ class JWTConfig:
     """JWT配置"""
     
     # 密钥从环境变量读取，禁止硬编码。未配置时生产环境将拒绝启动。
-    SECRET_KEY = os.getenv("SECRET_KEY", "")
+    #
+    # 变量名兼容 SECRET_KEY / JWT_SECRET 两个名字：
+    # .env.example、docker-compose.prod.yml、deploy.sh 历史上统一使用 JWT_SECRET，
+    # 而代码只读取 SECRET_KEY，导致运维按文档配置的密钥被静默忽略、鉴权永远失败。
+    SECRET_KEY = os.getenv("SECRET_KEY") or os.getenv("JWT_SECRET", "")
     ALGORITHM = "HS256"
     
     # Token过期时间
     ACCESS_TOKEN_EXPIRE_MINUTES = 30
     REFRESH_TOKEN_EXPIRE_DAYS = 7
     
-    # 不需要认证的路径
+    # 不需要认证的路径（精确匹配）
     PUBLIC_PATHS = [
         "/",
         "/health",
@@ -42,11 +44,34 @@ class JWTConfig:
         "/api/v1/health",
     ]
     
+    # 公开路径前缀（仅用于 Swagger/ReDoc 的静态子资源，如 /docs/oauth2-redirect）。
+    #
+    # ⚠️ 严禁把 "/" 放进本列表：任何路径都以 "/" 开头，
+    #    前缀匹配 "/" 会让 _is_public_path() 恒为 True，等于彻底关闭鉴权
+    #    （历史上 PUBLIC_PATHS 同时参与前缀匹配，正是该缺陷）。
+    PUBLIC_PATH_PREFIXES = [
+        "/docs",
+        "/redoc",
+        "/static",
+        "/assets",
+    ]
+    
     # API Key认证的路径（可选）
     API_KEY_PATHS = [
         "/api/v1/generate",
         "/api/v1/models",
     ]
+    
+    def __init__(self, secret_key: Optional[str] = None):
+        """初始化配置。
+
+        Args:
+            secret_key: 显式指定签名密钥。服务启动时应传入 Settings.SECRET_KEY，
+                以便统一由配置层解析环境变量/别名并执行生产环境校验；
+                不传则回退到直接读取环境变量。
+        """
+        if secret_key:
+            self.SECRET_KEY = secret_key
 
 
 def _load_api_keys() -> Dict[str, Dict]:
@@ -172,16 +197,33 @@ class AuthMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.config = config or JWTConfig()
         self.jwt_manager = JWTManager(self.config)
+        
+        # 启用鉴权但不存在任何凭据来源时，中间件无法认证任何调用方。
+        # 此时必须显式失败（503 + 可操作提示），绝不能静默放行 —— 静默放行等于没有鉴权。
+        self._credential_source_available = bool(
+            self.config.SECRET_KEY or _load_api_keys()
+        )
+        if not self._credential_source_available:
+            logger.error(
+                "ENABLE_AUTH 已启用，但未配置任何凭据来源（SECRET_KEY / JWT_SECRET / "
+                "API_KEYS 均为空）。所有非公开端点将返回 503。"
+                "请配置其中任意一项，或显式设置 ENABLE_AUTH=false 关闭鉴权。"
+            )
     
     def _is_public_path(self, path: str) -> bool:
-        """检查是否为公开路径"""
+        """检查是否为公开路径
+        
+        先精确匹配 PUBLIC_PATHS，再对 PUBLIC_PATH_PREFIXES 做前缀匹配。
+        前缀匹配要求 path 恰好等于前缀或以「前缀 + /」开头，
+        避免 /docs 误匹配 /docsomething、更避免 "/" 匹配全部路径。
+        """
         # 精确匹配
         if path in self.config.PUBLIC_PATHS:
             return True
         
-        # 前缀匹配
-        for public_path in self.config.PUBLIC_PATHS:
-            if path.startswith(public_path):
+        # 前缀匹配（仅静态文档资源）
+        for prefix in getattr(self.config, "PUBLIC_PATH_PREFIXES", []):
+            if path == prefix or path.startswith(prefix + "/"):
                 return True
         
         return False
@@ -224,6 +266,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # 检查是否为公开路径
         if self._is_public_path(request.url.path):
             return await call_next(request)
+        
+        # 鉴权已启用却没有任何可用凭据来源 → 无法认证任何调用方，
+        # 显式失败并给出可操作指引，而不是静默放行或返回令人困惑的 401。
+        if not self._credential_source_available:
+            logger.error(f"拒绝访问（鉴权未配置凭据）: {request.url.path}")
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": "Auth Misconfigured",
+                    "message": (
+                        "认证已启用，但服务未配置任何凭据来源。请设置环境变量 "
+                        "SECRET_KEY（或 JWT_SECRET）/ API_KEYS，"
+                        "或显式设置 ENABLE_AUTH=false 关闭鉴权。"
+                    ),
+                },
+            )
         
         # 提取Token
         token = self._extract_token(request)

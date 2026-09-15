@@ -100,6 +100,10 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?请设置POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_novel}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
       - AI_SERVICE_URL=http://ai-service:8001
+      # 认证：本地一体化栈默认关闭（理由同 ai-service）
+      - ENABLE_AUTH=${ENABLE_AUTH:-false}
+      - SECRET_KEY=${SECRET_KEY:-}
+      - API_KEYS=${API_KEYS:-}
     volumes:
       - ./logs/novel-service:/app/logs
     depends_on:

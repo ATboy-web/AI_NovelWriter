@@ -43,7 +43,7 @@ jobs:
         run: pip install ruff mypy
 
       - name: Ruff check
-        run: ruff check app/ tests/ --output-format=github
+        run: ruff check app/ tests/ backend/ --output-format=github
 
       - name: Ruff format check
         run: ruff format --check app/ tests/
@@ -74,7 +74,11 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run tests
-        run: python -m pytest tests/ -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing
+        # 显式列出两个测试目录：pyproject 的 testpaths 只在无参数运行时生效，
+        # 历史上写成 `pytest tests/` 导致 backend/tests 从未在 CI 中执行。
+        run: |
+          python -m pytest tests/ backend/tests/ -v --tb=short \
+            --cov=app --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage
         if: matrix.python-version == '3.13'
@@ -95,19 +99,40 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - uses: android-actions/setup-android@v3
+      # 不再使用 android-actions/setup-android@v3。
+      # 该 action 会执行 `sdkmanager tools`，而 Google 已从 SDK 仓库下线独立的
+      # `tools` 包（现由 cmdline-tools 取代），导致它必然报
+      # "Warning: Failed to find package 'tools'" 并以 exit 1 失败 —— 属上游
+      # 停止维护导致的稳定性问题，与本项目代码无关。
+      # ubuntu-latest 镜像本身已预装 Android SDK（含 cmdline-tools，许可已接受），
+      # 缺失的 platform/build-tools 由 AGP 自动补齐，因此只需定位 SDK 路径。
+      - name: Locate Android SDK
+        run: |
+          if [ -z "$ANDROID_HOME" ] || [ ! -d "$ANDROID_HOME" ]; then
+            for d in /usr/local/lib/android/sdk "$HOME/Android/Sdk"; do
+              if [ -d "$d" ]; then
+                echo "ANDROID_HOME=$d" >> "$GITHUB_ENV"
+                echo "ANDROID_SDK_ROOT=$d" >> "$GITHUB_ENV"
+                break
+              fi
+            done
+          fi
+          echo "ANDROID_HOME=${ANDROID_HOME:-未设置}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-未设置}"
+          ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}/platforms" 2>/dev/null || true
 
       - name: Build Android App
         working-directory: mobile-app/novel-app
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk
           path: mobile-app/novel-app/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
 
   # ---------- 安全扫描 ----------
   security:

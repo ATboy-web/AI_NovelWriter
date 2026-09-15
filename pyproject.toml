@@ -28,6 +28,10 @@ dev = [
     "respx>=0.20",
     "ruff>=0.1.0",
     "mypy>=1.0",
+    # backend/tests 需要导入 backend/shared/middleware（FastAPI/Starlette 中间件）
+    # 与 JWT 验签逻辑，否则该目录下的测试在 CI 中无法收集。
+    "fastapi>=0.110",
+    "PyJWT>=2.8",
 ]
 
 # flat-layout 下存在多个顶层目录 (app / backend / shared / installer / ...),
@@ -58,6 +62,12 @@ ignore = ["E501", "E701", "E702", "W291", "W293"]
 [tool.ruff.lint.per-file-ignores]
 # app/__init__.py 先求值 __version__ 再做子模块导入，以规避循环导入，属有意设计
 "app/__init__.py" = ["E402"]
+# 服务包初始化同样先设版本/元信息再导入子模块
+"backend/ai-service/app/__init__.py" = ["E402"]
+"backend/novel-service/app/__init__.py" = ["E402"]
+# 该模块用 try/except ImportError 包裹一组导入，用来探测"新功能"子模块是否可用；
+# 导入本身就是探测手段，不能删除（故豁免 F401）。
+"backend/novel-service/app/api/new_features_routes.py" = ["F401"]
 
 [tool.mypy]
 python_version = "3.11"

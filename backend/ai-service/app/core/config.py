@@ -2,12 +2,14 @@
 AI模型服务配置文件
 """
 
-from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator
-from typing import List, Optional
 import os
 import secrets
+from typing import List, Optional
+
 from loguru import logger
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     """应用配置"""
@@ -79,10 +81,15 @@ class Settings(BaseSettings):
     @field_validator("SECRET_KEY")
     @classmethod
     def validate_secret_key(cls, v: str) -> str:
+        # 变量名兼容：.env.example / docker-compose.prod.yml / deploy.sh 均使用
+        # JWT_SECRET，此处作为 SECRET_KEY 的别名回退，避免按文档配置的密钥被忽略。
+        v = v or os.getenv("JWT_SECRET", "")
         if not v:
             # 开发环境自动生成临时密钥，生产环境必须配置
-            import os
-            if os.getenv("APP_ENV") == "production":
+            if (
+                os.getenv("APP_ENV", "").lower() == "production"
+                or os.getenv("NODE_ENV", "").lower() == "production"
+            ):
                 raise ValueError("生产环境必须配置SECRET_KEY环境变量")
             logger.warning("SECRET_KEY未配置，使用临时密钥（仅限开发环境）")
             return secrets.token_urlsafe(32)

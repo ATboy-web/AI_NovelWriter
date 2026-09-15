@@ -1,12 +1,15 @@
-import pytest
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 # 将项目根目录加入路径（用于导入 app 包）
-_project_root = str(Path(__file__).resolve().parent.parent.parent)
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
+_backend_dir = Path(__file__).resolve().parent.parent
+_project_root = _backend_dir.parent
+for _p in (str(_project_root), str(_backend_dir)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 @pytest.fixture
 def mock_ai_client():

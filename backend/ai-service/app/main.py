@@ -3,28 +3,31 @@ AI模型服务 - 核心应用
 支持本地模型（llama.cpp）和云端API（GPT/Claude）集成
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
-import uvicorn
 from datetime import datetime
-import asyncio
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+import uvicorn
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
+from pydantic import BaseModel, Field
+
+from .api.routes import router as api_router
 
 # 导入自定义模块
 from .core.config import settings
-from .core.model_manager import ModelManager
 from .core.inference_engine import InferenceEngine
-from .api.routes import router as api_router
+from .core.model_manager import ModelManager
 
 # 导入中间件
 from .middleware import (
-    DynamicRateLimiter, RateLimitConfig,
-    AuthMiddleware, JWTConfig,
-    RequestLogger, RequestLoggerConfig,
-    PerformanceMonitor
+    AuthMiddleware,
+    DynamicRateLimiter,
+    JWTConfig,
+    RateLimitConfig,
+    RequestLogger,
+    RequestLoggerConfig,
 )
 
 # 创建FastAPI应用
@@ -53,7 +56,9 @@ app.add_middleware(DynamicRateLimiter, config=RateLimitConfig())
 
 # 添加认证中间件（可选，通过环境变量控制）
 if settings.ENABLE_AUTH:
-    app.add_middleware(AuthMiddleware, config=JWTConfig())
+    # 传入 Settings.SECRET_KEY：由配置层统一解析 SECRET_KEY / JWT_SECRET 别名，
+    # 并执行生产环境「必须配置密钥」校验，避免中间件直接读环境变量而绕过校验。
+    app.add_middleware(AuthMiddleware, config=JWTConfig(secret_key=settings.SECRET_KEY))
 
 # 包含API路由
 app.include_router(api_router, prefix="/api/v1")
@@ -309,7 +314,7 @@ async def get_metrics():
 @app.get("/api/v1/rate-limit/info", tags=["限流"])
 async def get_rate_limit_info(request: Request):
     """获取限流信息"""
-    from .middleware.rate_limiter import RateLimitInfo, DynamicRateLimiter, RateLimitConfig
+    from .middleware.rate_limiter import DynamicRateLimiter, RateLimitConfig, RateLimitInfo
     
     limiter = DynamicRateLimiter(app, RateLimitConfig())
     rate_info = RateLimitInfo(limiter)

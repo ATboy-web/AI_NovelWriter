@@ -22,6 +22,7 @@
 | [project-summary.md](project-summary.md) | 项目总结 |
 | [VERSION_RELEASE_SPEC.md](VERSION_RELEASE_SPEC.md) | 版本发布规范 |
 | [AUTH_PAYMENT_SERVICES_EVALUATION.md](AUTH_PAYMENT_SERVICES_EVALUATION.md) | 认证 / 支付服务立项评估（结论：暂不立项） |
+| [FEATURE_VALUE_ASSESSMENT.md](FEATURE_VALUE_ASSESSMENT.md) | 功能实用性与使用价值评估（保留 / 优化 / 删除清单） |
 
 ## 质量与安全
 | 文档 | 说明 |

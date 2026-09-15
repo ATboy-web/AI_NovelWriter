@@ -44,18 +44,28 @@ ignore_missing_imports = true
 
 [tool.coverage.run]
 source = ["app"]
+# UI 粘合层（Tkinter 窗口/事件/带副作用的网络与磁盘操作）不计入覆盖率：
+# 这些模块难以单测；其可测的业务逻辑已抽取到独立模块（如 app/parsing.py）。
 omit = [
     "app/panels/*",
     "app/fullscreen_writer.py",
-    "app/ui_manager.py",
     "app/ui_style.py",
     "app/navigation.py",
     "app/design_tokens.py",
-    "app/note_manager_ui.py",
-    "app/reader_manager.py",
     "app/writing_skills_panel.py",
-    "app/settings_manager.py",
-    "app/character_manager.py",
+    # P2-1 巨石拆分产生的功能域 Mixin
+    "app/shell_ui.py",
+    "app/lifecycle_ui.py",
+    "app/generation_ui.py",
+    "app/character_ui.py",
+    "app/outline_ui.py",
+    "app/chapter_ui.py",
+    "app/editor_ui.py",
+    "app/reader_ui.py",
+    "app/timeline_ui.py",
+    "app/toolkit_ui.py",
+    "app/persistence_ui.py",
+    "app/note_ui.py",
 ]
 
 [tool.coverage.report]

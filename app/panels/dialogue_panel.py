@@ -3,7 +3,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
-from novel_toolkit import DialogueEngine
+from app.novel_toolkit import DialogueEngine
 
 
 class DialoguePanelMixin:

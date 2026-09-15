@@ -218,7 +218,29 @@ D10 6 个空占位目录
 
 ---
 
-## 7. 附：本次评估中"看起来像死代码、经核实其实正常"的项
+## 7. 执行状态（2026-09-16 第二轮优化）
+
+详单见 [`OPTIMIZATION_ROUND2.md`](OPTIMIZATION_ROUND2.md)。本清单的落地情况：
+
+| 项 | 状态 | 落地方式 / 差异说明 |
+|---|---|---|
+| **F1** 角色入口接线 | ✅ 已落地 | `shell_ui` 角色区新增「详情」按钮 → `_show_char_detail`；重命名 / 休息恢复 / 故事线 3 项变为可达。**按用户约束不提供删除入口**（角色名为小说内容资产），`_delete_character` 保留但刻意不接线 |
+| **O2** `_run_async` 落地或删除 | ✅ 删除 | 17 行、零调用；42 处手工线程各自有异构错误处理，强行收编收益低风险高 |
+| **O3** 原子写统一为一处 | ✅ 已落地 | 新增 `app/storage.py`（唯一实现）；`memory_manager` / `character_system` / `novel_agent` / `persistence_ui` 全部改为调用它；顺带修掉 `with_suffix('.tmp')` 的临时名碰撞 |
+| **O5** `chromadb` 移出桌面依赖 | ✅ 已落地 | 由 `dependencies` 移入可选 extra `[vector]` |
+| **O6** 根目录 4 个模块归入 `app/` | ✅ 已落地 | `character_system` / `format_converter` / `cloud_storage` / `novel_toolkit` → `app/`，同步 16 处导入与 PyInstaller spec。**副作用（正向）**：这 4 个文件从此进入 CI 的 ruff 覆盖范围，暴露并修复了 1 个真实 bug（`novel_toolkit._ai_adapt` 引用未定义的 `name` → NameError）+ 2 处死变量 |
+| **O8** 清空目录 + 修正 README `shared/` | ✅ 已落地 | 删除 7 个空目录（含根 `shared/`、2 个空服务目录、4 个空 mipmap）；README / project-summary 架构图改为标注 `backend/shared/` |
+| **D1** `_show_image_prompt_dialog` | ✅ 已删除 | 113 行，零调用 |
+| **D2** `_atomic_json_write` | ✅ 已删除 | 零调用的重复实现 |
+| **D3** `_toggle_ai` | ⏸ 未处理 | 属全屏写作面板（`fullscreen_writer.py`），本轮聚焦角色数据安全与结构，留待后续 |
+| **D6** 根 `test_generators.py` | ✅ 已处理 | 迁移为 `scripts/smoke_generators.py`（保留脚本能力，消除"假测试"误导）。**未并入 `tests/`**：它带参数的 `test_*` 函数会被 pytest 误收集，且其 `sys.path` 会遮蔽桌面 `app` 包 |
+| **D8/D9/D10** 空服务目录与空占位目录 | ✅ 已删除 | 同 O8 |
+| **D4/D5/D7** | ⏸ 未处理 | `ui_style`/`performance_monitor` 死封装、`mobile-app/webview-app` 整目录：均需产品决策或影响 Android 构建，不在本轮范围 |
+| **O4** 合并 `tests/` 重复文件 | ⏸ 未处理 | 属测试重构，风险独立，建议单独立项 |
+
+---
+
+## 8. 附：本次评估中"看起来像死代码、经核实其实正常"的项
 
 列出以免后续误删：
 

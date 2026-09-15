@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
 
-from character_system import CharacterProfile, CharacterSystem
+from app.character_system import CharacterProfile, CharacterSystem
 
 
 class TestCharacterProfile(unittest.TestCase):

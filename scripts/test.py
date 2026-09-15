@@ -4,10 +4,10 @@ AI自动写小说系统 - 测试脚本
 用于验证系统功能
 """
 
-import requests
-import json
 import sys
-from typing import Dict, Any, List
+from typing import List
+
+import requests
 
 # 服务地址
 AI_SERVICE_URL = "http://localhost:8001"
@@ -98,7 +98,7 @@ def test_generate_chapter() -> TestResult:
             if result.get("success"):
                 content = result.get("content", "")
                 word_count = result.get("word_count", 0)
-                return TestResult("生成章节", True, f"生成 {word_count} 字")
+                return TestResult("生成章节", True, f"生成 {word_count} 字 / {len(content)} 字符")
             else:
                 return TestResult("生成章节", False, "生成失败")
         else:
@@ -128,7 +128,8 @@ def test_generate_character() -> TestResult:
             result = response.json()
             if result.get("success"):
                 character = result.get("character_profile", {})
-                return TestResult("生成人物", True, f"生成人物: {result.get('character_name', '未知')}")
+                return TestResult("生成人物", True,
+                                  f"生成人物: {result.get('character_name', '未知')} ({len(character)} 项字段)")
             else:
                 return TestResult("生成人物", False, "生成失败")
         else:
@@ -186,7 +187,7 @@ def test_analyze_style() -> TestResult:
             result = response.json()
             if result.get("success"):
                 analysis = result.get("analysis_results", {})
-                return TestResult("风格分析", True, "分析完成")
+                return TestResult("风格分析", True, f"分析完成（{len(analysis)} 项结果）")
             else:
                 return TestResult("风格分析", False, "分析失败")
         else:

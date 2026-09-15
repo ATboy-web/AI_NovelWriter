@@ -3,8 +3,8 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
+from app.novel_toolkit import WebSearchAdaptEngine
 from app.ui_style import UIStyle
-from novel_toolkit import WebSearchAdaptEngine
 
 
 class WebSearchPanelMixin:

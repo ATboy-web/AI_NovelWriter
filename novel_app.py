@@ -35,8 +35,8 @@ import tkinter as tk
 from loguru import logger
 
 # 小说工具集
-from novel_toolkit import ElementLibrary, BridgeLibrary, DescriptionLibrary
-from cloud_storage import CloudStorageManager
+from app.novel_toolkit import ElementLibrary, BridgeLibrary, DescriptionLibrary
+from app.cloud_storage import CloudStorageManager
 from app.navigation import NavigationManager
 
 # 从 app 包导入核心类

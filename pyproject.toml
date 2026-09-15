@@ -16,11 +16,16 @@ dependencies = [
     "markdown>=3.4",
     "beautifulsoup4>=4.12",
     "Pillow>=9.0",
-    "chromadb>=0.4.0",
     "cryptography>=41.0",
 ]
 
 [project.optional-dependencies]
+# 【第二轮优化】chromadb 从强制依赖移入可选 extra。
+# 依据：桌面端 app/ 全仓零处 import chromadb（installer/novel_app.spec 反而把它
+# 列进 excludes），唯一使用者是 backend/novel-service（自带 requirements.txt
+# 固定 chromadb==0.4.22 并做 try/except 可选导入）。此前它让每个桌面用户都
+# 被迫安装一个数百 MB、永不使用的重型依赖。
+vector = ["chromadb>=0.4.0"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",

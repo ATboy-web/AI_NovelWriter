@@ -4,10 +4,9 @@ AI自动写小说系统 - 演示脚本
 用于快速测试系统功能
 """
 
-import requests
-import json
 import time
-from typing import Dict, Any
+
+import requests
 
 # 服务地址
 AI_SERVICE_URL = "http://localhost:8001"
@@ -118,11 +117,11 @@ def generate_chapter_demo():
             content = result.get("content", "")
             word_count = result.get("word_count", 0)
             
-            print(f"   生成成功!")
+            print("   生成成功!")
             print(f"   生成时间: {generation_time:.2f}秒")
             print(f"   字数统计: {word_count}字")
             print(f"   使用模型: {result.get('model_used', '未知')}")
-            print(f"   内容预览:")
+            print("   内容预览:")
             print(f"   {content[:200]}...")
             
             return True
@@ -164,7 +163,7 @@ def generate_character_demo():
             result = response.json()
             character = result.get("character_profile", {})
             
-            print(f"   生成成功!")
+            print("   生成成功!")
             print(f"   生成时间: {generation_time:.2f}秒")
             print(f"   人物姓名: {result.get('character_name', '未知')}")
             
@@ -214,7 +213,7 @@ def generate_outline_demo():
             result = response.json()
             chapters = result.get("chapters", [])
             
-            print(f"   生成成功!")
+            print("   生成成功!")
             print(f"   生成时间: {generation_time:.2f}秒")
             print(f"   章节数量: {len(chapters)}")
             
@@ -259,7 +258,7 @@ def style_analysis_demo():
             result = response.json()
             analysis = result.get("analysis_results", {})
             
-            print(f"   分析成功!")
+            print("   分析成功!")
             print(f"   分析时间: {generation_time:.2f}秒")
             
             if "language_style" in analysis:

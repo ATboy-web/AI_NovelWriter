@@ -9,7 +9,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 
 from app import SceneDetector, UIStyle
-from format_converter import FormatConverter, ImageManager
+from app.format_converter import FormatConverter, ImageManager
 
 
 class ToolkitUIMixin:
@@ -416,119 +416,6 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
             )
             prompt_file.write_text(prompt_content, encoding='utf-8')
             self._log(f"[提示词] 已保存: {prompt_file.name}")
-    def _show_image_prompt_dialog(self, chapter_num, idx, type_name, scene_text, prompt_text, purpose_text, scene, img_dir):
-        """显示电影级图片生成提醒对话框"""
-        C = UIStyle.COLORS
-        dialog = tk.Toplevel(self.root)
-        dialog.title(f"名场面插图 - 第{chapter_num}章")
-        dialog.geometry("650x550")
-        dialog.configure(bg=C['bg_dark'])
-        dialog.grab_set()
-
-        tk.Label(dialog, text=f"第{chapter_num}章 检测到【{type_name}】", font=('微软雅黑', 14, 'bold'),
-                bg=C['bg_dark'], fg=C['accent_light']).pack(pady=(15, 5))
-
-        # 电影级参数
-        aspect_ratio = scene.get("aspect_ratio", "16:9")
-        size = scene.get("size", "1024x576")
-        shot_type = scene.get("shot_type", "")
-        composition = scene.get("composition", "")
-        style = scene.get("style", "")
-
-        cinematic_frame = tk.Frame(dialog, bg=C['bg_card'])
-        cinematic_frame.pack(fill=tk.X, padx=20, pady=5)
-
-        cinematic_info = (
-            f"画面比例: {aspect_ratio} ({size})  |  "
-            f"镜头: {shot_type[:30]}...\n"
-            f"构图: {composition[:30]}...  |  "
-            f"质感: {style[:30]}..."
-        )
-        tk.Label(cinematic_frame, text=cinematic_info, font=('微软雅黑', 9),
-                bg=C['bg_card'], fg=C['accent_light'], wraplength=600, justify=tk.LEFT).pack(padx=10, pady=5)
-
-        info_frame = tk.Frame(dialog, bg=C['bg_card'])
-        info_frame.pack(fill=tk.X, padx=20, pady=5)
-        tk.Label(info_frame, text=f"场景: {scene_text}", font=('微软雅黑', 10),
-                bg=C['bg_card'], fg=C['text_primary'], wraplength=600, justify=tk.LEFT).pack(padx=10, pady=5)
-
-        # 说明为什么要生成图片
-        tk.Label(dialog, text=f"推荐理由: {purpose_text}", font=('微软雅黑', 10, 'bold'),
-                bg=C['bg_dark'], fg=C['warning'], wraplength=600).pack(padx=20, pady=5)
-
-        # 倒计时 - 10秒
-        timer_var = tk.StringVar(value="10秒后自动生成AI提示词")
-        timer_label = tk.Label(dialog, textvariable=timer_var, font=('微软雅黑', 10),
-                bg=C['bg_dark'], fg=C['error'])
-        timer_label.pack(pady=5)
-
-        prompt_file = img_dir / f"ch{chapter_num:04d}_{scene['type']}_{idx+1}_prompt.txt"
-
-        def start_countdown(remaining=10):
-            """避免递归的倒计时"""
-            def tick():
-                nonlocal remaining
-                if not dialog.winfo_exists():
-                    return
-                if remaining <= 0:
-                    do_save_prompt()
-                    return
-                timer_var.set(f"{remaining}秒后自动生成AI提示词")
-                remaining -= 1
-                dialog.after(1000, tick)
-            tick()
-
-        def do_save_prompt():
-            """保存AI提示词"""
-            dialog.destroy()
-            # 保存提示词到文件
-            prompt_content = f"章节: 第{chapter_num}章\n类型: {type_name}\n场景: {scene_text}\n\nAI提示词:\n{prompt_text}"
-            prompt_file.write_text(prompt_content, encoding='utf-8')
-            self._log(f"[提示词] 已保存: {prompt_file.name}")
-            self.root.after(0, lambda: messagebox.showinfo("已保存", f"AI提示词已保存到:\n{img_dir.name}/{prompt_file.name}"))
-
-        def do_generate():
-            """生成图片"""
-            dialog.destroy()
-            # 先保存提示词
-            prompt_content = f"章节: 第{chapter_num}章\n类型: {type_name}\n场景: {scene_text}\n\nAI提示词:\n{prompt_text}"
-            prompt_file.write_text(prompt_content, encoding='utf-8')
-            self._log(f"[提示词] 已保存: {prompt_file.name}")
-
-            def gen_img():
-                self._log(f"[文生图] 正在生成: {type_name}...")
-                img_data = self.image_gen.generate(
-                    prompt=prompt_text,
-                    negative_prompt="low quality, blurry, deformed, ugly",
-                    width=self.config.get("img_width", 1024),
-                    height=self.config.get("img_height", 1024),
-                )
-                if img_data:
-                    filepath = self.image_gen.save_image(img_data, self.current_novel_dir,
-                        f"chapter_{chapter_num:04d}_scene_{idx+1}")
-                    self._log(f"插图已保存: {filepath}")
-                    self.root.after(0, lambda: messagebox.showinfo("成功", f"插图已保存:\n{filepath}"))
-            threading.Thread(target=gen_img, daemon=True).start()
-
-        def do_skip():
-            """跳过 - 仍然保存提示词"""
-            do_save_prompt()
-
-        btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
-        btn_frame.pack(pady=15)
-
-        # 如果有API才显示生成图片按钮
-        if self.image_gen.is_configured():
-            tk.Button(btn_frame, text="生成插图", command=do_generate,
-                     bg=C['success'], fg='white', font=('微软雅黑', 10, 'bold'), padx=20, pady=5).pack(side=tk.LEFT, padx=5)
-
-        tk.Button(btn_frame, text="仅保存提示词", command=do_save_prompt,
-                 bg=C['accent'], fg='white', font=('微软雅黑', 10), padx=20, pady=5).pack(side=tk.LEFT, padx=5)
-
-        tk.Button(btn_frame, text="跳过", command=do_skip,
-                 bg=C['bg_light'], fg=C['text_primary'], font=('微软雅黑', 10), padx=20, pady=5).pack(side=tk.LEFT, padx=5)
-
-        start_countdown()
     def _cloud_sync(self):
         """云端同步对话框"""
         if not self.current_novel_dir:

@@ -7,7 +7,8 @@ import json
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+
+from app.storage import atomic_write_json, atomic_write_text
 
 
 class PersistenceMixin:
@@ -76,13 +77,9 @@ class PersistenceMixin:
                 "outline_count": len(self.outline) if self.outline else 0
             }
             cp_file = self.current_novel_dir / "checkpoint.json"
-            # 原子写入：先写临时文件，再重命名
-            tmp_file = cp_file.with_suffix('.tmp')
-            with open(tmp_file, 'w', encoding='utf-8') as f:
-                json.dump(checkpoint, f, indent=2, ensure_ascii=False)
-            tmp_file.replace(cp_file)
-        except Exception:
-            pass
+            atomic_write_json(cp_file, checkpoint)
+        except OSError as e:
+            self._log(f"[检查点] 写入失败（不影响创作，仅断电恢复能力下降）: {e}")
     def _clear_checkpoint(self):
         """清除检查点（生成完成）"""
         if not self.current_novel_dir:
@@ -91,8 +88,8 @@ class PersistenceMixin:
             cp_file = self.current_novel_dir / "checkpoint.json"
             if cp_file.exists():
                 cp_file.unlink()
-        except Exception:
-            pass
+        except OSError as e:
+            self._log(f"[检查点] 清除失败: {e}")
     def _check_recovery(self):
         """检查是否有未完成的生成任务（断电恢复）"""
         if not self.current_novel_dir:
@@ -112,17 +109,12 @@ class PersistenceMixin:
                 self._log("[恢复] 可使用「自动创作」继续，已完成的章节会自动跳过")
             elif status == "completed":
                 self._clear_checkpoint()
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as e:
+            self._log(f"[恢复] 检查点不可读（已忽略）: {e}")
     def _atomic_write(self, filepath: Path, content: str, encoding: str = 'utf-8'):
-        """原子写入文件（先写临时文件，再重命名，防止断电损坏）"""
-        tmp_file = filepath.with_suffix('.tmp')
-        with open(tmp_file, 'w', encoding=encoding) as f:
-            f.write(content)
-        tmp_file.replace(filepath)
-    def _atomic_json_write(self, filepath: Path, data: Any):
-        """原子写入JSON文件"""
-        tmp_file = filepath.with_suffix('.tmp')
-        with open(tmp_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        tmp_file.replace(filepath)
+        """原子写入文件（委托 app.storage 的统一实现）。
+
+        统一后不再使用 `with_suffix('.tmp')`：那样会让同目录下的
+        `settings.json` 与 `settings.md` 争用同一个 `settings.tmp`（R7）。
+        """
+        return atomic_write_text(filepath, content, encoding=encoding)

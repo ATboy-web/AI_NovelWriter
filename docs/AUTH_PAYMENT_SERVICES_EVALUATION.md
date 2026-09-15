@@ -40,6 +40,10 @@
 |---|---|---|---|
 | 1 | `backend/auth-service/` | 空目录，**0 个文件** | 目录遍历 `items=0` |
 | 2 | `backend/payment-service/` | 空目录，**0 个文件** | 目录遍历 `items=0` |
+
+> 2026-09-16 更新：上述两个空占位目录已在第二轮优化中随"空目录清理"一并移除
+> （git 本就不跟踪空目录，因此对仓库无影响）。本评估的结论不变：
+> **暂不立项**；若将来达到决策门 G1–G5，再按附录 A 的分期草案新建服务。
 | 3 | 是否被容器编排引用 | **未引用** | `docker-compose.yml` / `docker-compose.prod.yml` 中无对应 service 块 |
 | 4 | 是否被代码引用 | **零引用** | 全仓检索仅命中 `README_CN.md` / `project-summary.md` / `SECURITY_AUDIT_REPORT.md` |
 | 5 | 数据库表是否已就绪 | **已就绪**（但无人使用，见 #7） | `scripts/init.sql` 已建 `users`、`subscriptions`、`payments`、`user_preferences` + 9 个索引 + 8 个触发器 + 2 个视图 |

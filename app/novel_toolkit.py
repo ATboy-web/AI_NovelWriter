@@ -4,10 +4,10 @@ AI小说创作工具集 v2.0
 所有功能模块可联动
 """
 
-import json, time, re
+import json
+import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime
+from typing import Dict, List, Optional
 
 # ==================== 小说元素库 ====================
 
@@ -640,7 +640,11 @@ class WebSearchAdaptEngine:
     
     def _ai_adapt(self, query: str) -> str:
         """通过AI搜索并改编"""
-        prompt = f"请将以下网络热点/梗/笑话改编成小说桥段（200-300字）。要求：有角色{name}、有场景、有对话、有趣味性。\n\n素材：{query}"
+        # 修复：原为 f"...有角色{name}..."，`name` 从未定义 -> 一旦走到这条
+        # 回退分支就抛 NameError（ruff F821，迁移进 app/ 后由 lint 暴露）。
+        # 改用本类的模板填充器取一个随机角色名，与 _fill_template 的 {name} 语义一致。
+        hero = self._fill_template("{name}")
+        prompt = f"请将以下网络热点/梗/笑话改编成小说桥段（200-300字）。要求：有角色{hero}、有场景、有对话、有趣味性。\n\n素材：{query}"
         return self.ai.chat([{"role":"user","content":prompt}], 
                            system="你是创意小说家，擅长将任何素材改编成有趣的小说桥段。", 
                            max_tokens=1024, temperature=1.0)

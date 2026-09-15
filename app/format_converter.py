@@ -3,12 +3,11 @@
 支持: TXT / HTML / EPUB / PDF / DOCX / Markdown
 """
 
-import json
-import re
 import os
+import re
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
-from datetime import datetime
 
 
 class FormatConverter:
@@ -395,8 +394,8 @@ class FormatConverter:
         """转换为DOCX"""
         try:
             from docx import Document
-            from docx.shared import Pt, Inches
             from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from docx.shared import Inches, Pt  # noqa: F401 -- 与上方导入一同用于探测 python-docx 是否可用
         except ImportError:
             return self._to_txt(content, title, output_file.with_suffix('.txt'), chapters)
         

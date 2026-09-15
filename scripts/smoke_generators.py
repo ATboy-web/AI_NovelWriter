@@ -1,5 +1,17 @@
 """
-小说生成器测试脚本
+小说生成器手工冒烟脚本（原仓库根目录 `test_generators.py`）
+
+**这不是 pytest 测试**：它以 print 输出人工核对结果，函数名虽为 `test_*`
+却带参数，放进 `tests/` 会被 pytest 误收集而报错；同时它需要把
+`backend/novel-service/app` 加入 sys.path，而该目录也叫 `app`，
+并入测试路径会遮蔽桌面端的 `app` 包，造成跨测试污染。
+
+因此本轮优化把它从仓库根（被 git 跟踪却永不执行、且命名易被误认为测试）
+移动到 `scripts/`，职能保持为"手工冒烟"。
+
+用法：
+    python scripts/smoke_generators.py
+
 测试所有15种小说类型生成器
 """
 
@@ -11,13 +23,24 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "backend" / "novel-service" / "app"))
 
 from generators.novel_generator import (
-    NovelType, NovelGeneratorFactory, 
-    SciFiNovelGenerator, MysteryNovelGenerator, RomanceNovelGenerator,
-    FantasyNovelGenerator, UrbanNovelGenerator, HistoryNovelGenerator,
-    MartialArtsNovelGenerator, XianxiaNovelGenerator, HorrorNovelGenerator,
-    MilitaryNovelGenerator, GameNovelGenerator, SportsNovelGenerator,
-    TimeTravelNovelGenerator, SystemFlowNovelGenerator, ApocalypseNovelGenerator
+    ApocalypseNovelGenerator,
+    FantasyNovelGenerator,
+    GameNovelGenerator,
+    HistoryNovelGenerator,
+    HorrorNovelGenerator,
+    MartialArtsNovelGenerator,
+    MilitaryNovelGenerator,
+    MysteryNovelGenerator,
+    NovelGeneratorFactory,
+    RomanceNovelGenerator,
+    SciFiNovelGenerator,
+    SportsNovelGenerator,
+    SystemFlowNovelGenerator,
+    TimeTravelNovelGenerator,
+    UrbanNovelGenerator,
+    XianxiaNovelGenerator,
 )
+
 
 async def test_generator(generator_class, type_name):
     """测试单个生成器"""

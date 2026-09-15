@@ -4,6 +4,7 @@
 
 import atexit
 import json
+import shutil
 import threading
 import time
 import weakref
@@ -16,6 +17,21 @@ try:
 except ImportError:
     import logging
     logger = logging.getLogger(__name__)
+
+from app.storage import (
+    STATUS_BACKUP,
+    STATUS_CORRUPT,
+    atomic_write_json,
+    read_json_with_backup,
+)
+
+
+class CharacterDataGuardError(RuntimeError):
+    """拒绝以空集合覆盖既有角色档案（角色名是小说内容资产，不得被清空）。"""
+
+
+class CharacterDataCorruptError(RuntimeError):
+    """角色档案损坏且无可用备份。"""
 
 
 # P0-1 配套：模块级 weakref 注册表 + 单一 atexit 钩子。
@@ -111,6 +127,8 @@ class MemoryManager:
         self._inverted_index = self._load_inverted_index()
         self._scores = self._load_scores()
         self._character_activity = self._load_character_activity()
+        # 角色档案损坏标记：读侧降级为空，写侧据此拒绝覆盖（见 save_characters）
+        self._characters_corrupt = False
         self._current_page = 0  # 当前chunks页
         self._chunks_cache = []  # 当前页的chunks缓存
 
@@ -683,30 +701,113 @@ class MemoryManager:
 
     # ===== 角色档案和关系图 =====
 
-    def save_characters(self, characters: dict):
-        with open(self.characters_file, 'w', encoding='utf-8') as f:
-            json.dump(characters, f, indent=2, ensure_ascii=False)
+    def save_characters(self, characters: dict, allow_empty: bool = False):
+        """保存角色档案：原子写 + `.bak` 轮转 + **非空守卫**。
 
-    def get_characters(self) -> dict:
-        if self.characters_file.exists():
-            with open(self.characters_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return {}
+        为什么要守卫：角色名是小说内容资产（当前数据量 286 个）。此前
+        `save_characters` 是"直接覆盖"，任何调用方只要先读到 `{}`（文件损坏、
+        竞态、或只拿到新生成的一批角色）就会把整库角色清掉；实测
+        `app/novel_agent.py` 的角色生成流程正是以"新批次"整体覆盖
+        （见 docs/OPTIMIZATION_ROUND2.md R1/R3）。
+
+        因此：新集合为空而磁盘上仍有角色时**拒绝写入并抛错**；确实需要清空
+        的调用方必须显式传 `allow_empty=True`。若磁盘文件已损坏、内容不可确认，
+        则先把损坏文件留档为 `characters.corrupt-<时间戳>.json` 再写，避免灭失。
+        """
+        characters = characters or {}
+        if not characters and not allow_empty:
+            existing, status = read_json_with_backup(self.characters_file, default=None)
+            if status == STATUS_CORRUPT:
+                archived = self._archive_corrupt_characters()
+                msg = (
+                    f"角色档案损坏、内容无法确认（{self.characters_file}），"
+                    f"已留档为 {archived.name if archived else '（留档失败）'}；"
+                    "拒绝以空集合覆盖，如确需重置请显式传 allow_empty=True"
+                )
+                logger.error(f"[memory_manager] {msg}")
+                raise CharacterDataGuardError(msg)
+            if isinstance(existing, dict) and existing:
+                msg = (
+                    f"拒绝以空集合覆盖 {len(existing)} 个既有角色（{self.characters_file}）；"
+                    "如确需清空请显式传 allow_empty=True"
+                )
+                logger.error(f"[memory_manager] {msg}")
+                raise CharacterDataGuardError(msg)
+
+        atomic_write_json(self.characters_file, characters, backup=True)
+        self._characters_corrupt = False
+
+    def _archive_corrupt_characters(self) -> Optional[Path]:
+        """把无法解析的角色档案留档，供人工恢复；返回留档路径。"""
+        try:
+            if not self.characters_file.exists():
+                return None
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            dst = self.characters_file.with_name(f"{self.characters_file.stem}.corrupt-{stamp}.json")
+            shutil.copy2(self.characters_file, dst)
+            logger.warning(f"[memory_manager] 已留档损坏的角色档案: {dst.name}")
+            return dst
+        except OSError as e:
+            logger.error(f"[memory_manager] 留档损坏角色档案失败: {e}")
+            return None
+
+    def get_characters(self, raise_on_corrupt: bool = False) -> dict:
+        """读取角色档案；损坏时回退 `.bak`。
+
+        读侧保持"降级不崩"（生成流程会在热路径上调用它），但会置
+        `_characters_corrupt` 标记，使后续 `save_characters` 不会拿一个空结果
+        去覆盖磁盘上的既有角色。需要感知损坏的调用方可传
+        `raise_on_corrupt=True`。
+        """
+        data, status = read_json_with_backup(self.characters_file, default=None)
+
+        if status == STATUS_CORRUPT:
+            self._characters_corrupt = True
+            msg = f"角色档案损坏且无可用备份: {self.characters_file}"
+            logger.error(f"[memory_manager] {msg}")
+            if raise_on_corrupt:
+                raise CharacterDataCorruptError(msg)
+            return {}
+
+        if status == STATUS_BACKUP:
+            self._characters_corrupt = False
+            logger.warning(
+                f"[memory_manager] {self.characters_file.name} 不可读，已回退 {self.characters_file.name}.bak"
+            )
+
+        return data if isinstance(data, dict) else {}
+
+    def mutate_characters(self, mutator, allow_empty: bool = False) -> dict:
+        """在锁内完成「读-改-写」，消除并发丢失更新。
+
+        此前 `update_character` 与 `character_ui` 的传记流程都是"先读全量、
+        改、再写全量"，窗口内其它线程（章节生成自动建角色）写入的结果会被
+        静默覆盖（R4）。所有对角色集的增量修改都应走这里。
+
+        Args:
+            mutator: ``f(characters: dict) -> dict | None``；返回 None 表示
+                     沿用就地修改后的 `characters`。
+        """
+        with self._lock:
+            current = self.get_characters()
+            updated = mutator(current)
+            if updated is None:
+                updated = current
+            self.save_characters(updated, allow_empty=allow_empty)
+            return updated
 
     def update_character(self, name: str, data: dict):
-        """更新角色信息，自动检测关系变化"""
-        characters = self.get_characters()
+        """更新角色信息（锁内读-改-写），自动检测关系变化"""
+        def _mutate(characters: dict):
+            old_data = characters.get(name, {})
+            if isinstance(old_data, dict) and isinstance(data, dict):
+                merged = dict(old_data)
+                merged.update(data)
+                characters[name] = merged
+            else:
+                characters[name] = data
 
-        old_data = characters.get(name, {})
-
-        # 合并更新
-        if isinstance(old_data, dict) and isinstance(data, dict):
-            old_data.update(data)
-            characters[name] = old_data
-        else:
-            characters[name] = data
-
-        self.save_characters(characters)
+        self.mutate_characters(_mutate)
 
         # 检测关系变化并记录
         if "relationships" in data:

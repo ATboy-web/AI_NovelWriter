@@ -3,8 +3,8 @@ import threading
 import tkinter as tk
 from tkinter import messagebox
 
+from app.novel_toolkit import StoryFlowEngine
 from app.ui_style import UIStyle
-from novel_toolkit import StoryFlowEngine
 
 
 class StoryFlowPanelMixin:

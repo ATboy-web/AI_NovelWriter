@@ -7,126 +7,102 @@ import json
 import re
 import threading
 import tkinter as tk
+import traceback
 from pathlib import Path
 from tkinter import messagebox, ttk
 
 from loguru import logger
 
 from app import UIStyle
-from character_system import CharacterSystem
-from format_converter import FormatConverter, ImageManager
+from app.character_system import CharacterSystem
+from app.format_converter import FormatConverter, ImageManager
+from app.parsing import extract_characters_payload, strip_ai_json_fences
+from app.storage import atomic_write_json, atomic_write_text, safe_filename
 
 
 class CharacterUIMixin:
     """角色层：角色系统/卡片/详情/传记/增删改/装备技能/角色同步"""
 
 
+    def _load_chars_from_memory(self) -> dict:
+        """从 memory/characters.json 读取角色字典（多格式 + 多层容错）。
+
+        收敛原先 `_sync_characters_from_memory` 与 `_sync_memory_chars_to_dir`
+        两份已出现漂移的重复实现（后者还会 `replace('，', ',')`，把角色性格里的
+        中文逗号改成半角）。解析逻辑统一上移到 app/parsing.py 的纯函数，
+        并由 tests/test_parsing.py 覆盖。
+        """
+        if not self.current_novel_dir:
+            return {}
+        mem_file = self.current_novel_dir / "memory" / "characters.json"
+        if not mem_file.exists():
+            return {}
+
+        try:
+            with open(mem_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+            self._log(f"读取角色记忆失败: {e}")
+            return {}
+
+        chars = extract_characters_payload(data)
+        if chars:
+            return chars
+
+        # 最后兜底：交给 agent 的原始响应提取器（保留早期实现已有的回退路径）
+        raw = data.get("raw", "") if isinstance(data, dict) else ""
+        agent = getattr(self, 'agent', None)
+        if raw and agent is not None and hasattr(agent, "_extract_characters_from_raw"):
+            try:
+                extracted = agent._extract_characters_from_raw(strip_ai_json_fences(raw))
+            except Exception as e:
+                self._log(f"[同步] agent 提取角色失败: {e}")
+                return {}
+            if isinstance(extracted, dict):
+                return {k: v for k, v in extracted.items() if isinstance(v, dict)}
+        return {}
+
     def _sync_characters_from_memory(self):
         """从 memory/characters.json 同步角色到 characters/ 目录"""
         if not self.current_novel_dir:
-            return
-        mem_file = self.current_novel_dir / "memory" / "characters.json"
-        if not mem_file.exists():
             return
         chars_dir = self.current_novel_dir / "characters"
         chars_dir.mkdir(exist_ok=True)
 
         try:
-            with open(mem_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            raw = data.get("raw", "")
-            if not raw:
-                # 可能 memory 文件本身就是 dict（旧格式）
-                chars = {k: v for k, v in data.items() if k != "raw" and isinstance(v, dict)}
-                if chars:
-                    self._write_char_files(chars_dir, chars)
-                    return
-                return
-
-            # 解析 raw JSON
-            chars = {}
-            if isinstance(raw, str):
-                # 多层尝试
-                clean = raw.strip()
-                clean = clean.replace('\u3000', ' ')  # 全角空格
-                clean = re.sub(r'^```(?:json)?\s*\n?', '', clean)
-                clean = re.sub(r'\n?```\s*$', '', clean)
-                clean = clean.replace('\uff1a', ':')  # 全角冒号
-                clean = clean.replace('\u201c', '"').replace('\u201d', '"')  # 全角引号
-                # 修复 "goal":["a","b"] → "goal":"a; b"
-                clean = re.sub(r'("(?:goal|target|objective)")\s*:\s*\[([^\]]*)\]',
-                              lambda m: f'{m.group(1)}: "{m.group(2).strip()}"', clean)
-                # 修复连续冒号
-                clean = re.sub(r'("\w+")\s*:{2,}', r'\1:', clean)
-
-                try:
-                    chars = json.loads(clean)
-                except json.JSONDecodeError as e:
-                    self._log(f"[同步] JSON解析失败(line {e.lineno}): {e}")
-                    # 用 agent 的提取方法尝试
-                    if hasattr(self, 'agent'):
-                        chars = self.agent._extract_characters_from_raw(clean)
-            elif isinstance(raw, dict):
-                chars = {k: v for k, v in raw.items() if isinstance(v, dict)}
-
+            chars = self._load_chars_from_memory()
             if chars:
                 self._write_char_files(chars_dir, chars)
         except Exception as e:
             self._log(f"同步角色失败: {e}")
-            import traceback
-            self._log(traceback.format_exc())
+            logger.debug(traceback.format_exc())
+
     def _write_char_files(self, chars_dir: Path, chars: dict):
-        """写入角色文件到磁盘"""
+        """写入角色文件到磁盘（原子写：唯一临时文件 + os.replace）"""
         count = 0
         for name, info in chars.items():
             if isinstance(info, dict):
                 char_data = {"name": name, **info}
-                # 文件名安全处理
-                import re
-                safe_name = re.sub(r'[<>:"/\\|?*]', '_', name)
-                with open(chars_dir / f"{safe_name}.json", 'w', encoding='utf-8') as f:
-                    json.dump(char_data, f, indent=2, ensure_ascii=False)
+                safe_name = safe_filename(name)
+                try:
+                    atomic_write_json(chars_dir / f"{safe_name}.json", char_data)
+                except OSError as e:
+                    self._log(f"角色文件写入失败 {safe_name}: {e}")
+                    continue
                 count += 1
         if count > 0:
             self._log(f"已从记忆恢复 {count} 个角色")
+
     def _sync_memory_chars_to_dir(self):
-        """将 memory/characters.json 同步到 characters/ 目录"""
+        """将 memory/characters.json 中尚未登记的角色同步进 CharacterSystem"""
         try:
-            import json as _j
-            mem_chars = self.current_novel_dir / "memory" / "characters.json"
-            if not mem_chars.exists():
+            if not self.current_novel_dir:
                 return
-            data = _j.loads(mem_chars.read_text(encoding='utf-8'))
-
-            # 从 raw 字段提取角色数据
-            chars = {}
-            raw = data.get("raw", "")
-            if raw and isinstance(raw, str):
-                clean = raw.strip()
-                clean = re.sub(r'```(?:json)?\s*\n?', '', clean)
-                clean = re.sub(r'\n?```\s*$', '', clean)
-                clean = clean.replace('\uff1a', ':')
-                clean = clean.replace('\uff0c', ',')
-                # 修复 goal 等数组字段
-                clean = re.sub(r'"goal"\s*:\s*\[([^\]]*)',
-                    lambda m: '"goal": "' + '; '.join(re.findall(r'"([^"]*)"', m.group(1))) + '"',
-                    clean)
-                clean = re.sub(r'("\w+")\s*:{2,}', r'\1:', clean)
-                try:
-                    parsed = _j.loads(clean)
-                    if isinstance(parsed, dict):
-                        chars = {k: v for k, v in parsed.items() if isinstance(v, dict)}
-                except Exception:
-                    # 尝试逐字符提取
-                    chars = self._extract_chars_from_raw(clean) if hasattr(self, '_extract_chars_from_raw') else {}
-            elif isinstance(data, dict):
-                chars = {k: v for k, v in data.items() if k != "raw" and isinstance(v, dict)}
-
+            chars = self._load_chars_from_memory()
             if not chars:
                 return
 
             if not self.character_system:
-                from character_system import CharacterSystem
                 self.character_system = CharacterSystem(self.current_novel_dir)
 
             existing_names = set(self.character_system.get_character_names())
@@ -318,22 +294,29 @@ class CharacterUIMixin:
                     # 保存传记
                     bio_dir = self.current_novel_dir / "biographies"
                     bio_dir.mkdir(exist_ok=True)
-                    bio_file = bio_dir / f"{char_name}_传记.txt"
-                    bio_file.write_text(result, encoding='utf-8')
+                    bio_file = bio_dir / f"{safe_filename(char_name)}_传记.txt"
+                    atomic_write_text(bio_file, result)
 
-                    # 同步到角色面板
+                    # 同步到角色面板。
+                    # 必须走 mutate_characters（锁内读-改-写）：本函数在后台线程里
+                    # 可能已跑了很久（10万字的传记可达数分钟），其间其它线程
+                    # （章节生成自动建角色）写入的新角色若被这里"读全量→写全量"
+                    # 覆盖，就会静默丢失（R4）。
                     if self.memory:
-                        characters = self.memory.get_characters()
-                        if char_name in characters:
-                            characters[char_name]['biography'] = result[:500] + "..."
-                            characters[char_name]['biography_file'] = str(bio_file)
-                            self.memory.save_characters(characters)
+                        def _attach_bio(characters: dict):
+                            info = characters.get(char_name)
+                            if isinstance(info, dict):
+                                info['biography'] = result[:500] + "..."
+                                info['biography_file'] = str(bio_file)
+
+                        self.memory.mutate_characters(_attach_bio)
 
                     self.root.after(0, lambda: self._show_biography(result, char_name))
                     self._log(f"「{char_name}」个人传记生成完成，已保存到 {bio_file}")
 
                 except Exception as e:
                     self._log(f"传记生成失败: {e}")
+                    logger.debug(traceback.format_exc())
 
             threading.Thread(target=run, daemon=True).start()
 
@@ -566,8 +549,9 @@ class CharacterUIMixin:
                 else:
                     tk.Label(self.char_detail_frame, text="暂无成长记录", font=('微软雅黑', 7),
                             bg=C['bg_medium'], fg=C['text_muted']).pack(anchor=tk.W)
-        except Exception:
-            pass
+        except Exception as e:
+            # 成长日志只是附加信息，失败不应影响角色详情展示，但必须可观测
+            logger.debug(f"[character_ui] 成长日志渲染失败: {type(e).__name__}: {e}")
 
         self.char_detail_frame.update_idletasks()
         # Update scroll region
@@ -765,9 +749,10 @@ class CharacterUIMixin:
         tk.Button(btn_frame, text="重命名", font=('微软雅黑', 9),
                  bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=8,
                  command=lambda: self._rename_character(dialog)).pack(side=tk.LEFT, padx=3)
-        tk.Button(btn_frame, text="删除角色", font=('微软雅黑', 9),
-                 bg=C['error'], fg='white', relief=tk.FLAT, padx=8,
-                 command=lambda: self._delete_character(dialog)).pack(side=tk.LEFT, padx=3)
+        # 注意：此处**刻意不提供"删除角色"入口**。
+        # 角色条目是小说内容资产（当前作品实测 286 个角色），删除不可逆；
+        # 相关能力 `_delete_character` / `CharacterSystem.delete_character` 保留在
+        # 代码中但不接线（详见 docs/OPTIMIZATION_ROUND2.md 的"用户约束"）。
         tk.Button(btn_frame, text="休息恢复", font=('微软雅黑', 9),
                  bg=C['success'], fg='white', relief=tk.FLAT, padx=8,
                  command=lambda: self._rest_character()).pack(side=tk.RIGHT, padx=3)
@@ -788,7 +773,12 @@ class CharacterUIMixin:
             else:
                 messagebox.showwarning("提示", "名称已存在或无效")
     def _delete_character(self, dialog):
-        """删除角色"""
+        """删除角色（**刻意不接线**，保留以备将来有无损归档需求）
+
+        用户约束：角色管理器中已有角色名均为小说内容资产，不可删除。
+        因此角色详情对话框不再提供删除按钮，本方法在全仓无调用点。
+        若将来需要"角色退场"，应实现为状态标记（如 status="离场"）而非物理删除。
+        """
         if not self.character_system or not self.character_system.character:
             return
         name = self.character_system.character.name

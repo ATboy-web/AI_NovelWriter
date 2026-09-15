@@ -43,7 +43,7 @@ jobs:
         run: pip install ruff mypy
 
       - name: Ruff check
-        run: ruff check app/ tests/ backend/ --output-format=github
+        run: ruff check app/ tests/ backend/ scripts/ --output-format=github
 
       - name: Ruff format check
         run: ruff format --check app/ tests/

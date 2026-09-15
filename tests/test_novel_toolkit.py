@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import unittest
 from unittest.mock import MagicMock
 
-from novel_toolkit import (
+from app.novel_toolkit import (
     AdaptEngine,
     BridgeLibrary,
     DescriptionLibrary,

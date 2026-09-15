@@ -3,11 +3,18 @@
 """
 
 import json
-import time
 import random
-from pathlib import Path
-from typing import Dict, List, Optional, Any
 from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional
+
+try:
+    from loguru import logger
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
+
+from .storage import atomic_write_json, safe_filename
 
 
 class CharacterProfile:
@@ -397,17 +404,29 @@ class CharacterSystem:
     # ===== 多角色管理 =====
     
     def _load_all(self):
-        """加载所有角色"""
+        """加载所有角色
+
+        注意：无法解析的角色文件**不再静默跳过** —— 此前 `except Exception: pass`
+        会让损坏的角色在管理器中无声"消失"（实测目录下有 286 个角色文件）。
+        现在逐个记录告警并汇总，且**不删除任何文件**，便于人工修复。
+        """
         if not self.save_dir:
             return
+        failed: List[str] = []
         for f in self.save_dir.glob("*.json"):
             try:
                 with open(f, 'r', encoding='utf-8') as fp:
                     data = json.load(fp)
                 name = data.get("name", f.stem)
                 self.characters[name] = CharacterProfile(data=data)
-            except Exception:
-                pass
+            except Exception as e:
+                failed.append(f.name)
+                logger.warning(f"[character_system] 跳过无法解析的角色文件 {f.name}: {type(e).__name__}: {e}")
+        if failed:
+            logger.error(
+                f"[character_system] 共 {len(failed)} 个角色文件未能加载（文件仍保留在磁盘，未删除）："
+                f"{failed[:5]}{' ...' if len(failed) > 5 else ''}"
+            )
         
         # 兼容旧版单文件
         old_file = self.novel_dir / "character_profile.json" if self.novel_dir else None
@@ -520,13 +539,12 @@ class CharacterSystem:
     
     @staticmethod
     def _sanitize_name(name: str) -> str:
-        """消毒角色名，防止路径遍历（文件名用于磁盘路径）"""
-        import re
-        # 移除路径分隔符与危险字符
-        safe = re.sub(r'[<>:"/\\|?*]', '_', name)
-        # 移除目录穿越序列
-        safe = safe.replace('..', '_')
-        return safe
+        """消毒角色名，防止路径遍历（文件名用于磁盘路径）
+
+        统一委托给 `app.storage.safe_filename`，避免与 `character_ui` /
+        `novel_agent` 中的同名逻辑漂移。
+        """
+        return safe_filename(name)
 
     def delete_character(self, name: str) -> bool:
         if name in self.characters:
@@ -541,27 +559,52 @@ class CharacterSystem:
         return False
     
     def rename_character(self, old_name: str, new_name: str) -> bool:
-        if old_name in self.characters and new_name not in self.characters:
-            char = self.characters.pop(old_name)
-            char.name = new_name
-            self.characters[new_name] = char
-            if self.save_dir:
-                old_file = self.save_dir / f"{self._sanitize_name(old_name)}.json"
-                if old_file.exists():
+        """重命名角色。
+
+        顺序修正：旧实现是「先删旧文件、最后才写新文件」，中间任何失败（磁盘满、
+        文件名非法、进程被杀）都会让角色**同时**丢失内存条目与磁盘文件（R5）。
+        现在改为：先在内存中改名 → 写新文件 → 成功后才删旧文件；写失败则回滚内存态。
+        任何情况下都保证磁盘上至少存在一份完整数据。
+        """
+        if old_name not in self.characters or new_name in self.characters:
+            return False
+
+        prev_active = self.active_name
+        char = self.characters.pop(old_name)
+        char.name = new_name
+        self.characters[new_name] = char
+        if self.active_name == old_name:
+            self.active_name = new_name
+
+        if self.save_dir:
+            try:
+                self.save_character(new_name)
+            except OSError as e:
+                # 回滚内存态，保持与磁盘一致（旧文件仍在，数据未丢）
+                logger.error(f"[character_system] 重命名写入失败，已回滚 {old_name} -> {new_name}: {e}")
+                char.name = old_name
+                self.characters.pop(new_name, None)
+                self.characters[old_name] = char
+                self.active_name = prev_active
+                return False
+
+            old_file = self.save_dir / f"{self._sanitize_name(old_name)}.json"
+            new_file = self.save_dir / f"{self._sanitize_name(new_name)}.json"
+            if old_file.exists() and old_file != new_file:
+                try:
                     old_file.unlink()
-            if self.active_name == old_name:
-                self.active_name = new_name
-            self.save_character(new_name)
-            return True
-        return False
-    
+                except OSError as e:
+                    # 旧文件删不掉只影响整洁，不影响正确性
+                    logger.warning(f"[character_system] 旧角色文件未能删除（可手工清理）: {old_file.name}: {e}")
+        return True
+
     def save_character(self, name: str = None):
+        """保存单个角色文件（原子写：临时文件 + os.replace，防止写一半被截断）"""
         name = name or self.active_name
         if name and name in self.characters and self.save_dir:
             safe_name = self._sanitize_name(name)
             f = self.save_dir / f"{safe_name}.json"
-            with open(f, 'w', encoding='utf-8') as fp:
-                json.dump(self.characters[name].to_dict(), fp, indent=2, ensure_ascii=False)
+            atomic_write_json(f, self.characters[name].to_dict())
     
     def save_all(self):
         for name in self.characters:

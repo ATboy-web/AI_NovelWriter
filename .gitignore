@@ -71,3 +71,6 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+
+# Scratch / diagnostic files (ad-hoc verification scripts, captured output)
+/_*

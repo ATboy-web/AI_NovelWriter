@@ -573,7 +573,7 @@ class TimelineMixin:
                 self._log(f"[分支创作] 大纲生成完成: {len(outline)}章")
 
                 # 初始化分支的CharacterSystem
-                from character_system import CharacterSystem
+                from app.character_system import CharacterSystem
                 branch_chars = CharacterSystem(branch_dir)
                 branch_chars.load()
 

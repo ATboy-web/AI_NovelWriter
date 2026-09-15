@@ -3,15 +3,13 @@
 支持: WebDAV（坚果云）、百度网盘、夸克网盘、迅雷网盘、阿里云盘
 """
 
-import json
-import os
-import time
 import hashlib
-import httpx
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime
+import json
 from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import httpx
 
 
 class CloudProvider(ABC):
@@ -110,10 +108,8 @@ class WebDAVProvider(CloudProvider):
         try:
             resp = self.client.request("PROPFIND", remote_path, headers={"Depth": "1"})
             if resp.status_code in [200, 207]:
-                # 简单解析XML响应
+                # 简单解析XML响应（此处简化处理，不解析 resp.text）
                 files = []
-                content = resp.text
-                # 这里简化处理，实际应该解析XML
                 return files
             return []
         except Exception:
@@ -555,7 +551,6 @@ class AliyunPanProvider(CloudProvider):
                 return False
             
             data = resp.json()
-            file_id = data.get("file_id")
             upload_url = data.get("upload_url")
             
             # 2. 上传文件

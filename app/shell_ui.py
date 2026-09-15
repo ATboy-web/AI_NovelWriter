@@ -4,7 +4,6 @@
 """
 
 import json
-import threading
 import time
 import tkinter as tk
 import webbrowser
@@ -20,23 +19,6 @@ class ShellMixin:
     """应用外壳层：主窗口构建 / 运行循环 / 日志 / 状态栏 / 帮助关于"""
 
 
-    def _run_async(self, task_func, success_callback=None, error_prefix="操作"):
-        """在后台线程执行任务，自动处理异常和UI线程回调
-        
-        Args:
-            task_func: 要执行的函数，返回结果传给 success_callback
-            success_callback: 成功回调 function(result)，在UI线程中执行
-            error_prefix: 错误消息前缀
-        """
-        def wrapper():
-            try:
-                result = task_func()
-                if success_callback:
-                    self.root.after(0, lambda: success_callback(result))
-            except Exception as e:
-                self._log(f"{error_prefix}失败: {e}")
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
-        threading.Thread(target=wrapper, daemon=True).start()
     def _create_widgets(self):
         """创建主界面 - 深色主题美化版"""
         C = UIStyle.COLORS
@@ -377,6 +359,11 @@ class ShellMixin:
         tk.Button(char_btn_frame, text="传记", font=('微软雅黑', 8),
                  bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=6,
                  command=self._gen_char_biography).pack(side=tk.LEFT, padx=1)
+        # 「详情」入口：此前 _show_char_detail（含重命名 / 休息恢复 / 故事线）
+        # 是全仓零调用的孤儿对话框，这 3 项能力用户根本点不到。
+        tk.Button(char_btn_frame, text="详情", font=('微软雅黑', 8),
+                 bg=C['accent_light'], fg=C['text_primary'], relief=tk.FLAT, padx=6,
+                 command=self._show_char_detail).pack(side=tk.LEFT, padx=1)
 
         # ===== 右侧主内容区 =====
         right_panel = tk.Frame(main_container, bg=C['bg_dark'])

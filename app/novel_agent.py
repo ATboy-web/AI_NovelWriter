@@ -26,6 +26,7 @@ from .agent_orchestrator import AgentOrchestrator
 from .ai_client import AIClient
 from .config import AppConfig
 from .memory_manager import MemoryManager
+from .storage import atomic_write_json, safe_filename
 
 # 诊断日志
 try:
@@ -1244,10 +1245,9 @@ class NovelAgent:
         for name, info in chars.items():
             if isinstance(info, dict):
                 char_data = {"name": name, **info}
-                # API-3修复: 文件名安全处理（Windows不允许 / \ : * ? " < > |）
-                safe_name = re.sub(r'[<>:"/\\|?*]', '_', name)
-                with open(chars_dir / f"{safe_name}.json", 'w', encoding='utf-8') as f:
-                    json.dump(char_data, f, indent=2, ensure_ascii=False)
+                # API-3修复: 文件名安全处理（统一委托 app.storage.safe_filename）
+                safe_name = safe_filename(name)
+                atomic_write_json(chars_dir / f"{safe_name}.json", char_data)
                 saved_count += 1
 
         if saved_count > 0:
@@ -1255,8 +1255,27 @@ class NovelAgent:
         else:
             self.log("[角色] 警告：未能保存任何角色文件！")
 
-        # 返回前更新 self.memory 中的角色缓存
-        self.memory.save_characters(chars)
+        # 写回 memory/characters.json。
+        # 关键：必须与既有角色取并集，不能整体覆盖 —— `chars` 只包含本次 AI
+        # 生成的一批，直接覆盖会把小说里已有的角色（当前实测 286 个）全部清掉。
+        # 同名角色的字段按"新数据优先"合并，未出现在本批次中的角色原样保留。
+        def _merge(existing: dict):
+            merged = dict(existing)
+            for name, info in chars.items():
+                old = merged.get(name)
+                if isinstance(old, dict) and isinstance(info, dict):
+                    combined = dict(old)
+                    combined.update(info)
+                    merged[name] = combined
+                else:
+                    merged[name] = info
+            return merged
+
+        before = len(self.memory.get_characters())
+        merged_chars = self.memory.mutate_characters(_merge)
+        added = len(merged_chars) - before
+        if added > 0:
+            self.log(f"[角色] 新增 {added} 个角色（既有 {before} 个已保留）")
 
         return chars
 

@@ -8,6 +8,12 @@
 - 标准化通信协议 (AgentMessage)
 """
 
+try:
+    from loguru import logger
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
+
 import json
 import re
 import threading
@@ -651,16 +657,16 @@ class NovelAgent:
                         json_str = re.sub(r',\s*]', ']', json_str)
                         try:
                             return json.loads(json_str)
-                        except json.JSONDecodeError:
-                            pass
+                        except json.JSONDecodeError as _silent_e:
+                            logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
                 
                 # Strategy 2: 正则匹配
                 match = re.search(r'\{[\s\S]*\}', response)
                 if match:
                     try:
                         return json.loads(match.group())
-                    except json.JSONDecodeError:
-                        pass
+                    except json.JSONDecodeError as _silent_e:
+                        logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
         except Exception as e:
             self.log(f"[PlotDesigner] 分析失败: {e}")
         return {"type": "writing", "pace": "medium", "foreshadowing": []}
@@ -1548,8 +1554,8 @@ class NovelAgent:
                     json_str = re.sub(r',\s*]', ']', json_str)
                     try:
                         data = json.loads(json_str)
-                    except json.JSONDecodeError:
-                        pass
+                    except json.JSONDecodeError as _silent_e:
+                        logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
             
             # Strategy 2: 如果括号追踪失败，尝试正则提取
             if not data:
@@ -1571,8 +1577,8 @@ class NovelAgent:
                         json_str = re.sub(r',\s*]', ']', json_str)
                         try:
                             data = json.loads(json_str)
-                        except json.JSONDecodeError:
-                            pass
+                        except json.JSONDecodeError as _silent_e:
+                            logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
             
             # Strategy 3: 移除markdown代码块后重试
             if not data:
@@ -1587,8 +1593,8 @@ class NovelAgent:
                 if match:
                     try:
                         data = json.loads(match.group())
-                    except json.JSONDecodeError:
-                        pass
+                    except json.JSONDecodeError as _silent_e:
+                        logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
             
             # Strategy 4: 逐字段提取（处理AI返回思考文本+JSON混合的情况）
             if not data:
@@ -1613,8 +1619,8 @@ class NovelAgent:
                                 })
                         if updates:
                             data = {"updates": updates}
-                except Exception:
-                    pass
+                except Exception as _silent_e:
+                    logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
             
             if not data:
                 self.log(f"[角色成长] JSON解析失败，跳过本章")
@@ -1837,8 +1843,8 @@ class NovelAgent:
                     try:
                         obj = json.loads(text[obj_start:i+1])
                         chars[key_buffer] = obj
-                    except (json.JSONDecodeError, ValueError):
-                        pass
+                    except (json.JSONDecodeError, ValueError) as _silent_e:
+                        logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
                     key_buffer = ""
                     obj_start = -1
             i += 1
@@ -1864,8 +1870,8 @@ class NovelAgent:
                     try:
                         obj = json.loads(truncated)
                         chars[key_buffer] = obj
-                    except (json.JSONDecodeError, ValueError):
-                        pass
+                    except (json.JSONDecodeError, ValueError) as _silent_e:
+                        logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
         
         return chars
     
@@ -1977,8 +1983,8 @@ class NovelAgent:
                             try:
                                 obj = json.loads(s[brace_start:j+1])
                                 chars[name] = obj
-                            except (json.JSONDecodeError, ValueError):
-                                pass
+                            except (json.JSONDecodeError, ValueError) as _silent_e:
+                                logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
                             break
             if chars:
                 # 🔧 BUG-5修复: is_list=True时返回list而非dict

@@ -188,8 +188,8 @@ class ReadingManager:
                             text = page.extract_text()
                             if text and text.strip():
                                 content.append(text)
-                        except Exception:
-                            pass
+                        except Exception as _silent_e:
+                            logger.debug(f"[reading_manager] 捕获异常: {_silent_e}")
                     return '\n\n'.join(content)
             
             elif ext == '.docx' and DOCX_SUPPORT:

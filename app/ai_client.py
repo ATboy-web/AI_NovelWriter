@@ -428,6 +428,12 @@ class AIClient:
         "deepseek-chat": "deepseek-v4-flash",
         "mimo-v2.5-pro": None,
         "kimi-k2.6": "moonshot-v1-128k",
+        # P1-7: 补齐 GLM / Qwen 系列降级映射
+        "glm-4-plus": "glm-4-flash",
+        "glm-4": "glm-4-flash",
+        "glm-4-air": "glm-4-flash",
+        "qwen-max": "qwen-plus",
+        "qwen-plus": "qwen-turbo",
     }
     
     def __init__(self, config: AppConfig):
@@ -441,8 +447,8 @@ class AIClient:
         try:
             from loguru import logger
             logger.info(f"[AI] {msg}")
-        except Exception:
-            pass
+        except Exception as _silent_e:
+            logger.debug(f"[ai_client] 捕获异常: {_silent_e}")
     
     def _init_client(self):
         provider = self.config.get("api_provider", "ollama")
@@ -527,24 +533,9 @@ class AIClient:
             )
         
         try:
-            if detected_provider == "ollama":
-                result = self._chat_ollama(messages, system, model, max_tokens, temperature)
-            elif detected_provider == "claude":
-                result = self._chat_claude(messages, system, model, max_tokens, temperature)
-            elif detected_provider == "deepseek":
-                result = self._chat_deepseek(messages, system, model, max_tokens, temperature, 
-                                            thinking_enabled, reasoning_effort)
-            elif detected_provider == "glm":
-                result = self._chat_glm(messages, system, model, max_tokens, temperature,
-                                       thinking_enabled, reasoning_effort)
-            elif detected_provider == "qwen":
-                result = self._chat_qwen(messages, system, model, max_tokens, temperature,
-                                        thinking_enabled)
-            elif detected_provider == "kimi":
-                result = self._chat_kimi(messages, system, model, max_tokens, temperature,
-                                        thinking_enabled)
-            else:
-                result = self._chat_openai(messages, system, model, max_tokens, temperature)
+            result = self._dispatch_with_retry(detected_provider, messages, system, model,
+                                               max_tokens, temperature, thinking_enabled,
+                                               reasoning_effort)
             
             latency = time.time() - start
             self.metrics.record(latency)
@@ -607,15 +598,9 @@ class AIClient:
                 fallback_provider = self._detect_provider(provider, model)
                 # 重试时不递归，直接调用对应方法
                 try:
-                    if fallback_provider == "ollama":
-                        result = self._chat_ollama(messages, system, model, max_tokens, temperature)
-                    elif fallback_provider == "claude":
-                        result = self._chat_claude(messages, system, model, max_tokens, temperature)
-                    elif fallback_provider == "deepseek":
-                        result = self._chat_deepseek(messages, system, model, max_tokens, temperature,
-                                                    thinking_enabled, reasoning_effort)
-                    else:
-                        result = self._chat_openai(messages, system, model, max_tokens, temperature)
+                    result = self._dispatch_chat(fallback_provider, messages, system, model,
+                                                 max_tokens, temperature, thinking_enabled,
+                                                 reasoning_effort)
                     latency = time.time() - start
                     self.metrics.record(latency)
                     return result
@@ -657,8 +642,8 @@ class AIClient:
                             result.append(token)
                             if callback:
                                 callback(token)
-                    except json.JSONDecodeError:
-                        pass
+                    except json.JSONDecodeError as _silent_e:
+                        logger.debug(f"[ai_client] 捕获异常: {_silent_e}")
         return "".join(result)
     
     def _stream_openai(self, messages, model, callback, kwargs) -> str:
@@ -679,8 +664,8 @@ class AIClient:
                             result.append(token)
                             if callback:
                                 callback(token)
-                    except json.JSONDecodeError:
-                        pass
+                    except json.JSONDecodeError as _silent_e:
+                        logger.debug(f"[ai_client] 捕获异常: {_silent_e}")
         return "".join(result)
     
     def _chat_openai(self, messages, system, model, max_tokens, temperature) -> str:
@@ -851,6 +836,56 @@ class AIClient:
         
         # 回退到用户配置的provider
         return provider
+    
+    # ==================== 请求分发与限流重试 ====================
+    
+    def _dispatch_chat(self, provider: str, messages, system, model, max_tokens,
+                       temperature, thinking_enabled=False, reasoning_effort="medium") -> str:
+        """按 provider 路由到对应的底层调用（统一入口）。
+        
+        P1-7: 主调用与降级调用共用此方法，避免两处分支漂移；
+        此前降级分支缺 glm/qwen/kimi，会错误回落到 _chat_openai。
+        """
+        if provider == "ollama":
+            return self._chat_ollama(messages, system, model, max_tokens, temperature)
+        if provider == "claude":
+            return self._chat_claude(messages, system, model, max_tokens, temperature)
+        if provider == "deepseek":
+            return self._chat_deepseek(messages, system, model, max_tokens, temperature,
+                                       thinking_enabled, reasoning_effort)
+        if provider == "glm":
+            return self._chat_glm(messages, system, model, max_tokens, temperature,
+                                  thinking_enabled, reasoning_effort)
+        if provider == "qwen":
+            return self._chat_qwen(messages, system, model, max_tokens, temperature,
+                                   thinking_enabled)
+        if provider == "kimi":
+            return self._chat_kimi(messages, system, model, max_tokens, temperature,
+                                   thinking_enabled)
+        return self._chat_openai(messages, system, model, max_tokens, temperature)
+    
+    def _dispatch_with_retry(self, provider: str, messages, system, model, max_tokens,
+                             temperature, thinking_enabled=False, reasoning_effort="medium",
+                             max_retries: int = 3) -> str:
+        """调用底层并针对 429 限流做指数退避重试（P1-7）。
+        
+        仅对 429（请求过于频繁）重试；其他错误（401/403/5xx/网络）直接抛出，
+        交由外层处理（认证错误不降级，其他错误走模型降级）。
+        """
+        delay = 2.0
+        for attempt in range(max_retries + 1):
+            try:
+                return self._dispatch_chat(provider, messages, system, model, max_tokens,
+                                           temperature, thinking_enabled, reasoning_effort)
+            except Exception as e:
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                if status == 429 and attempt < max_retries:
+                    self._log(f"[限流] 429 请求过于频繁，{delay:.0f}s 后重试 "
+                              f"({attempt + 1}/{max_retries})")
+                    time.sleep(delay)
+                    delay = min(delay * 2, 30.0)
+                    continue
+                raise
     
     # ==================== 智谱GLM深度思考 ====================
     

@@ -38,8 +38,8 @@ def _flush_all_on_exit():
     for mm in list(_flush_registry):
         try:
             mm.flush()
-        except Exception:
-            pass
+        except Exception as _silent_e:
+            logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
 
 
 class MemoryManager:
@@ -151,7 +151,8 @@ class MemoryManager:
         if self.inverted_index_file.exists():
             try:
                 return json.loads(self.inverted_index_file.read_text(encoding='utf-8'))
-            except (json.JSONDecodeError, FileNotFoundError): pass
+            except (json.JSONDecodeError, FileNotFoundError) as _silent_e:
+                logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
         return {}
     
     def _save_inverted_index(self):
@@ -161,7 +162,8 @@ class MemoryManager:
         if self.character_activity_file.exists():
             try:
                 return json.loads(self.character_activity_file.read_text(encoding='utf-8'))
-            except (json.JSONDecodeError, FileNotFoundError): pass
+            except (json.JSONDecodeError, FileNotFoundError) as _silent_e:
+                logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
         return {}
     
     def _save_character_activity(self):
@@ -238,7 +240,8 @@ class MemoryManager:
         for f in self.arcs_dir.glob("arc_*.json"):
             try:
                 arcs.append(json.loads(f.read_text(encoding='utf-8')))
-            except (FileNotFoundError, json.JSONDecodeError): pass
+            except (FileNotFoundError, json.JSONDecodeError) as _silent_e:
+                logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
         return arcs
     
     # ===== 核心记忆保存 =====
@@ -440,8 +443,8 @@ class MemoryManager:
                 try:
                     num = int(doc_id.split("_", 1)[1])
                     file = self.chapters_dir / f"chapter_{num:05d}.txt"
-                except (ValueError, IndexError):
-                    pass
+                except (ValueError, IndexError) as _silent_e:
+                    logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
             if file.exists():
                 return file.read_text(encoding='utf-8')
         # 卷级摘要
@@ -508,7 +511,8 @@ class MemoryManager:
         if page_file.exists():
             try:
                 return json.loads(page_file.read_text(encoding='utf-8'))
-            except (FileNotFoundError, json.JSONDecodeError): pass
+            except (FileNotFoundError, json.JSONDecodeError) as _silent_e:
+                logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
         return []
     
     def _save_chunks_page(self, page: int, chunks: List[Dict]):
@@ -642,7 +646,8 @@ class MemoryManager:
         if page_file.exists():
             try:
                 events = json.loads(page_file.read_text(encoding='utf-8'))
-            except (OSError, json.JSONDecodeError): pass
+            except (OSError, json.JSONDecodeError) as _silent_e:
+                logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
         
         events.append({
             "chapter": chapter_num,
@@ -672,7 +677,8 @@ class MemoryManager:
                         ch = e.get("chapter", 0)
                         if from_chapter <= ch <= to_chapter:
                             all_events.append(e)
-                except (FileNotFoundError, json.JSONDecodeError): pass
+                except (FileNotFoundError, json.JSONDecodeError) as _silent_e:
+                    logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
         
         return sorted(all_events, key=lambda e: (e.get("chapter", 0), e.get("timestamp", "")))
     

@@ -57,3 +57,17 @@ yarn-error.log*
 
 # Storage
 .ai_novel_writer/
+
+# Build artifacts (binaries are NOT tracked; distribute via GitHub Releases)
+*.exe
+*.apk
+dist/
+backend/*/dist/
+coverage.json
+coverage.xml
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/

@@ -1,141 +1,169 @@
-# GitHub Actions CI/CD 配置
-# 自动运行测试、lint检查、构建验证
+# AI_NovelWriter 单一 CI/CD 流水线
+# 合并原 build.yml / ci.yml / ci-cd.yml 三个高度重叠的工作流
+#
+# 触发：
+#   push / PR        -> lint + test + android + security
+#   tag v*           -> 上述全部 + 构建 EXE 并创建 Release
+#
+# 依赖安装统一使用 pyproject.toml（pip install -e ".[dev]"），
+# 不再引用并不存在的根目录 requirements.txt。
 
-name: CI
+name: CI/CD
 
 on:
   push:
     branches: [ main, develop ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
 
+env:
+  PYTHON_VERSION: '3.11'
+
 jobs:
-  # Python测试
-  test-python:
-    name: Python Tests
+  # ---------- 代码质量 ----------
+  lint:
+    name: Lint (ruff + mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install lint tools
+        run: pip install ruff mypy
+
+      - name: Ruff check
+        run: ruff check app/ tests/ --output-format=github
+
+      - name: Ruff format check
+        run: ruff format --check app/ tests/
+        continue-on-error: true
+
+      - name: Mypy type check
+        run: mypy app/ --ignore-missing-imports --no-error-summary
+        continue-on-error: true
+
+  # ---------- 单元测试 ----------
+  test:
+    name: Tests (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
-    
+        python-version: [ '3.11', '3.12', '3.13' ]
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]" 2>/dev/null || pip install -e .
-        pip install cryptography pytest pytest-cov
-    
-    - name: Run tests
-      run: |
-        python -m pytest tests/ -v --tb=short --cov=app --cov-report=xml
-    
-    - name: Upload coverage
-      if: matrix.python-version == '3.13'
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.xml
-        fail_ci_if_error: false
+      - uses: actions/checkout@v4
 
-  # 代码质量检查
-  lint:
-    name: Code Quality
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.13'
-    
-    - name: Install lint tools
-      run: |
-        pip install ruff mypy
-    
-    - name: Ruff lint
-      run: |
-        ruff check app/ tests/ --output-format=github
-    
-    - name: Ruff format check
-      run: |
-        ruff format --check app/ tests/
-      continue-on-error: true
-    
-    - name: Type check
-      run: |
-        mypy app/ --ignore-missing-imports --no-error-summary
-      continue-on-error: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-  # Android构建验证
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" 2>/dev/null || pip install loguru httpx cryptography pytest pytest-cov pytest-asyncio
+
+      - name: Run tests
+        run: python -m pytest tests/ -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.13'
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  # ---------- Android 构建验证 ----------
   build-android:
-    name: Android Build
+    name: Android Build (debug)
     runs-on: ubuntu-latest
-    
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-    
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-    
-    - name: Build Android App
-      working-directory: mobile-app/novel-app
-      run: |
-        chmod +x gradlew
-        ./gradlew assembleDebug
-    
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: debug-apk
-        path: mobile-app/novel-app/app/build/outputs/apk/debug/*.apk
+      - uses: actions/checkout@v4
 
-  # 安全扫描
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Build Android App
+        working-directory: mobile-app/novel-app
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: mobile-app/novel-app/app/build/outputs/apk/debug/*.apk
+
+  # ---------- 安全扫描 ----------
   security:
     name: Security Scan
     runs-on: ubuntu-latest
-    
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Check for secrets
-      uses: trufflesecurity/trufflehog@main
-      with:
-        extra_args: --only-verified
-    
-    - name: Check dependencies
-      run: |
-        pip install safety
-        safety check --full-report
-      continue-on-error: true
+      - uses: actions/checkout@v4
 
-  # 构建状态汇总
+      - name: Check for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
+      - name: Check dependencies
+        run: |
+          pip install safety
+          safety check --full-report
+        continue-on-error: true
+
+  # ---------- 发布：构建 EXE 并创建 Release（仅 tag） ----------
+  release:
+    name: Build EXE & Release
+    needs: [ lint, test ]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install build deps
+        run: pip install pyinstaller loguru
+
+      - name: Build EXE
+        run: |
+          cd installer
+          pyinstaller novel_app.spec --clean --noconfirm
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: installer/dist/AI_NovelWriter.exe
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------- 状态汇总 ----------
   status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [test-python, lint, build-android, security]
+    needs: [ lint, test, build-android, security ]
     if: always()
-    
     steps:
-    - name: Check status
-      run: |
-        if [ "${{ needs.test-python.result }}" == "failure" ] || \
-           [ "${{ needs.lint.result }}" == "failure" ] || \
-           [ "${{ needs.build-android.result }}" == "failure" ]; then
-          echo "CI failed"
-          exit 1
-        fi
-        echo "CI passed"
+      - name: Check status
+        run: |
+          if [ "${{ needs.lint.result }}" == "failure" ] || \
+             [ "${{ needs.test.result }}" == "failure" ] || \
+             [ "${{ needs.build-android.result }}" == "failure" ]; then
+            echo "CI failed"
+            exit 1
+          fi
+          echo "CI passed"

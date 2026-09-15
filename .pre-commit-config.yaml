@@ -1,0 +1,16 @@
+# 提交前钩子：拦截大文件与二进制产物入库
+# 安装：pip install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+        args: [ '--maxkb=5000' ]
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        exclude: '\.(md|txt)$'
+      - id: check-yaml
+      - id: check-json
+        exclude: '^(\.vscode|mobile-app|frontend-react)/'

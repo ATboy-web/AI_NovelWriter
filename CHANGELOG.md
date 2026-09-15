@@ -1,5 +1,57 @@
 # 更新日志
 
+## v2.16.0 (2026-07-03 首发；发布附件于 2026-09-15 重建)
+
+### 架构重构
+- **拆分 `novel_app.py` 巨石**：8394 行单类 → **130 行薄编排层** + 12 个功能域 Mixin
+  （shell_ui / lifecycle_ui / generation_ui / character_ui / outline_ui / chapter_ui /
+  editor_ui / reader_ui / timeline_ui / toolkit_ui / persistence_ui / note_ui）。
+  方法体按 AST span 逐字节复制：139 个迁移方法中 137 个字节完全一致，
+  类属性集合 186→186 不变。
+- **抽取可测纯函数**：新增 `app/parsing.py`（`parse_json_response` / `parse_exp_json`）
+  及其 18 个单元测试；`generation_ui` 改为薄委托调用。
+
+### 修复
+- 10 处错误弹窗静默失效：`except ... as e` 的 `e` 在 except 块结束即被删除（PEP 3110），
+  而 `lambda` 由 `after()` 延迟执行 → NameError。改为默认参数绑定。
+- 分支小说生成功能整体失效（嵌套函数遮蔽 `context_text` → UnboundLocalError）。
+- 「关于」对话框版本号硬编码为 `v2.0`，与 `app.__version__` 不一致。
+- 名场面选景：精心编写的 8 条选景标准（`system`，18 行）从未被使用，
+  实际传入的是硬编码的一行简化版 → 已改为使用完整标准。
+- 插图提示词文件被同名重复写入，后一次覆盖前一次并**丢失角色描述**。
+- 12 个类型测试为恒真断言（`assert len(<测试内自造列表>) > 0`，与产品代码无关），
+  且测试构造 `NovelAgent` 时第二参数误传 `Path`（应为 memory 对象）。
+  已改写为参数化测试，验证类型字符串真正进入 `AIClient.chat` 的提示词。
+- `ai_client` 流式解析的异常分支引用了未定义的 `logger`（该模块用 `_diag_logger`）。
+- PDF 依赖错配：代码 `import PyPDF2`，而 `pyproject.toml` 声明的是 `pypdf`。
+
+### 工程治理
+- **Git 历史瘦身**：`.git` 830 MB → 12.2 MB（`filter-repo --strip-blobs-bigger-than 500K`），
+  229 个提交 / 24 个标签全部保留。
+- CI 合并为单一 `ci.yml`；删除与之重叠且必然失败的 `build.yml` / `ci-cd.yml`。
+- 修复 `pip install -e ".[dev]"` 失败：`pyproject.toml` 缺 `[build-system]` 与包发现配置，
+  flat-layout 下因「Multiple top-level packages discovered」拒绝构建，
+  并被 CI 的 `2>/dev/null || <精简安装>` 静默掩盖。
+- 清空 3485 项 lint 违规（含 13 处 F821 未定义名称、34 处 F841、94 处 F401）。
+- 死代码清理：5 个被主类完全覆盖的 Mixin、`plugin_system` / `ai_drawing` / `collaboration`。
+- 全量测试 **1138 passed**。
+
+## v2.15.0 (2026-06-25)
+
+### 新增
+- **写作技能系统**：从已完成章节中提取写作模式，形成可复用的写作技能。
+- **Token 统计**：按模型与调用维度统计 Token 消耗。
+
+### 修复
+- 角色成长 JSON 解析增加 Strategy 4 回退，并补充诊断日志。
+- 手机版默认模型改为 `deepseek-v4-flash`。
+
+## v2.14.3 (2026-06-22)
+
+### 修复
+- 代码审计问题全面修复。
+- 手机版全面代码审查修复。
+
 ## v2.14.2 (2026-06-22)
 
 ### 修复

@@ -42,8 +42,8 @@
 
 | 平台 | 版本 | 大小 | 链接 |
 |------|------|------|------|
-| Windows | v2.16.0 | ~97MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
-| Android | v2.12.3 | ~2.4MB | [AI_NovelWriter.apk](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.12.3) |
+| Windows | v2.16.0 | ~18.8MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
+| Android | v4.0.1 | ~10.9MB | [AI_NovelWriter_v4.0.1.apk](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.16.0) |
 
 ## 快速开始
 
@@ -101,8 +101,8 @@ pip install -e ".[dev]"
 # 运行桌面版
 python novel_app.py
 
-# 运行测试
-python -m pytest tests/ -v
+# 运行测试（testpaths 覆盖 tests 与 backend/tests）
+python -m pytest -v
 
 # 代码质量检查
 ruff check app/ tests/
@@ -151,11 +151,11 @@ docker-compose ps
 
 ### 测试
 ```bash
-# 运行所有测试
-python -m pytest tests/ -v
+# 运行所有测试（含 backend/tests）
+python -m pytest -v
 
 # 运行带覆盖率的测试
-python -m pytest tests/ --cov=app --cov-report=html
+python -m pytest --cov=app --cov-report=html
 ```
 
 ## 贡献

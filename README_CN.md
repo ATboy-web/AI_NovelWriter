@@ -144,8 +144,8 @@ ai-novel-writer/
 ├── backend/                     # 后端服务
 │   ├── ai-service/            # AI模型服务
 │   ├── novel-service/         # 小说生成服务
-│   ├── auth-service/          # 用户认证服务
-│   └── payment-service/       # 支付服务
+│   ├── auth-service/          # 用户认证服务（规划中，未实现）
+│   └── payment-service/       # 支付服务（规划中，未实现）
 ├── shared/                      # 共享库
 ├── models/                      # AI模型存储
 ├── docs/                        # 项目文档
@@ -386,7 +386,10 @@ A3: 调整以下参数：
 
 ### Q4: 如何扩展用户系统？
 
-A4: 在 `backend/auth-service` 中添加新的用户功能，如社交登录、多因素认证等。
+A4: 用户系统**尚未实现**（`backend/auth-service` 目前为空目录）。现有后端鉴权由
+`backend/shared/middleware/auth.py` 提供，仅支持**静态 API Key** 与**外部签发的 JWT 校验**，
+不含注册 / 登录 / 令牌签发能力。是否建设账号体系见
+[docs/AUTH_PAYMENT_SERVICES_EVALUATION.md](docs/AUTH_PAYMENT_SERVICES_EVALUATION.md)（结论：暂不立项）。
 
 ## 性能优化
 

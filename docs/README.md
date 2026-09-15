@@ -21,6 +21,7 @@
 | [TEAM_IMPROVEMENT_PLAN.md](TEAM_IMPROVEMENT_PLAN.md) | 团队提升方案 |
 | [project-summary.md](project-summary.md) | 项目总结 |
 | [VERSION_RELEASE_SPEC.md](VERSION_RELEASE_SPEC.md) | 版本发布规范 |
+| [AUTH_PAYMENT_SERVICES_EVALUATION.md](AUTH_PAYMENT_SERVICES_EVALUATION.md) | 认证 / 支付服务立项评估（结论：暂不立项） |
 
 ## 质量与安全
 | 文档 | 说明 |

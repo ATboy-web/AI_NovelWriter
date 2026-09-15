@@ -37,7 +37,9 @@ AI 自动写小说系统，产品级完整应用。采用「桌面客户端 + �
 | 小说服务 | `novel-service/` | 8002 | 小说生成业务逻辑，36 个端点 |
 | 中间件 | `*/app/middleware/` | - | 限流、认证、日志 |
 
-> 注：`auth-service/`、`payment-service/` 目录实际不存在（仅有规划占位），认证与支付逻辑未实现。
+> 注：`auth-service/`、`payment-service/` 为**空目录**（存在但 0 个文件，未被容器编排与代码引用），
+> 认证与支付逻辑均未实现。立项定论见
+> [AUTH_PAYMENT_SERVICES_EVALUATION.md](AUTH_PAYMENT_SERVICES_EVALUATION.md)（结论：暂不立项）。
 
 #### 移动端
 - `mobile-app/`（APK，React+TypeScript 重构）

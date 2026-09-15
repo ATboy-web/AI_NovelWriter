@@ -49,7 +49,7 @@ class DescriptionsPanelMixin:
                 )
                 self.root.after(0, lambda: self._show_tool_result(self.desc_result, result))
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
         
         threading.Thread(target=run, daemon=True).start()
 

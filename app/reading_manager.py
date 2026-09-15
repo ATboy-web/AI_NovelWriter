@@ -26,10 +26,14 @@ except ImportError:
     EPUB_SUPPORT = False
 
 try:
-    import PyPDF2
-    PDF_SUPPORT = True
+    import pypdf as _pdf_lib
 except ImportError:
-    PDF_SUPPORT = False
+    try:
+        import PyPDF2 as _pdf_lib
+    except ImportError:
+        _pdf_lib = None
+
+PDF_SUPPORT = _pdf_lib is not None
 
 try:
     from docx import Document
@@ -137,7 +141,7 @@ class ReadingManager:
             
             elif ext == '.pdf' and PDF_SUPPORT:
                 with open(file_path, 'rb') as f:
-                    reader = PyPDF2.PdfReader(f)
+                    reader = _pdf_lib.PdfReader(f)
                     meta['pages'] = len(reader.pages)
                     if reader.metadata:
                         meta['title'] = reader.metadata.title or file_path.stem
@@ -181,7 +185,7 @@ class ReadingManager:
             
             elif ext == '.pdf' and PDF_SUPPORT:
                 with open(file_path, 'rb') as f:
-                    reader = PyPDF2.PdfReader(f)
+                    reader = _pdf_lib.PdfReader(f)
                     content = []
                     for i, page in enumerate(reader.pages):
                         try:

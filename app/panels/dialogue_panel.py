@@ -60,7 +60,7 @@ class DialoguePanelMixin:
                 text = self.dialogue_engine.export_text()
                 self.root.after(0, lambda: self._show_tool_result(self.dlg_result, text))
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
         
         threading.Thread(target=run, daemon=True).start()
 
@@ -75,7 +75,7 @@ class DialoguePanelMixin:
                 text = self.dialogue_engine.export_text()
                 self.root.after(0, lambda: self._show_tool_result(self.dlg_result, text))
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
         
         threading.Thread(target=run, daemon=True).start()
 

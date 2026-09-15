@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ai-novel-writer"
 version = "2.16.0"
@@ -21,9 +25,17 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-asyncio>=0.23",
+    "respx>=0.20",
     "ruff>=0.1.0",
     "mypy>=1.0",
 ]
+
+# flat-layout 下存在多个顶层目录 (app / backend / shared / installer / ...),
+# 若不加约束 setuptools 会因 "Multiple top-level packages discovered" 拒绝构建,
+# 导致 `pip install -e ".[dev]"` 失败 (CI 曾因此静默回退到不完整的依赖安装)。
+# 本项目仅 app/ 是需要安装的发行包, backend/ 为独立服务, shared/ 由服务各自引用。
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "backend/tests"]

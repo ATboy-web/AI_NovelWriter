@@ -51,7 +51,7 @@ class AdaptPanelMixin:
                 text = f"【匹配率: {result['match_rate']}%】\n\n{result['adapted']}"
                 self.root.after(0, lambda: self._show_tool_result(self.adapt_result, text))
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
         
         threading.Thread(target=run, daemon=True).start()
 
@@ -76,7 +76,7 @@ class AdaptPanelMixin:
                     text += f"{r['adapted']}\n\n"
                 self.root.after(0, lambda: self._show_tool_result(self.adapt_result, text))
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
         
         threading.Thread(target=run, daemon=True).start()
 

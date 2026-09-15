@@ -643,7 +643,8 @@ class AIClient:
                             if callback:
                                 callback(token)
                     except json.JSONDecodeError as _silent_e:
-                        logger.debug(f"[ai_client] 捕获异常: {_silent_e}")
+                        if _diag_logger:
+                            _diag_logger.log("API_CALL", "stream_chunk_parse_error", error=_silent_e)
         return "".join(result)
     
     def _stream_openai(self, messages, model, callback, kwargs) -> str:
@@ -665,7 +666,8 @@ class AIClient:
                             if callback:
                                 callback(token)
                     except json.JSONDecodeError as _silent_e:
-                        logger.debug(f"[ai_client] 捕获异常: {_silent_e}")
+                        if _diag_logger:
+                            _diag_logger.log("API_CALL", "stream_chunk_parse_error", error=_silent_e)
         return "".join(result)
     
     def _chat_openai(self, messages, system, model, max_tokens, temperature) -> str:

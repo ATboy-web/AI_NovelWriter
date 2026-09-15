@@ -526,7 +526,7 @@ class FullscreenWriter:
                 self.win.after(0, self._hide_ai_status)
                 
             except Exception as e:
-                self.win.after(0, lambda: self._show_ai_status(f"AI错误: {str(e)[:30]}"))
+                self.win.after(0, lambda _exc=e: self._show_ai_status(f"AI错误: {str(_exc)[:30]}"))
                 self.win.after(3000, self._hide_ai_status)
         
         threading.Thread(target=generate, daemon=True).start()

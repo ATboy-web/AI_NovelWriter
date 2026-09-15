@@ -1,11 +1,15 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
 
 // Load signing properties from local file (not committed to git)
-val signingProperties = java.util.Properties()
-val signingFile = rootProject.file("mobile-app/novel-app/signing.properties")
+// NOTE: 必须用 import 引入 Properties；在 Kotlin DSL 中裸写 java.util.Properties()
+// 会把 `java` 解析为 Gradle 的 java 扩展（JavaPluginExtension）而非包名，导致编译失败。
+val signingProperties = Properties()
+val signingFile = rootProject.file("signing.properties")
 if (signingFile.exists()) {
     signingProperties.load(signingFile.inputStream())
 }

@@ -29,8 +29,8 @@ services:
   # AI 模型服务
   ai-service:
     build:
-      context: ./backend/ai-service
-      dockerfile: Dockerfile.prod
+      context: ./backend
+      dockerfile: ai-service/Dockerfile.prod
     container_name: novel-ai-service
     environment:
       - NODE_ENV=production
@@ -57,8 +57,8 @@ services:
   # 小说生成服务
   novel-service:
     build:
-      context: ./backend/novel-service
-      dockerfile: Dockerfile.prod
+      context: ./backend
+      dockerfile: novel-service/Dockerfile.prod
     container_name: novel-service
     environment:
       - NODE_ENV=production

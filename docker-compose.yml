@@ -59,8 +59,8 @@ services:
   # AI模型服务
   ai-service:
     build:
-      context: ./backend/ai-service
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: ai-service/Dockerfile
     container_name: ai-novel-ai-service
     ports:
       - "8001:8001"
@@ -91,8 +91,8 @@ services:
   # 小说生成服务
   novel-service:
     build:
-      context: ./backend/novel-service
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: novel-service/Dockerfile
     container_name: ai-novel-novel-service
     ports:
       - "8002:8002"

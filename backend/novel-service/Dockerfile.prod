@@ -1,0 +1,32 @@
+# 小说生成服务 生产 Dockerfile（构建上下文为 backend/）
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY novel-service/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 应用代码 + 共享包
+COPY novel-service/ .
+COPY shared/ ./shared/
+
+RUN mkdir -p /app/data /app/logs /app/temp && \
+    addgroup --system appgroup && \
+    adduser --system --ingroup appgroup appuser && \
+    chown -R appuser:appgroup /app
+
+USER appuser
+
+EXPOSE 8002
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8002/api/v1/health || exit 1
+
+CMD ["python", "run.py"]

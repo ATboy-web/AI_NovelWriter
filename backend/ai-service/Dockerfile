@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
-COPY requirements.txt .
+COPY ai-service/requirements.txt .
 
 # 安装Python依赖到虚拟环境
 RUN python -m venv /opt/venv
@@ -35,8 +35,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 从构建阶段复制虚拟环境
 COPY --from=builder /opt/venv /opt/venv
 
-# 复制应用代码
-COPY . .
+# 复制应用代码（构建上下文为 backend/，含服务自身与共享包）
+COPY ai-service/ .
+COPY shared/ ./shared/
 
 # 创建必要的目录
 RUN mkdir -p /app/models /app/logs /app/data && \

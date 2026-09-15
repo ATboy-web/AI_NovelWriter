@@ -1,0 +1,32 @@
+# AI模型服务 生产 Dockerfile（构建上下文为 backend/）
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY ai-service/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 应用代码 + 共享包
+COPY ai-service/ .
+COPY shared/ ./shared/
+
+RUN mkdir -p /app/models /app/logs /app/data && \
+    addgroup --system appgroup && \
+    adduser --system --ingroup appgroup appuser && \
+    chown -R appuser:appgroup /app
+
+USER appuser
+
+EXPOSE 8001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8001/api/v1/health || exit 1
+
+CMD ["python", "run.py"]

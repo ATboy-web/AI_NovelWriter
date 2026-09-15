@@ -4,13 +4,10 @@ novel_agent.py 深度测试 - 真正调用静态方法和工具类
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
-from unittest.mock import MagicMock
-from app.novel_agent import (
-    MessageRole, AgentMessage, Tool, ToolRegistry, NovelAgent
-)
+from app.novel_agent import AgentMessage, MessageRole, NovelAgent, Tool, ToolRegistry
 
 
 class TestMessageRoleDeep:

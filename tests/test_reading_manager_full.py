@@ -4,9 +4,9 @@ reading_manager.py 全量测试 - 覆盖read_book和extract_metadata
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 from app.reading_manager import ReadingManager
 
 

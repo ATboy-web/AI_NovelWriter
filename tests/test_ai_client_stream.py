@@ -2,16 +2,19 @@
 ai_client.py 流式输出和chat方法测试
 """
 
-import sys
 import json
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
-import httpx
-import respx
 from unittest.mock import MagicMock
-from app.ai_client import AIClient, TokenStats, AIMetrics, PromptManager
+
+import httpx
+import pytest
+import respx
+
+from app.ai_client import AIClient
 
 
 class TestChatStreamOllama:
@@ -26,7 +29,7 @@ class TestChatStreamOllama:
             "api_base": "http://localhost:11434",
             "model": "llama3:8b",
         }.get(key, default)
-        
+
         # Mock streaming response
         lines = [
             json.dumps({"message": {"content": "Hello"}}),
@@ -35,7 +38,7 @@ class TestChatStreamOllama:
         respx.post(url__startswith="http://localhost:11434").mock(
             return_value=httpx.Response(200, text="\n".join(lines))
         )
-        
+
         client = AIClient(config)
         callback = MagicMock()
         result = client.chat_stream([{"role": "user", "content": "test"}], callback=callback)
@@ -50,12 +53,12 @@ class TestChatStreamOllama:
             "api_base": "http://localhost:11434",
             "model": "llama3:8b",
         }.get(key, default)
-        
+
         lines = [json.dumps({"message": {"content": "response"}})]
         respx.post(url__startswith="http://localhost:11434").mock(
             return_value=httpx.Response(200, text="\n".join(lines))
         )
-        
+
         client = AIClient(config)
         result = client.chat_stream([{"role": "user", "content": "test"}], system="system prompt")
         assert isinstance(result, str)
@@ -73,7 +76,7 @@ class TestChatStreamOpenAI:
             "api_base": "https://api.openai.com/v1",
             "model": "gpt-4o",
         }.get(key, default)
-        
+
         lines = [
             'data: {"choices": [{"delta": {"content": "Hello"}}]}',
             'data: {"choices": [{"delta": {"content": " World"}}]}',
@@ -82,7 +85,7 @@ class TestChatStreamOpenAI:
         respx.post("https://api.openai.com/v1/chat/completions").mock(
             return_value=httpx.Response(200, text="\n".join(lines))
         )
-        
+
         client = AIClient(config)
         callback = MagicMock()
         result = client.chat_stream([{"role": "user", "content": "test"}], callback=callback)
@@ -103,14 +106,14 @@ class TestChatOpenAI:
             "thinking_enabled": False,
             "reasoning_effort": "high",
         }.get(key, default)
-        
+
         respx.post("https://api.openai.com/v1/chat/completions").mock(
             return_value=httpx.Response(200, json={
                 "choices": [{"message": {"content": "OpenAI response"}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
             })
         )
-        
+
         client = AIClient(config)
         result = client.chat([{"role": "user", "content": "test"}])
         assert result == "OpenAI response"
@@ -126,14 +129,14 @@ class TestChatOpenAI:
             "thinking_enabled": True,
             "reasoning_effort": "high",
         }.get(key, default)
-        
+
         respx.post("https://api.openai.com/v1/chat/completions").mock(
             return_value=httpx.Response(200, json={
                 "choices": [{"message": {"content": "response", "reasoning_content": "thinking"}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
             })
         )
-        
+
         client = AIClient(config)
         result = client.chat([{"role": "user", "content": "test"}], thinking_enabled=True)
         assert result == "response"
@@ -149,14 +152,14 @@ class TestChatOpenAI:
             "thinking_enabled": True,
             "reasoning_effort": "high",
         }.get(key, default)
-        
+
         respx.post("https://api.openai.com/v1/chat/completions").mock(
             return_value=httpx.Response(200, json={
                 "choices": [{"message": {"content": "", "reasoning_content": "x" * 20}, "finish_reason": "length"}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
             })
         )
-        
+
         client = AIClient(config)
         result = client.chat([{"role": "user", "content": "test"}], thinking_enabled=True)
         assert result == "x" * 20
@@ -172,11 +175,11 @@ class TestChatOpenAI:
             "thinking_enabled": False,
             "reasoning_effort": "high",
         }.get(key, default)
-        
+
         respx.post("https://api.openai.com/v1/chat/completions").mock(
             return_value=httpx.Response(200, json={"choices": []})
         )
-        
+
         client = AIClient(config)
         with pytest.raises(Exception, match="无choices"):
             client.chat([{"role": "user", "content": "test"}])
@@ -194,11 +197,11 @@ class TestChatOllama:
             "api_base": "http://localhost:11434",
             "model": "llama3:8b",
         }.get(key, default)
-        
+
         respx.post(url__startswith="http://localhost:11434").mock(
             return_value=httpx.Response(200, json={"message": {"content": "Ollama response"}})
         )
-        
+
         client = AIClient(config)
         result = client.chat([{"role": "user", "content": "test"}])
         assert result == "Ollama response"
@@ -212,11 +215,11 @@ class TestChatOllama:
             "api_base": "http://localhost:11434",
             "model": "llama3:8b",
         }.get(key, default)
-        
+
         respx.post(url__startswith="http://localhost:11434").mock(
             return_value=httpx.Response(200, json={"message": {"content": "response with system"}})
         )
-        
+
         client = AIClient(config)
         result = client.chat([{"role": "user", "content": "test"}], system="system prompt")
         assert result == "response with system"
@@ -230,11 +233,11 @@ class TestChatOllama:
             "api_base": "http://localhost:11434",
             "model": "llama3:8b",
         }.get(key, default)
-        
+
         respx.post(url__startswith="http://localhost:11434").mock(
             return_value=httpx.Response(200, json={"message": {"content": ""}})
         )
-        
+
         client = AIClient(config)
         with pytest.raises(Exception):
             client.chat([{"role": "user", "content": "test"}])
@@ -254,14 +257,14 @@ class TestChatDeepSeek:
             "thinking_enabled": False,
             "reasoning_effort": "high",
         }.get(key, default)
-        
+
         respx.post("https://api.deepseek.com/chat/completions").mock(
             return_value=httpx.Response(200, json={
                 "choices": [{"message": {"content": "DeepSeek response", "reasoning_content": ""}}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
             })
         )
-        
+
         client = AIClient(config)
         result = client.chat([{"role": "user", "content": "test"}])
         assert result == "DeepSeek response"
@@ -277,14 +280,14 @@ class TestChatDeepSeek:
             "thinking_enabled": True,
             "reasoning_effort": "high",
         }.get(key, default)
-        
+
         respx.post("https://api.deepseek.com/chat/completions").mock(
             return_value=httpx.Response(200, json={
                 "choices": [{"message": {"content": "response", "reasoning_content": "thinking"}}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
             })
         )
-        
+
         client = AIClient(config)
         result = client.chat([{"role": "user", "content": "test"}], thinking_enabled=True)
         assert result == "response"
@@ -300,14 +303,14 @@ class TestChatDeepSeek:
             "thinking_enabled": True,
             "reasoning_effort": "high",
         }.get(key, default)
-        
+
         respx.post("https://api.deepseek.com/chat/completions").mock(
             return_value=httpx.Response(200, json={
                 "choices": [{"message": {"content": "", "reasoning_content": "x" * 20}, "finish_reason": "length"}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
             })
         )
-        
+
         client = AIClient(config)
         result = client.chat([{"role": "user", "content": "test"}], thinking_enabled=True)
         assert result == "x" * 20
@@ -325,13 +328,13 @@ class TestChatClaude:
             "api_base": "",
             "model": "claude-sonnet-4-20250514",
         }.get(key, default)
-        
+
         respx.post("https://api.anthropic.com/v1/messages").mock(
             return_value=httpx.Response(200, json={
                 "content": [{"text": "Claude response"}]
             })
         )
-        
+
         client = AIClient(config)
         result = client.chat([{"role": "user", "content": "test"}])
         assert result == "Claude response"
@@ -345,11 +348,11 @@ class TestChatClaude:
             "api_base": "",
             "model": "claude-sonnet-4-20250514",
         }.get(key, default)
-        
+
         respx.post("https://api.anthropic.com/v1/messages").mock(
             return_value=httpx.Response(200, json={"content": []})
         )
-        
+
         client = AIClient(config)
         with pytest.raises(Exception, match="无内容"):
             client.chat([{"role": "user", "content": "test"}])
@@ -398,7 +401,7 @@ class TestParseThinkingResponse:
         client = AIClient.__new__(AIClient)
         client._log = lambda msg: None
         client._log_thinking = lambda r: None
-        
+
         result = {
             "choices": [{"message": {"content": "response"}}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
@@ -409,7 +412,7 @@ class TestParseThinkingResponse:
         client = AIClient.__new__(AIClient)
         client._log = lambda msg: None
         client._log_thinking = lambda r: None
-        
+
         result = {
             "choices": [{"message": {"content": "response", "reasoning_content": "thinking"}}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
@@ -420,7 +423,7 @@ class TestParseThinkingResponse:
         client = AIClient.__new__(AIClient)
         client._log = lambda msg: None
         client._log_thinking = lambda r: None
-        
+
         result = {
             "choices": [{"message": {"content": "", "reasoning_content": "x" * 20}, "finish_reason": "length"}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
@@ -431,7 +434,7 @@ class TestParseThinkingResponse:
         client = AIClient.__new__(AIClient)
         client._log = lambda msg: None
         client._log_thinking = lambda r: None
-        
+
         result = {"choices": []}
         with pytest.raises(Exception, match="无choices"):
             client._parse_thinking_response(result, "Test")
@@ -449,11 +452,11 @@ class TestFallback:
             "api_base": "http://localhost:11434",
             "model": "llama3:8b",
         }.get(key, default)
-        
+
         respx.post(url__startswith="http://localhost:11434").mock(
             side_effect=httpx.Response(500)
         )
-        
+
         client = AIClient(config)
         try:
             client.chat([{"role": "user", "content": "test"}])
@@ -472,13 +475,13 @@ class TestGetOllamaModels:
             "api_key": "",
             "api_base": "http://localhost:11434",
         }.get(key, default)
-        
+
         respx.get("http://localhost:11434/api/tags").mock(
             return_value=httpx.Response(200, json={
                 "models": [{"name": "llama3:8b"}, {"name": "qwen2.5:14b"}]
             })
         )
-        
+
         client = AIClient(config)
         models = client.get_ollama_models()
         assert "llama3:8b" in models
@@ -492,11 +495,11 @@ class TestGetOllamaModels:
             "api_key": "",
             "api_base": "http://localhost:11434",
         }.get(key, default)
-        
+
         respx.get("http://localhost:11434/api/tags").mock(
             return_value=httpx.Response(500)
         )
-        
+
         client = AIClient(config)
         models = client.get_ollama_models()
         assert models == []

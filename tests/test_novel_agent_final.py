@@ -3,12 +3,12 @@ novel_agent.py 更多mock测试 - 覆盖generate_long_chapter和其他方法
 """
 
 import sys
-import json
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
 from app.novel_agent import NovelAgent
 
 
@@ -39,7 +39,7 @@ class TestGenerateLongChapterExtended:
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         result = agent._generate_long_chapter(1, "标题", "大纲", 8000, "上下文")
         assert isinstance(result, str)
         assert len(result) > 0
@@ -50,7 +50,7 @@ class TestGenerateLongChapterExtended:
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         result = agent._generate_long_chapter(1, "标题", "大纲", 8000, "上下文", prev_ending="前文结尾")
         assert isinstance(result, str)
 
@@ -60,7 +60,7 @@ class TestGenerateLongChapterExtended:
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         result = agent._generate_long_chapter(1, "标题", "大纲", 8000, "上下文")
         assert isinstance(result, str)
 
@@ -74,7 +74,7 @@ class TestGenerateLongChapterExtended:
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         # Create content that ends without proper punctuation
         result = agent._generate_long_chapter(1, "标题", "大纲", 5000, "上下文")
         assert isinstance(result, str)
@@ -85,7 +85,7 @@ class TestGenerateLongChapterExtended:
         agent.memory.get_meta.return_value = "张三"
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         result = agent._generate_long_chapter(1, "标题", "大纲", 5000, "上下文")
         assert isinstance(result, str)
 
@@ -342,7 +342,7 @@ class TestWriterGenerateMore:
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         result = agent._writer_generate(1, "标题", "大纲", 1000)
         assert result == "章节内容"
 
@@ -352,7 +352,7 @@ class TestWriterGenerateMore:
         agent.memory.get_meta.return_value = "张三"
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         result = agent._writer_generate(1, "标题", "大纲", 1000)
         assert result == "章节内容"
 
@@ -362,7 +362,7 @@ class TestWriterGenerateMore:
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         result = agent._writer_generate(1, "标题", "大纲", 1000, prev_ending="前文结尾")
         assert result == "章节内容"
 
@@ -373,7 +373,7 @@ class TestWriterGenerateMore:
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
         agent._generate_long_chapter = MagicMock(return_value="长章节内容")
-        
+
         result = agent._writer_generate(1, "标题", "大纲", 5000)
         assert result == "长章节内容"
 
@@ -383,7 +383,7 @@ class TestWriterGenerateMore:
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         result = agent._writer_generate(1, "标题", "大纲", 1000)
         assert result == ""
 
@@ -393,7 +393,7 @@ class TestWriterGenerateMore:
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         result = agent._writer_generate(1, "标题", "大纲", 1000, context="自定义上下文")
         assert result == "章节内容"
 
@@ -403,7 +403,7 @@ class TestWriterGenerateMore:
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="【前一章·第0章结尾】\n前文内容")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         result = agent._writer_generate(1, "标题", "大纲", 1000)
         assert result == "章节内容"
 
@@ -415,7 +415,7 @@ class TestReviewerEvaluateMore:
         agent = create_mock_agent()
         agent.ai.chat.return_value = '{"overall_score": 80, "issues": [], "suggestions": []}'
         agent._build_context = MagicMock(return_value="上下文")
-        
+
         result = agent._reviewer_evaluate(1, "章节内容")
         assert result["overall_score"] == 80
 
@@ -423,7 +423,7 @@ class TestReviewerEvaluateMore:
         agent = create_mock_agent()
         agent.ai.chat.return_value = '{"overall_score": 70, "issues": ["问题1"], "suggestions": ["建议1"]}'
         agent._build_context = MagicMock(return_value="上下文")
-        
+
         result = agent._reviewer_evaluate(1, "章节内容", previous_feedback="上次反馈")
         assert result["overall_score"] == 70
 
@@ -431,7 +431,7 @@ class TestReviewerEvaluateMore:
         agent = create_mock_agent()
         agent.ai.chat.return_value = '{"overall_score": 85, "issues": [], "suggestions": []}'
         agent._build_context = MagicMock(return_value="上下文")
-        
+
         long_content = "x" * 5000
         result = agent._reviewer_evaluate(1, long_content)
         assert result["overall_score"] == 85
@@ -440,7 +440,7 @@ class TestReviewerEvaluateMore:
         agent = create_mock_agent()
         agent.ai.chat.return_value = 'invalid json'
         agent._build_context = MagicMock(return_value="上下文")
-        
+
         result = agent._reviewer_evaluate(1, "章节内容")
         assert "overall_score" in result
 
@@ -448,7 +448,7 @@ class TestReviewerEvaluateMore:
         agent = create_mock_agent()
         agent.ai.chat.return_value = None
         agent._build_context = MagicMock(return_value="上下文")
-        
+
         result = agent._reviewer_evaluate(1, "章节内容")
         assert isinstance(result, dict)
 
@@ -465,7 +465,7 @@ class TestGenerateWithCollaborationMore:
         agent._reviewer_evaluate = MagicMock(return_value={"overall_score": 80, "issues": [], "suggestions": []})
         agent._call_anti_slop_check = MagicMock(return_value=[])
         agent._record_conversation = MagicMock()
-        
+
         result = agent.generate_with_collaboration(1, "标题", "大纲", 1000)
         assert result == "章节内容"
 
@@ -478,7 +478,7 @@ class TestGenerateWithCollaborationMore:
         agent._reviewer_evaluate = MagicMock(return_value={"overall_score": 80, "issues": [], "suggestions": []})
         agent._call_anti_slop_check = MagicMock(return_value=[])
         agent._record_conversation = MagicMock()
-        
+
         result = agent.generate_with_collaboration(1, "标题", "大纲", 1000, prev_context="【前一章·第0章结尾】\n前文内容")
         assert result == "章节内容"
 
@@ -492,7 +492,7 @@ class TestGenerateWithCollaborationMore:
         agent._reviewer_evaluate = MagicMock(return_value={"overall_score": 40, "issues": ["问题1"], "suggestions": ["建议1"]})
         agent._call_anti_slop_check = MagicMock(return_value=[])
         agent._record_conversation = MagicMock()
-        
+
         result = agent.generate_with_collaboration(1, "标题", "大纲", 1000)
         assert result == "修订稿"
 
@@ -505,7 +505,7 @@ class TestGenerateWithCollaborationMore:
         agent._reviewer_evaluate = MagicMock(return_value={"overall_score": 80, "issues": [], "suggestions": []})
         agent._call_anti_slop_check = MagicMock(return_value=["AI痕迹1", "AI痕迹2"])
         agent._record_conversation = MagicMock()
-        
+
         result = agent.generate_with_collaboration(1, "标题", "大纲", 1000)
         assert result == "章节内容"
 
@@ -518,7 +518,7 @@ class TestWriterReviseMore:
         agent.ai.chat.return_value = "修订后的内容"
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
-        
+
         review = {"suggestions": ["建议1"], "issues": ["问题1"], "strengths": ["优点1"]}
         result = agent._writer_revise(1, "原文内容", review, "大纲")
         assert result == "修订后的内容"
@@ -528,7 +528,7 @@ class TestWriterReviseMore:
         agent.ai.chat.return_value = "修订后的内容"
         agent.memory.get_meta.return_value = "张三"
         agent._build_context = MagicMock(return_value="上下文")
-        
+
         review = {"suggestions": ["建议1"], "issues": ["问题1"], "strengths": ["优点1"]}
         result = agent._writer_revise(1, "原文内容", review, "大纲")
         assert result == "修订后的内容"
@@ -538,7 +538,7 @@ class TestWriterReviseMore:
         agent.ai.chat.return_value = "修订后的内容"
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
-        
+
         review = {"suggestions": [], "issues": [], "strengths": []}
         result = agent._writer_revise(1, "原文内容", review, "大纲", prev_ending="前文结尾")
         assert result == "修订后的内容"
@@ -548,7 +548,7 @@ class TestWriterReviseMore:
         agent.ai.chat.return_value = "短"
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
-        
+
         review = {"suggestions": [], "issues": [], "strengths": []}
         result = agent._writer_revise(1, "原文内容很长" * 100, review, "大纲")
         assert result == "原文内容很长" * 100
@@ -558,7 +558,7 @@ class TestWriterReviseMore:
         agent.ai.chat.return_value = None
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
-        
+
         review = {"suggestions": [], "issues": [], "strengths": []}
         result = agent._writer_revise(1, "原文内容", review, "大纲")
         assert result == "原文内容"
@@ -571,7 +571,7 @@ class TestGenerateChapterMore:
         agent = create_mock_agent()
         agent.generate_with_collaboration = MagicMock(return_value="章节内容")
         agent._has_excessive_repetition = MagicMock(return_value=(False, 1000))
-        
+
         result = agent.generate_chapter(1, "标题", "大纲", 1000)
         assert result == "章节内容"
 
@@ -579,7 +579,7 @@ class TestGenerateChapterMore:
         agent = create_mock_agent()
         agent.generate_with_collaboration = MagicMock(return_value="")
         agent._has_excessive_repetition = MagicMock(return_value=(False, 0))
-        
+
         result = agent.generate_chapter(1, "标题", "大纲", 1000)
         assert "生成失败" in result
 
@@ -591,7 +591,7 @@ class TestGenerateChapterMore:
             (False, 1000)  # Second call: no repetition
         ])
         agent.ai.chat.return_value = "修订后的内容"
-        
+
         result = agent.generate_chapter(1, "标题", "大纲", 1000)
         assert result == "修订后的内容"
 
@@ -602,7 +602,7 @@ class TestReviewChapterMore:
     def test_basic(self):
         agent = create_mock_agent()
         agent._reviewer_evaluate = MagicMock(return_value={"overall_score": 80})
-        
+
         result = agent.review_chapter(1, "章节内容")
         assert result["overall_score"] == 80
 
@@ -614,7 +614,7 @@ class TestGenerateSettingsMore:
         agent = create_mock_agent()
         agent.ai.chat.return_value = '{"world": {"name": "测试世界"}, "rules": {}, "factions": {}}'
         agent.memory.save_settings = MagicMock()
-        
+
         result = agent.generate_settings("玄幻", "测试小说", "测试概念")
         assert "world" in result
 
@@ -622,7 +622,7 @@ class TestGenerateSettingsMore:
         agent = create_mock_agent()
         agent.ai.chat.return_value = "invalid json"
         agent.memory.save_settings = MagicMock()
-        
+
         result = agent.generate_settings("玄幻", "测试小说", "测试概念")
         assert "raw" in result
 
@@ -630,7 +630,7 @@ class TestGenerateSettingsMore:
         agent = create_mock_agent()
         agent.ai.chat.return_value = None
         agent.memory.save_settings = MagicMock()
-        
+
         result = agent.generate_settings("玄幻", "测试小说", "测试概念")
         assert isinstance(result, dict)
 
@@ -646,7 +646,7 @@ class TestGenerateCharactersMore:
         agent.memory.save_characters = MagicMock()
         agent.memory.novel_dir = tmp_path
         agent.memory.memory_dir = tmp_path / "memory"
-        
+
         result = agent.generate_characters("玄幻", "测试小说", 2)
         assert "张三" in result
 
@@ -658,7 +658,7 @@ class TestGenerateCharactersMore:
         agent.memory.save_characters = MagicMock()
         agent.memory.novel_dir = tmp_path
         agent.memory.memory_dir = tmp_path / "memory"
-        
+
         result = agent.generate_characters("玄幻", "测试小说", 2)
         assert "张三" in result
 
@@ -670,7 +670,7 @@ class TestGenerateCharactersMore:
         agent.memory.save_characters = MagicMock()
         agent.memory.novel_dir = tmp_path
         agent.memory.memory_dir = tmp_path / "memory"
-        
+
         result = agent.generate_characters("玄幻", "测试小说", 2)
         assert isinstance(result, dict)
 
@@ -682,6 +682,6 @@ class TestGenerateCharactersMore:
         agent.memory.save_characters = MagicMock()
         agent.memory.novel_dir = tmp_path
         agent.memory.memory_dir = tmp_path / "memory"
-        
+
         result = agent.generate_characters("玄幻", "测试小说", 2)
         assert isinstance(result, dict)

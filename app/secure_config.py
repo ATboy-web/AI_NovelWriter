@@ -6,15 +6,15 @@
 - 其他平台：回退到文件权限（chmod 0600）
 """
 
-import json
-import os
-import base64
-import sys
 import ctypes
+import json
+import logging
+import os
+import sys
 from pathlib import Path
 from typing import Optional
+
 from cryptography.fernet import Fernet
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ class _WindowsDPAPI:
 
 class SecureConfig:
     """安全配置管理器 - 使用Fernet加密保护敏感数据"""
-    
+
     def __init__(self, config_dir: Optional[Path] = None):
         self.config_dir = config_dir or Path.home() / ".ai_novel_writer"
         self.config_dir.mkdir(exist_ok=True)
@@ -102,7 +102,7 @@ class SecureConfig:
         self._dpapi = _WindowsDPAPI()
         self.fernet = self._init_encryption()
         self.config = self._load()
-    
+
     def _init_encryption(self) -> Fernet:
         """初始化加密引擎，密钥通过 DPAPI 或文件权限保护"""
         if self.key_file.exists():
@@ -116,13 +116,13 @@ class SecureConfig:
             except (OSError, AttributeError):
                 pass
         return Fernet(key)
-    
+
     def _protect_key_save(self, key: bytes) -> bytes:
         """保存密钥前进行保护（Windows 用 DPAPI 加密）"""
         if self._dpapi.available:
             return self._dpapi.protect(key)
         return key  # 非 Windows 平台回退为明文（靠文件权限 0600）
-    
+
     def _protect_key_load(self, raw: bytes) -> bytes:
         """读取密钥时进行解保护"""
         if self._dpapi.available:
@@ -132,13 +132,13 @@ class SecureConfig:
                 logger.error(f"DPAPI 解保护密钥失败，密钥可能来自其他账户/机器: {e}")
                 raise
         return raw
-    
+
     def _encrypt(self, value: str) -> str:
         """加密字符串"""
         if not value:
             return ""
         return self.fernet.encrypt(value.encode()).decode()
-    
+
     def _decrypt(self, encrypted_value: str) -> str:
         """解密字符串。仅接受 Fernet 加密值（gAAAAA 前缀），
         拒绝并清空未加密的明文值（移除降级路径，防止明文敏感数据被静默接受）。
@@ -154,27 +154,27 @@ class SecureConfig:
         except Exception as e:
             logger.error(f"解密失败，密钥可能已损坏: {e}")
             return ""
-    
+
     def _load(self) -> dict:
         """加载配置"""
         if not self.config_file.exists():
             return self._default_config()
-        
+
         try:
             with open(self.config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-            
+
             # 解密敏感字段
             sensitive_fields = ['api_key', 'img_api_key', 'secret_key']
             for field in sensitive_fields:
                 if field in config and config[field]:
                     config[field] = self._decrypt(config[field])
-            
+
             return config
         except Exception as e:
             logger.error(f"加载配置失败: {e}")
             return self._default_config()
-    
+
     def _default_config(self) -> dict:
         """默认配置"""
         return {
@@ -197,39 +197,39 @@ class SecureConfig:
             "img_height": 1024,
             "auto_detect_scene": True,
         }
-    
+
     def save(self):
         """保存配置（加密敏感字段）"""
         config_to_save = self.config.copy()
-        
+
         # 加密敏感字段
         sensitive_fields = ['api_key', 'img_api_key', 'secret_key']
         for field in sensitive_fields:
             if field in config_to_save and config_to_save[field]:
                 config_to_save[field] = self._encrypt(config_to_save[field])
-        
+
         with open(self.config_file, 'w', encoding='utf-8') as f:
             json.dump(config_to_save, f, indent=2, ensure_ascii=False)
-        
+
         # 设置文件权限（仅当前用户可读写）
         try:
             os.chmod(self.config_file, 0o600)
         except (OSError, AttributeError):
             pass
-    
+
     def get(self, key: str, default=None):
         """获取配置值"""
         return self.config.get(key, default)
-    
+
     def set(self, key: str, value):
         """设置配置值"""
         self.config[key] = value
         self.save()
-    
+
     def get_api_key(self) -> str:
         """获取API密钥"""
         return self.get("api_key", "")
-    
+
     def set_api_key(self, api_key: str):
         """设置API密钥"""
         self.set("api_key", api_key)

@@ -18,7 +18,7 @@ class OutlineUIMixin:
         """刷新大纲列表"""
         self.outline_list.delete(0, tk.END)
         outline_type = self.outline_type_var.get()
-        
+
         if outline_type == "章节大纲":
             chapters = []
             for item in self.outline:
@@ -26,7 +26,7 @@ class OutlineUIMixin:
                 title = item.get("title", "未命名")
                 self.outline_list.insert(tk.END, f"第{ch}章: {title}")
                 chapters.append(f"第{ch}章")
-            
+
             # 更新章节选择器
             if hasattr(self, 'chapter_select'):
                 self.chapter_select['values'] = chapters
@@ -110,8 +110,8 @@ class OutlineUIMixin:
                     desc = item.get("description", item.get("content", ""))[:120]
                     lines.append(f"{i+1}. {title}：{desc}")
             if lines:
-                parts.append(f"【整体大纲 - 全局创作指南】\n" + "\n".join(lines))
-        
+                parts.append("【整体大纲 - 全局创作指南】\n" + "\n".join(lines))
+
         stories = self._get_story_outlines()
         if stories:
             lines = []
@@ -119,13 +119,13 @@ class OutlineUIMixin:
                 summary = story.get("summary", story.get("content", ""))[:150]
                 lines.append(f"故事线「{name}」：{summary}")
             if lines:
-                parts.append(f"【故事大纲 - 多条故事线】\n" + "\n".join(lines))
-        
+                parts.append("【故事大纲 - 多条故事线】\n" + "\n".join(lines))
+
         return "\n\n".join(parts) if parts else ""
     def _build_content_hint(self, adult: bool, edge: bool, genre: str) -> str:
         """构建18+/擦边内容提示词"""
         hints = []
-        
+
         if adult:
             hints.append("""【🔞 18+成人内容模式 - 已启用】
 本作品包含成人内容，请大胆创作：
@@ -136,7 +136,7 @@ class OutlineUIMixin:
 - 情感深度：情感描写要深入骨髓，展现欲望、执念、痴迷
 - 残酷现实：可描写社会阴暗面、人性丑恶、生存挣扎
 【重要】不要回避成人内容，这是创作需求，大胆发挥！""")
-        
+
         if edge:
             hints.append("""【💋 擦边内容模式 - 已启用】
 本作品允许擦边内容，在尺度边缘游走：
@@ -147,7 +147,7 @@ class OutlineUIMixin:
 - 浴室/更衣等私密场景：可适当描写私密场景
 - 醉酒/意外等擦边情节：可设计擦边桥段
 【重要】擦边要擦到位，不要过于保守，让读者有想象空间！""")
-        
+
         # 根据类型增强相关提示
         genre_lower = genre.lower() if genre else ""
         if any(kw in genre_lower for kw in ["言情", "romance", "恋爱", "婚恋", "总裁"]):
@@ -158,7 +158,7 @@ class OutlineUIMixin:
             hints.append("【类型增强】本作品为悬疑/恐怖类型，要营造紧张压抑的氛围，可描写血腥恐怖的场景。")
         elif any(kw in genre_lower for kw in ["末日", "apocalypse", "废土"]):
             hints.append("【类型增强】本作品为末日类型，要展现末世的残酷和人性的挣扎，可描写生存的艰难和道德的崩塌。")
-        
+
         return "\n\n".join(hints) if hints else ""
     def _get_world_context(self) -> str:
         """获取世界观设定上下文，用于注入章节生成"""
@@ -182,38 +182,38 @@ class OutlineUIMixin:
         if not self.current_novel_dir:
             messagebox.showwarning("提示", "请先创建或打开小说")
             return
-        
+
         outline_type = self.outline_type_var.get()
-        
+
         dialog = tk.Toplevel(self.root)
         dialog.title(f"添加{outline_type}")
         dialog.geometry("500x400")
         dialog.configure(bg=UIStyle.COLORS['bg_dark'])
         C = UIStyle.COLORS
-        
+
         tk.Label(dialog, text=f"添加{outline_type}", font=('微软雅黑', 12, 'bold'),
                 bg=C['bg_dark'], fg=C['text_primary']).pack(pady=(15, 10))
-        
+
         # 标题输入
         title_frame = tk.Frame(dialog, bg=C['bg_dark'])
         title_frame.pack(fill=tk.X, padx=20, pady=5)
         tk.Label(title_frame, text="标题:", bg=C['bg_dark'], fg=C['text_primary']).pack(side=tk.LEFT)
         title_entry = tk.Entry(title_frame, font=('微软雅黑', 10), bg=C['bg_card'], fg=C['text_primary'])
         title_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        
+
         # 内容输入
         tk.Label(dialog, text="内容:", bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=20, pady=(10, 3))
         content_text = tk.Text(dialog, wrap=tk.WORD, font=('微软雅黑', 10),
                               bg=C['bg_card'], fg=C['text_primary'], height=12)
         content_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
-        
+
         def confirm():
             title = title_entry.get().strip()
             content = content_text.get("1.0", tk.END).strip()
             if not title:
                 messagebox.showwarning("提示", "请输入标题")
                 return
-            
+
             if outline_type == "整体大纲":
                 overall = self._get_overall_outline()
                 overall.append({"title": title, "content": content})
@@ -228,11 +228,11 @@ class OutlineUIMixin:
                 outline_file = self.current_novel_dir / "outline.json"
                 with open(outline_file, 'w', encoding='utf-8') as f:
                     json.dump(self.outline, f, indent=2, ensure_ascii=False)
-            
+
             self._refresh_outline_list()
             dialog.destroy()
             self._log(f"已添加{outline_type}: {title}")
-        
+
         tk.Button(dialog, text="确认添加", command=confirm, bg=C['accent'], fg='white',
                  font=('微软雅黑', 10), padx=20, pady=5).pack(pady=10)
     def _edit_outline_item(self):
@@ -241,10 +241,10 @@ class OutlineUIMixin:
         if not selection:
             messagebox.showwarning("提示", "请先选择要编辑的大纲项")
             return
-        
+
         idx = selection[0]
         outline_type = self.outline_type_var.get()
-        
+
         # 获取当前内容
         if outline_type == "章节大纲":
             if idx < len(self.outline):
@@ -270,16 +270,16 @@ class OutlineUIMixin:
                 content = item.get("summary", item.get("content", ""))
             else:
                 return
-        
+
         dialog = tk.Toplevel(self.root)
         dialog.title(f"编辑{outline_type}")
         dialog.geometry("500x400")
         dialog.configure(bg=UIStyle.COLORS['bg_dark'])
         C = UIStyle.COLORS
-        
+
         tk.Label(dialog, text=f"编辑{outline_type}", font=('微软雅黑', 12, 'bold'),
                 bg=C['bg_dark'], fg=C['text_primary']).pack(pady=(15, 10))
-        
+
         # 标题输入
         title_frame = tk.Frame(dialog, bg=C['bg_dark'])
         title_frame.pack(fill=tk.X, padx=20, pady=5)
@@ -287,21 +287,21 @@ class OutlineUIMixin:
         title_entry = tk.Entry(title_frame, font=('微软雅黑', 10), bg=C['bg_card'], fg=C['text_primary'])
         title_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         title_entry.insert(0, title)
-        
+
         # 内容输入
         tk.Label(dialog, text="内容:", bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=20, pady=(10, 3))
         content_text = tk.Text(dialog, wrap=tk.WORD, font=('微软雅黑', 10),
                               bg=C['bg_card'], fg=C['text_primary'], height=12)
         content_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
         content_text.insert("1.0", content)
-        
+
         def confirm():
             new_title = title_entry.get().strip()
             new_content = content_text.get("1.0", tk.END).strip()
             if not new_title:
                 messagebox.showwarning("提示", "请输入标题")
                 return
-            
+
             if outline_type == "章节大纲":
                 self.outline[idx]["title"] = new_title
                 self.outline[idx]["summary"] = new_content
@@ -319,16 +319,16 @@ class OutlineUIMixin:
                 old_story = stories.get(old_name, {})
                 del stories[old_name]
                 stories[new_title] = {
-                    "title": new_title, 
-                    "summary": new_content, 
+                    "title": new_title,
+                    "summary": new_content,
                     "key_events": old_story.get("key_events", [])
                 }
                 self._save_story_outlines(stories)
-            
+
             self._refresh_outline_list()
             dialog.destroy()
             self._log(f"已更新{outline_type}: {new_title}")
-        
+
         tk.Button(dialog, text="确认修改", command=confirm, bg=C['accent'], fg='white',
                  font=('微软雅黑', 10), padx=20, pady=5).pack(pady=10)
     def _delete_outline_item(self):
@@ -337,13 +337,13 @@ class OutlineUIMixin:
         if not selection:
             messagebox.showwarning("提示", "请先选择要删除的大纲项")
             return
-        
+
         idx = selection[0]
         outline_type = self.outline_type_var.get()
-        
+
         if not messagebox.askyesno("确认", f"确定要删除这个{outline_type}吗？"):
             return
-        
+
         if outline_type == "章节大纲":
             if idx < len(self.outline):
                 removed = self.outline.pop(idx)
@@ -368,20 +368,20 @@ class OutlineUIMixin:
                 del stories[removed_name]
                 self._save_story_outlines(stories)
                 self._log(f"已删除: {removed_name}")
-        
+
         self._refresh_outline_list()
     def _on_outline_select(self, event):
         """大纲选中事件"""
         if not self.current_novel_dir:
             return
-        
+
         selection = self.outline_list.curselection()
         if not selection:
             return
-        
+
         idx = selection[0]
         outline_type = self.outline_type_var.get() if hasattr(self, 'outline_type_var') else "章节大纲"
-        
+
         if outline_type == "整体大纲":
             overall = self._get_overall_outline()
             items = [overall] if isinstance(overall, dict) else overall
@@ -415,10 +415,10 @@ class OutlineUIMixin:
             if idx < len(self.outline):
                 chapter_info = self.outline[idx]
                 self.current_chapter = idx + 1
-                
+
                 chapters_dir = self.current_novel_dir / "chapters"
                 chapter_file = chapters_dir / f"chapter_{self.current_chapter:04d}.txt"
-                
+
                 if chapter_file.exists():
                     content = chapter_file.read_text(encoding='utf-8')
                     self.content_text.delete("1.0", tk.END)
@@ -430,7 +430,7 @@ class OutlineUIMixin:
                     self.chapter_title_var.set(f"第{self.current_chapter}章: {chapter_info.get('title', '')} (未生成)")
                     self.content_text.delete("1.0", tk.END)
                     self.content_text.insert("1.0", f"章节大纲：\n{chapter_info.get('summary', '无')}\n\n在此处编写内容...")
-                
+
                 total = len(self.outline)
                 display_total = self._get_meta().get("total_chapters", total)
                 self.chapter_var.set(f"{self.current_chapter}/{display_total}")

@@ -4,9 +4,9 @@ reading_manager.py 深度测试 - 真正调用方法
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 from app.reading_manager import ReadingManager
 
 
@@ -113,7 +113,7 @@ class TestReadingManagerDeep:
 
     def test_supported_formats_descriptions(self, tmp_path):
         mock_config = type('Config', (), {'config_dir': tmp_path})()
-        rm = ReadingManager(mock_config)
+        ReadingManager(mock_config)
         assert ReadingManager.SUPPORTED_FORMATS[".txt"] == "TXT文本文件"
         assert ReadingManager.SUPPORTED_FORMATS[".epub"] == "EPUB电子书"
         assert ReadingManager.SUPPORTED_FORMATS[".pdf"] == "PDF文档"

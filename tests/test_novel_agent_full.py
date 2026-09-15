@@ -3,15 +3,13 @@ novel_agent.py 全量测试 - 覆盖compress/build_context/tools方法
 """
 
 import sys
-import json
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 from unittest.mock import MagicMock, patch
-from app.novel_agent import (
-    MessageRole, AgentMessage, Tool, ToolRegistry, NovelAgent
-)
+
+from app.novel_agent import NovelAgent, ToolRegistry
 
 
 class TestCompressText:
@@ -20,7 +18,6 @@ class TestCompressText:
     def test_short_text(self):
         config = MagicMock()
         config.get.return_value = ""
-        memory = MagicMock()
         with patch.object(NovelAgent, '__init__', lambda self, *a, **kw: None):
             agent = NovelAgent.__new__(NovelAgent)
             result = agent._compress_text("短文本", 1000)
@@ -29,7 +26,6 @@ class TestCompressText:
     def test_long_text_keep_tail(self):
         config = MagicMock()
         config.get.return_value = ""
-        memory = MagicMock()
         with patch.object(NovelAgent, '__init__', lambda self, *a, **kw: None):
             agent = NovelAgent.__new__(NovelAgent)
             text = "x" * 1000
@@ -40,7 +36,6 @@ class TestCompressText:
     def test_long_text_no_tail(self):
         config = MagicMock()
         config.get.return_value = ""
-        memory = MagicMock()
         with patch.object(NovelAgent, '__init__', lambda self, *a, **kw: None):
             agent = NovelAgent.__new__(NovelAgent)
             text = "x" * 1000
@@ -50,7 +45,6 @@ class TestCompressText:
     def test_very_small_budget(self):
         config = MagicMock()
         config.get.return_value = ""
-        memory = MagicMock()
         with patch.object(NovelAgent, '__init__', lambda self, *a, **kw: None):
             agent = NovelAgent.__new__(NovelAgent)
             text = "x" * 1000
@@ -229,7 +223,7 @@ class TestBuildContext:
             agent.memory.get_recent_summaries.return_value = ""
             agent.memory.retrieve_relevant.return_value = []
             agent.log = lambda msg: None
-            
+
             result = agent._build_context(1, extra_context="世界观设定")
             assert isinstance(result, str)
 
@@ -246,7 +240,7 @@ class TestBuildContext:
             agent.memory.get_recent_summaries.return_value = ""
             agent.memory.retrieve_relevant.return_value = []
             agent.log = lambda msg: None
-            
+
             result = agent._build_context(1)
             assert isinstance(result, str)
 
@@ -263,7 +257,7 @@ class TestBuildContext:
             agent.memory.get_recent_summaries.return_value = ""
             agent.memory.retrieve_relevant.return_value = []
             agent.log = lambda msg: None
-            
+
             for phase in ["opening", "writing", "action", "dialogue", "ending"]:
                 result = agent._build_context(1, writing_phase=phase)
                 assert isinstance(result, str)
@@ -281,7 +275,7 @@ class TestBuildContext:
             agent.memory.get_recent_summaries.return_value = "z" * 1000
             agent.memory.retrieve_relevant.return_value = []
             agent.log = lambda msg: None
-            
+
             result = agent._build_context(1, max_chars=100)
             assert len(result) <= 120
 

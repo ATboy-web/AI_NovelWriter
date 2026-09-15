@@ -12,12 +12,12 @@ AI客户端模块 v3.0 - 生产级AI服务接口
 - 多模型深度思考模式 (DeepSeek/GLM/Qwen/Kimi)
 """
 
-import time
-import threading
 import json
-from typing import Dict, List, Optional, Callable, Any
-from functools import wraps
+import threading
+import time
 from dataclasses import dataclass, field
+from functools import wraps
+from typing import Callable, Dict, List, Optional
 
 import httpx
 
@@ -39,14 +39,14 @@ class TokenStats:
     total_tokens: int = 0
     request_count: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
-    
+
     def record(self, prompt_tokens: int, completion_tokens: int):
         with self._lock:
             self.total_prompt_tokens += prompt_tokens
             self.total_completion_tokens += completion_tokens
             self.total_tokens += (prompt_tokens + completion_tokens)
             self.request_count += 1
-    
+
     def get_summary(self) -> Dict:
         with self._lock:
             return {
@@ -55,7 +55,7 @@ class TokenStats:
                 "completion_tokens": self.total_completion_tokens,
                 "request_count": self.request_count
             }
-    
+
     def get_display(self) -> str:
         """返回用户友好的显示文本"""
         with self._lock:
@@ -95,7 +95,7 @@ class AIMetrics:
     """AI服务性能监控 - 聚焦延迟、成本、错误率。
     Token统计由全局 TokenStats 统一管理，避免数据重复。
     """
-    
+
     def __init__(self):
         self._lock = threading.Lock()
         self.total_requests = 0
@@ -103,7 +103,7 @@ class AIMetrics:
         self.errors = 0
         self.avg_latency = 0
         self._latency_samples = []
-    
+
     def record(self, latency: float, cost: float = 0, error: bool = False):
         """记录请求指标（token由TokenStats统一管理）"""
         with self._lock:
@@ -115,7 +115,7 @@ class AIMetrics:
             if len(self._latency_samples) > 100:
                 self._latency_samples = self._latency_samples[-100:]
             self.avg_latency = sum(self._latency_samples) / len(self._latency_samples)
-    
+
     def get_summary(self) -> dict:
         with self._lock:
             # 合并 TokenStats 的 token 数据
@@ -135,7 +135,7 @@ class AIMetrics:
 
 class PromptManager:
     """提示词管理器 - 专业创作框架驱动"""
-    
+
     NOVEL_PROMPTS = {
         "writer": {
             "system": """你是一位专业的小说作家（Writer Agent），精通叙事学和文学创作理论。
@@ -397,7 +397,7 @@ class PromptManager:
 4. 结尾总结角色本质"""
         },
     }
-    
+
     @classmethod
     def get_prompt(cls, name: str, **kwargs) -> str:
         """获取并格式化提示词"""
@@ -408,7 +408,7 @@ class PromptManager:
 
 class AIClient:
     """统一AI客户端 v2.0 - 生产级接口"""
-    
+
     PROVIDERS = {
         "ollama": {"name": "Ollama (本地)", "base_url": "http://localhost:11434", "models": ["qwen2.5:14b", "qwen2.5:7b"]},
         "openai": {"name": "OpenAI", "base_url": "https://api.openai.com/v1", "models": ["gpt-4o", "gpt-4o-mini"]},
@@ -418,7 +418,7 @@ class AIClient:
         "kimi": {"name": "Kimi", "base_url": "https://api.moonshot.cn/v1", "models": ["kimi-k2.6", "moonshot-v1-128k"]},
         "custom": {"name": "自定义API", "base_url": "", "models": []},
     }
-    
+
     FALLBACK_CHAIN = {
         "gpt-4o": "gpt-4o-mini",
         "gpt-4-turbo": "gpt-4o-mini",
@@ -435,13 +435,13 @@ class AIClient:
         "qwen-max": "qwen-plus",
         "qwen-plus": "qwen-turbo",
     }
-    
+
     def __init__(self, config: AppConfig):
         self.config = config
         self.client = None
         self.metrics = AIMetrics()
         self._init_client()
-    
+
     def _log(self, msg: str):
         """日志记录（静默模式，不影响主流程）"""
         try:
@@ -449,14 +449,14 @@ class AIClient:
             logger.info(f"[AI] {msg}")
         except Exception as _silent_e:
             logger.debug(f"[ai_client] 捕获异常: {_silent_e}")
-    
+
     def _init_client(self):
         provider = self.config.get("api_provider", "ollama")
         api_key = self.config.get("api_key", "")
         api_base = self.config.get("api_base", "")
-        
+
         base_url = api_base or self.PROVIDERS.get(provider, {}).get("base_url", "")
-        
+
         if provider == "claude" and api_key:
             # Claude 使用 httpx 直接调用 Anthropic API（无需 anthropic SDK）
             self.client = httpx.Client(
@@ -478,10 +478,10 @@ class AIClient:
             )
         else:
             self.client = None
-    
+
     def is_configured(self) -> bool:
         return self.client is not None
-    
+
     def get_ollama_models(self) -> List[str]:
         try:
             base_url = self.config.get("api_base", "http://localhost:11434")
@@ -489,24 +489,24 @@ class AIClient:
             return [m["name"] for m in resp.json().get("models", [])] if resp.status_code == 200 else []
         except Exception:
             return []
-    
+
     def chat(self, messages: List[Dict], system: str = "", **kwargs) -> str:
         """发送聊天请求 - 带模型降级"""
         if not self.is_configured():
             raise Exception("AI API未配置")
-        
+
         provider = self.config.get("api_provider", "ollama")
         model = self.config.get("model", "qwen2.5:14b")
         max_tokens = kwargs.get("max_tokens", 4096)
         temperature = kwargs.get("temperature", 0.8)
-        
+
         # DeepSeek思考模式参数
         thinking_enabled = kwargs.get("thinking_enabled", self.config.get("thinking_enabled", True))
         reasoning_effort = kwargs.get("reasoning_effort", self.config.get("reasoning_effort", "high"))
-        
+
         # 自动检测模型类型，选择正确的provider
         detected_provider = self._detect_provider(provider, model)
-        
+
         # 前置检查：API Key有效性
         api_key = self.config.get("api_key", "")
         if detected_provider != "ollama" and (not api_key or len(api_key.strip()) < 8):
@@ -514,14 +514,13 @@ class AIClient:
                    f"key_len={len(api_key)}). 请在设置中填写有效的API Key。")
             self._log(f"[错误] {msg}")
             raise Exception(msg)
-        
+
         start = time.time()
-        error = False
-        
+
         # 🔍 AI诊断日志: 记录API调用（不传入消息全文，仅记录元数据，避免泄露创作内容）
         if _diag_logger:
             _diag_logger.api_call(
-                provider=detected_provider, 
+                provider=detected_provider,
                 endpoint=f"chat/{model}",
                 request_data={
                     "model": model,
@@ -531,15 +530,15 @@ class AIClient:
                     "messages_count": len(messages)
                 }
             )
-        
+
         try:
             result = self._dispatch_with_retry(detected_provider, messages, system, model,
                                                max_tokens, temperature, thinking_enabled,
                                                reasoning_effort)
-            
+
             latency = time.time() - start
             self.metrics.record(latency)
-            
+
             # 🔍 成功日志
             if _diag_logger:
                 _diag_logger.api_call(
@@ -549,19 +548,18 @@ class AIClient:
                                   "content_preview": result[:200]},
                     duration_ms=latency * 1000
                 )
-            
+
             # 记录空响应（帮助调试）
             if not result or len(result.strip()) == 0:
                 self._log(f"[提示] AI服务返回空响应 (model={model}, latency={latency:.1f}s)")
                 raise Exception(f"AI服务返回空响应 (model={model})")
-            
+
             return result
-            
+
         except Exception as e:
-            error = True
             latency = time.time() - start
             self.metrics.record(latency, error=True)
-            
+
             # 检查是否为认证错误（不可重试）
             is_auth_error = False
             if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
@@ -575,8 +573,8 @@ class AIClient:
                     self._log(f"[错误] API权限不足 (403) - 请检查API Key是否有访问该模型的权限。"
                              f" provider={provider}, model={model}")
                 elif status == 429:
-                    self._log(f"[错误] API请求过于频繁 (429) - 请稍后重试。")
-            
+                    self._log("[错误] API请求过于频繁 (429) - 请稍后重试。")
+
             # 🔍 失败日志
             if _diag_logger:
                 _diag_logger.api_call(
@@ -584,11 +582,11 @@ class AIClient:
                     request_data={"model": model, "messages_count": len(messages)},
                     error=e, duration_ms=latency * 1000
                 )
-            
+
             # 认证错误不重试、不降级
             if is_auth_error:
                 raise
-            
+
             fallback_model = self.FALLBACK_CHAIN.get(model)
             if fallback_model:
                 self._log(f"模型降级: {model} -> {fallback_model}")
@@ -609,23 +607,23 @@ class AIClient:
                     self._log(f"降级模型 {model} 也失败: {fallback_error}")
                     self.metrics.record(time.time() - start, error=True)
                     raise e from fallback_error  # 保留完整错误链
-            
+
             raise
-    
-    def chat_stream(self, messages: List[Dict], system: str = "", 
+
+    def chat_stream(self, messages: List[Dict], system: str = "",
                     callback: Optional[Callable[[str], None]] = None, **kwargs) -> str:
         """流式聊天 - 实时输出"""
         provider = self.config.get("api_provider", "ollama")
         model = self.config.get("model", "qwen2.5:14b")
-        
+
         full_messages = [{"role": "system", "content": system}] if system else []
         full_messages.extend(messages)
-        
+
         if provider == "ollama":
             return self._stream_ollama(full_messages, model, callback, kwargs)
         else:
             return self._stream_openai(full_messages, model, callback, kwargs)
-    
+
     def _stream_ollama(self, messages, model, callback, kwargs) -> str:
         result = []
         with self.client.stream("POST", "/api/chat", json={
@@ -646,7 +644,7 @@ class AIClient:
                         if _diag_logger:
                             _diag_logger.log("API_CALL", "stream_chunk_parse_error", error=_silent_e)
         return "".join(result)
-    
+
     def _stream_openai(self, messages, model, callback, kwargs) -> str:
         result = []
         with self.client.stream("POST", "/chat/completions", json={
@@ -669,7 +667,7 @@ class AIClient:
                         if _diag_logger:
                             _diag_logger.log("API_CALL", "stream_chunk_parse_error", error=_silent_e)
         return "".join(result)
-    
+
     def _chat_openai(self, messages, system, model, max_tokens, temperature) -> str:
         full_messages = [{"role": "system", "content": system}] if system else []
         full_messages.extend(messages)
@@ -681,12 +679,12 @@ class AIClient:
         choices = result.get("choices", [])
         if not choices:
             raise Exception(f"OpenAI兼容API返回无choices: {json.dumps(result, ensure_ascii=False)[:200]}")
-        
+
         message = choices[0].get("message", {})
         content = message.get("content", "")
         reasoning = message.get("reasoning_content", "")
         finish_reason = choices[0].get("finish_reason", "")
-        
+
         # 记录Token使用量
         usage = result.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
@@ -695,11 +693,11 @@ class AIClient:
         if total_tokens > 0:
             token_stats.record(prompt_tokens, completion_tokens)
             self._log(f"[Token] 本次: {total_tokens} (输入:{prompt_tokens} 输出:{completion_tokens}) | 累计: {token_stats.total_tokens}")
-        
+
         # 如果有思考内容，记录到日志
         if reasoning:
             self._log_thinking(reasoning)
-        
+
         # content为空时的处理
         if not content or len(content.strip()) == 0:
             # 如果finish_reason是"length"且有reasoning_content，说明思考模式用完了token
@@ -708,9 +706,9 @@ class AIClient:
                 self._log(f"[提示] 思考模式耗尽token (reasoning_len={len(reasoning)})，使用reasoning_content作为结果")
                 return reasoning
             raise Exception(f"OpenAI兼容API返回空内容 (reasoning_len={len(reasoning)}, finish={finish_reason}): {json.dumps(result, ensure_ascii=False)[:200]}")
-        
+
         return content
-    
+
     def _chat_ollama(self, messages, system, model, max_tokens, temperature) -> str:
         full_messages = [{"role": "system", "content": system}] if system else []
         full_messages.extend(messages)
@@ -725,14 +723,14 @@ class AIClient:
         if not content:
             raise Exception(f"Ollama返回空内容: {json.dumps(result, ensure_ascii=False)[:200]}")
         return content
-    
+
     def _chat_claude(self, messages, system, model, max_tokens, temperature) -> str:
         """Anthropic Claude API调用 (通过httpx直接调用)"""
         # 构建Anthropic格式的请求
         anthropic_messages = []
         for msg in messages:
             anthropic_messages.append({"role": msg["role"], "content": msg["content"]})
-        
+
         payload = {
             "model": model,
             "max_tokens": max_tokens,
@@ -740,7 +738,7 @@ class AIClient:
             "messages": anthropic_messages,
             "temperature": temperature
         }
-        
+
         response = self.client.post("/v1/messages", json=payload)
         response.raise_for_status()
         result = response.json()
@@ -748,60 +746,60 @@ class AIClient:
         if not content_blocks:
             raise Exception(f"Claude返回无内容: {json.dumps(result, ensure_ascii=False)[:200]}")
         return content_blocks[0].get("text", "")
-    
-    def _chat_deepseek(self, messages, system, model, max_tokens, temperature, 
+
+    def _chat_deepseek(self, messages, system, model, max_tokens, temperature,
                        thinking_enabled=False, reasoning_effort="high") -> str:
         """DeepSeek API调用 - 支持思考模式"""
         full_messages = [{"role": "system", "content": system}] if system else []
         full_messages.extend(messages)
-        
+
         # 小请求禁用思考模式（避免token被思考过程耗尽）
         if max_tokens < 1000:
             thinking_enabled = False
-        
+
         payload = {
             "model": model,
             "messages": full_messages,
             "max_tokens": max_tokens,
             "temperature": temperature
         }
-        
+
         # 添加思考模式参数（直接展开到payload顶层）
         if thinking_enabled:
             payload["thinking"] = {"type": "enabled"}
             payload["reasoning_effort"] = reasoning_effort
             # 思考模式下不支持temperature
             payload.pop("temperature", None)
-        
+
         response = self.client.post("/chat/completions", json=payload)
         response.raise_for_status()
-        
+
         result = response.json()
-        
+
         # 防御性解析
         choices = result.get("choices", [])
         if not choices:
             raise Exception(f"DeepSeek返回无choices: {json.dumps(result, ensure_ascii=False)[:200]}")
-        
+
         message = choices[0].get("message", {})
         content = message.get("content", "")
         reasoning = message.get("reasoning_content", "")
         finish_reason = choices[0].get("finish_reason", "")
-        
+
         # 如果有思考内容，记录到日志
         if reasoning:
             self._log_thinking(reasoning)
-        
+
         # content为空时的处理
         if not content or len(content.strip()) == 0:
             # 如果finish_reason是"length"且有reasoning_content，说明思考模式用完了token
             if finish_reason == "length" and reasoning and len(reasoning.strip()) > 10:
-                self._log(f"[提示] 思考模式耗尽token，使用reasoning_content作为结果")
+                self._log("[提示] 思考模式耗尽token，使用reasoning_content作为结果")
                 return reasoning
             raise Exception(f"DeepSeek返回空内容 (reasoning_len={len(reasoning)}, finish={finish_reason})")
-        
+
         return content
-    
+
     def _log_thinking(self, reasoning: str):
         """记录思考过程"""
         if _diag_logger:
@@ -809,38 +807,38 @@ class AIClient:
                 "preview": reasoning[:500],
                 "length": len(reasoning)
             })
-    
+
     # ==================== 模型自动检测 ====================
-    
+
     def _detect_provider(self, provider: str, model: str) -> str:
         """根据模型名称自动检测provider，避免用户手动配置错误"""
         model_lower = model.lower()
-        
+
         # GLM系列（智谱）
         if model_lower.startswith("glm"):
             return "glm"
-        
+
         # Qwen系列（通义千问）- 包含qwen、qwq
         if "qwen" in model_lower or "qwq" in model_lower:
             return "qwen"
-        
+
         # Kimi系列（月之暗面）
         if "kimi" in model_lower:
             return "kimi"
-        
+
         # DeepSeek系列
         if "deepseek" in model_lower:
             return "deepseek"
-        
+
         # Claude系列
         if "claude" in model_lower or "anthropic" in model_lower:
             return "claude"
-        
+
         # 回退到用户配置的provider
         return provider
-    
+
     # ==================== 请求分发与限流重试 ====================
-    
+
     def _dispatch_chat(self, provider: str, messages, system, model, max_tokens,
                        temperature, thinking_enabled=False, reasoning_effort="medium") -> str:
         """按 provider 路由到对应的底层调用（统一入口）。
@@ -865,7 +863,7 @@ class AIClient:
             return self._chat_kimi(messages, system, model, max_tokens, temperature,
                                    thinking_enabled)
         return self._chat_openai(messages, system, model, max_tokens, temperature)
-    
+
     def _dispatch_with_retry(self, provider: str, messages, system, model, max_tokens,
                              temperature, thinking_enabled=False, reasoning_effort="medium",
                              max_retries: int = 3) -> str:
@@ -888,9 +886,9 @@ class AIClient:
                     delay = min(delay * 2, 30.0)
                     continue
                 raise
-    
+
     # ==================== 智谱GLM深度思考 ====================
-    
+
     def _chat_glm(self, messages, system, model, max_tokens, temperature,
                    thinking_enabled=True, reasoning_effort="max") -> str:
         """智谱GLM API调用 - 支持深度思考模式
@@ -902,18 +900,18 @@ class AIClient:
         """
         full_messages = [{"role": "system", "content": system}] if system else []
         full_messages.extend(messages)
-        
+
         # 小请求禁用思考模式
         if max_tokens < 1000:
             thinking_enabled = False
-        
+
         payload = {
             "model": model,
             "messages": full_messages,
             "max_tokens": max_tokens,
             "temperature": temperature
         }
-        
+
         # 添加深度思考参数
         if thinking_enabled:
             payload["thinking"] = {"type": "enabled"}
@@ -923,14 +921,14 @@ class AIClient:
                 payload["reasoning_effort"] = reasoning_effort
             # 思考模式下temperature必须为1.0
             payload["temperature"] = 1.0
-        
+
         response = self.client.post("/chat/completions", json=payload)
         response.raise_for_status()
-        
+
         return self._parse_thinking_response(response.json(), "GLM")
-    
+
     # ==================== 通义千问Qwen深度思考 ====================
-    
+
     def _chat_qwen(self, messages, system, model, max_tokens, temperature,
                     thinking_enabled=True) -> str:
         """通义千问Qwen API调用 - 支持深度思考模式
@@ -942,31 +940,31 @@ class AIClient:
         """
         full_messages = [{"role": "system", "content": system}] if system else []
         full_messages.extend(messages)
-        
+
         # 小请求禁用思考模式
         if max_tokens < 1000:
             thinking_enabled = False
-        
+
         payload = {
             "model": model,
             "messages": full_messages,
             "max_tokens": max_tokens,
             "temperature": temperature
         }
-        
+
         # Qwen思考模式参数（通过extra_body或顶层传递）
         if thinking_enabled:
             payload["enable_thinking"] = True
             # 设置思考token预算为max_tokens的50%
             payload["thinking_budget"] = max_tokens // 2
-        
+
         response = self.client.post("/chat/completions", json=payload)
         response.raise_for_status()
-        
+
         return self._parse_thinking_response(response.json(), "Qwen")
-    
+
     # ==================== Kimi深度思考 ====================
-    
+
     def _chat_kimi(self, messages, system, model, max_tokens, temperature,
                     thinking_enabled=True) -> str:
         """Kimi API调用 - 支持深度思考模式
@@ -978,30 +976,30 @@ class AIClient:
         """
         full_messages = [{"role": "system", "content": system}] if system else []
         full_messages.extend(messages)
-        
+
         # kimi-k2.7-code始终开启思考，不接受thinking参数
         model_lower = model.lower()
         is_k27 = "k2.7" in model_lower
-        
+
         payload = {
             "model": model,
             "messages": full_messages,
             "max_tokens": max_tokens,
             "temperature": temperature
         }
-        
+
         # kimi思考模型不支持temperature参数
         if not is_k27 and thinking_enabled:
             payload["thinking"] = {"type": "enabled", "keep": "all"}
             payload.pop("temperature", None)  # 思考模式下移除temperature
-        
+
         response = self.client.post("/chat/completions", json=payload)
         response.raise_for_status()
-        
+
         return self._parse_thinking_response(response.json(), "Kimi")
-    
+
     # ==================== 统一响应解析 ====================
-    
+
     def _parse_thinking_response(self, result: dict, provider_name: str) -> str:
         """统一解析支持思考模式的API响应
         
@@ -1012,12 +1010,12 @@ class AIClient:
         choices = result.get("choices", [])
         if not choices:
             raise Exception(f"{provider_name}返回无choices: {json.dumps(result, ensure_ascii=False)[:200]}")
-        
+
         message = choices[0].get("message", {})
         content = message.get("content", "")
         reasoning = message.get("reasoning_content", "")
         finish_reason = choices[0].get("finish_reason", "")
-        
+
         # 记录Token使用量
         usage = result.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
@@ -1026,11 +1024,11 @@ class AIClient:
         if total_tokens > 0:
             token_stats.record(prompt_tokens, completion_tokens)
             self._log(f"[Token] 本次: {total_tokens} (输入:{prompt_tokens} 输出:{completion_tokens}) | 累计: {token_stats.total_tokens}")
-        
+
         # 如果有思考内容，记录到日志
         if reasoning:
             self._log_thinking(reasoning)
-        
+
         # content为空时的处理
         if not content or len(content.strip()) == 0:
             # 如果finish_reason是"length"且有reasoning_content，说明思考模式用完了token
@@ -1039,5 +1037,5 @@ class AIClient:
                 self._log(f"[提示] {provider_name}思考模式耗尽token (reasoning_len={len(reasoning)})，使用reasoning_content作为结果")
                 return reasoning
             raise Exception(f"{provider_name}返回空内容 (reasoning_len={len(reasoning)}, finish={finish_reason}): {json.dumps(result, ensure_ascii=False)[:200]}")
-        
+
         return content

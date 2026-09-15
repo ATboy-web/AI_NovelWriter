@@ -4,10 +4,12 @@ character_system 单元测试
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
-from character_system import CharacterSystem, CharacterProfile
+
+from character_system import CharacterProfile, CharacterSystem
 
 
 class TestCharacterProfile(unittest.TestCase):
@@ -15,12 +17,12 @@ class TestCharacterProfile(unittest.TestCase):
         char = CharacterProfile(name="张三")
         self.assertEqual(char.name, "张三")
         self.assertEqual(char.level, 1)
-    
+
     def test_hp_mp(self):
         char = CharacterProfile(name="张三")
         self.assertEqual(char.hp, 100)
         self.assertEqual(char.mp, 50)
-    
+
     def test_has_attributes(self):
         char = CharacterProfile(name="张三")
         # 检查基本属性存在
@@ -33,15 +35,15 @@ class TestCharacterProfile(unittest.TestCase):
 class TestCharacterSystem(unittest.TestCase):
     def setUp(self):
         self.cs = CharacterSystem()
-    
+
     def test_initialization(self):
         self.assertIsNotNone(self.cs)
-    
+
     def test_create_character(self):
         char = self.cs.create_character("张三")
         self.assertIsNotNone(char)
         self.assertEqual(char.name, "张三")
-    
+
     def test_character_attribute(self):
         self.cs.create_character("张三")
         self.assertIsNotNone(self.cs.character)

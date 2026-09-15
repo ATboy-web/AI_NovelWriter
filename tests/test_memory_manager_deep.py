@@ -4,9 +4,9 @@ memory_manager.py 深度测试 - 真正调用方法
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 from app.memory_manager import MemoryManager
 
 

@@ -19,30 +19,30 @@ from .config import AppConfig
 
 class ImageGenerator:
     """文生图模块 - 支持ComfyUI和SD API"""
-    
+
     def __init__(self, config: AppConfig):
         self.config = config
-    
+
     def is_configured(self) -> bool:
         provider = self.config.get("img_provider", "disabled")
         return provider != "disabled"
-    
+
     def generate(self, prompt: str, negative_prompt: str = "", width: int = 1024, height: int = 1024) -> Optional[bytes]:
         """生成图片，返回图片字节数据"""
         provider = self.config.get("img_provider", "comfyui")
-        
+
         if provider == "comfyui":
             return self._generate_comfyui(prompt, negative_prompt, width, height)
         elif provider == "sdapi":
             return self._generate_sdapi(prompt, negative_prompt, width, height)
         return None
-    
+
     def _generate_comfyui(self, prompt, negative_prompt, width, height) -> Optional[bytes]:
         """通过ComfyUI生成图片"""
         try:
             api_base = self.config.get("img_api_base", "http://127.0.0.1:8188")
             model = self.config.get("img_model", "sd_xl_base_1.0.safetensors")
-            
+
             # ComfyUI工作流
             workflow = {
                 "3": {
@@ -85,12 +85,12 @@ class ImageGenerator:
                     "inputs": {"filename_prefix": "novel_img", "images": ["8", 0]}
                 },
             }
-            
+
             # 提交工作流
             resp = httpx.post(f"{api_base}/prompt", json={"prompt": workflow}, timeout=10)
             resp.raise_for_status()
             prompt_id = resp.json()["prompt_id"]
-            
+
             # 轮询等待完成
             for _ in range(120):  # 最多等2分钟
                 time.sleep(1)
@@ -107,18 +107,18 @@ class ImageGenerator:
                                 timeout=10
                             )
                             return img_resp.content
-            
+
             return None
         except Exception as e:
             logger.error(f"ComfyUI生成失败: {e}")
             return None
-    
+
     def _generate_sdapi(self, prompt, negative_prompt, width, height) -> Optional[bytes]:
         """通过Stable Diffusion WebUI API生成图片"""
         try:
             import base64
             api_base = self.config.get("img_api_base", "http://127.0.0.1:7860")
-            
+
             resp = httpx.post(f"{api_base}/sdapi/v1/txt2img", json={
                 "prompt": prompt,
                 "negative_prompt": negative_prompt or "low quality, blurry",
@@ -129,7 +129,7 @@ class ImageGenerator:
                 "sampler_name": "Euler a",
             }, timeout=120)
             resp.raise_for_status()
-            
+
             images = resp.json().get("images", [])
             if images:
                 return base64.b64decode(images[0])
@@ -137,7 +137,7 @@ class ImageGenerator:
         except Exception as e:
             logger.error(f"SD API生成失败: {e}")
             return None
-    
+
     def save_image(self, img_data: bytes, save_dir: Path, name: str) -> Path:
         """保存图片"""
         img_dir = save_dir / "images"

@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
+
 from app.scene_detector import CinematicPromptGenerator
 
 

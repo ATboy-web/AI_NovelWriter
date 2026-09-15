@@ -2,9 +2,9 @@
 Pytest配置文件 - 共享fixtures和测试工具
 """
 
+import shutil
 import sys
 import tempfile
-import shutil
 from pathlib import Path
 from typing import Generator
 from unittest.mock import MagicMock
@@ -100,7 +100,7 @@ def pytest_configure(config):
 def pytest_collection_modifyitems(config, items):
     """根据标记自动跳过测试"""
     import platform
-    
+
     # 在Windows上跳过某些Linux特定测试
     if platform.system() == "Windows":
         skip_windows = pytest.mark.skip(reason="Windows上不支持此测试")

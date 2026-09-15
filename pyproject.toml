@@ -48,7 +48,16 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
-ignore = ["E501"]  # 忽略行长度限制
+# 豁免项及理由（均为"无功能影响"的存量风格问题，不阻断 CI）：
+#   E501 行长度      —— 由 formatter 处理，不作为硬性门禁
+#   E701/E702 一行多语句 —— `if x: return` 类紧凑写法，属可读性偏好而非缺陷
+#   W291/W293 行尾/空行含空白 —— 无功能影响；且剩余少数位于多行字符串内
+#                        （prompt 模板/对齐文本），改动会改变字符串内容
+ignore = ["E501", "E701", "E702", "W291", "W293"]
+
+[tool.ruff.lint.per-file-ignores]
+# app/__init__.py 先求值 __version__ 再做子模块导入，以规避循环导入，属有意设计
+"app/__init__.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.11"

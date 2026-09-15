@@ -15,7 +15,7 @@ class NoteUIMixin:
         """刷新笔记列表"""
         self.notes_list.delete(0, tk.END)
         note_type = self.note_type_var.get()
-        
+
         if note_type == "project":
             notes = self.note_manager.get_project_notes()
             for n in notes:
@@ -35,7 +35,7 @@ class NoteUIMixin:
             return
         idx = selection[0]
         note_type = self.note_type_var.get()
-        
+
         notes = []
         if note_type == "project":
             notes = self.note_manager.get_project_notes()
@@ -43,7 +43,7 @@ class NoteUIMixin:
             notes = self.note_manager.get_doc_notes(self.current_chapter)
         elif note_type == "sticky":
             notes = self.note_manager.get_sticky_notes()
-        
+
         if idx < len(notes):
             self.note_content.delete("1.0", tk.END)
             self.note_content.insert("1.0", notes[idx].get("content", ""))
@@ -51,14 +51,14 @@ class NoteUIMixin:
         """新建笔记"""
         note_type = self.note_type_var.get()
         content = "新笔记内容..."
-        
+
         if note_type == "project":
             self.note_manager.add_project_note("新笔记", content)
         elif note_type == "doc":
             self.note_manager.add_doc_note(self.current_chapter, content)
         elif note_type == "sticky":
             self.note_manager.add_sticky_note(content)
-        
+
         self._refresh_notes()
     def _save_note(self):
         """保存当前笔记"""
@@ -66,11 +66,11 @@ class NoteUIMixin:
         if not selection:
             messagebox.showinfo("提示", "请先选择一个笔记")
             return
-        
+
         idx = selection[0]
         note_type = self.note_type_var.get()
         content = self.note_content.get("1.0", tk.END).strip()
-        
+
         if note_type == "project":
             notes = self.note_manager.get_project_notes()
             if idx < len(notes):
@@ -85,20 +85,20 @@ class NoteUIMixin:
             if idx < len(notes):
                 notes[idx]["content"] = content
                 self.note_manager.save_sticky_notes(notes)
-        
+
         self._log("笔记已保存")
     def _delete_note(self):
         """删除笔记"""
         selection = self.notes_list.curselection()
         if not selection:
             return
-        
+
         if not messagebox.askyesno("确认", "确定删除此笔记？"):
             return
-        
+
         idx = selection[0]
         note_type = self.note_type_var.get()
-        
+
         if note_type == "project":
             notes = self.note_manager.get_project_notes()
             if idx < len(notes):
@@ -111,7 +111,7 @@ class NoteUIMixin:
             notes = self.note_manager.get_sticky_notes()
             if idx < len(notes):
                 self.note_manager.delete_sticky_note(notes[idx]["id"])
-        
+
         self.note_content.delete("1.0", tk.END)
         self._refresh_notes()
     def _send_sticky_to_project(self):
@@ -120,12 +120,12 @@ class NoteUIMixin:
         if not selection:
             messagebox.showinfo("提示", "请先选择一个便笺")
             return
-        
+
         idx = selection[0]
         if self.note_type_var.get() != "sticky":
             messagebox.showinfo("提示", "请先切换到便笺本")
             return
-        
+
         notes = self.note_manager.get_sticky_notes()
         if idx < len(notes):
             self.note_manager.send_sticky_to_project(notes[idx]["id"])

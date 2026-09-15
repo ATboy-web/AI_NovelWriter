@@ -3,13 +3,13 @@ diagnostic_logger.py 全量测试 - 覆盖所有方法
 """
 
 import sys
-import json
-import time
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+
 import pytest
-from unittest.mock import MagicMock
+
 from app.diagnostic_logger import DiagnosticLogger, get_logger, trace_api
 
 
@@ -192,22 +192,22 @@ class TestTraceApi:
         # Reset singleton
         import app.diagnostic_logger as dl
         dl._logger_instance = None
-        
+
         @trace_api
         def test_func(x, y):
             return x + y
-        
+
         result = test_func(1, 2)
         assert result == 3
 
     def test_trace_api_failure(self, tmp_path):
         import app.diagnostic_logger as dl
         dl._logger_instance = None
-        
+
         @trace_api
         def fail_func():
             raise ValueError("test")
-        
+
         with pytest.raises(ValueError):
             fail_func()
 

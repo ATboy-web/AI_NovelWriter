@@ -2,12 +2,12 @@
 note_manager.py 深度测试 - 真正调用方法
 """
 
-import sys
 import json
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 from app.note_manager import NoteManager
 
 
@@ -70,7 +70,7 @@ class TestNoteManagerDeep:
         mock_config = type('Config', (), {'config_dir': tmp_path})()
         nm = NoteManager(config=mock_config)
         nm.add_sticky_note("持久化测试")
-        
+
         # Create new instance
         nm2 = NoteManager(config=mock_config)
         notes = nm2.get_sticky_notes()
@@ -81,7 +81,7 @@ class TestNoteManagerDeep:
         mock_config = type('Config', (), {'config_dir': tmp_path})()
         nm = NoteManager(config=mock_config)
         nm.add_sticky_note("JSON测试")
-        
+
         with open(nm.sticky_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
         assert isinstance(data, list)

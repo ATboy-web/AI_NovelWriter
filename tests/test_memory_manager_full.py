@@ -3,11 +3,10 @@ memory_manager.py 全量测试 - 覆盖chunks/timeline/characters/settings
 """
 
 import sys
-import json
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 from app.memory_manager import MemoryManager
 
 
@@ -48,7 +47,7 @@ class TestChunks:
     def test_find_similar_chunk_found(self, tmp_path):
         mm = MemoryManager(tmp_path)
         mm.add_chunk("test", "张三修炼武功")
-        result = mm._find_similar_chunk("张三修炼武功", threshold=0.5)
+        mm._find_similar_chunk("张三修炼武功", threshold=0.5)
         # May or may not find depending on keyword extraction
 
     def test_merge_chunk(self, tmp_path):

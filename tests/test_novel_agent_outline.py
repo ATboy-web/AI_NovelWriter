@@ -2,13 +2,14 @@
 novel_agent.py 更多mock测试 - 覆盖outline/finalize/style方法
 """
 
-import sys
 import json
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 from unittest.mock import MagicMock, patch
+
 from app.novel_agent import NovelAgent
 
 
@@ -39,7 +40,7 @@ class TestGenerateOutline:
             {"chapter": 1, "title": "标题1", "summary": "概要1"},
             {"chapter": 2, "title": "标题2", "summary": "概要2"},
         ])
-        
+
         result = agent.generate_outline("玄幻", "测试小说", 10, "概念")
         assert len(result) == 2
 
@@ -50,7 +51,7 @@ class TestGenerateOutline:
             for i in range(1, 16)
         ])
         agent._plan_story_arcs = MagicMock(return_value="弧线规划")
-        
+
         result = agent.generate_outline("玄幻", "测试小说", 30, "概念")
         assert len(result) > 0
 
@@ -61,7 +62,7 @@ class TestGenerateOutline:
             for i in range(1, 16)
         ])
         agent._plan_story_arcs = MagicMock(return_value="弧线规划")
-        
+
         result = agent.generate_outline("玄幻", "测试小说", 100, "概念")
         assert len(result) > 0
 
@@ -72,21 +73,21 @@ class TestPlanStoryArcs:
     def test_basic(self):
         agent = create_mock_agent()
         agent.ai.chat.return_value = "开端：引入主角\n发展：展开冲突\n高潮：最终决战\n结局：大团圆"
-        
+
         result = agent._plan_story_arcs("玄幻", "测试小说", 100, "概念")
         assert isinstance(result, str)
 
     def test_ai_returns_none(self):
         agent = create_mock_agent()
         agent.ai.chat.return_value = None
-        
+
         result = agent._plan_story_arcs("玄幻", "测试小说", 100, "概念")
         assert result == ""
 
     def test_ai_raises_exception(self):
         agent = create_mock_agent()
         agent.ai.chat.side_effect = Exception("API error")
-        
+
         result = agent._plan_story_arcs("玄幻", "测试小说", 100, "概念")
         assert result == ""
 
@@ -101,7 +102,7 @@ class TestGenerateOutlineBatch:
             {"chapter": 2, "title": "标题2", "summary": "概要2"},
         ])
         agent.memory.get_meta.return_value = ""
-        
+
         result = agent._generate_outline_batch("玄幻", "测试小说", 2, 1, "概念")
         assert len(result) == 2
 
@@ -111,7 +112,7 @@ class TestGenerateOutlineBatch:
             {"chapter": 1, "title": "标题1", "summary": "概要1"},
         ])
         agent.memory.get_meta.return_value = "张三"
-        
+
         result = agent._generate_outline_batch("玄幻", "测试小说", 1, 1, "概念")
         assert len(result) == 1
 
@@ -119,7 +120,7 @@ class TestGenerateOutlineBatch:
         agent = create_mock_agent()
         agent.ai.chat.return_value = "invalid json"
         agent.memory.get_meta.return_value = ""
-        
+
         result = agent._generate_outline_batch("玄幻", "测试小说", 2, 1, "概念")
         assert len(result) == 2  # Should fill with placeholders
 
@@ -129,7 +130,7 @@ class TestGenerateOutlineBatch:
             {"chapter": 1, "title": "标题1", "summary": "概要1"},
         ])
         agent.memory.get_meta.return_value = ""
-        
+
         result = agent._generate_outline_batch("玄幻", "测试小说", 3, 1, "概念")
         assert len(result) == 3  # Should fill missing chapters
 
@@ -143,7 +144,7 @@ class TestGenerateOutlineContinuation:
             {"chapter": 11, "title": "标题11", "summary": "概要11"},
         ])
         agent.memory.get_meta.return_value = ""
-        
+
         result = agent.generate_outline_continuation("玄幻", "测试小说", 1, "上下文", 10)
         assert len(result) == 1
 
@@ -153,7 +154,7 @@ class TestGenerateOutlineContinuation:
             {"chapter": 11, "title": "标题11", "summary": "概要11"},
         ])
         agent.memory.get_meta.return_value = "张三"
-        
+
         result = agent.generate_outline_continuation("玄幻", "测试小说", 1, "上下文", 10)
         assert len(result) == 1
 
@@ -161,7 +162,7 @@ class TestGenerateOutlineContinuation:
         agent = create_mock_agent()
         agent.ai.chat.return_value = None
         agent.memory.get_meta.return_value = ""
-        
+
         result = agent.generate_outline_continuation("玄幻", "测试小说", 2, "上下文", 10)
         assert len(result) == 2  # Should fill with placeholders
 
@@ -180,7 +181,7 @@ class TestFinalizeChapter:
         agent.memory.add_event = MagicMock()
         agent.memory.get_characters.return_value = {}
         agent._update_character_progression = MagicMock()
-        
+
         with patch('app.novel_agent.writing_skill_manager', create=True):
             agent.finalize_chapter(1, "章节内容")
 
@@ -195,7 +196,7 @@ class TestFinalizeChapter:
         agent.memory.add_event = MagicMock()
         agent.memory.get_characters.return_value = {}
         agent._update_character_progression = MagicMock()
-        
+
         agent.finalize_chapter(1, "章节内容")
 
 
@@ -217,20 +218,20 @@ class TestUpdateCharacterProgression:
         agent.memory.get_characters.return_value = {"张三": {"category": "主角"}}
         agent.memory.add_event = MagicMock()
         agent.memory.update_character = MagicMock()
-        
+
         agent._update_character_progression(1, "章节内容", "摘要")
 
     def test_no_characters(self):
         agent = create_mock_agent()
         agent.memory.get_characters.return_value = {}
-        
+
         agent._update_character_progression(1, "章节内容", "摘要")
 
     def test_invalid_json(self):
         agent = create_mock_agent()
         agent.ai.chat.return_value = "invalid json"
         agent.memory.get_characters.return_value = {"张三": {"category": "主角"}}
-        
+
         # Patch _diag to avoid NameError
         import app.novel_agent as na
         na._diag = MagicMock()
@@ -240,7 +241,7 @@ class TestUpdateCharacterProgression:
         agent = create_mock_agent()
         agent.ai.chat.return_value = None
         agent.memory.get_characters.return_value = {"张三": {"category": "主角"}}
-        
+
         agent._update_character_progression(1, "章节内容", "摘要")
 
 
@@ -254,14 +255,14 @@ class TestAnalyzeStyle:
             "sentence_style": "长短句结合",
             "word_choice": "古风词汇",
         })
-        
+
         result = agent.analyze_style("测试文本", "测试作者")
         assert result["author"] == "测试作者"
 
     def test_invalid_json(self):
         agent = create_mock_agent()
         agent.ai.chat.return_value = "invalid json"
-        
+
         result = agent.analyze_style("测试文本", "测试作者")
         assert "author" in result
 
@@ -272,7 +273,7 @@ class TestGenerateWithStyle:
     def test_basic(self):
         agent = create_mock_agent()
         agent.ai.chat.return_value = "风格化文本"
-        
+
         style = {"author": "测试作者", "sentence_style": "长短句结合"}
         result = agent.generate_with_style("创作提示", style, 1000)
         assert result == "风格化文本"
@@ -280,7 +281,7 @@ class TestGenerateWithStyle:
     def test_string_style(self):
         agent = create_mock_agent()
         agent.ai.chat.return_value = "风格化文本"
-        
+
         result = agent.generate_with_style("创作提示", "古风风格", 1000)
         assert result == "风格化文本"
 
@@ -291,7 +292,7 @@ class TestBlendStyles:
     def test_basic(self):
         agent = create_mock_agent()
         agent.ai.chat.return_value = "融合风格文本"
-        
+
         styles = [
             {"author": "作者1", "sentence_style": "短句"},
             {"author": "作者2", "sentence_style": "长句"},
@@ -362,7 +363,7 @@ class TestGenerateLongChapter:
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         result = agent._generate_long_chapter(1, "标题", "大纲", 5000, "上下文")
         assert isinstance(result, str)
 
@@ -372,7 +373,7 @@ class TestGenerateLongChapter:
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         result = agent._generate_long_chapter(1, "标题", "大纲", 5000, "上下文", prev_ending="前文结尾")
         assert isinstance(result, str)
 
@@ -382,6 +383,6 @@ class TestGenerateLongChapter:
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
-        
+
         result = agent._generate_long_chapter(1, "标题", "大纲", 5000, "上下文")
         assert isinstance(result, str)

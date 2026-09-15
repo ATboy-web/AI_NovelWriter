@@ -4,10 +4,11 @@ agent_orchestrator.py 深度测试 - 真正调用方法
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 from unittest.mock import MagicMock
+
 from app.agent_orchestrator import AgentOrchestrator, ContextOptimizer
 
 

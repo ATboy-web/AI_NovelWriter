@@ -3,9 +3,7 @@ AI_NovelWriter 应用包
 从 novel_app.py 拆分出的独立模块
 """
 import importlib
-import sys
 from pathlib import Path as _Path
-
 
 # P3-1: 单一版本源。优先读取已安装包元数据，其次读取 pyproject.toml，
 # 冻结(EXE)环境下回退到构建时注入的常量。
@@ -34,7 +32,7 @@ __version__ = _load_version()
 class _ImportStub:
     """安全导入占位类 - 在实例化时抛出明确的 ImportError"""
     _import_error = ""
-    
+
     def __init__(self, *args, **kwargs):
         raise ImportError(
             f"Module not available (import failed: {self._import_error}). "
@@ -55,8 +53,8 @@ def _safe_import(module_name: str, class_name: str):
         return type(class_name, (_ImportStub,), {"_import_error": str(e)})
 
 # 核心模块（必须可用）
-from .config import AppConfig
 from .ai_client import AIClient, token_stats
+from .config import AppConfig
 from .writing_skills import writing_skill_manager
 
 # 可选/条件导入的模块

@@ -1,7 +1,7 @@
 """联网搜索热点改编面板混入"""
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import messagebox, scrolledtext, ttk
 
 from app.ui_style import UIStyle
 from novel_toolkit import WebSearchAdaptEngine
@@ -14,23 +14,23 @@ class WebSearchPanelMixin:
         """热点改编界面"""
         C = UIStyle.COLORS
         f = self.tool_content_frame
-        
+
         tk.Label(f, text="联网搜索热点改编 - 将网络热点改编为小说桥段", font=("", 11, "bold"),
                 bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=5)
-        
+
         # 分类选择
         cat_frame = tk.Frame(f, bg=C['bg_dark'])
         cat_frame.pack(fill=tk.X, pady=3)
-        
+
         self.ws_category_var = tk.StringVar(value="热梗改编")
         self.web_search_engine = WebSearchAdaptEngine(self.ai_client)
         cats = self.web_search_engine.get_categories()
-        
+
         for i, cat in enumerate(cats):
             tk.Radiobutton(cat_frame, text=cat, variable=self.ws_category_var, value=cat,
                           font=('微软雅黑', 9), bg=C['bg_dark'], fg=C['text_secondary'],
                           selectcolor=C['accent'], command=self._refresh_ws_list).pack(side=tk.LEFT, padx=5)
-        
+
         # 搜索输入
         search_frame = tk.Frame(f, bg=C['bg_dark'])
         search_frame.pack(fill=tk.X, pady=5)
@@ -38,20 +38,20 @@ class WebSearchPanelMixin:
                                        bg=C['input_bg'], fg=C['text_primary'])
         self.ws_search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
         self.ws_search_entry.insert(0, "输入热点关键词或梗，AI自动改编...")
-        
+
         tk.Button(search_frame, text="AI搜索改编", font=('微软雅黑', 9),
                  bg=C['accent'], fg='white', relief=tk.FLAT, padx=10,
                  command=self._ws_adapt).pack(side=tk.LEFT, padx=5)
-        
+
         # 随机按钮
         tk.Button(f, text="随机来一个热点", font=('微软雅黑', 9),
                  bg=C['success'], fg='white', relief=tk.FLAT, padx=10,
                  command=self._ws_random).pack(pady=5)
-        
+
         # 内置热点列表
         tk.Label(f, text="内置热点（点击直接生成）：", font=('微软雅黑', 9, 'bold'),
                 bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W, pady=(10, 3))
-        
+
         items = self.web_search_engine.get_items(self.ws_category_var.get())
         list_frame = tk.Frame(f, bg=C['bg_dark'])
         list_frame.pack(fill=tk.X)
@@ -65,12 +65,12 @@ class WebSearchPanelMixin:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.ws_listbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.ws_listbox.bind('<Double-Button-1>', self._ws_generate_from_list)
-        
+
         # 生成按钮
         tk.Button(f, text="改编选中热点为小说桥段", font=('微软雅黑', 9, 'bold'),
                  bg=C['accent'], fg='white', relief=tk.FLAT, padx=10,
                  command=self._ws_generate_from_list).pack(pady=5)
-        
+
         # 自定义添加按钮区
         add_btn_frame = tk.Frame(f, bg=C['bg_dark'])
         add_btn_frame.pack(fill=tk.X, pady=5)
@@ -80,13 +80,13 @@ class WebSearchPanelMixin:
         tk.Button(add_btn_frame, text="删除自定义", font=('微软雅黑', 9),
                  bg=C['error'], fg='white', relief=tk.FLAT, padx=10,
                  command=self._ws_delete_custom).pack(side=tk.LEFT, padx=5)
-        
+
         # 结果展示
         self.ws_result = tk.Text(f, height=12, wrap=tk.WORD, font=('微软雅黑', 10),
                                 bg=C['bg_card'], fg=C['text_primary'],
                                 relief=tk.FLAT, padx=15, pady=15)
         self.ws_result.pack(fill=tk.BOTH, expand=True, pady=5)
-        
+
         tk.Button(f, text="插入到章节", font=('微软雅黑', 9),
                  bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=10,
                  command=lambda: self._insert_to_chapter(self.ws_result)).pack(pady=5)
@@ -107,7 +107,7 @@ class WebSearchPanelMixin:
         if not self.ai_client.is_configured():
             messagebox.showwarning("提示", "请先配置AI")
             return
-        
+
         def run():
             try:
                 engine = WebSearchAdaptEngine(self.ai_client)
@@ -115,7 +115,7 @@ class WebSearchPanelMixin:
                 self.root.after(0, lambda: self._show_tool_result(self.ws_result, result))
             except Exception as e:
                 self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
-        
+
         threading.Thread(target=run, daemon=True).start()
 
     def _ws_generate_from_list(self, event=None):
@@ -126,7 +126,7 @@ class WebSearchPanelMixin:
         category = self.ws_category_var.get()
         if not self.web_search_engine:
             self.web_search_engine = WebSearchAdaptEngine(self.ai_client, self.current_novel_dir)
-        
+
         items = self.web_search_engine.get_items(category)
         idx = sel[0]
         if idx < len(items):
@@ -141,26 +141,25 @@ class WebSearchPanelMixin:
         dialog.title("添加自定义热点")
         dialog.geometry("500x400")
         dialog.configure(bg=UIStyle.COLORS['bg_dark'])
-        C = UIStyle.COLORS
-        
+
         ttk.Label(dialog, text="分类:").pack(anchor=tk.W, padx=20, pady=(15,3))
         cat_var = tk.StringVar(value=self.ws_category_var.get())
         cats = WebSearchAdaptEngine(self.ai_client).get_categories()
         ttk.Combobox(dialog, textvariable=cat_var, values=cats, state="readonly", width=47).pack(padx=20)
-        
+
         ttk.Label(dialog, text="热点名称:").pack(anchor=tk.W, padx=20, pady=(10,3))
         name_entry = ttk.Entry(dialog, width=50)
         name_entry.pack(padx=20)
-        
+
         ttk.Label(dialog, text="描述（一句话说明）:").pack(anchor=tk.W, padx=20, pady=(10,3))
         desc_entry = ttk.Entry(dialog, width=50)
         desc_entry.pack(padx=20)
-        
+
         ttk.Label(dialog, text="改编模板（用{name}等变量）:").pack(anchor=tk.W, padx=20, pady=(10,3))
         template_text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, height=6)
         template_text.pack(padx=20, fill=tk.X)
         template_text.insert("1.0", "{name}是一个普通{职业}，直到那天{事件}...")
-        
+
         def save():
             name = name_entry.get().strip()
             desc = desc_entry.get().strip()
@@ -176,7 +175,7 @@ class WebSearchPanelMixin:
             # 刷新列表
             self._refresh_ws_list()
             messagebox.showinfo("成功", f"已保存自定义热点「{name}」")
-        
+
         ttk.Button(dialog, text="保存", command=save).pack(pady=15)
 
     def _ws_delete_custom(self):

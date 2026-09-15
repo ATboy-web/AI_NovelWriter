@@ -3,14 +3,16 @@ ai_client.py 深度测试 - 真正调用所有方法
 """
 
 import sys
-import time
 import threading
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
-from app.ai_client import TokenStats, AIMetrics, PromptManager, retry_with_backoff, AIClient
+
+from app.ai_client import AIClient, AIMetrics, PromptManager, TokenStats, retry_with_backoff
 
 
 class TestTokenStatsDeep:

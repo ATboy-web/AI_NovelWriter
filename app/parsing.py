@@ -19,17 +19,17 @@ def parse_json_response(response: str, default):
     """_parse_json_response 的纯逻辑（P2-6 抽取）。"""
     if not response or not isinstance(response, str):
         return default
-    
+
     text = response.strip()
     strategies = []
-    
+
     # Strategy 1: 直接提取 { } 或 [ ]
     for marker, end_marker in [('{', '}'), ('[', ']')]:
         start = text.find(marker)
         end = text.rfind(end_marker) + 1
         if start >= 0 and end > start:
             strategies.append(text[start:end])
-    
+
     # Strategy 2: 清理 markdown 后提取
     clean = text.replace('```json', '').replace('```', '')
     for marker, end_marker in [('{', '}'), ('[', ']')]:
@@ -37,7 +37,7 @@ def parse_json_response(response: str, default):
         end = clean.rfind(end_marker) + 1
         if start >= 0 and end > start:
             strategies.append(clean[start:end])
-    
+
     # Strategy 3: 修复常见AI JSON错误
     for raw in list(strategies):
         fixed = raw
@@ -58,14 +58,14 @@ def parse_json_response(response: str, default):
         # 缺失逗号: "value"\n  "key" → "value",\n  "key"
         fixed = re.sub(r'"\s*\n(\s*")', '",\n\\1', fixed)
         strategies.append(fixed)
-    
+
     # 依次尝试
     for s in strategies:
         try:
             return json.loads(s)
         except (json.JSONDecodeError, ValueError):
             continue
-    
+
     # Strategy 4: 尝试补全截断的JSON
     for s in strategies:
         for suffix in ['"}', '"}]', '"}}', '"}]}}', '"]}}}', '}}}', '"}\n}', '"}\n}]']:
@@ -73,7 +73,7 @@ def parse_json_response(response: str, default):
                 return json.loads(s + suffix)
             except (json.JSONDecodeError, ValueError):
                 continue
-    
+
     # Strategy 5: 逐个提取已完成的对象
     for s in strategies:
         chars = {}
@@ -96,7 +96,7 @@ def parse_json_response(response: str, default):
                         break
         if chars:
             return chars
-    
+
     return default
 
 
@@ -105,7 +105,7 @@ def parse_exp_json(response: str) -> dict:
     """_parse_exp_json 的纯逻辑（P2-6 抽取）。"""
     if not response:
         return {}
-    
+
     # Strategy 1: 括号深度追踪（最可靠，提取完整外层JSON）
     start = response.find('{')
     if start >= 0:
@@ -128,7 +128,7 @@ def parse_exp_json(response: str) -> dict:
                     return result
             except json.JSONDecodeError:
                 pass
-    
+
     # Strategy 2: 清理markdown后重试
     cleaned = response.strip()
     if cleaned.startswith("```json"):
@@ -138,7 +138,7 @@ def parse_exp_json(response: str) -> dict:
     if cleaned.endswith("```"):
         cleaned = cleaned[:-3]
     cleaned = cleaned.strip()
-    
+
     start = cleaned.find('{')
     if start >= 0:
         depth = 0
@@ -155,7 +155,7 @@ def parse_exp_json(response: str) -> dict:
                 return json.loads(cleaned[start:end_idx])
             except json.JSONDecodeError:
                 pass
-    
+
     # Strategy 3: 逐行提取key-value对
     result = {}
     pattern = r'"([^"]+)"\s*:\s*\{[^}]*"action"\s*:\s*"([^"]*)"[^}]*"exp"\s*:\s*(-?\d+)[^}]*"detail"\s*:\s*"([^"]*)"'
@@ -165,7 +165,7 @@ def parse_exp_json(response: str) -> dict:
             "exp": int(m.group(3)),
             "detail": m.group(4)
         }
-    
+
     # Strategy 4: 处理截断的JSON（AI响应被截断的情况）
     if not result:
         # 尝试提取部分数据：{"角色名": {"action": "行为", "exp": 数值, "detail": ...
@@ -176,7 +176,7 @@ def parse_exp_json(response: str) -> dict:
                 "exp": int(m.group(3)),
                 "detail": ""
             }
-    
+
     # Strategy 5: 尝试补全截断的JSON后解析
     if not result and response.strip().startswith('{'):
         # 尝试补全JSON
@@ -202,5 +202,5 @@ def parse_exp_json(response: str) -> dict:
                         }
         except (json.JSONDecodeError, ValueError):
             pass
-    
+
     return result

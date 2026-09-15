@@ -1,7 +1,7 @@
 """描写库面板混入"""
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import messagebox, scrolledtext, ttk
 
 
 class DescriptionsPanelMixin:
@@ -10,16 +10,16 @@ class DescriptionsPanelMixin:
     def _build_descriptions_tool(self):
         """描写库界面"""
         f = self.tool_content_frame
-        
+
         ttk.Label(f, text="事物描写库 - 生成各类描写", font=("", 11, "bold")).pack(anchor=tk.W, pady=5)
-        
+
         cat_frame = ttk.Frame(f)
         cat_frame.pack(fill=tk.X, pady=3)
         ttk.Label(cat_frame, text="类别:").pack(side=tk.LEFT)
         self.desc_cat_var = tk.StringVar()
         cats = self.desc_lib.get_categories()
         ttk.Combobox(cat_frame, textvariable=self.desc_cat_var, values=cats, state="readonly", width=15).pack(side=tk.LEFT, padx=5)
-        
+
         ttk.Label(cat_frame, text="描写对象:").pack(side=tk.LEFT, padx=(10,0))
         self.desc_subject = ttk.Entry(cat_frame, width=15)
         self.desc_subject.pack(side=tk.LEFT, padx=5)
@@ -29,10 +29,10 @@ class DescriptionsPanelMixin:
         self.custom_desc_entry = ttk.Entry(cat_frame, width=10)
         self.custom_desc_entry.pack(side=tk.LEFT, padx=2)
         ttk.Button(cat_frame, text="添加", command=self._add_custom_description).pack(side=tk.LEFT)
-        
+
         self.desc_result = scrolledtext.ScrolledText(f, height=10, wrap=tk.WORD, font=("微软雅黑", 10))
         self.desc_result.pack(fill=tk.BOTH, expand=True, pady=3)
-        
+
         if cats:
             self.desc_cat_var.set(cats[0])
 
@@ -40,7 +40,7 @@ class DescriptionsPanelMixin:
         if not self.ai_client.is_configured():
             messagebox.showwarning("提示", "请先配置AI")
             return
-        
+
         def run():
             try:
                 result = self.desc_lib.generate_description(
@@ -50,7 +50,7 @@ class DescriptionsPanelMixin:
                 self.root.after(0, lambda: self._show_tool_result(self.desc_result, result))
             except Exception as e:
                 self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
-        
+
         threading.Thread(target=run, daemon=True).start()
 
     def _add_custom_description(self):

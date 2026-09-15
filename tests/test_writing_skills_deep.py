@@ -3,15 +3,17 @@ writing_skills.py 深度测试 - 真正调用所有方法
 """
 
 import sys
-import json
-import tempfile
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 from app.writing_skills import (
-    WritingStyleConfig, AntiSlopProcessor, ANTI_SLOP_RULES,
-    KnowledgeGraph, TimeAwareMemory, WritingSkillManager
+    ANTI_SLOP_RULES,
+    AntiSlopProcessor,
+    KnowledgeGraph,
+    TimeAwareMemory,
+    WritingSkillManager,
+    WritingStyleConfig,
 )
 
 
@@ -213,10 +215,10 @@ class TestKnowledgeGraph:
         kg.add_entity("张三", "character")
         kg.add_relation("张三", "李四", "师徒")
         kg.add_event("battle", "大战", ["张三"], 1)
-        
+
         filepath = str(tmp_path / "kg.json")
         kg.save(filepath)
-        
+
         kg2 = KnowledgeGraph()
         kg2.load(filepath)
         assert "张三" in kg2.entities
@@ -305,10 +307,10 @@ class TestTimeAwareMemory:
     def test_save_and_load(self, tmp_path):
         mem = TimeAwareMemory()
         mem.add_memory("测试记忆", "test", importance=0.8)
-        
+
         filepath = str(tmp_path / "mem.json")
         mem.save(filepath)
-        
+
         mem2 = TimeAwareMemory()
         mem2.load(filepath)
         assert len(mem2.memories) == 1
@@ -382,10 +384,10 @@ class TestWritingSkillManager:
         mgr = WritingSkillManager()
         mgr.knowledge_graph.add_entity("张三", "character")
         mgr.time_memory.add_memory("测试", "test")
-        
+
         base_dir = str(tmp_path / "skills")
         mgr.save_all(base_dir)
-        
+
         mgr2 = WritingSkillManager()
         mgr2.load_all(base_dir)
         assert "张三" in mgr2.knowledge_graph.entities

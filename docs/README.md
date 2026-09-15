@@ -35,6 +35,7 @@
 ## 设计
 | 文档 | 说明 |
 |------|------|
+| [ARCHITECTURE_BOUNDARY.md](ARCHITECTURE_BOUNDARY.md) | 桌面端/后端架构边界约定（P2-2） |
 | [UI_DESIGN.md](UI_DESIGN.md) | UI 设计 |
 
 ## 归档（对应功能模块已移除）

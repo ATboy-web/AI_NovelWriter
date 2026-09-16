@@ -21,6 +21,21 @@ class MemoryVizPanelMixin:
             tk.Label(f, text="请先新建或打开小说", font=("", 10), bg=C["bg_dark"], fg=C["text_muted"]).pack(pady=20)
             return
 
+        # ⚠️ 必须同时判 `memory`：`current_novel_dir` 与 `memory` 是**两个**状态
+        # （打开流程里先后设置），只判前者会在"目录已设、管理器未建"的窗口期
+        # 直接 `AttributeError: 'NoneType' has no attribute 'health_check'`。
+        # 此前该异常由宿主 `PanelHost.select()` 兜住并记日志（UI 不崩），
+        # 但面板自身应当给出可执行的提示而不是抛错。
+        if self.memory is None:
+            tk.Label(
+                f,
+                text="记忆系统尚未就绪（作品已设置但记忆管理器未初始化）",
+                font=UIStyle.font("system"),
+                bg=C["bg_dark"],
+                fg=C["text_muted"],
+            ).pack(pady=20)
+            return
+
         # 记忆统计
         stats_frame = tk.Frame(f, bg=C["bg_dark"])
         stats_frame.pack(fill=tk.X, pady=5)

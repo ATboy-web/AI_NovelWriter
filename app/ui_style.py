@@ -62,6 +62,49 @@ class UIStyle:
         "size_xxl": 18,  # 超大标题
     }
 
+    #: 控件 `font=` 的**角色令牌** → Tk 字体元组。
+    #:
+    #: 用法：`tk.Label(parent, text="…", font=UIStyle.font("label"))`
+    #:
+    #: 为什么按"角色"而不是按"值"命名：`("微软雅黑", 9)` 出现在说明文字上是「辅助」、
+    #: 出现在按钮上是「按钮文字」—— 语义不同，将来调主题时改的也是语义
+    #: （改值等于什么都没说）。括号里的数字是 2026-09-16 实测的用量，最大的几个先纳入。
+    #:
+    #: ⚠️ 迁移现状：全仓仍有 **460 处字面 `font=(...)`**（31 个文件），因此
+    #: 这里只提供**新代码与增量迁移**要用的角色；`tests/test_font_token_ratchet.py`
+    #: 用"棘轮"保证字面用法**只减不增**，等到清零即可把断言收紧为"全局禁止"。
+    FONT_ROLES = {
+        "caption": ("微软雅黑", 8),
+        "caption_bold": ("微软雅黑", 8, "bold"),
+        "label": ("微软雅黑", 9),  # 137 处
+        "label_bold": ("微软雅黑", 9, "bold"),  # 16 处
+        "body": ("微软雅黑", 10),  # 104 处
+        "body_bold": ("微软雅黑", 10, "bold"),  # 22 处
+        "subtitle": ("微软雅黑", 11),
+        "subtitle_bold": ("微软雅黑", 11, "bold"),
+        "title": ("微软雅黑", 12, "bold"),  # 15 处
+        "heading": ("微软雅黑", 14, "bold"),
+        "display": ("微软雅黑", 16),
+        #: 历史上写作 `font=("", 11, "bold")`：空字体族 = 沿用 Tk 系统默认字体
+        "default_bold": ("", 11, "bold"),  # 13 处
+        "mono": ("Consolas", 10),
+        "mono_small": ("Consolas", 9),
+        #: 空字体族 = 沿用 Tk 系统默认字体（历史上写作 `font=("", 10)`）
+        "system": ("", 10),
+        "system_bold": ("", 10, "bold"),
+    }
+
+    @classmethod
+    def font(cls, role: str = "body") -> tuple:
+        """取角色令牌对应的 Tk 字体元组；未知角色**回落**到 `body`。
+
+        为什么不抛错：字体是表现层，一个拼错的角色名不该让整个面板构建失败
+        （`TestPanelColorTokensExist` 存在的理由正是"颜色键写错会让面板建到一半崩"）。
+        但拼错不会静默通过 —— `test_font_role_names_are_all_declared` 扫全仓
+        `UIStyle.font("x")` 的字面参数，不在 `FONT_ROLES` 里就直接失败。
+        """
+        return cls.FONT_ROLES.get(role, cls.FONT_ROLES["body"])
+
     # 间距系统 (4px 基准)
     SPACING = {
         "xs": 2,  # 2px

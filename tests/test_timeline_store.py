@@ -583,14 +583,55 @@ class TestDirectoryScan:
         assert [p.name for p in TimelineStore(tmp_path).world_line_files()] == ["main.json"]
 
     def test_signature_reflects_content_change(self, tmp_path):
-        """指纹必须对内容变化敏感：否则缓存会返回过期数据。"""
+        """指纹必须对内容变化敏感：否则缓存会返回过期数据。
+
+        ⚠️ 用**不同长度**的内容：等长重写在同一文件系统时间粒度下指纹可能不变，
+        那是已知边界（见下一个用例），不该由本用例来断言。
+        """
         page = write_page(tmp_path, 0, [{"chapter": 1, "event": "旧"}])
         store = TimelineStore(tmp_path)
         store.read_memory_events()
 
+        page.write_text(json.dumps([{"chapter": 1, "event": "新的更长的事件"}], ensure_ascii=False), encoding="utf-8")
+
+        assert [e.event for e in store.read_memory_events()] == ["新的更长的事件"]
+
+    def test_same_size_rewrite_is_a_documented_limitation(self, tmp_path):
+        """**已知边界**：等长内容在同一时间粒度内重写，指纹可能察觉不到。
+
+        这不是"应该失败"的断言，而是把边界**钉成文档**：
+        确认 `invalidate()` 是可靠的补救手段，且我们的写路径都会主动调用它。
+        """
+        page = write_page(tmp_path, 0, [{"chapter": 1, "event": "旧"}])
+        store = TimelineStore(tmp_path)
+        assert [e.event for e in store.read_memory_events()] == ["旧"]
+
         page.write_text(json.dumps([{"chapter": 1, "event": "新"}], ensure_ascii=False), encoding="utf-8")
 
+        # 无论指纹是否察觉，invalidate 之后必须拿到新内容
+        store.invalidate()
         assert [e.event for e in store.read_memory_events()] == ["新"]
+
+    def test_own_sync_invalidates_cache(self, tmp_path):
+        """`sync()` 自己写了文件后必须主动失效（不依赖指纹）。"""
+        write_world_line(tmp_path, "main.json")
+        write_page(tmp_path, 0, [{"chapter": 1, "event": "A"}])
+        store = TimelineStore(tmp_path)
+        store.snapshot()  # 预热缓存
+        assert store.read_world_lines()[0]["events"] == []  # 还没镜像
+
+        store.sync()
+
+        assert [e["event"] for e in store.read_world_lines()[0]["events"]] == ["A"]
+
+    def test_annotate_invalidates_cache(self, tmp_path):
+        MemoryManager(tmp_path).add_event(3, "事件")
+        store = TimelineStore(tmp_path)
+        assert store.read_memory_events()[0].location == ""
+
+        store.annotate(3, "事件", location="茶馆")
+
+        assert store.read_memory_events()[0].location == "茶馆"
 
     def test_signature_reflects_added_page(self, tmp_path):
         write_page(tmp_path, 0, [{"chapter": 1, "event": "第一页"}])

@@ -188,7 +188,7 @@ class TimelinePanel(BasePanel):
         self._stats_label = tk.Label(
             header,
             text="",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_dark"],
             fg=C["text_secondary"],
             anchor=tk.W,
@@ -200,7 +200,7 @@ class TimelinePanel(BasePanel):
         self._extract_btn = tk.Button(
             header,
             text="从正文抽取事件",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_medium"],
             fg=C["text_primary"],
             command=self._on_extract,
@@ -209,7 +209,7 @@ class TimelinePanel(BasePanel):
         self._sync_btn = tk.Button(
             header,
             text="同步到世界线",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_medium"],
             fg=C["text_primary"],
             command=self._on_sync,
@@ -233,7 +233,7 @@ class TimelinePanel(BasePanel):
         )
 
         self._detail = tk.Text(
-            parent, height=5, wrap=tk.WORD, font=("微软雅黑", 9), bg=C["bg_medium"], fg=C["text_primary"]
+            parent, height=5, wrap=tk.WORD, font=UIStyle.font("label"), bg=C["bg_medium"], fg=C["text_primary"]
         )
         self._detail.pack(fill=tk.X, pady=(4, 0))
         self._detail.configure(state=tk.DISABLED)
@@ -531,6 +531,8 @@ class TimelinePanel(BasePanel):
             logger.error(f"[timeline_panel] 写入抽取结果失败: {type(e).__name__}: {e}")
             self._finish_extract(0, chapter, f"写入失败：{type(e).__name__}: {e}")
             return
+        # 本面板刚通过 MemoryManager 写了事件源：显式失效，不依赖指纹察觉"等长重写"
+        self._store().invalidate()
         self._finish_extract(len(events), chapter, "")
 
     def _finish_extract(self, count: int, chapter: int, error: str) -> None:

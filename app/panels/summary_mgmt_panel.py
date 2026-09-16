@@ -21,6 +21,19 @@ class SummaryMgmtPanelMixin:
             tk.Label(f, text="请先新建或打开小说", font=("", 10), bg=C["bg_dark"], fg=C["text_muted"]).pack(pady=20)
             return
 
+        # ⚠️ 同时判 `memory`：与 `memory_viz_panel` 同一个坑 ——
+        # `current_novel_dir` 已设但 `memory` 还没建时，下面 `self.memory.get_global_summary()`
+        # 会抛 AttributeError（此前靠宿主兜住，面板自身该给提示）。
+        if self.memory is None:
+            tk.Label(
+                f,
+                text="摘要系统尚未就绪（作品已设置但记忆管理器未初始化）",
+                font=UIStyle.font("system"),
+                bg=C["bg_dark"],
+                fg=C["text_muted"],
+            ).pack(pady=20)
+            return
+
         # 全局摘要
         tk.Label(f, text="全局摘要:", font=("", 10, "bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
             anchor=tk.W, pady=(5, 2)

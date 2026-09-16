@@ -102,7 +102,7 @@ class PanelHost:
             tk.Label(
                 row,
                 text=category,
-                font=("微软雅黑", 9, "bold"),
+                font=UIStyle.font("label_bold"),
                 bg=C["bg_dark"],
                 fg=C["accent_light"],
                 width=7,
@@ -114,7 +114,7 @@ class PanelHost:
                     text=spec.title,
                     variable=self.select_var,
                     value=spec.key,
-                    font=("微软雅黑", 9),
+                    font=UIStyle.font("label"),
                     bg=C["bg_dark"],
                     fg=C["text_secondary"],
                     selectcolor=C["accent"],

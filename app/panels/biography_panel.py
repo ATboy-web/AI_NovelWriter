@@ -103,7 +103,7 @@ class BiographyPanel(BasePanel):
         left.pack_propagate(False)
 
         self._keyword_var = tk.StringVar()
-        entry = tk.Entry(left, textvariable=self._keyword_var, font=("微软雅黑", 9))
+        entry = tk.Entry(left, textvariable=self._keyword_var, font=UIStyle.font("label"))
         entry.pack(fill=tk.X, pady=(2, 2))
         entry.bind("<KeyRelease>", lambda _e: self._refresh_character_list())
 
@@ -138,7 +138,7 @@ class BiographyPanel(BasePanel):
             bg=C["bg_dark"],
             fg=C["text_secondary"],
             selectcolor=C["bg_medium"],
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             command=self._refresh_character_list,
         ).pack(anchor=tk.W)
 
@@ -156,7 +156,7 @@ class BiographyPanel(BasePanel):
         self._title_label = tk.Label(
             right,
             text="请选择左侧角色",
-            font=("微软雅黑", 11, "bold"),
+            font=UIStyle.font("subtitle_bold"),
             bg=C["bg_dark"],
             fg=C["text_primary"],
             anchor=tk.W,
@@ -166,7 +166,7 @@ class BiographyPanel(BasePanel):
         self._material_label = tk.Label(
             right,
             text="",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["bg_dark"],
             fg=C["text_muted"],
             anchor=tk.W,
@@ -178,7 +178,9 @@ class BiographyPanel(BasePanel):
         bar = tk.Frame(right, bg=C["bg_dark"])
         bar.pack(fill=tk.X)
         self._words_var = tk.StringVar(value="1500")
-        tk.Label(bar, text="目标字数", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_secondary"]).pack(side=tk.LEFT)
+        tk.Label(bar, text="目标字数", font=UIStyle.font("label"), bg=C["bg_dark"], fg=C["text_secondary"]).pack(
+            side=tk.LEFT
+        )
         tk.Spinbox(bar, from_=300, to=5000, increment=100, width=7, textvariable=self._words_var).pack(
             side=tk.LEFT, padx=(2, 8)
         )
@@ -189,7 +191,7 @@ class BiographyPanel(BasePanel):
             ("转为手工故事线", self._on_push_to_story_arcs),
         ):
             tk.Button(
-                bar, text=text, font=("微软雅黑", 9), bg=C["bg_medium"], fg=C["text_primary"], command=command
+                bar, text=text, font=UIStyle.font("label"), bg=C["bg_medium"], fg=C["text_primary"], command=command
             ).pack(side=tk.LEFT, padx=2)
 
         text_frame = tk.Frame(right, bg=C["bg_dark"])
@@ -197,7 +199,7 @@ class BiographyPanel(BasePanel):
         self._text = tk.Text(
             text_frame,
             wrap=tk.WORD,
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             undo=True,
             bg=C["bg_medium"],
             fg=C["text_primary"],

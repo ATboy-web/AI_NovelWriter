@@ -709,8 +709,13 @@ class TestPanelColorTokensExist:
         里从未定义过），在 v2 里异常被 Tk 回调吞掉，表现为"点了没反应、面板半截"。
         这里扫全部 `app/` 源码，把这类笔误挡在提交前。
         """
-        assignment = re.compile(r"\bC\s*=\s*UIStyle\.COLORS")
-        usage = re.compile(r"\bC\[['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]\]")
+        # ⚠️ 覆盖面（2026-09-16 加固）：原判据只认字面 `C = UIStyle.COLORS`，
+        # 于是任何**间接取色**的写法都会逃过检查（例如 `C = _colors()`、
+        # 或直接写 `UIStyle.COLORS["x"]`）。现改为"文件里出现过 `UIStyle.COLORS` 即检查"，
+        # 并同时扫 `C['x']` 与 `UIStyle.COLORS['x']` 两种写法。
+        mentions_colors = re.compile(r"UIStyle\.COLORS")
+        usage_c = re.compile(r"\bC\[['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]\]")
+        usage_direct = re.compile(r"UIStyle\.COLORS\[['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]\]")
         colors = set(UIStyle.COLORS)
 
         checked_files = 0
@@ -718,12 +723,16 @@ class TestPanelColorTokensExist:
         for path in REPO_ROOT.glob("app/**/*.py"):
             rel = path.relative_to(REPO_ROOT).as_posix()
             code = _scan.code_only(rel)
-            if not assignment.search(code):
+            if not mentions_colors.search(code):
                 continue
             checked_files += 1
-            for key in usage.findall(code):
+            for key in usage_c.findall(code):
                 if key not in colors:
                     bad.append(f"{rel}: C[{key!r}]")
+            for key in usage_direct.findall(code):
+                if key not in colors:
+                    bad.append(f"{rel}: UIStyle.COLORS[{key!r}]")
 
-        assert checked_files >= 10, f"只扫到 {checked_files} 个使用 COLORS 的文件，扫描可能已失效"
+        # 下限跟着覆盖面一起提高（原为 10）：间接取色的文件现在也计入
+        assert checked_files >= 20, f"只扫到 {checked_files} 个使用 COLORS 的文件，扫描可能已失效"
         assert bad == [], f"这些颜色键在 UIStyle.COLORS 里不存在：{bad}"

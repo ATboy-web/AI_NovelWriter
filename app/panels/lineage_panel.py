@@ -180,7 +180,7 @@ class LineagePanel(BasePanel):
         self._summary_label = tk.Label(
             parent,
             text="",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_dark"],
             fg=C["text_secondary"],
             anchor=tk.W,
@@ -192,7 +192,7 @@ class LineagePanel(BasePanel):
         tk.Label(
             parent,
             text="代际链（双击切到该代）",
-            font=("微软雅黑", 9, "bold"),
+            font=UIStyle.font("label_bold"),
             bg=C["bg_dark"],
             fg=C["text_primary"],
             anchor=tk.W,
@@ -207,21 +207,23 @@ class LineagePanel(BasePanel):
         self._tree.bind("<Double-1>", self._on_switch_generation)
 
         # ---- 继承设置
-        settings = tk.LabelFrame(parent, text="继承设置", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_primary"])
+        settings = tk.LabelFrame(
+            parent, text="继承设置", font=UIStyle.font("label"), bg=C["bg_dark"], fg=C["text_primary"]
+        )
         settings.pack(fill=tk.X, pady=(6, 2))
 
         picker = tk.Frame(settings, bg=C["bg_dark"])
         picker.pack(fill=tk.X, pady=2)
-        tk.Label(picker, text="父代作品", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_secondary"]).pack(
+        tk.Label(picker, text="父代作品", font=UIStyle.font("label"), bg=C["bg_dark"], fg=C["text_secondary"]).pack(
             side=tk.LEFT
         )
         self._parent_var = tk.StringVar(value="")
         self._parent_box = ttk.Combobox(picker, textvariable=self._parent_var, state="readonly", width=36)
         self._parent_box.pack(side=tk.LEFT, padx=4)
         self._parent_box.bind("<<ComboboxSelected>>", lambda _e: self._refresh_plan())
-        tk.Label(picker, text="时间跳跃（年）", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_secondary"]).pack(
-            side=tk.LEFT, padx=(10, 0)
-        )
+        tk.Label(
+            picker, text="时间跳跃（年）", font=UIStyle.font("label"), bg=C["bg_dark"], fg=C["text_secondary"]
+        ).pack(side=tk.LEFT, padx=(10, 0))
         self._gap_var = tk.StringVar(value="0")
         tk.Spinbox(picker, from_=0, to=500, increment=1, width=6, textvariable=self._gap_var).pack(side=tk.LEFT, padx=4)
 
@@ -237,7 +239,7 @@ class LineagePanel(BasePanel):
                 bg=C["bg_dark"],
                 fg=C["text_secondary"],
                 selectcolor=C["bg_medium"],
-                font=("微软雅黑", 8),
+                font=UIStyle.font("caption"),
                 command=self._refresh_plan,
             ).pack(side=tk.LEFT, padx=(0, 8))
 
@@ -255,11 +257,11 @@ class LineagePanel(BasePanel):
             ("刷新", self.reload),
         ):
             tk.Button(
-                bar, text=text, font=("微软雅黑", 9), bg=C["bg_medium"], fg=C["text_primary"], command=command
+                bar, text=text, font=UIStyle.font("label"), bg=C["bg_medium"], fg=C["text_primary"], command=command
             ).pack(side=tk.LEFT, padx=2)
 
         self._detail = tk.Text(
-            parent, height=6, wrap=tk.WORD, font=("微软雅黑", 9), bg=C["bg_medium"], fg=C["text_primary"]
+            parent, height=6, wrap=tk.WORD, font=UIStyle.font("label"), bg=C["bg_medium"], fg=C["text_primary"]
         )
         self._detail.pack(fill=tk.X, pady=(4, 0))
         self._detail.configure(state=tk.DISABLED)

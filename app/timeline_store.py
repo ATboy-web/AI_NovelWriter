@@ -210,6 +210,14 @@ class TimelineStore:
     - 命中时**零解析成本**（只做 11 次 `stat`，而不是 11 次读盘 + JSON 解析 + 排序）；
     - **别人写了也能立刻看见**：任何外部进程改动文件都会改变指纹，下次读取自动重算。
       因此不需要调用方记得"写完了要清缓存"。
+
+    ⚠️ **已知边界（实测踩到）**：若有人以**完全相同的字节长度**在**同一文件系统时间粒度内**
+    重写文件，`(大小, mtime_ns)` 可能都不变，缓存不会察觉。本机实测（2026-09-16）
+    同长度重写确实会漏（见 `test_same_size_rewrite_is_a_documented_limitation`）。
+    典型场景不受影响：事件是**追加**写（大小必然变化）。
+    两条补救：
+    1. 本模块自己的写操作（`sync` / `annotate`）成功后**主动 `invalidate()`**；
+    2. 调用方若明确知道"我刚写了同一个文件"，调 `invalidate()` 即可。
     """
 
     def __init__(self, novel_dir: Any = None, events: Any = None) -> None:
@@ -525,6 +533,8 @@ class TimelineStore:
             return result
 
         result.written = True
+        # 本进程刚写过：主动失效，避免"同长度重写"这类指纹察觉不到的情况（见类文档）
+        self.invalidate()
         self._publish()
         return result
 
@@ -562,6 +572,9 @@ class TimelineStore:
             logger.error(f"[timeline_store] 标注事件失败: {type(e).__name__}: {e}")
             return False
         if ok:
+            # 事件源被改了（`annotate_event` 走的是 MemoryManager 的写路径）——
+            # 主动失效，别依赖指纹能察觉"等长重写"（见类文档）
+            self.invalidate()
             self._publish({"novel_dir": str(self.novel_dir), "chapter": int(chapter), "event": str(event)})
         return ok
 

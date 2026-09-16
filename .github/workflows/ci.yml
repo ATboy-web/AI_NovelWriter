@@ -173,7 +173,14 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install build deps
-        run: pip install pyinstaller loguru
+        # ⚠️ 此前只装 `pyinstaller loguru` 就构建 —— 打出的 EXE **缺少运行时依赖**
+        # （httpx / Pillow / cryptography / python-docx / pypdf / ebooklib / markdown / bs4 …）。
+        # 由于 `app/__init__.py` 对导入失败采用 `_ImportStub` 降级而非崩溃，
+        # 这种残缺包不会报错，只会让对应功能静默失效（导出、加密配置、图片处理等）。
+        # 故必须按 pyproject 安装完整依赖后再打包。
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" pyinstaller
 
       - name: Build EXE
         run: |

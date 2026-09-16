@@ -200,7 +200,8 @@
   （`novel_app.spec` 的 `hiddenimports` 已在 P4a/P4b 补齐，无需再改。）
 - **验收（缺一不可）**：
   - onefile 呈**双进程**结构（引导器 ~10MB + 真实应用 ~60MB）；
-  - `MainWindowTitle` 非空（应为 `AI小说创作工坊 v2.16.0`）；
+  - `MainWindowTitle` 非空，且应为 `AI小说创作工坊 v<当前版本>`（版本以 `pyproject.toml` 为准，
+    v3.0.0 起**不再在此处写死版本号** —— 由 `tests/test_version_consistency.py` 守护一致性）；
   - **创作工具页能看到 15 个面板**（12 迁移 + 世界线与世代 3 个）；
   - 跑一次生成后 `usage.jsonl` 有该章记录。
 - **风险**：onefile 首次启动解包较慢（35MB 解包）；若杀软拦截，改用 onedir 版本。

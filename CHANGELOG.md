@@ -1,5 +1,102 @@
 # 更新日志
 
+> 版本号单一权威源为 `pyproject.toml`，`app.__version__` 与 README 均与之一致
+> （由 `tests/test_version_consistency.py` 守护）。
+
+## v3.0.0 (2026-09-17)
+
+**本次发布的定位**：v3「面板化 · 多 API · 去重」主线的首个正式版本。
+条目范围**仅覆盖 v3 主线新增内容**——巨石拆分、安全修复、CI 合并等已在 v2.16.0 条目内记录，
+此处不重复（那些提交虽在 `v2.16.0..v3.0.0` 区间内，但 `v2.16.0` 标签创建于 2026-07-03，
+条目后来补记了 9 月的工作）。
+
+### 新增
+
+**面板框架与事件总线（P4a / P4b）**
+- 新增 `app/panels/`：`base`（面板契约）· `registry`（注册表）· `legacy`（v2 面板迁移适配器）·
+  `host`（容器与生命周期）· `ui_kit`（统一视觉组件库）。
+- 新增 `app/events/`：线程感知事件总线（9 个主题 + 通配订阅），事件**只在写盘成功后**广播。
+- 12 个 v2 功能面板一次性迁移到新框架，**且新增面板从"改 12 处"缩减为"注册表加 1 行"**：
+  `toolkit_ui` 的 12 路 `elif` 与 `shell_ui` 的 12 个单选钮已删除，改由注册表渲染。
+- 新增三个一等面板：
+  - **世界线与时间线**：章节轴 / 世界线·分支 / 人物轨迹 / 跨代编年史四视图；
+  - **角色传记**：结构化传记（分段 / 故事线 / 来源 / 模型 / token 归因）+ 导出；
+  - **世代传承**：代际树、继承计划、未解伏笔继承报告。
+
+**多 API 底座（P2 / P3）**
+- 新增 `app/providers/`：Provider 注册表 + 适配器（`openai_compat` / `anthropic` / `ollama`）+
+  `pricing`（分档价目表）· `balance`（余额查询）· `reasoning`（推理模型适配）。
+- 新增 `app/usage_tracker.py` · `app/token_estimator.py` · `app/async_runner.py` · `app/usage_ui.py`：
+  token 归因与持久化、成本估算（汉字 ×1.6 + 非汉字 ÷4，带 `estimated` 标记）、用量面板。
+- 新增多套 API Profile 配置（`app/ai_settings_ui.py`），支持按 provider 独立保存密钥与地址。
+
+**数据与存储**
+- 新增 `app/timeline_store.py`：时间线**统一存储**，读取按文件指纹缓存、`os.scandir` 枚举、
+  `snapshot()` 一次取数返回四视图。实测（1094 章 / 300 角色）：刷新 48 → **14** 次读盘、68 → **22.6** ms。
+- 新增 `app/lineage.py`：世代传承与**子代只读父代**护栏（`guard_child_path` 为唯一强制点）。
+- 新增 `app/novel_store.py` · `app/storage.py` · `app/biography.py` · `app/character_system.py` ·
+  `app/live_data.py` · `app/format_converter.py` · `app/dialogs.py`。
+
+**分支子项目**
+- `timelines/branch_%03d/` 此前"只写不读"：现在分支进**代际树**、可**双击作为作品打开**，
+  并补齐 `meta.json` 的 `title` / `lineage`。分支与父代**属同一代**（另一条世界线），
+  但 `child_scope=readonly_parent` 依然成立——写入分支内部允许、**逃逸到父代被拒**。
+
+### 变更
+
+**面板 UI/UX 系统化改造**
+- 调色板：`text_muted` 对比度 2.68:1 → **4.54:1**；新增 `accent_text / success_text / info_text /
+  error_text / warning_text` 文字变体（基色保留为填充色，避免白字按钮失效）。
+- 宿主统一外壳：每个面板自动获得**面包屑 + 刷新按钮 + 状态栏 + F5 / Ctrl+F / Esc**。
+- 表格统一 `Panel.Treeview`：28px 行高、斑马纹、表头点击排序、Enter 等效双击。
+- 迁移面板统一 `polish_legacy` 换肤（只改外观、不动布局，有测试守 `pack_info` 不变）。
+- 实测：最差文字对比度 2.68 → **4.51**；对比度违规 15/15 面板 → **0**；统一外壳 0 → **15/15**；
+  表格统一样式 0/7 → **7/7**；F5 绑定 0 → **15/15**。
+
+**样式与工程治理**
+- 新增字体角色令牌 `UIStyle.FONT_ROLES` 与**棘轮测试**（`test_font_token_ratchet.py`），
+  把 385 处硬编码字体的迁移从"大爆炸"改为"只减不增"。
+- 全仓一次性 `ruff format`（151 文件达标），并把格式检查转为 CI **阻断项**。
+- 新增数据护栏基线（`test_data_safety_baseline.py`）与面板 UI 质量门禁
+  （`test_panel_ui_quality.py`，35 条）。
+
+### 修复
+
+- **面板重复渲染**：`refresh()` 重建外壳前未销毁旧子控件，导致打开/切换小说或按 F5 时
+  面包屑与内容叠成两份 → 现先 `destroy` 再重建（顺带自愈半成品外壳）。
+- **KPI 卡片永远显示占位符**：数值 Label 靠 `cget("font")` 比对定位，而它返回 Tcl 字体名，
+  与元组永不相等 → 改为由 `kpi_row` 直接交出数值 Label。
+- **迁移面板切走再切回"掉皮"**：v2 的 `on_show()` 会重建内容而润色只跑一次 →
+  现于 `on_show` 后为迁移面板重跑 `polish_legacy`。
+- **大片米色控件**：`tk.Listbox` / `tk.Scrollbar` 未配色、v2 的 ttk 控件未指定 style
+  （退回 clam 默认浅色）→ 统一映射到深色风格；Combobox 弹出列表经 option 数据库着色。
+- **面板模块导入失败静默**：windowed EXE 无控制台，失败此前完全不可见 →
+  记入 `registry.LOAD_FAILURES` 并写入磁盘诊断日志，可事后核对。
+- 修复 `ttk.Combobox` 被 `tk.Entry` 分支截胡（继承链 `Combobox → ttk.Entry → tk.Entry`）导致换肤不生效。
+- 修复 `websearch_panel` / `story_flow_panel` 读取不存在的颜色键 `C['input_bg']`（点了没反应）。
+
+### 安全
+
+- 面板注册诊断**不得**从分发层读取原生面板清单（既有守卫拦截），失败清单由注册表自己维护。
+- 角色数据三道防线：损坏拒绝覆盖（`force=True` 也先留档）、禁止空集覆盖、锁内读-改-写。
+- 传记面板**无任何删除角色入口**（源码级测试守护）；`apply_age_progression` / `apply_death_status`
+  绝不删除角色（死亡转 `status=deceased`）。
+
+### 已知限制
+
+- **P5 样式收敛未清零**：`app/` 下仍有 385 处硬编码字体元组待角色化替换（棘轮已就位，可增量推进）；
+  `dialogs.py` 抽取与面板"独立窗口"尚未落地。
+- `chapter_analysis` 面板在离屏自动化环境中构建失败，需在真实应用内验证。
+- Android 版沿用 v4.0.1 构建，本次未重新打包。
+
+### 工程
+
+- 测试规模：**2250 收集**；本次发布前回归 456（面板/UI）+ 162（基础/约束）全绿，
+  `ruff check` 全绿、`ruff format` 全部达标。
+- 新增 `tests/test_version_consistency.py`：断言 `pyproject.toml` / `app.__version__` /
+  `_FALLBACK_VERSION` / README 版本信息相互一致。
+- 文档：README 重写为单一权威中文主文档，新增英文 `README_EN.md`，`docs/README.md` 索引更新。
+
 ## v2.16.0 (2026-07-03 首发；发布附件于 2026-09-15 重建)
 
 ### 架构重构

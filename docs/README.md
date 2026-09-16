@@ -1,7 +1,10 @@
 # 文档索引
 
-本目录集中存放项目文档。根目录仅保留 `README.md`、`README_CN.md`、`CHANGELOG.md`、
-`CONTRIBUTING.md`、`QUICKSTART.md`、`USAGE.md`。
+本目录集中存放项目文档。根目录仅保留 `README.md`（中文主文档）、`README_EN.md`（英文）、
+`CHANGELOG.md`、`CONTRIBUTING.md`、`QUICKSTART.md`、`USAGE.md`、`LICENSE`。
+
+> 版本号权威源为 `pyproject.toml`；`app.__version__`、README 与 CHANGELOG 的一致性由
+> `tests/test_version_consistency.py` 守护。
 
 ## 使用与上手
 | 文档 | 说明 |
@@ -9,6 +12,8 @@
 | [../QUICKSTART.md](../QUICKSTART.md) | 快速开始 |
 | [../USAGE.md](../USAGE.md) | 使用说明 |
 | [API.md](API.md) | 后端 API 文档 |
+| [UI_DESIGN.md](UI_DESIGN.md) | UI 设计 |
+| [ui_review/](ui_review/) | 界面改造前后对照截图（同窗口尺寸，含改造前后各 4 张） |
 | [development-roadmap.md](development-roadmap.md) | 开发路线图 |
 
 ## 项目治理
@@ -43,8 +48,8 @@
 |------|------|
 | [ARCHITECTURE_BOUNDARY.md](ARCHITECTURE_BOUNDARY.md) | 桌面端/后端架构边界约定（P2-2） |
 | [UI_DESIGN.md](UI_DESIGN.md) | UI 设计 |
-| [ROADMAP_V3_PANELS_AND_PROVIDERS.md](ROADMAP_V3_PANELS_AND_PROVIDERS.md) | v3 改造方案与实施进度：面板化框架与联动 · 多 API 适配与用量统计 · 模块整合去重（**P0–P4b 已完成**，P5 待做） |
-| [NEXT_STEPS.md](NEXT_STEPS.md) | 下一步行动计划：优先级的建议 / 目标 / 风险 / 执行顺序（P4 之后） |
+| [ROADMAP_V3_PANELS_AND_PROVIDERS.md](ROADMAP_V3_PANELS_AND_PROVIDERS.md) | v3 改造方案与实施进度：面板化框架与联动 · 多 API 适配与用量统计 · 模块整合去重（**P0–P4b 已随 v3.0.0 发布**，P5 样式收敛待做） |
+| [NEXT_STEPS.md](NEXT_STEPS.md) | 下一步行动计划：优先级的建议 / 目标 / 风险 / 执行顺序（含 S1–S7 执行情况与两轮面板 UI 改造记录） |
 
 ## 归档（对应功能模块已移除）
 | 文档 | 说明 |

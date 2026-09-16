@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk
 from typing import Any, Iterable, Mapping
 
@@ -323,6 +324,8 @@ class BiographyPanel(BasePanel):
         C = UIStyle.COLORS
         self._all_characters: dict[str, dict] = {}
         self._current_name = ""
+        #: 复用的时间线 store（`_materials` 每次选角都要用，缓存挂在实例上）
+        self._timeline_store: TimelineStore | None = None
 
         body = tk.Frame(parent, bg=C["bg_dark"])
         body.pack(fill=tk.BOTH, expand=True)
@@ -563,16 +566,30 @@ class BiographyPanel(BasePanel):
             self._text.insert("1.0", "（该角色尚无传记；可点「AI 生成传记」）")
 
     def _materials(self, name: str) -> tuple[list[int], list[Any]]:
-        """该角色的素材：出场章 + 相关事件。全部来自既有数据，不发起 AI 调用。"""
-        novel_dir = self._novel_dir()
-        if not novel_dir:
+        """该角色的素材：出场章 + 相关事件。全部来自既有数据，不发起 AI 调用。
+
+        **必须复用同一个 store**：`character_tracks()` 与 `read_memory_events()` 都要
+        遍历整个事件源，而本方法每选中一个角色就会被调一次 ——
+        实测不复用时"浏览 300 个角色"= 6900 次磁盘读取。
+        """
+        store = self._timeline()
+        if store is None:
             return [], []
-        store = TimelineStore(novel_dir, events=getattr(self, "events", None))
-        tracks = store.character_tracks()
-        entry = tracks.get(name) or {}
+        entry = store.character_tracks().get(name) or {}
         chapters = [int(c) for c in (entry.get("appearances") or [])]
         events = [e for e in store.read_memory_events() if name in e.characters]
         return sorted(set(chapters)), events
+
+    def _timeline(self) -> TimelineStore | None:
+        """本面板复用的 `TimelineStore`（读取缓存挂在实例上，换书即重建）。"""
+        novel_dir = self._novel_dir()
+        if not novel_dir:
+            return None
+        store = self._timeline_store
+        if store is None or store.novel_dir != Path(novel_dir):
+            store = TimelineStore(novel_dir, events=getattr(self, "events", None))
+            self._timeline_store = store
+        return store
 
     def _biography_paths(self, name: str) -> tuple[Any, Any]:
         novel_dir = self._novel_dir()

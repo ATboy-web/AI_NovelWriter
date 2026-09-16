@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk
 from typing import Any
 
@@ -178,6 +179,9 @@ class TimelinePanel(BasePanel):
         C = UIStyle.COLORS
         self._tree: dict[str, ttk.Treeview] = {}
         self._rows: dict[str, dict[str, dict]] = {"axis": {}, "lineage": {}}
+        #: 复用的 store（读取缓存挂在它身上）与各视图的行集指纹（避免无谓重建）
+        self._timeline_store: TimelineStore | None = None
+        self._seen_signatures: dict[str, tuple] = {}
 
         header = tk.Frame(parent, bg=C["bg_dark"])
         header.pack(fill=tk.X, pady=(2, 4))
@@ -271,34 +275,50 @@ class TimelinePanel(BasePanel):
     # ------------------------------------------------------------------ 数据
 
     def _store(self) -> TimelineStore:
-        return TimelineStore(getattr(self, "current_novel_dir", None), events=getattr(self, "events", None))
+        """本面板自己的 store（**跨刷新复用**，让读取缓存生效）。
+
+        为什么不每次 new 一个：面板在同一部小说上会被反复刷新，而 store 的读取缓存
+        以文件指纹为准，复用实例才能把"一次刷新 = 一次读盘"落到实处。
+        换书时 `novel_dir` 变了 → 重建实例（缓存自然不跨书串味）。
+        """
+        novel_dir = getattr(self, "current_novel_dir", None)
+        store = self._timeline_store
+        if store is None or store.novel_dir != (Path(novel_dir) if novel_dir else None):
+            store = TimelineStore(novel_dir, events=getattr(self, "events", None))
+            self._timeline_store = store
+        return store
 
     def reload(self) -> None:
-        """重新填充四个视图与摘要行。数据为空时给出**可执行的提示**而不是一片空白。"""
+        """重新填充四个视图与摘要行。数据为空时给出**可执行的提示**而不是一片空白。
+
+        **一次取数、四视图渲染**：只向 store 要一份 `snapshot()`，
+        不再"每个视图各问一次" —— 后者实测会把同一批分页文件重复读 4 遍。
+        """
         if not getattr(self, "current_novel_dir", None):
             self._set_stats("尚未打开小说：请先新建或打开一部作品。")
             for tree in self._tree.values():
                 self._clear(tree)
             self._rows = {"axis": {}, "lineage": {}}
+            self._seen_signatures.clear()
             return
 
-        store = self._store()
         try:
-            axis = store.chapter_axis()
-            chronicle = store.lineage_chronicle()
-            self._rows["axis"] = {f"ch{int(r.get('chapter', 0) or 0)}": r for r in axis}
-            self._rows["lineage"] = {
-                f"lg{int(r.get('generation', 1) or 1)}-{int(r.get('chapter', 0) or 0)}-{i}": r
-                for i, r in enumerate(chronicle)
-            }
-            self._fill(self._tree["axis"], chapter_axis_rows(axis))
-            self._fill(self._tree["branches"], branch_rows(store.branch_tree()))
-            self._fill(self._tree["tracks"], track_rows(store.character_tracks()))
-            self._fill(self._tree["lineage"], chronicle_rows(chronicle))
-            self._set_stats(stats_text(store.stats()))
+            snapshot = self._store().snapshot()
         except Exception as e:  # noqa: BLE001 - 面板刷新失败不该让整个 UI 崩
             logger.error(f"[timeline_panel] 刷新失败: {type(e).__name__}: {e}")
             self._set_stats(f"刷新失败：{type(e).__name__}: {e}")
+            return
+
+        self._rows["axis"] = {f"ch{int(r.get('chapter', 0) or 0)}": r for r in snapshot.axis}
+        self._rows["lineage"] = {
+            f"lg{int(r.get('generation', 1) or 1)}-{int(r.get('chapter', 0) or 0)}-{i}": r
+            for i, r in enumerate(snapshot.chronicle)
+        }
+        self._fill(self._tree["axis"], chapter_axis_rows(snapshot.axis))
+        self._fill(self._tree["branches"], branch_rows(snapshot.branches))
+        self._fill(self._tree["tracks"], track_rows(snapshot.tracks))
+        self._fill(self._tree["lineage"], chronicle_rows(snapshot.chronicle))
+        self._set_stats(stats_text(snapshot.stats))
 
     @staticmethod
     def _clear(tree: ttk.Treeview) -> None:
@@ -306,6 +326,16 @@ class TimelinePanel(BasePanel):
             tree.delete(item)
 
     def _fill(self, tree: ttk.Treeview, rows: list[tuple[str, tuple]]) -> None:
+        """填充一个视图；**行集未变就整体跳过**（避免成百上千次 Treeview 插入）。
+
+        这是必要的：1094 章的章节轴有 1094 行，而 `chapter.saved` 每存一次章
+        都会触发一次刷新 —— 每次都重建 1094 行会让面板明显掉帧。
+        """
+        signature = tuple(rows)
+        view = str(tree)
+        if self._seen_signatures.get(view) == signature:
+            return
+        self._seen_signatures[view] = signature
         self._clear(tree)
         if not rows:
             tree.insert("", tk.END, iid="__empty__", values=(_empty_hint(tree),))

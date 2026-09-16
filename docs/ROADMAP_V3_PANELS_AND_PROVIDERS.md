@@ -374,6 +374,10 @@ meta 记 `is_sequel / original_novel / original_title`（`:758-771`）；另有 
 **验证**：`tests/test_timeline_store.py`（60）+ `tests/test_lineage.py`（63）+ `tests/test_p4b_panels.py`（55），
 含「继承前后父代目录**逐字节快照不变**」与「传记面板**无删除角色入口**」两条硬断言。
 
+> 后续优化见 [`OPTIMIZATION_P4.md`](OPTIMIZATION_P4.md)：面板刷新磁盘读取 48→14 次、耗时 68→22.6 ms，
+> 每选一个角色 23→0 次读取（一次取数 + 指纹缓存 + `os.scandir`）。
+> 复核发现与既有缺陷见 [`CODE_REVIEW_P4.md`](CODE_REVIEW_P4.md)。
+
 ---
 
 ## 3. 支柱三：多 API 适配 · 配置完善 · 余额查询 · Token 统计

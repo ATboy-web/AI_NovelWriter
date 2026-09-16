@@ -34,6 +34,8 @@
 | [OPTIMIZATION_REVIEW.md](OPTIMIZATION_REVIEW.md) | 优化审阅报告 |
 | [OPTIMIZATION_ROUND2.md](OPTIMIZATION_ROUND2.md) | 第二轮优化：健壮性/结构/可维护性（含角色数据保护） |
 | [CODE_REVIEW_ROUND3.md](CODE_REVIEW_ROUND3.md) | 第三轮代码复查：安全漏洞 / 逻辑缺陷 / 边界问题（含实测核验） |
+| [CODE_REVIEW_P4.md](CODE_REVIEW_P4.md) | P4（面板框架与联动）代码与功能复核：8 项修复 + 7 项既有缺陷与建议 |
+| [OPTIMIZATION_P4.md](OPTIMIZATION_P4.md) | P4 面板层优化：读取缓存 / 目录扫描 / 一次取数（含前后实测对照） |
 | [DAY_SUMMARY_20260630.md](DAY_SUMMARY_20260630.md) | 阶段小结 |
 
 ## 设计
@@ -41,7 +43,7 @@
 |------|------|
 | [ARCHITECTURE_BOUNDARY.md](ARCHITECTURE_BOUNDARY.md) | 桌面端/后端架构边界约定（P2-2） |
 | [UI_DESIGN.md](UI_DESIGN.md) | UI 设计 |
-| [ROADMAP_V3_PANELS_AND_PROVIDERS.md](ROADMAP_V3_PANELS_AND_PROVIDERS.md) | v3 改造方案：面板化框架与联动 · 多 API 适配与用量统计 · 模块整合去重（**方案，尚未实施**） |
+| [ROADMAP_V3_PANELS_AND_PROVIDERS.md](ROADMAP_V3_PANELS_AND_PROVIDERS.md) | v3 改造方案与实施进度：面板化框架与联动 · 多 API 适配与用量统计 · 模块整合去重（**P0–P4b 已完成**，P5 待做） |
 
 ## 归档（对应功能模块已移除）
 | 文档 | 说明 |

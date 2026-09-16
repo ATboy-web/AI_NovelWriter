@@ -553,3 +553,249 @@ class TestParseExtractionResult:
         assert event["location"] == ""
         assert event["story_time"] == ""
         assert event["arc"] == ""
+
+
+# ============================================================ 目录扫描边界
+
+
+class TestDirectoryScan:
+    """`_scan_dir` 同时给出指纹与文件列表，边界必须与旧实现一致。"""
+
+    def test_page_files_only_timeline_json(self, tmp_path):
+        write_page(tmp_path, 0, [])
+        timeline_dir = tmp_path / "memory" / "timeline"
+        (timeline_dir / "notes.txt").write_text("x", encoding="utf-8")
+        (timeline_dir / "other.json").write_text("[]", encoding="utf-8")
+        (timeline_dir / "timeline_sub").mkdir()
+
+        assert [p.name for p in TimelineStore(tmp_path).page_files()] == ["timeline_000.json"]
+
+    def test_page_files_missing_dir_is_empty(self, tmp_path):
+        assert TimelineStore(tmp_path).page_files() == []
+        assert TimelineStore(None).page_files() == []
+
+    def test_world_line_files_excludes_branch_subdirectories(self, tmp_path):
+        write_world_line(tmp_path, "main.json")
+        branch = tmp_path / "timelines" / "branch_000"
+        branch.mkdir(parents=True)
+        (branch / "meta.json").write_text("{}", encoding="utf-8")
+
+        assert [p.name for p in TimelineStore(tmp_path).world_line_files()] == ["main.json"]
+
+    def test_signature_reflects_content_change(self, tmp_path):
+        """指纹必须对内容变化敏感：否则缓存会返回过期数据。"""
+        page = write_page(tmp_path, 0, [{"chapter": 1, "event": "旧"}])
+        store = TimelineStore(tmp_path)
+        store.read_memory_events()
+
+        page.write_text(json.dumps([{"chapter": 1, "event": "新"}], ensure_ascii=False), encoding="utf-8")
+
+        assert [e.event for e in store.read_memory_events()] == ["新"]
+
+    def test_signature_reflects_added_page(self, tmp_path):
+        write_page(tmp_path, 0, [{"chapter": 1, "event": "第一页"}])
+        store = TimelineStore(tmp_path)
+        assert len(store.read_memory_events()) == 1
+
+        write_page(tmp_path, 1, [{"chapter": 150, "event": "第二页"}])
+
+        assert [e.event for e in store.read_memory_events()] == ["第一页", "第二页"]
+
+    def test_signature_reflects_deleted_page(self, tmp_path):
+        write_page(tmp_path, 0, [{"chapter": 1, "event": "将被删"}])
+        write_page(tmp_path, 1, [{"chapter": 150, "event": "保留"}])
+        store = TimelineStore(tmp_path)
+        assert len(store.read_memory_events()) == 2
+
+        (tmp_path / "memory" / "timeline" / "timeline_000.json").unlink()
+
+        assert [e.event for e in store.read_memory_events()] == ["保留"]
+
+
+# ============================================================ 读取缓存
+
+
+class TestReadCache:
+    """缓存要同时满足两件相反的事：**省掉重复读**，且**别人写了立刻看见**。
+
+    优化前的实测（1094 章 / 11 分页）：一次面板刷新 48 次磁盘读取、
+    传记面板每选一个角色 23 次。以下测试把"省"这一半钉住；
+    "看见"这一半由"外部写入"用例保证 —— 那才是缓存最容易出错的地方。
+    """
+
+    @pytest.fixture
+    def reads(self, monkeypatch):
+        """记录 `read_json_with_backup` 的调用次数与路径。"""
+        import app.timeline_store as module
+
+        calls: list[str] = []
+        original = module.read_json_with_backup
+
+        def wrapper(path, default=None):
+            calls.append(str(path))
+            return original(path, default=default)
+
+        monkeypatch.setattr(module, "read_json_with_backup", wrapper)
+        return calls
+
+    def test_second_read_hits_cache(self, tmp_path, reads):
+        write_page(tmp_path, 0, [{"chapter": 1, "event": "x"}])
+        store = TimelineStore(tmp_path)
+
+        store.read_memory_events()
+        after_first = len(reads)
+        store.read_memory_events()
+        store.read_memory_events()
+
+        assert after_first >= 1
+        assert len(reads) == after_first, "缓存命中时不应再碰磁盘"
+
+    def test_range_filter_does_not_bypass_cache(self, tmp_path, reads):
+        write_page(tmp_path, 0, [{"chapter": n, "event": f"e{n}"} for n in (1, 2, 3)])
+        store = TimelineStore(tmp_path)
+
+        store.read_memory_events()
+        after_first = len(reads)
+        assert [e.chapter for e in store.read_memory_events(from_chapter=2, to_chapter=3)] == [2, 3]
+
+        assert len(reads) == after_first, "区间过滤应作用在缓存列表上"
+
+    def test_snapshot_reads_source_once(self, tmp_path, reads):
+        """一次快照 = 每个数据文件最多读一次（此前是四个视图各读一遍）。"""
+        write_page(tmp_path, 0, [{"chapter": 1, "event": "x", "characters": ["甲"]}])
+        (tmp_path / "timelines").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "timelines" / "main.json").write_text(
+            json.dumps({"name": "主线", "events": [], "chapters": [], "branches": []}), encoding="utf-8"
+        )
+        store = TimelineStore(tmp_path)
+
+        store.snapshot()
+
+        page_reads = [path for path in reads if "timeline_" in path]
+        assert len(page_reads) == len(set(page_reads)), f"同一分页被重复读取：{page_reads}"
+        assert len(page_reads) == 1
+
+    def test_repeated_snapshot_hits_cache(self, tmp_path, reads):
+        write_page(tmp_path, 0, [{"chapter": 1, "event": "x", "characters": ["甲"]}])
+        store = TimelineStore(tmp_path)
+
+        store.snapshot()
+        after_first = len(reads)
+        store.snapshot()
+
+        assert len(reads) == after_first
+
+    def test_external_write_is_picked_up(self, tmp_path):
+        """**缓存的正确性关键**：别人（别的进程/别的 MemoryManager）写了文件，必须看得见。"""
+        store = TimelineStore(tmp_path)
+        assert store.read_memory_events() == []
+
+        # 模拟外部写入：不走 store，直接写盘
+        write_page(tmp_path, 0, [{"chapter": 5, "event": "外部新增"}])
+
+        events = store.read_memory_events()
+        assert [e.event for e in events] == ["外部新增"]
+        assert store.stats()["events"] == 1
+
+    def test_external_write_to_activity_is_picked_up(self, tmp_path):
+        memory_dir = tmp_path / "memory"
+        memory_dir.mkdir(parents=True)
+        store = TimelineStore(tmp_path)
+        assert store.character_tracks() == {}
+
+        (memory_dir / "character_activity.json").write_text(
+            json.dumps({"甲": {"appearances": [1, 2], "last_seen": 2}}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        assert store.character_tracks()["甲"]["appearances"] == [1, 2]
+
+    def test_invalidate_forces_reread(self, tmp_path, reads):
+        write_page(tmp_path, 0, [{"chapter": 1, "event": "x"}])
+        store = TimelineStore(tmp_path)
+        store.read_memory_events()
+        after_first = len(reads)
+
+        store.invalidate()
+        store.read_memory_events()
+
+        assert len(reads) > after_first, "invalidate 之后必须重新读"
+
+    def test_cache_is_per_instance(self, tmp_path, reads):
+        """不同实例各自持有缓存（面板换书时靠"换实例"隔离）。"""
+        write_page(tmp_path, 0, [{"chapter": 1, "event": "x"}])
+        first = TimelineStore(tmp_path)
+        first.read_memory_events()
+        after_first = len(reads)
+
+        second = TimelineStore(tmp_path)
+        second.read_memory_events()
+
+        assert len(reads) > after_first
+
+    def test_snapshot_agrees_with_individual_views(self, tmp_path):
+        """快照是"一次取数"，必须与逐个视图取到的结果**完全一致**。"""
+        write_page(
+            tmp_path,
+            0,
+            [
+                {"chapter": 1, "event": "A", "characters": ["甲"], "location": "客栈"},
+                {"chapter": 2, "event": "B", "characters": ["甲", "乙"], "confidence": "low"},
+            ],
+        )
+        (tmp_path / "timelines").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "timelines" / "main.json").write_text(
+            json.dumps(
+                {
+                    "name": "主线",
+                    "events": [],
+                    "chapters": [],
+                    "branches": [{"chapter": 1, "decision": "去留", "chosen": "留下"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        store = TimelineStore(tmp_path)
+
+        snapshot = store.snapshot()
+
+        assert snapshot.axis == store.chapter_axis()
+        assert snapshot.branches == store.branch_tree()
+        assert snapshot.branch_dirs == store.branch_dirs()
+        assert snapshot.tracks == store.character_tracks()
+        assert snapshot.chronicle == store.lineage_chronicle()
+        assert snapshot.stats == store.stats()
+        assert [e.event for e in snapshot.events] == ["A", "B"]
+
+    def test_snapshot_of_empty_store(self, tmp_path):
+        snapshot = TimelineStore(tmp_path).snapshot()
+        assert snapshot.events == []
+        assert snapshot.stats["events"] == 0
+        # 未打开小说时也返回**全 0 的字典**（而不是空字典）：面板的摘要行据此显示 0 而不是缺键
+        empty = TimelineStore(None).snapshot()
+        assert empty.stats["events"] == 0
+        assert empty.stats["chapters"] == 0
+        assert empty.axis == [] and empty.tracks == {} and empty.chronicle == []
+
+    def test_parent_store_is_reused_and_readonly(self, tmp_path):
+        """跨代：父代 store 复用（否则每次刷新都重建），且父代目录只被读。"""
+        parent = tmp_path / "第一部"
+        child = tmp_path / "第二部"
+        parent.mkdir()
+        child.mkdir()
+        write_page(parent, 0, [{"chapter": 1, "event": "父代事件"}])
+        write_page(child, 0, [{"chapter": 1, "event": "子代事件"}])
+        (child / "meta.json").write_text(
+            json.dumps({"lineage": {"generation": 2, "parent_novel": str(parent)}}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        store = TimelineStore(child)
+
+        assert store.parent_store() is store.parent_store()
+        before = {p.name: p.stat().st_mtime_ns for p in parent.rglob("*") if p.is_file()}
+        store.lineage_chronicle()
+        assert {p.name: p.stat().st_mtime_ns for p in parent.rglob("*") if p.is_file()} == before
+
+    def test_parent_store_none_without_lineage(self, tmp_path):
+        assert TimelineStore(tmp_path).parent_store() is None
+        assert TimelineStore(None).parent_store() is None

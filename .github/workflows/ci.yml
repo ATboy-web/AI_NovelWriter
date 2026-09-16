@@ -187,11 +187,21 @@ jobs:
           cd installer
           pyinstaller novel_app.spec --clean --noconfirm
 
+      - name: Generate release notes from CHANGELOG
+        # 发布说明**由 CHANGELOG 派生**，不另写一份：同一事实写两处必然漂移
+        # （README 下载表指向旧版本、docs 索引多出陈旧条目都属此类）。
+        # 此前用的是 `generate_release_notes: true`，自动生成的正文对直推仓库
+        # 只有一行 "Full Changelog"（实测 88 字符），等于没有发布说明。
+        shell: bash
+        run: python scripts/release_notes.py "${GITHUB_REF_NAME#v}" --out release_notes.md
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: installer/dist/AI_NovelWriter.exe
-          generate_release_notes: true
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

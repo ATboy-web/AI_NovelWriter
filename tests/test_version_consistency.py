@@ -115,3 +115,51 @@ def test_binaries_are_not_versioned_by_gitignore():
     ignored = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
     for pattern in ("*.exe", "*.apk"):
         assert pattern in ignored, f".gitignore 缺少 {pattern} 排除规则"
+
+
+# ====================================================================== 发布说明派生
+
+
+def _load_release_notes_module():
+    """加载 `scripts/release_notes.py`（它不是包，用文件路径加载）。"""
+    import importlib.util
+
+    path = REPO_ROOT / "scripts" / "release_notes.py"
+    assert path.is_file(), f"缺少发布说明生成脚本：{path}"
+    spec = importlib.util.spec_from_file_location("anw_release_notes", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_release_notes_are_derived_from_changelog(version):
+    """**CI 打标签时用这个脚本生成发布说明** —— 生成不出来，发布页就等于没有说明
+    （此前用 `generate_release_notes` 自动生成，对直推仓库只有 88 字符）。"""
+    module = _load_release_notes_module()
+    notes = module.build_release_notes(version, date="2026-01-01")
+
+    assert f"v{version}" in notes, "发布说明未体现版本号"
+    for key in ("下载", "系统要求", "校验"):
+        assert key in notes, f"发布说明缺少「{key}」小节"
+
+    section = module.changelog_section(version)
+    assert section in notes, "发布说明的正文应当来自 CHANGELOG 对应条目"
+    assert len(section) > 200, f"{version} 的 CHANGELOG 条目过短（{len(section)} 字符），发布说明会很空"
+    assert "###" in section, "CHANGELOG 条目应至少带一个小节标题"
+
+
+def test_release_notes_report_unknown_version():
+    """未知版本必须显式失败，而不是静默产出空的发布说明。"""
+    module = _load_release_notes_module()
+    with pytest.raises(KeyError):
+        module.changelog_section("999.999.999")
+
+
+def test_release_notes_cli_writes_file(tmp_path, version):
+    """CLI 路径也要能用（CI 里走的是 `--out`）。"""
+    module = _load_release_notes_module()
+    out = tmp_path / "notes.md"
+    assert module.main([version, "--out", str(out)]) == 0
+    assert out.read_text(encoding="utf-8").startswith("**发布日期**")
+    assert module.main(["999.999.999", "--out", str(out)]) == 1, "未知版本应返回非零退出码"

@@ -333,6 +333,47 @@ meta 记 `is_sequel / original_novel / original_title`（`:758-771`）；另有 
 > 🚨 **硬护栏**：子代**只读**父代目录。`child_scope: readonly_parent` 配合路径白名单，
 > 并写测试断言「子代任何写操作不落在父代目录」。这是本次改造中数据风险最高的一处。
 
+**实施状态：✅ 已完成（P4b）** —— 三个面板 + 两个纯逻辑模块落地：
+
+| 文件 | 作用 |
+|---|---|
+| `app/timeline_store.py` | 时间线统一存储：`memory/timeline/` 为唯一事件源，重建 `timelines/*.json` 的 `events`；四视图数据 + 抽取提示词/解析（纯函数） |
+| `app/lineage.py` | 世代传承数据层：代际链、继承计划、年龄推进/死亡转状态、伏笔抽取；**护栏 `guard_child_path`** |
+| `app/panels/timeline_panel.py` | 四视图（章节轴 / 世界线分支 / 人物轨迹 / 跨代编年史）+ 同步 + 从正文抽取 |
+| `app/panels/biography_panel.py` | 角色树（搜索/筛选）+ 可编辑传记 + 素材侧栏 + RAG 生成 + 结构化 JSON |
+| `app/panels/lineage_panel.py` | 代际树 + 继承范围勾选 + 「补齐继承」+ 只读范围标注 |
+
+**登记方式**：只在 `registry.NATIVE_PANEL_MODULES` 加了 3 行 —— 分发层零改动，
+这正是 P4a 兑现的「新增面板只需 1 处改动」，由 `test_new_panels_are_reachable_without_dispatch_changes` 守着。
+
+**三处有意偏离草案**：
+
+1. **事件增强字段走 `MemoryManager.add_event` 的**可选参数**，而不是另存一份元数据表。
+   草案列了 `location/story_time/arc/source/confidence` 但没说存哪；另存会造成"第三套时间线存储"。
+   5 个参数**全部带默认值** ⇒ 既有调用点零改动、老数据零迁移（有专门的兼容测试）。
+   人工补字段另给了 `MemoryManager.annotate_event`（走同一把锁与原子写，面板不裸写分页文件）。
+2. **世代面板不做"一键创建续集"**，只做"对已存在的子代**补齐继承**"。
+   `_create_sequel` 的交互流程成熟且被用户熟悉，另起一套创建逻辑必然分叉
+   （典型后果：从菜单建的和从面板建的结果不一样）。
+3. **`timeline_ui` 原样保留**。它有"生成分支小说"等重逻辑，破坏性重写收益低于风险；
+   本面板是新增视图 + 同步入口，与原弹窗共享同一份数据。
+
+**勘察中发现的既有缺陷（本次一并暴露，未擅自改行为）**：
+
+- ⚠️ **`timelines/branch_%03d/` 是"只写不读"**：`timeline_ui` 会建出带 `chapters/meta.json/...`
+  的完整分支子项目（`:460-497`），但**全仓没有任何读取方**。面板新增 `branch_dirs()`
+  把它列出来，让"写了但看不见"的能力第一次可见；**是否要做成可打开的子项目属产品决策，未动。**
+- ⚠️ **`update_character_activity` 没有生产调用方**（只有测试调用）⇒ 真实小说里
+  `memory/character_activity.json` 基本是空的，"人物轨迹泳道"本来会是一条空视图。
+  因此 `character_tracks()` 用**事件源的 `characters` 字段兜底**反推出现章。
+  **根因（应当在后续接线）**：成章流程从未调用它，泳道数据等于从未被采集过。
+- 🐛 **`_generate_character_biography` 的提示词只用 `outline[:5]`，完全没用已写正文** ——
+  本面板的 RAG 版本已替它补上；但**原方法仍在 `character_ui` 里且入口可达**，
+  两套生成逻辑并存（后续应收敛为一处，见审计建议）。
+
+**验证**：`tests/test_timeline_store.py`（60）+ `tests/test_lineage.py`（63）+ `tests/test_p4b_panels.py`（55），
+含「继承前后父代目录**逐字节快照不变**」与「传记面板**无删除角色入口**」两条硬断言。
+
 ---
 
 ## 3. 支柱三：多 API 适配 · 配置完善 · 余额查询 · Token 统计
@@ -603,7 +644,7 @@ total_tokens, estimated, latency_ms, cost, cost_currency}`
 | **P2** 多 API 底座 | §3.2 注册表 + 7 家迁移 + §3.3 配置分层 | `app/providers/` + 配置迁移器 + 设置页重构 | 每个 adapter 有单测；打包成功；**修掉 P1–P5、P9–P11** | 中高 |
 | **P3** 用量与余额 | §3.4 + §3.5 + `async_runner`(A6) | usage.jsonl + 估算器 + 价格表 + 用量面板 + 余额适配 + 接入 performance_monitor | 真实跑一次生成 → `usage.jsonl` 有该章记录；实测/估算标记正确 | 中 |
 | **P4a** 面板框架与事件总线 | §2.2 + §2.3 + 12 老面板迁移 | `app/panels/` + `app/events/` | ✅ **已完成**：新增面板只剩 1 处改动（`NATIVE_PANEL_MODULES`）；全量 1971 测试通过 + ruff 全绿 + Tk 端到端冒烟通过 | 中高 |
-| **P4b** 三个新面板 | §2.4 ①②③ | `timeline_store.py`+`timeline_panel.py` / `biography_panel.py` / `lineage_panel.py` | 联动场景测试通过；跨代只读断言 | 中高 |
+| **P4b** 三个新面板 | §2.4 ①②③ | `timeline_store.py`+`timeline_panel.py` / `biography_panel.py` / `lineage_panel.py` | ✅ **已完成**：四视图 + 结构化传记 + 代际继承；跨代只读护栏有「父代逐字节不变」断言 | 中高 |
 | **P5** 样式与对话框收敛 | A4 A5 A7(余下) + 面板 detach | 字体令牌化、`create_styled_*` 接线、dialogs.py、独立窗口 | 无字面 `font=` 断言；UI 冒烟通过 | 低 |
 
 **建议顺序理由**：P1 先做——它降低后续所有改动的心智负担且风险低；P2/P3 同属 AI 层，一起做可避免两次改动 `ai_client.py`；P4 最后做，因为它依赖 P3 产出的用量数据来展示联动效果。

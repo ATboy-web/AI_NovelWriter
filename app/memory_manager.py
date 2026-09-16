@@ -705,8 +705,17 @@ class MemoryManager:
         return (chapter_num - 1) // 100
 
     def add_event(self, chapter_num: int, event: str, event_type: str = "story",
-                  characters_involved: List[str] = None):
-        """添加事件到时间线（分页存储）"""
+                  characters_involved: List[str] = None,
+                  location: str = "", story_time: str = "", arc: str = "",
+                  source: str = "auto", confidence: str = "high"):
+        """添加事件到时间线（分页存储）。
+
+        v3 P4b 新增 5 个**可选**字段（`location` 地点 / `story_time` 故事内时间 /
+        `arc` 所属弧线 / `source` auto|manual / `confidence` high|low）：
+        原实现只有 `chapter + event + type + characters + timestamp`，
+        时间线面板要显示"在哪、什么时候"就无从取。全部带默认值 ⇒
+        既有调用点（`novel_agent` / `chapter_ui` 等）无需改动，老数据也照常可读。
+        """
         page = self._get_timeline_page(chapter_num)
         page_file = self.timeline_dir / f"timeline_{page:03d}.json"
 
@@ -723,6 +732,11 @@ class MemoryManager:
             "type": event_type,
             "characters": characters_involved or [],
             "timestamp": datetime.now().isoformat(),
+            "location": location or "",
+            "story_time": story_time or "",
+            "arc": arc or "",
+            "source": source or "auto",
+            "confidence": confidence or "high",
         })
 
         atomic_write_json(page_file, events, indent=1)
@@ -736,6 +750,65 @@ class MemoryManager:
             "characters": list(characters_involved or []),
             "page_file": str(page_file),
         })
+
+    def annotate_event(self, chapter_num: int, event: str, **fields) -> bool:
+        """给既有事件补写人工字段（地点 / 故事内时间 / 弧线 / 置信度）。
+
+        为什么要单独一个方法而不是让面板直接改 JSON：
+        分页文件是 `add_event` 在锁内读-改-写的对象，面板裸写会与它竞争
+        （后者覆盖前者，丢事件）。这里复用同一把锁与同一个原子写
+        （`storage.atomic_write_json`）。
+
+        Returns:
+            True 表示确实改了至少一个字段；False 表示没找到该事件、
+            或没有合法字段可写（调用方据此提示，而不是假装成功）。
+        """
+        allowed = {"location", "story_time", "arc", "source", "confidence"}
+        changes = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not changes:
+            return False
+
+        page = self._get_timeline_page(chapter_num)
+        page_file = self.timeline_dir / f"timeline_{page:03d}.json"
+
+        with self._lock:
+            if not page_file.exists():
+                return False
+            try:
+                events = json.loads(page_file.read_text(encoding='utf-8'))
+            except (OSError, json.JSONDecodeError) as _silent_e:
+                logger.warning(f"[memory_manager] 标注事件失败（分页不可读）: {_silent_e}")
+                return False
+            if not isinstance(events, list):
+                return False
+
+            hit = False
+            for record in events:
+                if not isinstance(record, dict):
+                    continue
+                if int(record.get("chapter", -1) or -1) != int(chapter_num):
+                    continue
+                if str(record.get("event", "")) != str(event):
+                    continue
+                for key, value in changes.items():
+                    if record.get(key) != value:
+                        record[key] = value
+                        hit = True
+            if not hit:
+                return False
+
+            atomic_write_json(page_file, events, indent=1)
+
+        self._emit(TOPIC_TIMELINE_CHANGED, {
+            "novel_dir": str(self.novel_dir),
+            "chapter": chapter_num,
+            "event": event,
+            "type": changes.get("arc", ""),
+            "characters": [],
+            "page_file": str(page_file),
+            "annotated": sorted(changes),
+        })
+        return True
 
     def get_timeline(self, from_chapter: int = 0, to_chapter: int = None) -> List[Dict]:
         """获取时间线（按范围加载）"""

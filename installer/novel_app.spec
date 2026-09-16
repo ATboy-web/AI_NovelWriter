@@ -50,6 +50,12 @@ a = Analysis(
         'app.panels.registry',
         'app.panels.legacy',
         'app.panels.host',
+        # v3 P4b 原生面板（registry.NATIVE_PANEL_MODULES 按字符串导入）
+        'app.panels.timeline_panel',
+        'app.panels.biography_panel',
+        'app.panels.lineage_panel',
+        'app.timeline_store',
+        'app.lineage',
         # v2 面板模块（legacy.py 按字符串导入）
         'app.panels.elements_panel',
         'app.panels.bridges_panel',

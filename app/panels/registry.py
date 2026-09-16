@@ -60,7 +60,10 @@ DEFAULT_CATEGORY = "运维"
 #: v3 原生面板（`BasePanel` 子类）所在模块。
 #: 🚧 新增面板只需在这里加一行 —— 这是 v3「新增面板只需 1 处改动」的兑现点。
 NATIVE_PANEL_MODULES: tuple[str, ...] = (
-    # P4b 将在此追加：世界线与时间线 / 角色传记 / 世代传承
+    # P4b：世界线与世代三面板（顺序即同分组内的登记顺序，最终排序仍看 order）
+    "app.panels.timeline_panel",
+    "app.panels.biography_panel",
+    "app.panels.lineage_panel",
 )
 
 

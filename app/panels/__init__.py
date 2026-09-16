@@ -7,6 +7,7 @@ v2 的 12 个 `*PanelMixin` 仍在此转出（它们由 `legacy.LegacyPanelAdapt
 from .adapt_panel import AdaptPanelMixin
 from .base import BasePanel
 from .batch_ops_panel import BatchOpsPanelMixin
+from .biography_panel import BiographyPanel
 from .bridges_panel import BridgesPanelMixin
 from .chapter_analysis_panel import ChapterAnalysisPanelMixin
 from .descriptions_panel import DescriptionsPanelMixin
@@ -14,6 +15,7 @@ from .dialogue_panel import DialoguePanelMixin
 from .elements_panel import ElementsPanelMixin
 from .host import PanelHost
 from .legacy import LegacyPanelAdapter, register_legacy_panels
+from .lineage_panel import LineagePanel
 from .memory_viz_panel import MemoryVizPanelMixin
 from .registry import (
     NATIVE_PANEL_MODULES,
@@ -30,6 +32,7 @@ from .registry import (
 from .story_flow_panel import StoryFlowPanelMixin
 from .style_panel import StylePanelMixin
 from .summary_mgmt_panel import SummaryMgmtPanelMixin
+from .timeline_panel import TimelinePanel
 from .websearch_panel import WebSearchPanelMixin
 
 __all__ = [
@@ -48,6 +51,10 @@ __all__ = [
     "load_panels",
     "register",
     "register_legacy_panels",
+    # ---- v3 原生面板（P4b）
+    "BiographyPanel",
+    "LineagePanel",
+    "TimelinePanel",
     # ---- v2 面板 Mixin（由 legacy 适配器驱动）
     "AdaptPanelMixin",
     "BatchOpsPanelMixin",

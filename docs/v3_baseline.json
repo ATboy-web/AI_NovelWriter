@@ -1,24 +1,15 @@
 {
   "repo": {
-    "head": "865048f",
-    "dirty": [
-      "M build.bat",
-      "?? app/live_data.py",
-      "?? scripts/baseline_check.py",
-      "?? tests/test_data_safety_baseline.py"
-    ]
+    "head": "0b5b817",
+    "dirty": []
   },
   "live_data": {
     "root": "C:\\Users\\Administrator\\.ai_novel_writer\\novels\\重生之穿越不知名小岛被阴阳人瞧不起_1781862528",
     "characters_sha256": "FDD2D44D1739AA13ACE0E5991CCE06DEA7EFA84356878A226008F1C1062DB056",
     "characters_bytes": 49086,
     "character_count": 286,
-    "chapter_count": 286,
+    "chapter_count": 1094,
+    "character_file_count": 286,
     "characters_mtime": "2026-07-03 12:42:31"
-  },
-  "ruff_clean": true,
-  "tests": {
-    "passed": 1406,
-    "failed": 0
   }
 }

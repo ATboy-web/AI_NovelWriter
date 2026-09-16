@@ -36,13 +36,10 @@ class AnthropicAdapter(ProviderAdapter):
 
     def build_request(self, req: ChatRequest) -> PreparedRequest:
         # Anthropic 的 messages 里不能有 system 角色
-        messages = [
-            {"role": msg.get("role", "user"), "content": msg.get("content", "")}
-            for msg in req.messages
-        ]
+        messages = [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in req.messages]
         body = {
             "model": req.model,
-            "max_tokens": req.max_tokens,   # 必填
+            "max_tokens": req.max_tokens,  # 必填
             "system": req.system or "",
             "messages": messages,
             "temperature": req.temperature,
@@ -60,16 +57,12 @@ class AnthropicAdapter(ProviderAdapter):
     def parse_response(self, data: dict) -> ChatResult:
         blocks = data.get("content")
         if not isinstance(blocks, list) or not blocks:
-            raise Exception(
-                f"{self.label}返回无内容: {json.dumps(data, ensure_ascii=False)[:200]}"
-            )
+            raise Exception(f"{self.label}返回无内容: {json.dumps(data, ensure_ascii=False)[:200]}")
 
         # 只取 text 块：content 里可能混有 thinking / tool_use 块，
         # 旧实现硬取 blocks[0] —— 若首块是 thinking 就会返回空字符串。
         texts = [
-            block.get("text", "")
-            for block in blocks
-            if isinstance(block, dict) and block.get("type", "text") == "text"
+            block.get("text", "") for block in blocks if isinstance(block, dict) and block.get("type", "text") == "text"
         ]
         if not texts:
             texts = [blocks[0].get("text", "")] if isinstance(blocks[0], dict) else [""]

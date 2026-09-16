@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import httpx
 import pytest
-from _source_scan import code_only
+from _source_scan import code_only, count_normalized
 
 import app.ai_client as ai_client_module
 from app.ai_client import AIClient
@@ -113,18 +113,36 @@ class TestConfiguredValuesActuallyApply:
         def fake_send(self, adapter, spec, base, request, api_key):
             captured["max_tokens"] = request.max_tokens
             captured["temperature"] = request.temperature
-            return type("R", (), {
-                "text": "ok", "reasoning": "", "finish_reason": "stop",
-                "usage": type("U", (), {"total_tokens": 0, "prompt_tokens": 0,
-                                        "completion_tokens": 0, "cached_tokens": 0,
-                                        "estimated": False})(),
-            })()
+            return type(
+                "R",
+                (),
+                {
+                    "text": "ok",
+                    "reasoning": "",
+                    "finish_reason": "stop",
+                    "usage": type(
+                        "U",
+                        (),
+                        {
+                            "total_tokens": 0,
+                            "prompt_tokens": 0,
+                            "completion_tokens": 0,
+                            "cached_tokens": 0,
+                            "estimated": False,
+                        },
+                    )(),
+                },
+            )()
 
         monkeypatch.setattr(AIClient, "_send", fake_send)
-        client = make_client(api_provider="deepseek", api_key="sk-1234567890",
-                             api_base="https://api.deepseek.com",
-                             model="deepseek-v4-flash",
-                             max_tokens=1234, temperature=0.35)
+        client = make_client(
+            api_provider="deepseek",
+            api_key="sk-1234567890",
+            api_base="https://api.deepseek.com",
+            model="deepseek-v4-flash",
+            max_tokens=1234,
+            temperature=0.35,
+        )
         client.chat([{"role": "user", "content": "hi"}])
 
         assert captured["max_tokens"] == 1234, "max_tokens 必须来自配置而不是硬编码 4096"
@@ -135,26 +153,48 @@ class TestConfiguredValuesActuallyApply:
 
         def fake_send(self, adapter, spec, base, request, api_key):
             captured["max_tokens"] = request.max_tokens
-            return type("R", (), {
-                "text": "ok", "reasoning": "", "finish_reason": "stop",
-                "usage": type("U", (), {"total_tokens": 0, "prompt_tokens": 0,
-                                        "completion_tokens": 0, "cached_tokens": 0,
-                                        "estimated": False})(),
-            })()
+            return type(
+                "R",
+                (),
+                {
+                    "text": "ok",
+                    "reasoning": "",
+                    "finish_reason": "stop",
+                    "usage": type(
+                        "U",
+                        (),
+                        {
+                            "total_tokens": 0,
+                            "prompt_tokens": 0,
+                            "completion_tokens": 0,
+                            "cached_tokens": 0,
+                            "estimated": False,
+                        },
+                    )(),
+                },
+            )()
 
         monkeypatch.setattr(AIClient, "_send", fake_send)
-        client = make_client(api_provider="deepseek", api_key="sk-1234567890",
-                             api_base="https://api.deepseek.com",
-                             model="deepseek-v4-flash", max_tokens=1234)
+        client = make_client(
+            api_provider="deepseek",
+            api_key="sk-1234567890",
+            api_base="https://api.deepseek.com",
+            model="deepseek-v4-flash",
+            max_tokens=1234,
+        )
         client.chat([{"role": "user", "content": "hi"}], max_tokens=77)
         assert captured["max_tokens"] == 77
 
     def test_timeouts_are_split_read_and_connect(self):
         """P10：连接阶段不该吃 600s 的读超时，否则界面会假死到超时。"""
-        client = make_client(api_provider="deepseek", api_key="sk-1234567890",
-                             api_base="https://api.deepseek.com",
-                             model="deepseek-v4-flash",
-                             timeout=120.0, connect_timeout=3.0)
+        client = make_client(
+            api_provider="deepseek",
+            api_key="sk-1234567890",
+            api_base="https://api.deepseek.com",
+            model="deepseek-v4-flash",
+            timeout=120.0,
+            connect_timeout=3.0,
+        )
         spec = default_registry().get("deepseek")
         assert client._timeout_for(spec) == 120.0
         assert client._connect_timeout_for(spec) == 3.0
@@ -177,8 +217,7 @@ class TestProbeConnection:
 
     def _patch_post(self, monkeypatch, response=None, exc=None):
         def fake_post(url, json=None, headers=None, timeout=None):
-            fake_post.calls.append({"url": url, "json": json,
-                                    "headers": headers or {}, "timeout": timeout})
+            fake_post.calls.append({"url": url, "json": json, "headers": headers or {}, "timeout": timeout})
             if exc is not None:
                 raise exc
             return response
@@ -188,10 +227,16 @@ class TestProbeConnection:
         return fake_post
 
     def test_success_reports_model_and_url(self, monkeypatch):
-        post = self._patch_post(monkeypatch, FakeResponse(200, {
-            "choices": [{"message": {"content": "pong"}, "finish_reason": "stop"}],
-            "usage": {"total_tokens": 2},
-        }))
+        post = self._patch_post(
+            monkeypatch,
+            FakeResponse(
+                200,
+                {
+                    "choices": [{"message": {"content": "pong"}, "finish_reason": "stop"}],
+                    "usage": {"total_tokens": 2},
+                },
+            ),
+        )
         client = make_client(api_provider="deepseek", api_key="sk-1234567890")
 
         result = client.probe_connection(
@@ -212,36 +257,42 @@ class TestProbeConnection:
     def test_missing_key_is_reported_without_any_request(self, monkeypatch):
         post = self._patch_post(monkeypatch, FakeResponse(200, {}))
         client = make_client(api_provider="deepseek")
-        result = client.probe_connection(provider="deepseek",
-                                         api_base="https://api.deepseek.com",
-                                         api_key="")
+        result = client.probe_connection(provider="deepseek", api_base="https://api.deepseek.com", api_key="")
         assert result["ok"] is False
         assert "未填写 API Key" in result["reason"]
         assert post.calls == [], "缺少密钥时不该浪费一次请求"
 
     def test_local_provider_needs_no_key(self, monkeypatch):
-        self._patch_post(monkeypatch, FakeResponse(200, {
-            "message": {"content": "pong"}, "done": True,
-        }))
+        self._patch_post(
+            monkeypatch,
+            FakeResponse(
+                200,
+                {
+                    "message": {"content": "pong"},
+                    "done": True,
+                },
+            ),
+        )
         client = make_client(api_provider="ollama")
-        result = client.probe_connection(provider="ollama",
-                                         api_base="http://localhost:11434",
-                                         api_key="", model="qwen2.5:14b")
+        result = client.probe_connection(
+            provider="ollama", api_base="http://localhost:11434", api_key="", model="qwen2.5:14b"
+        )
         assert result["ok"] is True
 
-    @pytest.mark.parametrize("status,keyword", [
-        (401, "API Key 无效"),
-        (403, "权限"),
-        (404, "/v1"),
-        (429, "频繁"),
-        (500, "服务端错误"),
-    ])
+    @pytest.mark.parametrize(
+        "status,keyword",
+        [
+            (401, "API Key 无效"),
+            (403, "权限"),
+            (404, "/v1"),
+            (429, "频繁"),
+            (500, "服务端错误"),
+        ],
+    )
     def test_http_errors_are_translated(self, monkeypatch, status, keyword):
         self._patch_post(monkeypatch, FakeResponse(status, {}, text="boom"))
         client = make_client(api_provider="deepseek", api_key="sk-1234567890")
-        result = client.probe_connection(provider="deepseek",
-                                         api_base="https://api.deepseek.com",
-                                         api_key="sk-x")
+        result = client.probe_connection(provider="deepseek", api_base="https://api.deepseek.com", api_key="sk-x")
         assert result["ok"] is False
         assert result["status"] == status
         assert keyword in result["reason"], result["reason"]
@@ -249,9 +300,7 @@ class TestProbeConnection:
     def test_network_error_is_reported_not_raised(self, monkeypatch):
         self._patch_post(monkeypatch, exc=httpx.ConnectError("dns boom"))
         client = make_client(api_provider="deepseek", api_key="sk-1234567890")
-        result = client.probe_connection(provider="deepseek",
-                                         api_base="https://api.deepseek.com",
-                                         api_key="sk-x")
+        result = client.probe_connection(provider="deepseek", api_base="https://api.deepseek.com", api_key="sk-x")
         assert result["ok"] is False
         assert "无法连接" in result["reason"]
         assert "ConnectError" in result["reason"]
@@ -259,9 +308,7 @@ class TestProbeConnection:
     def test_unparsable_body_is_reported(self, monkeypatch):
         self._patch_post(monkeypatch, FakeResponse(200, {"unexpected": "shape"}))
         client = make_client(api_provider="deepseek", api_key="sk-1234567890")
-        result = client.probe_connection(provider="deepseek",
-                                         api_base="https://api.deepseek.com",
-                                         api_key="sk-x")
+        result = client.probe_connection(provider="deepseek", api_base="https://api.deepseek.com", api_key="sk-x")
         # OpenAI 兼容解析器遇到空 choices 会显式失败 —— 探测要把这个失败说清楚
         assert result["ok"] is False
         assert result["reason"]
@@ -269,9 +316,7 @@ class TestProbeConnection:
     def test_plaintext_http_is_rejected_before_sending(self, monkeypatch):
         post = self._patch_post(monkeypatch, FakeResponse(200, {}))
         client = make_client(api_provider="deepseek", api_key="sk-1234567890")
-        result = client.probe_connection(provider="deepseek",
-                                         api_base="http://api.deepseek.com",
-                                         api_key="sk-x")
+        result = client.probe_connection(provider="deepseek", api_base="http://api.deepseek.com", api_key="sk-x")
         assert result["ok"] is False
         assert "明文 HTTP" in result["reason"]
         assert post.calls == []
@@ -296,7 +341,8 @@ class TestSettingsSourceGuards:
         """P11：旧实现有两个温度输入框绑到同一个变量，改上面那个读下面那个。"""
         src = code_only("app/ai_settings_ui.py")
         assert src.count("temperature") >= 1
-        assert src.count("from_=0, to=2") == 1, "温度控件只应存在一个"
+        # `count_normalized`：忽略换行差异（`ruff format` 会拆长调用）
+        assert count_normalized(src, "from_=0, to=2") == 1, "温度控件只应存在一个"
 
     def test_ai_settings_has_no_hardcoded_provider_branch(self):
         """能力判断必须走 spec.supports，而不是 `if provider == "..."`。"""

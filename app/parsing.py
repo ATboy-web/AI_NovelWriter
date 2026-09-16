@@ -286,13 +286,13 @@ def _extract_complete_objects(text: str) -> dict:
         close = pairs.get(brace_start)
         if close is not None:
             try:
-                result[name] = json.loads(text[brace_start:close + 1])
+                result[name] = json.loads(text[brace_start : close + 1])
             except (json.JSONDecodeError, ValueError):
                 pass
             continue
         # 该对象未闭合（响应被截断）→ 补括号后重试
         tail = text[brace_start:]
-        for closing in ('"}', '}', '}}'):
+        for closing in ('"}', "}", "}}"):
             try:
                 result[name] = json.loads(tail + closing)
                 break
@@ -410,7 +410,6 @@ def extract_characters_payload(data) -> dict:
     return result
 
 
-
 def _repair_json_preserving_strings(raw: str) -> str:
     """保真修复：只动字符串之外的标点，字符串内部原样保留（L2）。
 
@@ -430,15 +429,15 @@ def _repair_json_naive(raw: str) -> str:
     """
     fixed = repair_ai_json_text(raw)
     # 连续冒号
-    fixed = re.sub(r'("\w+")\s*:{2,}', r'\1:', fixed)
+    fixed = re.sub(r'("\w+")\s*:{2,}', r"\1:", fixed)
     # goal数组→字符串
     fixed = re.sub(
         r'("(?:goal|target|objective|purpose)")\s*:\s*\[([^\]]*)\]',
-        lambda m: m.group(1) + ': "' + '; '.join(re.findall(r'"([^"]*)"', m.group(2))) + '"',
-        fixed
+        lambda m: m.group(1) + ': "' + "; ".join(re.findall(r'"([^"]*)"', m.group(2))) + '"',
+        fixed,
     )
     # 尾随逗号
-    fixed = re.sub(r',\s*([\]}])', r'\1', fixed)
+    fixed = re.sub(r",\s*([\]}])", r"\1", fixed)
     # 缺失逗号: "value"\n  "key" → "value",\n  "key"
     fixed = re.sub(r'"\s*\n(\s*")', '",\n\\1', fixed)
     return fixed
@@ -459,7 +458,7 @@ def parse_json_response(response: str, default, is_list: bool = False):
 
     text = response.strip()
     # 标记优先次序：期望列表时先找 [ ]，否则先找 { }
-    marker_pairs = [('[', ']'), ('{', '}')] if is_list else [('{', '}'), ('[', ']')]
+    marker_pairs = [("[", "]"), ("{", "}")] if is_list else [("{", "}"), ("[", "]")]
     strategies = []
 
     # Strategy 1: 直接提取 { } 或 [ ]
@@ -470,7 +469,7 @@ def parse_json_response(response: str, default, is_list: bool = False):
             strategies.append(text[start:end])
 
     # Strategy 2: 清理 markdown 后提取
-    clean = text.replace('```json', '').replace('```', '')
+    clean = text.replace("```json", "").replace("```", "")
     for marker, end_marker in marker_pairs:
         start = clean.find(marker)
         end = clean.rfind(end_marker) + 1
@@ -503,7 +502,7 @@ def parse_json_response(response: str, default, is_list: bool = False):
     # 现在要求补全后 **括号配平** 且 **顶层类型与候选开头字符一致**。
     for s in strategies:
         opener = s.lstrip()[:1]
-        for suffix in ['"}', '"}]', '"}}', '"}]}}', '"]}}}', '}}}', '"}\n}', '"}\n}]']:
+        for suffix in ['"}', '"}]', '"}}', '"}]}}', '"]}}}', "}}}", '"}\n}', '"}\n}]']:
             candidate = s + suffix
             if not _is_balanced(candidate):
                 # 补全后结构仍不平衡 → 这次"成功"必然是假象，跳过
@@ -512,9 +511,9 @@ def parse_json_response(response: str, default, is_list: bool = False):
                 parsed = json.loads(candidate)
             except (json.JSONDecodeError, ValueError):
                 continue
-            if opener == '{' and not isinstance(parsed, dict):
+            if opener == "{" and not isinstance(parsed, dict):
                 continue
-            if opener == '[' and not isinstance(parsed, list):
+            if opener == "[" and not isinstance(parsed, list):
                 continue
             if is_list and not isinstance(parsed, list):
                 continue
@@ -529,7 +528,6 @@ def parse_json_response(response: str, default, is_list: bool = False):
             return list(chars.values()) if is_list else chars
 
     return default
-
 
 
 def _safe_exp_int(value, default: int = 0) -> int:
@@ -570,21 +568,22 @@ def parse_exp_json(response: str) -> dict:
         return {}
 
     # Strategy 1: 括号深度追踪（最可靠，提取完整外层JSON）
-    start = response.find('{')
+    start = response.find("{")
     if start >= 0:
         depth = 0
         end_idx = -1
         for i in range(start, len(response)):
-            if response[i] == '{': depth += 1
-            elif response[i] == '}':
+            if response[i] == "{":
+                depth += 1
+            elif response[i] == "}":
                 depth -= 1
                 if depth == 0:
                     end_idx = i + 1
                     break
         if end_idx > start:
             json_str = response[start:end_idx]
-            json_str = re.sub(r',\s*}', '}', json_str)
-            json_str = re.sub(r',\s*]', ']', json_str)
+            json_str = re.sub(r",\s*}", "}", json_str)
+            json_str = re.sub(r",\s*]", "]", json_str)
             try:
                 result = json.loads(json_str)
                 if isinstance(result, dict):
@@ -604,13 +603,14 @@ def parse_exp_json(response: str) -> dict:
         cleaned = cleaned[:-3]
     cleaned = cleaned.strip()
 
-    start = cleaned.find('{')
+    start = cleaned.find("{")
     if start >= 0:
         depth = 0
         end_idx = -1
         for i in range(start, len(cleaned)):
-            if cleaned[i] == '{': depth += 1
-            elif cleaned[i] == '}':
+            if cleaned[i] == "{":
+                depth += 1
+            elif cleaned[i] == "}":
                 depth -= 1
                 if depth == 0:
                     end_idx = i + 1
@@ -627,45 +627,37 @@ def parse_exp_json(response: str) -> dict:
     result = {}
     pattern = r'"([^"]+)"\s*:\s*\{[^}]*"action"\s*:\s*"([^"]*)"[^}]*"exp"\s*:\s*(-?\d+)[^}]*"detail"\s*:\s*"([^"]*)"'
     for m in re.finditer(pattern, response):
-        result[m.group(1)] = {
-            "action": m.group(2),
-            "exp": _safe_exp_int(m.group(3)),
-            "detail": m.group(4)
-        }
+        result[m.group(1)] = {"action": m.group(2), "exp": _safe_exp_int(m.group(3)), "detail": m.group(4)}
 
     # Strategy 4: 处理截断的JSON（AI响应被截断的情况）
     if not result:
         # 尝试提取部分数据：{"角色名": {"action": "行为", "exp": 数值, "detail": ...
         partial_pattern = r'"([^"]+)"\s*:\s*\{\s*"action"\s*:\s*"([^"]*)"[^}]*"exp"\s*:\s*(-?\d+)'
         for m in re.finditer(partial_pattern, response):
-            result[m.group(1)] = {
-                "action": m.group(2),
-                "exp": _safe_exp_int(m.group(3)),
-                "detail": ""
-            }
+            result[m.group(1)] = {"action": m.group(2), "exp": _safe_exp_int(m.group(3)), "detail": ""}
 
     # Strategy 5: 尝试补全截断的JSON后解析
-    if not result and response.strip().startswith('{'):
+    if not result and response.strip().startswith("{"):
         # 尝试补全JSON
         truncated = response.strip()
         # 计算缺少的闭合括号
-        open_braces = truncated.count('{') - truncated.count('}')
-        open_brackets = truncated.count('[') - truncated.count(']')
+        open_braces = truncated.count("{") - truncated.count("}")
+        open_brackets = truncated.count("[") - truncated.count("]")
         # 补全
         completed = truncated
         if not completed.endswith('"'):
             completed += '"'
-        completed += '}' * open_braces + ']' * open_brackets
+        completed += "}" * open_braces + "]" * open_brackets
         try:
             data = json.loads(completed)
             if isinstance(data, dict):
                 # 验证数据格式
                 for key, val in data.items():
-                    if isinstance(val, dict) and 'exp' in val:
+                    if isinstance(val, dict) and "exp" in val:
                         result[key] = {
                             "action": val.get("action", ""),
                             "exp": _safe_exp_int(val.get("exp", 0)),
-                            "detail": val.get("detail", "")
+                            "detail": val.get("detail", ""),
                         }
         except (json.JSONDecodeError, ValueError):
             pass

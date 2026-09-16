@@ -35,7 +35,7 @@ from .storage import atomic_write_json
 logger = logging.getLogger(__name__)
 
 #: 需要加密落盘的字段（与 AppConfig 共用同一定义）
-_SENSITIVE_FIELDS = ('api_key', 'img_api_key', 'secret_key')
+_SENSITIVE_FIELDS = ("api_key", "img_api_key", "secret_key")
 
 
 class _WindowsDPAPI:
@@ -60,14 +60,22 @@ class _WindowsDPAPI:
             self._crypt32 = ctypes.windll.crypt32
             self._kernel32 = ctypes.windll.kernel32
             self._crypt32.CryptProtectData.argtypes = [
-                ctypes.POINTER(self._DATA_BLOB), ctypes.c_wchar_p,
-                ctypes.POINTER(self._DATA_BLOB), ctypes.c_void_p,
-                ctypes.c_void_p, ctypes.c_uint32, ctypes.POINTER(self._DATA_BLOB),
+                ctypes.POINTER(self._DATA_BLOB),
+                ctypes.c_wchar_p,
+                ctypes.POINTER(self._DATA_BLOB),
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_uint32,
+                ctypes.POINTER(self._DATA_BLOB),
             ]
             self._crypt32.CryptUnprotectData.argtypes = [
-                ctypes.POINTER(self._DATA_BLOB), ctypes.POINTER(ctypes.c_wchar_p),
-                ctypes.POINTER(self._DATA_BLOB), ctypes.c_void_p,
-                ctypes.c_void_p, ctypes.c_uint32, ctypes.POINTER(self._DATA_BLOB),
+                ctypes.POINTER(self._DATA_BLOB),
+                ctypes.POINTER(ctypes.c_wchar_p),
+                ctypes.POINTER(self._DATA_BLOB),
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_uint32,
+                ctypes.POINTER(self._DATA_BLOB),
             ]
             self._kernel32.LocalFree.argtypes = [ctypes.c_void_p]
             self._available = True
@@ -86,9 +94,7 @@ class _WindowsDPAPI:
         """加密数据，返回 DPAPI 密文"""
         in_blob = self._to_blob(data)
         out_blob = self._DATA_BLOB()
-        if not self._crypt32.CryptProtectData(
-            ctypes.byref(in_blob), None, None, None, None, 0, ctypes.byref(out_blob)
-        ):
+        if not self._crypt32.CryptProtectData(ctypes.byref(in_blob), None, None, None, None, 0, ctypes.byref(out_blob)):
             raise OSError("DPAPI CryptProtectData 失败")
         try:
             return ctypes.string_at(out_blob.pbData, out_blob.cbData)
@@ -175,7 +181,7 @@ class SecureConfig:
         """
         if not encrypted_value:
             return ""
-        if not encrypted_value.startswith('gAAAAA'):
+        if not encrypted_value.startswith("gAAAAA"):
             # 未加密的旧格式/被篡改值：不再降级接受明文，返回空并强制重新加密
             logger.warning("检测到未加密的敏感字段，已清空。请重新保存配置以加密。")
             return ""
@@ -198,7 +204,7 @@ class SecureConfig:
             return self._default_config()
 
         try:
-            with open(self.config_file, 'r', encoding='utf-8') as f:
+            with open(self.config_file, "r", encoding="utf-8") as f:
                 config = json.load(f)
             if not isinstance(config, dict):
                 raise ValueError(f"配置根节点不是对象（{type(config).__name__}）")
@@ -217,7 +223,7 @@ class SecureConfig:
             if field in config and config[field]:
                 ciphertext = config[field]
                 plain = self._decrypt(ciphertext)
-                if plain == "" and str(ciphertext).startswith('gAAAAA'):
+                if plain == "" and str(ciphertext).startswith("gAAAAA"):
                     # 解密失败（Fernet 密钥不匹配/密文损坏）：记下原文，
                     # save() 时原样写回，避免「空值覆盖已加密密钥」
                     self._undecryptable[field] = ciphertext
@@ -229,7 +235,7 @@ class SecureConfig:
             decrypted: Dict[str, str] = {}
             for name, ciphertext in ai_keys.items():
                 plain = self._decrypt(ciphertext) if isinstance(ciphertext, str) else ""
-                if plain == "" and isinstance(ciphertext, str) and ciphertext.startswith('gAAAAA'):
+                if plain == "" and isinstance(ciphertext, str) and ciphertext.startswith("gAAAAA"):
                     self._undecryptable_ai_keys[str(name)] = ciphertext
                 decrypted[str(name)] = plain
             config[AI_KEYS_FIELD] = decrypted
@@ -342,7 +348,7 @@ class SecureConfig:
         try:
             if not self.config_file.exists():
                 return None
-            with open(self.config_file, 'r', encoding='utf-8') as f:
+            with open(self.config_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             return data if isinstance(data, dict) else None
         except (OSError, ValueError):

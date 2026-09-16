@@ -32,7 +32,6 @@ MAX_BIO_TOKENS = 16_000
 class CharacterUIMixin:
     """角色层：角色系统/卡片/详情/传记/增删改/装备技能/角色同步"""
 
-
     def _load_chars_from_memory(self) -> dict:
         """从 memory/characters.json 读取角色字典（多格式 + 多层容错）。
 
@@ -48,7 +47,7 @@ class CharacterUIMixin:
             return {}
 
         try:
-            with open(mem_file, 'r', encoding='utf-8') as f:
+            with open(mem_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
             self._log(f"读取角色记忆失败: {e}")
@@ -60,7 +59,7 @@ class CharacterUIMixin:
 
         # 最后兜底：交给 agent 的原始响应提取器（保留早期实现已有的回退路径）
         raw = data.get("raw", "") if isinstance(data, dict) else ""
-        agent = getattr(self, 'agent', None)
+        agent = getattr(self, "agent", None)
         if raw and agent is not None and hasattr(agent, "_extract_characters_from_raw"):
             try:
                 extracted = agent._extract_characters_from_raw(strip_ai_json_fences(raw))
@@ -123,8 +122,7 @@ class CharacterUIMixin:
                 category = info_dict.get("role", info_dict.get("category", "配角"))
                 faction = info_dict.get("faction", "中立")
                 self.character_system.create_character(
-                    name=name, category=category, faction=faction,
-                    first_appearance=1
+                    name=name, category=category, faction=faction, first_appearance=1
                 )
                 desc = info_dict.get("personality", "") or info_dict.get("description", "") or ""
                 if desc:
@@ -139,6 +137,7 @@ class CharacterUIMixin:
             self.root.after(0, self._update_char_display)
         except Exception as e:
             self._log(f"[角色同步] 失败: {e}")
+
     def _auto_detect_characters(self, chapter_num: int, content: str):
         """自动检测新角色并创建"""
         try:
@@ -156,12 +155,13 @@ class CharacterUIMixin:
 
             response = self.ai_client.chat(
                 [{"role": "user", "content": f"第{chapter_num}章内容:\n{content[:2000]}"}],
-                system=system, max_tokens=1500
+                system=system,
+                max_tokens=1500,
             )
             if not response:
                 return
 
-            match = re.search(r'\[[\s\S]*\]', response)
+            match = re.search(r"\[[\s\S]*\]", response)
             if not match:
                 return
             new_names = json.loads(match.group())
@@ -181,7 +181,7 @@ class CharacterUIMixin:
                                 "first_appearance": chapter_num,
                                 "category": "无名小卒",
                                 "faction": "中立",
-                                "auto_created": True
+                                "auto_created": True,
                             }
                             added.append(name)
 
@@ -197,6 +197,7 @@ class CharacterUIMixin:
             logger.error(f"[character_ui] 角色写入被数据保护闸门拦截: {e}")
         except Exception as e:
             self._log(f"[角色] 角色检测异常: {type(e).__name__}: {e}")
+
     def _sync_characters_to_system(self, names: list, chapter_num: int):
         """同步角色到CharacterSystem"""
         if not self.character_system:
@@ -208,14 +209,12 @@ class CharacterUIMixin:
         for name in names:
             if not self.character_system.get_character(name):
                 self.character_system.create_character(
-                    name=name,
-                    category="无名小卒",
-                    faction="中立",
-                    first_appearance=chapter_num
+                    name=name, category="无名小卒", faction="中立", first_appearance=chapter_num
                 )
                 self.character_system.save_character(name)
         if names:
             self._update_char_display()
+
     def _generate_character_biography(self, char_name: str = None):
         """生成角色个人传记"""
         if not self._check_ready():
@@ -229,8 +228,9 @@ class CharacterUIMixin:
                 return
 
             # 角色选择对话框
-            char_name = tk.simpledialog.askstring("选择角色",
-                f"请输入角色名称:\n可用角色: {', '.join(characters.keys())}")
+            char_name = tk.simpledialog.askstring(
+                "选择角色", f"请输入角色名称:\n可用角色: {', '.join(characters.keys())}"
+            )
             if not char_name:
                 return
 
@@ -241,29 +241,48 @@ class CharacterUIMixin:
         word_dialog = tk.Toplevel(self.root)
         word_dialog.title("角色传记设置")
         word_dialog.geometry("400x250")
-        word_dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        word_dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(word_dialog, text=f"生成「{char_name}」个人传记",
-                font=('微软雅黑', 12, 'bold'), bg=C['bg_dark'], fg=C['accent_light']).pack(pady=(15, 10))
+        tk.Label(
+            word_dialog,
+            text=f"生成「{char_name}」个人传记",
+            font=("微软雅黑", 12, "bold"),
+            bg=C["bg_dark"],
+            fg=C["accent_light"],
+        ).pack(pady=(15, 10))
 
-        tk.Label(word_dialog, text="传记字数:", bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=30)
+        tk.Label(word_dialog, text="传记字数:", bg=C["bg_dark"], fg=C["text_primary"]).pack(anchor=tk.W, padx=30)
         word_var = tk.StringVar(value=str(default_words))
-        word_combo = ttk.Combobox(word_dialog, textvariable=word_var,
-                                 values=["5000", "10000", "30000", "50000", "100000", "200000"],
-                                 width=15)
+        word_combo = ttk.Combobox(
+            word_dialog, textvariable=word_var, values=["5000", "10000", "30000", "50000", "100000", "200000"], width=15
+        )
         word_combo.pack(anchor=tk.W, padx=30, pady=5)
 
         include_mental = tk.BooleanVar(value=True)
-        mental_btn = tk.Checkbutton(word_dialog, text="包含心理历程", variable=include_mental,
-                      bg=C['bg_dark'], fg=C['text_primary'], selectcolor=C['bg_card'],
-                      activebackground=C['bg_dark'], activeforeground=C['text_primary'])
+        mental_btn = tk.Checkbutton(
+            word_dialog,
+            text="包含心理历程",
+            variable=include_mental,
+            bg=C["bg_dark"],
+            fg=C["text_primary"],
+            selectcolor=C["bg_card"],
+            activebackground=C["bg_dark"],
+            activeforeground=C["text_primary"],
+        )
         mental_btn.pack(anchor=tk.W, padx=30, pady=3)
 
         include_contrast = tk.BooleanVar(value=True)
-        contrast_btn = tk.Checkbutton(word_dialog, text="分析性格反差", variable=include_contrast,
-                      bg=C['bg_dark'], fg=C['text_primary'], selectcolor=C['bg_card'],
-                      activebackground=C['bg_dark'], activeforeground=C['text_primary'])
+        contrast_btn = tk.Checkbutton(
+            word_dialog,
+            text="分析性格反差",
+            variable=include_contrast,
+            bg=C["bg_dark"],
+            fg=C["text_primary"],
+            selectcolor=C["bg_card"],
+            activebackground=C["bg_dark"],
+            activeforeground=C["text_primary"],
+        )
         contrast_btn.pack(anchor=tk.W, padx=30, pady=3)
 
         def start_generate():
@@ -325,8 +344,9 @@ class CharacterUIMixin:
 
                     # L9: max_tokens 按 API 上限钳位（详见 MAX_BIO_TOKENS 注释）
                     max_tokens = min(max(word_count * 2, 1024), MAX_BIO_TOKENS)
-                    result = self.ai_client.chat([{"role": "user", "content": prompt}],
-                                         system=system, max_tokens=max_tokens)
+                    result = self.ai_client.chat(
+                        [{"role": "user", "content": prompt}], system=system, max_tokens=max_tokens
+                    )
 
                     # L9: 返回校验 —— 空结果直接失败，不要把空文件写下去并
                     # 谎报"生成完成"
@@ -347,11 +367,12 @@ class CharacterUIMixin:
                     # 覆盖，就会静默丢失（R4）。
                     attached = {"ok": False}
                     if self.memory:
+
                         def _attach_bio(characters: dict):
                             info = characters.get(char_name)
                             if isinstance(info, dict):
-                                info['biography'] = result[:500] + "..."
-                                info['biography_file'] = str(bio_file)
+                                info["biography"] = result[:500] + "..."
+                                info["biography_file"] = str(bio_file)
                                 attached["ok"] = True
 
                         self.memory.mutate_characters(_attach_bio)
@@ -373,35 +394,65 @@ class CharacterUIMixin:
 
             threading.Thread(target=run, daemon=True).start()
 
-        tk.Button(word_dialog, text="开始生成", command=start_generate,
-                 bg=C['accent'], fg='white', font=('微软雅黑', 11, 'bold'), padx=20, pady=5).pack(pady=15)
+        tk.Button(
+            word_dialog,
+            text="开始生成",
+            command=start_generate,
+            bg=C["accent"],
+            fg="white",
+            font=("微软雅黑", 11, "bold"),
+            padx=20,
+            pady=5,
+        ).pack(pady=15)
+
     def _show_biography(self, content: str, char_name: str):
         """显示角色传记"""
         dialog = tk.Toplevel(self.root)
         dialog.title(f"角色传记 - {char_name}")
         dialog.geometry("800x600")
-        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(dialog, text=f"「{char_name}」个人传记",
-                font=('微软雅黑', 14, 'bold'), bg=C['bg_dark'], fg=C['accent_light']).pack(pady=(10, 5))
+        tk.Label(
+            dialog,
+            text=f"「{char_name}」个人传记",
+            font=("微软雅黑", 14, "bold"),
+            bg=C["bg_dark"],
+            fg=C["accent_light"],
+        ).pack(pady=(10, 5))
 
-        bio_text = tk.Text(dialog, wrap=tk.WORD, font=('微软雅黑', 11),
-                          bg=C['bg_card'], fg=C['text_primary'], padx=20, pady=15)
+        bio_text = tk.Text(
+            dialog, wrap=tk.WORD, font=("微软雅黑", 11), bg=C["bg_card"], fg=C["text_primary"], padx=20, pady=15
+        )
         bio_text.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
         bio_text.insert("1.0", content)
 
-        btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        btn_frame = tk.Frame(dialog, bg=C["bg_dark"])
         btn_frame.pack(fill=tk.X, padx=15, pady=10)
 
         def insert_to_chapter():
             self.content_text.insert(tk.INSERT, "\n\n" + content)
             dialog.destroy()
 
-        tk.Button(btn_frame, text="插入到当前章节", command=insert_to_chapter,
-                 bg=C['accent'], fg='white', font=('微软雅黑', 10), padx=15).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="关闭", command=dialog.destroy,
-                 bg=C['bg_light'], fg=C['text_primary'], font=('微软雅黑', 10), padx=15).pack(side=tk.RIGHT, padx=5)
+        tk.Button(
+            btn_frame,
+            text="插入到当前章节",
+            command=insert_to_chapter,
+            bg=C["accent"],
+            fg="white",
+            font=("微软雅黑", 10),
+            padx=15,
+        ).pack(side=tk.LEFT, padx=5)
+        tk.Button(
+            btn_frame,
+            text="关闭",
+            command=dialog.destroy,
+            bg=C["bg_light"],
+            fg=C["text_primary"],
+            font=("微软雅黑", 10),
+            padx=15,
+        ).pack(side=tk.RIGHT, padx=5)
+
     def _init_character_system(self):
         """初始化角色系统"""
         if self.current_novel_dir:
@@ -410,6 +461,7 @@ class CharacterUIMixin:
             self._update_char_display()
             self.format_converter = FormatConverter(self.current_novel_dir)
             self.image_manager = ImageManager(self.current_novel_dir)
+
     def _update_char_display(self):
         """更新角色面板显示 - 同时更新左侧角色卡片"""
         C = UIStyle.COLORS
@@ -419,13 +471,18 @@ class CharacterUIMixin:
             w.destroy()
 
         if not self.character_system:
-            tk.Label(self.char_cards_container, text="未创建角色", font=('微软雅黑', 9),
-                    bg=C['bg_medium'], fg=C['text_muted']).pack(anchor=tk.W)
-            self.char_select_combo['values'] = []
+            tk.Label(
+                self.char_cards_container,
+                text="未创建角色",
+                font=("微软雅黑", 9),
+                bg=C["bg_medium"],
+                fg=C["text_muted"],
+            ).pack(anchor=tk.W)
+            self.char_select_combo["values"] = []
             return
 
         names = self.character_system.get_character_names()
-        self.char_select_combo['values'] = names
+        self.char_select_combo["values"] = names
 
         # 🔧 修复：同步下拉框选中项到当前活跃角色
         if self.character_system.active_name and self.character_system.active_name in names:
@@ -441,17 +498,23 @@ class CharacterUIMixin:
             self._create_char_card(name)
 
         # 更新日志页的角色详情
-        if hasattr(self, 'char_detail_frame'):
+        if hasattr(self, "char_detail_frame"):
             for w in self.char_detail_frame.winfo_children():
                 w.destroy()
 
             if not self.character_system.character:
-                tk.Label(self.char_detail_frame, text="请选择角色", font=('微软雅黑', 9),
-                        bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=2)
+                tk.Label(
+                    self.char_detail_frame,
+                    text="请选择角色",
+                    font=("微软雅黑", 9),
+                    bg=C["bg_medium"],
+                    fg=C["text_secondary"],
+                ).pack(anchor=tk.W, pady=2)
                 return
 
             char = self.character_system.character
             self._display_char_details(char)
+
     def _create_char_card(self, name):
         """创建单个角色卡片"""
         C = UIStyle.COLORS
@@ -460,35 +523,36 @@ class CharacterUIMixin:
             return
 
         # 根据状态决定卡片颜色
-        status = getattr(char, 'status', '存活')
-        if status == '死亡':
-            card_bg = '#3d1f1f'  # 暗红色背景
-            text_color = '#808080'
+        status = getattr(char, "status", "存活")
+        if status == "死亡":
+            card_bg = "#3d1f1f"  # 暗红色背景
+            text_color = "#808080"
         else:
-            card_bg = C['bg_card']
-            text_color = C['text_primary']
+            card_bg = C["bg_card"]
+            text_color = C["text_primary"]
 
         card = tk.Frame(self.char_cards_container, bg=card_bg, padx=8, pady=6)
         card.pack(fill=tk.X, pady=2)
 
         # 头像 (首字母) - 根据分类和状态决定颜色
-        category = getattr(char, 'category', '无名小卒')
+        category = getattr(char, "category", "无名小卒")
 
-        if status == '死亡':
-            avatar_bg = '#666666'
-        elif category == '关键人物':
-            avatar_bg = '#f59e0b'  # 金色
-        elif category == '主角朋友':
-            avatar_bg = '#3b82f6'  # 蓝色
-        elif category == '女友':
-            avatar_bg = '#ec4899'  # 粉色
-        elif category == '反派':
-            avatar_bg = '#ef4444'  # 红色
+        if status == "死亡":
+            avatar_bg = "#666666"
+        elif category == "关键人物":
+            avatar_bg = "#f59e0b"  # 金色
+        elif category == "主角朋友":
+            avatar_bg = "#3b82f6"  # 蓝色
+        elif category == "女友":
+            avatar_bg = "#ec4899"  # 粉色
+        elif category == "反派":
+            avatar_bg = "#ef4444"  # 红色
         else:
-            avatar_bg = '#6b7280'  # 灰色
+            avatar_bg = "#6b7280"  # 灰色
 
-        avatar = tk.Label(card, text=name[0], font=('微软雅黑', 10, 'bold'),
-                         bg=avatar_bg, fg='white', width=2, height=1)
+        avatar = tk.Label(
+            card, text=name[0], font=("微软雅黑", 10, "bold"), bg=avatar_bg, fg="white", width=2, height=1
+        )
         avatar.pack(side=tk.LEFT, padx=(0, 8))
 
         # 角色信息
@@ -497,99 +561,183 @@ class CharacterUIMixin:
 
         # 名称和状态
         name_text = name
-        if status == '死亡':
+        if status == "死亡":
             name_text = f"†{name}"  # 添加死亡标记
-        elif status == '复活':
+        elif status == "复活":
             name_text = f"♻{name}"  # 添加复活标记
 
-        tk.Label(info_frame, text=name_text, font=('微软雅黑', 10, 'bold'),
-                bg=card_bg, fg=text_color).pack(anchor=tk.W)
+        tk.Label(info_frame, text=name_text, font=("微软雅黑", 10, "bold"), bg=card_bg, fg=text_color).pack(anchor=tk.W)
 
         # 分类和等级
-        level = getattr(char, 'level', 1)
-        title = getattr(char, 'title', '无称号')
-        tk.Label(info_frame, text=f"[{category}] Lv.{level} | {title}", font=('微软雅黑', 8),
-                bg=card_bg, fg=C['text_muted']).pack(anchor=tk.W)
+        level = getattr(char, "level", 1)
+        title = getattr(char, "title", "无称号")
+        tk.Label(
+            info_frame, text=f"[{category}] Lv.{level} | {title}", font=("微软雅黑", 8), bg=card_bg, fg=C["text_muted"]
+        ).pack(anchor=tk.W)
 
         # 点击事件
         def select_char(n=name):
             self.char_select_var.set(n)
             self._on_char_select()
 
-        card.bind('<Button-1>', lambda e: select_char())
-        avatar.bind('<Button-1>', lambda e: select_char())
+        card.bind("<Button-1>", lambda e: select_char())
+        avatar.bind("<Button-1>", lambda e: select_char())
+
     def _display_char_details(self, char):
         """显示角色详细信息"""
         C = UIStyle.COLORS
 
         # 基本信息
-        tk.Label(self.char_detail_frame, text=f"「{char.name}」{char.title}",
-                font=('微软雅黑', 10, 'bold'), bg=C['bg_medium'], fg=C['accent_light']).pack(anchor=tk.W, pady=2)
-        tk.Label(self.char_detail_frame, text=f"等级: Lv.{char.level}  |  EXP: {char.exp}/{char.exp_to_next}",
-                font=('微软雅黑', 9), bg=C['bg_medium'], fg=C['text_primary']).pack(anchor=tk.W)
+        tk.Label(
+            self.char_detail_frame,
+            text=f"「{char.name}」{char.title}",
+            font=("微软雅黑", 10, "bold"),
+            bg=C["bg_medium"],
+            fg=C["accent_light"],
+        ).pack(anchor=tk.W, pady=2)
+        tk.Label(
+            self.char_detail_frame,
+            text=f"等级: Lv.{char.level}  |  EXP: {char.exp}/{char.exp_to_next}",
+            font=("微软雅黑", 9),
+            bg=C["bg_medium"],
+            fg=C["text_primary"],
+        ).pack(anchor=tk.W)
 
         # 属性
-        tk.Label(self.char_detail_frame, text="─ 属性 ─", font=('微软雅黑', 9, 'bold'),
-                bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=(5, 2))
-        attrs_frame = tk.Frame(self.char_detail_frame, bg=C['bg_medium'])
+        tk.Label(
+            self.char_detail_frame,
+            text="─ 属性 ─",
+            font=("微软雅黑", 9, "bold"),
+            bg=C["bg_medium"],
+            fg=C["text_secondary"],
+        ).pack(anchor=tk.W, pady=(5, 2))
+        attrs_frame = tk.Frame(self.char_detail_frame, bg=C["bg_medium"])
         attrs_frame.pack(fill=tk.X)
-        for attr_name, attr_val in [("HP", f"{char.hp}/{char.max_hp}"), ("MP", f"{char.mp}/{char.max_mp}"),
-                                    ("攻击", getattr(char, 'attack', '?')), ("防御", getattr(char, 'defense', '?')),
-                                    ("速度", getattr(char, 'speed', '?')), ("智力", getattr(char, 'intelligence', '?'))]:
-            tk.Label(attrs_frame, text=f"{attr_name}: {attr_val}", font=('微软雅黑', 8),
-                    bg=C['bg_medium'], fg=C['text_primary']).pack(side=tk.LEFT, padx=3)
+        for attr_name, attr_val in [
+            ("HP", f"{char.hp}/{char.max_hp}"),
+            ("MP", f"{char.mp}/{char.max_mp}"),
+            ("攻击", getattr(char, "attack", "?")),
+            ("防御", getattr(char, "defense", "?")),
+            ("速度", getattr(char, "speed", "?")),
+            ("智力", getattr(char, "intelligence", "?")),
+        ]:
+            tk.Label(
+                attrs_frame,
+                text=f"{attr_name}: {attr_val}",
+                font=("微软雅黑", 8),
+                bg=C["bg_medium"],
+                fg=C["text_primary"],
+            ).pack(side=tk.LEFT, padx=3)
 
         # 武器
-        tk.Label(self.char_detail_frame, text="─ 武器 ─", font=('微软雅黑', 9, 'bold'),
-                bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=(5, 2))
+        tk.Label(
+            self.char_detail_frame,
+            text="─ 武器 ─",
+            font=("微软雅黑", 9, "bold"),
+            bg=C["bg_medium"],
+            fg=C["text_secondary"],
+        ).pack(anchor=tk.W, pady=(5, 2))
         if char.weapon:
             w = char.weapon
-            w_name = w.get('name', '无')
-            w_quality = w.get('quality', '普通')
-            tk.Label(self.char_detail_frame, text=f"⚔ {w_name} [{w_quality}]", font=('微软雅黑', 9),
-                    bg=C['bg_medium'], fg=C['accent_light']).pack(anchor=tk.W)
+            w_name = w.get("name", "无")
+            w_quality = w.get("quality", "普通")
+            tk.Label(
+                self.char_detail_frame,
+                text=f"⚔ {w_name} [{w_quality}]",
+                font=("微软雅黑", 9),
+                bg=C["bg_medium"],
+                fg=C["accent_light"],
+            ).pack(anchor=tk.W)
         else:
-            tk.Label(self.char_detail_frame, text="未装备武器", font=('微软雅黑', 8),
-                    bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W)
+            tk.Label(
+                self.char_detail_frame,
+                text="未装备武器",
+                font=("微软雅黑", 8),
+                bg=C["bg_medium"],
+                fg=C["text_secondary"],
+            ).pack(anchor=tk.W)
 
         # 技能
-        tk.Label(self.char_detail_frame, text="─ 技能 ─", font=('微软雅黑', 9, 'bold'),
-                bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=(5, 2))
+        tk.Label(
+            self.char_detail_frame,
+            text="─ 技能 ─",
+            font=("微软雅黑", 9, "bold"),
+            bg=C["bg_medium"],
+            fg=C["text_secondary"],
+        ).pack(anchor=tk.W, pady=(5, 2))
         if char.skills:
             for skill in char.skills[:5]:
-                s_name = skill.get('name', '未知')
-                s_lv = skill.get('level', 1)
-                tk.Label(self.char_detail_frame, text=f"✦ {s_name} Lv.{s_lv}", font=('微软雅黑', 8),
-                        bg=C['bg_medium'], fg=C['text_primary']).pack(anchor=tk.W)
+                s_name = skill.get("name", "未知")
+                s_lv = skill.get("level", 1)
+                tk.Label(
+                    self.char_detail_frame,
+                    text=f"✦ {s_name} Lv.{s_lv}",
+                    font=("微软雅黑", 8),
+                    bg=C["bg_medium"],
+                    fg=C["text_primary"],
+                ).pack(anchor=tk.W)
         else:
-            tk.Label(self.char_detail_frame, text="未学习技能", font=('微软雅黑', 8),
-                    bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W)
+            tk.Label(
+                self.char_detail_frame,
+                text="未学习技能",
+                font=("微软雅黑", 8),
+                bg=C["bg_medium"],
+                fg=C["text_secondary"],
+            ).pack(anchor=tk.W)
 
         # 性格/背景
-        tk.Label(self.char_detail_frame, text="─ 性格/背景 ─", font=('微软雅黑', 9, 'bold'),
-                bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=(5, 2))
-        personality = getattr(char, 'personality', '')
-        backstory = getattr(char, 'backstory', '')
-        appearance = getattr(char, 'appearance', '')
+        tk.Label(
+            self.char_detail_frame,
+            text="─ 性格/背景 ─",
+            font=("微软雅黑", 9, "bold"),
+            bg=C["bg_medium"],
+            fg=C["text_secondary"],
+        ).pack(anchor=tk.W, pady=(5, 2))
+        personality = getattr(char, "personality", "")
+        backstory = getattr(char, "backstory", "")
+        appearance = getattr(char, "appearance", "")
         if personality:
-            tk.Label(self.char_detail_frame, text=f"性格: {str(personality)[:100]}", font=('微软雅黑', 8),
-                    bg=C['bg_medium'], fg=C['text_primary'], wraplength=200).pack(anchor=tk.W)
+            tk.Label(
+                self.char_detail_frame,
+                text=f"性格: {str(personality)[:100]}",
+                font=("微软雅黑", 8),
+                bg=C["bg_medium"],
+                fg=C["text_primary"],
+                wraplength=200,
+            ).pack(anchor=tk.W)
         if backstory:
-            tk.Label(self.char_detail_frame, text=f"背景: {str(backstory)[:100]}", font=('微软雅黑', 8),
-                    bg=C['bg_medium'], fg=C['text_primary'], wraplength=200).pack(anchor=tk.W)
+            tk.Label(
+                self.char_detail_frame,
+                text=f"背景: {str(backstory)[:100]}",
+                font=("微软雅黑", 8),
+                bg=C["bg_medium"],
+                fg=C["text_primary"],
+                wraplength=200,
+            ).pack(anchor=tk.W)
         if appearance:
-            tk.Label(self.char_detail_frame, text=f"外貌: {str(appearance)[:80]}", font=('微软雅黑', 8),
-                    bg=C['bg_medium'], fg=C['text_primary'], wraplength=200).pack(anchor=tk.W)
+            tk.Label(
+                self.char_detail_frame,
+                text=f"外貌: {str(appearance)[:80]}",
+                font=("微软雅黑", 8),
+                bg=C["bg_medium"],
+                fg=C["text_primary"],
+                wraplength=200,
+            ).pack(anchor=tk.W)
 
         # 角色成长日志
-        tk.Label(self.char_detail_frame, text="─ 成长日志 ─", font=('微软雅黑', 9, 'bold'),
-                bg=C['bg_medium'], fg=C['text_secondary']).pack(anchor=tk.W, pady=(5, 2))
+        tk.Label(
+            self.char_detail_frame,
+            text="─ 成长日志 ─",
+            font=("微软雅黑", 9, "bold"),
+            bg=C["bg_medium"],
+            fg=C["text_secondary"],
+        ).pack(anchor=tk.W, pady=(5, 2))
 
         try:
             if self.memory and self.agent:
-                events = self.memory.get_events() if hasattr(self.memory, 'get_events') else []
+                events = self.memory.get_events() if hasattr(self.memory, "get_events") else []
                 char_events = []
-                for ev in (events[-50:] if events else []):
+                for ev in events[-50:] if events else []:
                     ev_text = ev.get("event", "") if isinstance(ev, dict) else str(ev)
                     if char.name in ev_text:
                         chapter = ev.get("chapter", "?") if isinstance(ev, dict) else "?"
@@ -597,11 +745,22 @@ class CharacterUIMixin:
 
                 if char_events:
                     for ev_text in char_events[-8:]:  # 显示最近8条
-                        tk.Label(self.char_detail_frame, text=f"• {ev_text}", font=('微软雅黑', 7),
-                                bg=C['bg_medium'], fg=C['text_secondary'], wraplength=200).pack(anchor=tk.W)
+                        tk.Label(
+                            self.char_detail_frame,
+                            text=f"• {ev_text}",
+                            font=("微软雅黑", 7),
+                            bg=C["bg_medium"],
+                            fg=C["text_secondary"],
+                            wraplength=200,
+                        ).pack(anchor=tk.W)
                 else:
-                    tk.Label(self.char_detail_frame, text="暂无成长记录", font=('微软雅黑', 7),
-                            bg=C['bg_medium'], fg=C['text_muted']).pack(anchor=tk.W)
+                    tk.Label(
+                        self.char_detail_frame,
+                        text="暂无成长记录",
+                        font=("微软雅黑", 7),
+                        bg=C["bg_medium"],
+                        fg=C["text_muted"],
+                    ).pack(anchor=tk.W)
         except Exception as e:
             # 成长日志只是附加信息，失败不应影响角色详情展示，但必须可观测
             logger.debug(f"[character_ui] 成长日志渲染失败: {type(e).__name__}: {e}")
@@ -610,6 +769,7 @@ class CharacterUIMixin:
         # Update scroll region
         canvas = self.char_detail_frame.master
         canvas.configure(scrollregion=canvas.bbox("all"))
+
     def _gen_char_biography(self):
         """从角色面板按钮生成选中角色个人传"""
         name = self.char_select_var.get()
@@ -622,6 +782,7 @@ class CharacterUIMixin:
 
         # 直接生成传记（跳过角色选择对话框）
         self._generate_character_biography(name)
+
     def _on_char_select(self, event=None):
         """切换活跃角色 - 重新加载确保显示最新数据"""
         name = self.char_select_var.get()
@@ -634,12 +795,13 @@ class CharacterUIMixin:
             # 如果选择了空，也刷新一下
             self.character_system.load()
             self._update_char_display()
+
     def _create_character_dialog(self):
         """创建角色对话框 - 完善版"""
         dialog = tk.Toplevel(self.root)
         dialog.title("创建角色")
         dialog.geometry("450x500")
-        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
         fields = {}
@@ -653,19 +815,26 @@ class CharacterUIMixin:
         ]
 
         for label, key, default in field_list:
-            tk.Label(dialog, text=label, font=('微软雅黑', 10),
-                    bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=20, pady=(8, 2))
+            tk.Label(dialog, text=label, font=("微软雅黑", 10), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+                anchor=tk.W, padx=20, pady=(8, 2)
+            )
             if key in ("backstory",):
-                entry = tk.Text(dialog, width=40, height=4, font=('微软雅黑', 10), bg=C['bg_card'], fg=C['text_primary'])
+                entry = tk.Text(
+                    dialog, width=40, height=4, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"]
+                )
                 entry.pack(padx=20)
             else:
-                entry = tk.Entry(dialog, width=40, font=('微软雅黑', 10), bg=C['bg_card'], fg=C['text_primary'])
+                entry = tk.Entry(dialog, width=40, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"])
                 entry.insert(0, default)
                 entry.pack(padx=20)
             fields[key] = entry
 
         def create():
-            name = fields["name"].get().strip() if isinstance(fields["name"], tk.Entry) else fields["name"].get("1.0", tk.END).strip()
+            name = (
+                fields["name"].get().strip()
+                if isinstance(fields["name"], tk.Entry)
+                else fields["name"].get("1.0", tk.END).strip()
+            )
             if not name:
                 messagebox.showwarning("提示", "请输入角色名称")
                 return
@@ -694,9 +863,18 @@ class CharacterUIMixin:
             self._log(f"角色「{name}」创建成功")
             dialog.destroy()
 
-        tk.Button(dialog, text="创建", font=('微软雅黑', 11),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=20, pady=5,
-                 command=create).pack(pady=15)
+        tk.Button(
+            dialog,
+            text="创建",
+            font=("微软雅黑", 11),
+            bg=C["accent"],
+            fg="white",
+            relief=tk.FLAT,
+            padx=20,
+            pady=5,
+            command=create,
+        ).pack(pady=15)
+
     def _ai_create_character(self):
         """AI自动创建角色"""
         if not self.ai_client.is_configured():
@@ -736,6 +914,7 @@ class CharacterUIMixin:
 
         self._log("AI正在创建角色...")
         threading.Thread(target=run, daemon=True).start()
+
     def _show_char_detail(self):
         """显示角色详情"""
         if not self.character_system or not self.character_system.character:
@@ -747,7 +926,7 @@ class CharacterUIMixin:
         dialog = tk.Toplevel(self.root)
         dialog.title(f"角色详情 - {char.name}")
         dialog.geometry("500x600")
-        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
         # 使用Notebook组织信息
@@ -755,21 +934,37 @@ class CharacterUIMixin:
         notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         # 属性页
-        attr_frame = tk.Frame(notebook, bg=C['bg_dark'])
+        attr_frame = tk.Frame(notebook, bg=C["bg_dark"])
         notebook.add(attr_frame, text=" 属性 ")
 
-        attr_text = tk.Text(attr_frame, wrap=tk.WORD, font=('微软雅黑', 10),
-                           bg=C['bg_card'], fg=C['text_primary'], relief=tk.FLAT, padx=15, pady=15)
+        attr_text = tk.Text(
+            attr_frame,
+            wrap=tk.WORD,
+            font=("微软雅黑", 10),
+            bg=C["bg_card"],
+            fg=C["text_primary"],
+            relief=tk.FLAT,
+            padx=15,
+            pady=15,
+        )
         attr_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         attr_text.insert("1.0", char.get_summary())
         attr_text.config(state=tk.DISABLED)
 
         # 武器/技能页
-        equip_frame = tk.Frame(notebook, bg=C['bg_dark'])
+        equip_frame = tk.Frame(notebook, bg=C["bg_dark"])
         notebook.add(equip_frame, text=" 装备/技能 ")
 
-        equip_text = tk.Text(equip_frame, wrap=tk.WORD, font=('微软雅黑', 10),
-                            bg=C['bg_card'], fg=C['text_primary'], relief=tk.FLAT, padx=15, pady=15)
+        equip_text = tk.Text(
+            equip_frame,
+            wrap=tk.WORD,
+            font=("微软雅黑", 10),
+            bg=C["bg_card"],
+            fg=C["text_primary"],
+            relief=tk.FLAT,
+            padx=15,
+            pady=15,
+        )
         equip_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         equip_info = "═══ 装备 ═══\n"
@@ -786,32 +981,62 @@ class CharacterUIMixin:
         equip_text.config(state=tk.DISABLED)
 
         # 统计页
-        stats_frame = tk.Frame(notebook, bg=C['bg_dark'])
+        stats_frame = tk.Frame(notebook, bg=C["bg_dark"])
         notebook.add(stats_frame, text=" 统计 ")
 
-        stats_text = tk.Text(stats_frame, wrap=tk.WORD, font=('微软雅黑', 10),
-                            bg=C['bg_card'], fg=C['text_primary'], relief=tk.FLAT, padx=15, pady=15)
+        stats_text = tk.Text(
+            stats_frame,
+            wrap=tk.WORD,
+            font=("微软雅黑", 10),
+            bg=C["bg_card"],
+            fg=C["text_primary"],
+            relief=tk.FLAT,
+            padx=15,
+            pady=15,
+        )
         stats_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         stats_text.insert("1.0", self.character_system.get_stats_display())
         stats_text.config(state=tk.DISABLED)
 
         # 操作按钮
-        btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        btn_frame = tk.Frame(dialog, bg=C["bg_dark"])
         btn_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        tk.Button(btn_frame, text="重命名", font=('微软雅黑', 9),
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=8,
-                 command=lambda: self._rename_character(dialog)).pack(side=tk.LEFT, padx=3)
+        tk.Button(
+            btn_frame,
+            text="重命名",
+            font=("微软雅黑", 9),
+            bg=C["bg_light"],
+            fg=C["text_primary"],
+            relief=tk.FLAT,
+            padx=8,
+            command=lambda: self._rename_character(dialog),
+        ).pack(side=tk.LEFT, padx=3)
         # 注意：此处**刻意不提供"删除角色"入口**。
         # 角色条目是小说内容资产（当前作品实测 286 个角色），删除不可逆；
         # 相关能力 `_delete_character` / `CharacterSystem.delete_character` 保留在
         # 代码中但不接线（详见 docs/OPTIMIZATION_ROUND2.md 的"用户约束"）。
-        tk.Button(btn_frame, text="休息恢复", font=('微软雅黑', 9),
-                 bg=C['success'], fg='white', relief=tk.FLAT, padx=8,
-                 command=lambda: self._rest_character()).pack(side=tk.RIGHT, padx=3)
-        tk.Button(btn_frame, text="📖 故事线", font=('微软雅黑', 9),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=8,
-                 command=lambda: self._edit_character_story(char.name)).pack(side=tk.RIGHT, padx=3)
+        tk.Button(
+            btn_frame,
+            text="休息恢复",
+            font=("微软雅黑", 9),
+            bg=C["success"],
+            fg="white",
+            relief=tk.FLAT,
+            padx=8,
+            command=lambda: self._rest_character(),
+        ).pack(side=tk.RIGHT, padx=3)
+        tk.Button(
+            btn_frame,
+            text="📖 故事线",
+            font=("微软雅黑", 9),
+            bg=C["accent"],
+            fg="white",
+            relief=tk.FLAT,
+            padx=8,
+            command=lambda: self._edit_character_story(char.name),
+        ).pack(side=tk.RIGHT, padx=3)
+
     def _rename_character(self, dialog):
         """重命名角色"""
         if not self.character_system or not self.character_system.character:
@@ -825,6 +1050,7 @@ class CharacterUIMixin:
                 dialog.destroy()
             else:
                 messagebox.showwarning("提示", "名称已存在或无效")
+
     def _delete_character(self, dialog):
         """删除角色（**刻意不接线**，保留以备将来有无损归档需求）
 
@@ -840,6 +1066,7 @@ class CharacterUIMixin:
             self._update_char_display()
             self._log(f"已删除角色: {name}")
             dialog.destroy()
+
     def _rest_character(self):
         """角色休息恢复"""
         if self.character_system and self.character_system.character:
@@ -847,6 +1074,7 @@ class CharacterUIMixin:
             self.character_system.save_character()
             self._update_char_display()
             self._log(f"{self.character_system.character.name} 休息恢复，HP/MP已满")
+
     def _edit_character_story(self, char_name: str):
         """编辑角色故事线"""
         if not self.current_novel_dir:
@@ -855,7 +1083,7 @@ class CharacterUIMixin:
         dialog = tk.Toplevel(self.root)
         dialog.title(f"角色故事线 - {char_name}")
         dialog.geometry("600x500")
-        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
         # 加载角色故事
@@ -865,31 +1093,43 @@ class CharacterUIMixin:
 
         story_data = {"name": char_name, "story_arcs": [], "notes": ""}
         if story_file.exists():
-            with open(story_file, 'r', encoding='utf-8') as f:
+            with open(story_file, "r", encoding="utf-8") as f:
                 story_data = json.load(f)
 
-        tk.Label(dialog, text=f"📖 {char_name} 的故事线", font=('微软雅黑', 12, 'bold'),
-                bg=C['bg_dark'], fg=C['accent_light']).pack(pady=(15, 10))
+        tk.Label(
+            dialog,
+            text=f"📖 {char_name} 的故事线",
+            font=("微软雅黑", 12, "bold"),
+            bg=C["bg_dark"],
+            fg=C["accent_light"],
+        ).pack(pady=(15, 10))
 
         # 故事线列表
-        list_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        list_frame = tk.Frame(dialog, bg=C["bg_dark"])
         list_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
 
-        story_list = tk.Listbox(list_frame, bg=C['bg_card'], fg=C['text_primary'],
-                               font=('微软雅黑', 10), selectbackground=C['accent'],
-                               relief=tk.FLAT, height=8)
+        story_list = tk.Listbox(
+            list_frame,
+            bg=C["bg_card"],
+            fg=C["text_primary"],
+            font=("微软雅黑", 10),
+            selectbackground=C["accent"],
+            relief=tk.FLAT,
+            height=8,
+        )
         story_list.pack(fill=tk.BOTH, expand=True)
 
         for arc in story_data.get("story_arcs", []):
             story_list.insert(tk.END, f"• {arc.get('title', '未命名')}")
 
         # 故事详情
-        detail_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        detail_frame = tk.Frame(dialog, bg=C["bg_dark"])
         detail_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
 
-        tk.Label(detail_frame, text="故事详情:", bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W)
-        detail_text = tk.Text(detail_frame, wrap=tk.WORD, font=('微软雅黑', 10),
-                             bg=C['bg_card'], fg=C['text_primary'], height=6)
+        tk.Label(detail_frame, text="故事详情:", bg=C["bg_dark"], fg=C["text_primary"]).pack(anchor=tk.W)
+        detail_text = tk.Text(
+            detail_frame, wrap=tk.WORD, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"], height=6
+        )
         detail_text.pack(fill=tk.BOTH, expand=True)
         detail_text.insert("1.0", story_data.get("notes", ""))
 
@@ -900,10 +1140,10 @@ class CharacterUIMixin:
                 detail_text.delete("1.0", tk.END)
                 detail_text.insert("1.0", f"标题: {arc.get('title', '')}\n\n{arc.get('content', '')}")
 
-        story_list.bind('<<ListboxSelect>>', on_story_select)
+        story_list.bind("<<ListboxSelect>>", on_story_select)
 
         # 操作按钮
-        btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        btn_frame = tk.Frame(dialog, bg=C["bg_dark"])
         btn_frame.pack(fill=tk.X, padx=15, pady=10)
 
         def add_arc():
@@ -926,7 +1166,7 @@ class CharacterUIMixin:
 
         def save_story():
             story_data["notes"] = detail_text.get("1.0", tk.END).strip()
-            with open(story_file, 'w', encoding='utf-8') as f:
+            with open(story_file, "w", encoding="utf-8") as f:
                 json.dump(story_data, f, indent=2, ensure_ascii=False)
             self._log(f"已保存 {char_name} 的故事线")
             messagebox.showinfo("成功", "故事线已保存")
@@ -936,22 +1176,23 @@ class CharacterUIMixin:
             all_stories_window = tk.Toplevel(dialog)
             all_stories_window.title("所有角色故事线")
             all_stories_window.geometry("700x500")
-            all_stories_window.configure(bg=C['bg_dark'])
+            all_stories_window.configure(bg=C["bg_dark"])
 
-            all_text = tk.Text(all_stories_window, wrap=tk.WORD, font=('微软雅黑', 10),
-                              bg=C['bg_card'], fg=C['text_primary'])
+            all_text = tk.Text(
+                all_stories_window, wrap=tk.WORD, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"]
+            )
             all_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
             # 加载所有角色故事
             for f in stories_dir.glob("*.json"):
                 try:
-                    with open(f, 'r', encoding='utf-8') as fp:
+                    with open(f, "r", encoding="utf-8") as fp:
                         data = json.load(fp)
                     name = data.get("name", f.stem)
                     all_text.insert(tk.END, f"═══ {name} ═══\n")
                     for arc in data.get("story_arcs", []):
                         all_text.insert(tk.END, f"  📖 {arc.get('title', '')}\n")
-                        if arc.get('content'):
+                        if arc.get("content"):
                             all_text.insert(tk.END, f"     {arc['content'][:100]}...\n")
                     if data.get("notes"):
                         all_text.insert(tk.END, f"  备注: {data['notes'][:100]}...\n")
@@ -961,14 +1202,31 @@ class CharacterUIMixin:
 
             all_text.config(state=tk.DISABLED)
 
-        tk.Button(btn_frame, text="添加故事线", command=add_arc, bg=C['accent'], fg='white',
-                 font=('微软雅黑', 9), padx=8).pack(side=tk.LEFT, padx=3)
-        tk.Button(btn_frame, text="更新内容", command=edit_arc, bg=C['bg_light'], fg=C['text_primary'],
-                 font=('微软雅黑', 9), padx=8).pack(side=tk.LEFT, padx=3)
-        tk.Button(btn_frame, text="保存", command=save_story, bg=C['success'], fg='white',
-                 font=('微软雅黑', 9), padx=8).pack(side=tk.LEFT, padx=3)
-        tk.Button(btn_frame, text="查看所有角色故事", command=view_all_stories, bg=C['bg_light'], fg=C['text_primary'],
-                 font=('微软雅黑', 9), padx=8).pack(side=tk.RIGHT, padx=3)
+        tk.Button(
+            btn_frame, text="添加故事线", command=add_arc, bg=C["accent"], fg="white", font=("微软雅黑", 9), padx=8
+        ).pack(side=tk.LEFT, padx=3)
+        tk.Button(
+            btn_frame,
+            text="更新内容",
+            command=edit_arc,
+            bg=C["bg_light"],
+            fg=C["text_primary"],
+            font=("微软雅黑", 9),
+            padx=8,
+        ).pack(side=tk.LEFT, padx=3)
+        tk.Button(
+            btn_frame, text="保存", command=save_story, bg=C["success"], fg="white", font=("微软雅黑", 9), padx=8
+        ).pack(side=tk.LEFT, padx=3)
+        tk.Button(
+            btn_frame,
+            text="查看所有角色故事",
+            command=view_all_stories,
+            bg=C["bg_light"],
+            fg=C["text_primary"],
+            font=("微软雅黑", 9),
+            padx=8,
+        ).pack(side=tk.RIGHT, padx=3)
+
     def _equip_weapon(self):
         """装备武器"""
         if not self.character_system or not self.character_system.character:
@@ -978,11 +1236,12 @@ class CharacterUIMixin:
         dialog = tk.Toplevel(self.root)
         dialog.title("选择武器")
         dialog.geometry("500x450")
-        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(dialog, text="选择武器:", font=('微软雅黑', 10, 'bold'),
-                bg=C['bg_dark'], fg=C['text_primary']).pack(pady=(10, 5))
+        tk.Label(dialog, text="选择武器:", font=("微软雅黑", 10, "bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+            pady=(10, 5)
+        )
 
         cat_var = tk.StringVar()
         cats = self.character_system.get_weapon_categories()
@@ -990,20 +1249,21 @@ class CharacterUIMixin:
         cat_combo.pack(pady=5)
         cat_combo.set(cats[0] if cats else "")
 
-        weapon_listbox = tk.Listbox(dialog, bg=C['bg_card'], fg=C['text_primary'],
-                                   font=('微软雅黑', 9), selectbackground=C['accent'], height=10)
+        weapon_listbox = tk.Listbox(
+            dialog, bg=C["bg_card"], fg=C["text_primary"], font=("微软雅黑", 9), selectbackground=C["accent"], height=10
+        )
         weapon_listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         def update_list(*args):
             weapon_listbox.delete(0, tk.END)
             weapons = self.character_system.get_weapons(cat_var.get())
             for w in weapons:
-                q = w.get('quality', '')
-                custom = " [自定义]" if w.get('custom') else ""
-                attrs = ", ".join(f"{k}:{v}" for k, v in w.get('attributes', {}).items())
+                q = w.get("quality", "")
+                custom = " [自定义]" if w.get("custom") else ""
+                attrs = ", ".join(f"{k}:{v}" for k, v in w.get("attributes", {}).items())
                 weapon_listbox.insert(tk.END, f"[{q}]{custom} {w.get('name', '')} - {attrs}")
 
-        cat_combo.bind('<<ComboboxSelected>>', update_list)
+        cat_combo.bind("<<ComboboxSelected>>", update_list)
         update_list()
 
         def equip():
@@ -1023,12 +1283,19 @@ class CharacterUIMixin:
             sub = tk.Toplevel(dialog)
             sub.title("自定义武器")
             sub.geometry("350x300")
-            sub.configure(bg=C['bg_dark'])
+            sub.configure(bg=C["bg_dark"])
 
             fields = {}
-            for label, default in [("名称:", ""), ("品质:", "凡品"), ("描述:", ""), ("力量加成:", "10"),
-                                   ("敏捷加成:", "0"), ("体质加成:", "0"), ("智力加成:", "0")]:
-                tk.Label(sub, text=label, bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=20, pady=(5,0))
+            for label, default in [
+                ("名称:", ""),
+                ("品质:", "凡品"),
+                ("描述:", ""),
+                ("力量加成:", "10"),
+                ("敏捷加成:", "0"),
+                ("体质加成:", "0"),
+                ("智力加成:", "0"),
+            ]:
+                tk.Label(sub, text=label, bg=C["bg_dark"], fg=C["text_primary"]).pack(anchor=tk.W, padx=20, pady=(5, 0))
                 e = tk.Entry(sub, width=30)
                 e.insert(0, default)
                 e.pack(padx=20)
@@ -1039,8 +1306,12 @@ class CharacterUIMixin:
                 if not name:
                     return
                 attrs = {}
-                for attr_name, field_key in [("力量", "力量加成:"), ("敏捷", "敏捷加成:"),
-                                              ("体质", "体质加成:"), ("智力", "智力加成:")]:
+                for attr_name, field_key in [
+                    ("力量", "力量加成:"),
+                    ("敏捷", "敏捷加成:"),
+                    ("体质", "体质加成:"),
+                    ("智力", "智力加成:"),
+                ]:
                     try:
                         val = int(fields[field_key].get())
                         if val > 0:
@@ -1049,21 +1320,33 @@ class CharacterUIMixin:
                         pass
 
                 self.character_system.add_custom_weapon(
-                    name=name, category=cat_var.get(), quality=fields["品质:"].get(),
-                    desc=fields["描述:"].get(), attributes=attrs
+                    name=name,
+                    category=cat_var.get(),
+                    quality=fields["品质:"].get(),
+                    desc=fields["描述:"].get(),
+                    attributes=attrs,
                 )
                 update_list()
                 self._log(f"添加自定义武器: {name}")
                 sub.destroy()
 
-            tk.Button(sub, text="保存", bg=C['accent'], fg='white', command=save_custom).pack(pady=10)
+            tk.Button(sub, text="保存", bg=C["accent"], fg="white", command=save_custom).pack(pady=10)
 
-        btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        btn_frame = tk.Frame(dialog, bg=C["bg_dark"])
         btn_frame.pack(fill=tk.X, padx=10, pady=5)
-        tk.Button(btn_frame, text="装备", font=('微软雅黑', 10),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, command=equip).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="+ 自定义武器", font=('微软雅黑', 9),
-                 bg=C['success'], fg='white', relief=tk.FLAT, command=add_custom).pack(side=tk.RIGHT, padx=5)
+        tk.Button(
+            btn_frame, text="装备", font=("微软雅黑", 10), bg=C["accent"], fg="white", relief=tk.FLAT, command=equip
+        ).pack(side=tk.LEFT, padx=5)
+        tk.Button(
+            btn_frame,
+            text="+ 自定义武器",
+            font=("微软雅黑", 9),
+            bg=C["success"],
+            fg="white",
+            relief=tk.FLAT,
+            command=add_custom,
+        ).pack(side=tk.RIGHT, padx=5)
+
     def _learn_skill(self):
         """学习技能"""
         if not self.character_system or not self.character_system.character:
@@ -1073,11 +1356,12 @@ class CharacterUIMixin:
         dialog = tk.Toplevel(self.root)
         dialog.title("学习技能")
         dialog.geometry("500x450")
-        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(dialog, text="选择技能:", font=('微软雅黑', 10, 'bold'),
-                bg=C['bg_dark'], fg=C['text_primary']).pack(pady=(10, 5))
+        tk.Label(dialog, text="选择技能:", font=("微软雅黑", 10, "bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+            pady=(10, 5)
+        )
 
         cat_var = tk.StringVar()
         cats = self.character_system.get_skill_categories()
@@ -1085,18 +1369,21 @@ class CharacterUIMixin:
         cat_combo.pack(pady=5)
         cat_combo.set(cats[0] if cats else "")
 
-        skill_listbox = tk.Listbox(dialog, bg=C['bg_card'], fg=C['text_primary'],
-                                  font=('微软雅黑', 9), selectbackground=C['accent'], height=10)
+        skill_listbox = tk.Listbox(
+            dialog, bg=C["bg_card"], fg=C["text_primary"], font=("微软雅黑", 9), selectbackground=C["accent"], height=10
+        )
         skill_listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         def update_list(*args):
             skill_listbox.delete(0, tk.END)
             skills = self.character_system.get_skills(cat_var.get())
             for s in skills:
-                custom = " [自定义]" if s.get('custom') else ""
-                skill_listbox.insert(tk.END, f"{s.get('name', '')}{custom} - {s.get('desc', '')} (MP:{s.get('mp_cost', 0)})")
+                custom = " [自定义]" if s.get("custom") else ""
+                skill_listbox.insert(
+                    tk.END, f"{s.get('name', '')}{custom} - {s.get('desc', '')} (MP:{s.get('mp_cost', 0)})"
+                )
 
-        cat_combo.bind('<<ComboboxSelected>>', update_list)
+        cat_combo.bind("<<ComboboxSelected>>", update_list)
         update_list()
 
         def learn():
@@ -1117,11 +1404,11 @@ class CharacterUIMixin:
             sub = tk.Toplevel(dialog)
             sub.title("自定义技能")
             sub.geometry("350x250")
-            sub.configure(bg=C['bg_dark'])
+            sub.configure(bg=C["bg_dark"])
 
             fields = {}
             for label, default in [("名称:", ""), ("类型:", cat_var.get() or "攻击"), ("描述:", ""), ("MP消耗:", "10")]:
-                tk.Label(sub, text=label, bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, padx=20, pady=(5,0))
+                tk.Label(sub, text=label, bg=C["bg_dark"], fg=C["text_primary"]).pack(anchor=tk.W, padx=20, pady=(5, 0))
                 e = tk.Entry(sub, width=30)
                 e.insert(0, default)
                 e.pack(padx=20)
@@ -1133,18 +1420,25 @@ class CharacterUIMixin:
                     return
                 mp = int(fields["MP消耗:"].get() or 0)
                 self.character_system.add_custom_skill(
-                    name=name, skill_type=fields["类型:"].get(),
-                    desc=fields["描述:"].get(), mp_cost=mp
+                    name=name, skill_type=fields["类型:"].get(), desc=fields["描述:"].get(), mp_cost=mp
                 )
                 update_list()
                 self._log(f"添加自定义技能: {name}")
                 sub.destroy()
 
-            tk.Button(sub, text="保存", bg=C['accent'], fg='white', command=save_custom).pack(pady=10)
+            tk.Button(sub, text="保存", bg=C["accent"], fg="white", command=save_custom).pack(pady=10)
 
-        btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        btn_frame = tk.Frame(dialog, bg=C["bg_dark"])
         btn_frame.pack(fill=tk.X, padx=10, pady=5)
-        tk.Button(btn_frame, text="学习", font=('微软雅黑', 10),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, command=learn).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="+ 自定义技能", font=('微软雅黑', 9),
-                 bg=C['success'], fg='white', relief=tk.FLAT, command=add_custom).pack(side=tk.RIGHT, padx=5)
+        tk.Button(
+            btn_frame, text="学习", font=("微软雅黑", 10), bg=C["accent"], fg="white", relief=tk.FLAT, command=learn
+        ).pack(side=tk.LEFT, padx=5)
+        tk.Button(
+            btn_frame,
+            text="+ 自定义技能",
+            font=("微软雅黑", 9),
+            bg=C["success"],
+            fg="white",
+            relief=tk.FLAT,
+            command=add_custom,
+        ).pack(side=tk.RIGHT, padx=5)

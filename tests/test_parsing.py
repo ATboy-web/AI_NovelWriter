@@ -29,7 +29,7 @@ class TestParseJsonResponse:
         assert parse_json_response('好的，结果是：{"title": "x"} 希望有帮助', None) == {"title": "x"}
 
     def test_array_embedded(self):
-        assert parse_json_response('prefix [1, 2, 3] suffix', None) == [1, 2, 3]
+        assert parse_json_response("prefix [1, 2, 3] suffix", None) == [1, 2, 3]
 
     def test_markdown_fence(self):
         assert parse_json_response('```json\n{"a": 1}\n```', None) == {"a": 1}
@@ -141,7 +141,7 @@ class TestCleanAiJsonText:
         于是 ``{“a”: “b”}`` 被解析成连续开两次、永远关不上，保真变体只能失败。
         现在保真变体可直接救回，兼容变体仍作为兜底。
         """
-        src = '{“a”: “b”}'
+        src = "{“a”: “b”}"
         assert json.loads(clean_ai_json_text(src)) == {"a": "b"}
         assert json.loads(repair_ai_json_text(src)) == {"a": "b"}
 
@@ -204,9 +204,7 @@ class TestParseCharactersPayload:
         assert parse_characters_payload({"张三": {"a": 1}}) == {"张三": {"a": 1}}
 
     def test_drops_raw_key_and_non_dict_values(self):
-        assert parse_characters_payload({"raw": "x", "张三": {"a": 1}, "李四": "不是字典"}) == {
-            "张三": {"a": 1}
-        }
+        assert parse_characters_payload({"raw": "x", "张三": {"a": 1}, "李四": "不是字典"}) == {"张三": {"a": 1}}
 
     def test_markdown_fence_and_goal_array_repaired(self):
         raw = '```json\n{"张三": {"goal": ["a", "b"], "personality": "x"}}\n```'
@@ -218,7 +216,7 @@ class TestParseCharactersPayload:
         assert parse_characters_payload(raw)["张三"]["personality"] == "勇敢"
 
     def test_curly_quote_delimiters_repaired(self):
-        raw = '{“张三”: {“personality”: “勇敢”}}'
+        raw = "{“张三”: {“personality”: “勇敢”}}"
         assert parse_characters_payload(raw)["张三"]["personality"] == "勇敢"
 
     def test_preserves_chinese_punctuation_in_values(self):

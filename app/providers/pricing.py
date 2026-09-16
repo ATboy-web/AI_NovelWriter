@@ -56,15 +56,15 @@ class ModelPrice:
 
     provider: str
     model: str
-    currency: str                       # "CNY" | "USD"
-    input: float                        # 未命中缓存的输入价
+    currency: str  # "CNY" | "USD"
+    input: float  # 未命中缓存的输入价
     output: float
-    cached_input: float | None = None   # 命中缓存的输入价
-    tiers: tuple = ()                   # 阶梯（Qwen 类）；非空时忽略 input/output
-    region: str = "default"             # cn / international / eu / default
+    cached_input: float | None = None  # 命中缓存的输入价
+    tiers: tuple = ()  # 阶梯（Qwen 类）；非空时忽略 input/output
+    region: str = "default"  # cn / international / eu / default
     source_url: str = ""
     verified_at: str = PRICE_TABLE_VERIFIED_AT
-    confidence: str = "official"        # official | aggregate | unverified
+    confidence: str = "official"  # official | aggregate | unverified
     editable: bool = True
     note: str = ""
 
@@ -105,8 +105,7 @@ class ModelPrice:
             "output": self.output,
             "cached_input": self.cached_input,
             "tiers": [
-                {"max_input_tokens": t.max_input_tokens, "input": t.input, "output": t.output}
-                for t in self.tiers
+                {"max_input_tokens": t.max_input_tokens, "input": t.input, "output": t.output} for t in self.tiers
             ],
             "region": self.region,
             "source_url": self.source_url,
@@ -117,10 +116,7 @@ class ModelPrice:
         }
 
     def __repr__(self) -> str:  # pragma: no cover - 调试用
-        return (
-            f"ModelPrice({self.provider}/{self.model}@{self.region} "
-            f"{self.input}/{self.output} {self.currency})"
-        )
+        return f"ModelPrice({self.provider}/{self.model}@{self.region} {self.input}/{self.output} {self.currency})"
 
 
 @dataclass
@@ -143,11 +139,7 @@ class CostEstimate:
     @property
     def reliable(self) -> bool:
         """是否可信（官方价 + 未用到估算用量）。"""
-        return (
-            self.priced
-            and self.price.confidence == "official"
-            and not self.notes
-        )
+        return self.priced and self.price.confidence == "official" and not self.notes
 
     def format(self) -> str:
         if not self.priced:
@@ -171,113 +163,249 @@ class CostEstimate:
         }
 
 
-def _p(provider, model, currency, input_, output, *, cached=None, region="default",
-       source="", confidence="official", tiers=(), note="") -> ModelPrice:
+def _p(
+    provider,
+    model,
+    currency,
+    input_,
+    output,
+    *,
+    cached=None,
+    region="default",
+    source="",
+    confidence="official",
+    tiers=(),
+    note="",
+) -> ModelPrice:
     return ModelPrice(
-        provider=provider, model=model, currency=currency, input=input_, output=output,
-        cached_input=cached, region=region, source_url=source,
-        confidence=confidence, tiers=tuple(tiers), note=note,
+        provider=provider,
+        model=model,
+        currency=currency,
+        input=input_,
+        output=output,
+        cached_input=cached,
+        region=region,
+        source_url=source,
+        confidence=confidence,
+        tiers=tuple(tiers),
+        note=note,
     )
 
 
 #: 内置价目表。**只收录查证到的**；未收录的模型 → 成本按 0 计并提示「无价目」。
 PRICING: tuple[ModelPrice, ...] = (
     # ------------------------------------------------------------ §9.1 DeepSeek (CNY)
-    _p("deepseek", "deepseek-v4-flash", "CNY", 1, 2, cached=0.02,
-       source="https://api-docs.deepseek.com/zh-cn/quick_start/pricing"),
-    _p("deepseek", "deepseek-v4-pro", "CNY", 3, 6, cached=0.025,
-       source="https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
-       note="deepseek-chat/deepseek-reasoner 已于 2026-07-24 弃用"),
-
+    _p(
+        "deepseek",
+        "deepseek-v4-flash",
+        "CNY",
+        1,
+        2,
+        cached=0.02,
+        source="https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+    ),
+    _p(
+        "deepseek",
+        "deepseek-v4-pro",
+        "CNY",
+        3,
+        6,
+        cached=0.025,
+        source="https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+        note="deepseek-chat/deepseek-reasoner 已于 2026-07-24 弃用",
+    ),
     # ------------------------------------------------------------ §9.2 OpenAI (USD, 聚合)
-    _p("openai", "gpt-4o", "USD", 2.50, 10.00,
-       source="https://help.openai.com/", confidence="aggregate"),
-    _p("openai", "gpt-4o-mini", "USD", 0.15, 0.60,
-       source="https://help.openai.com/", confidence="aggregate"),
-    _p("openai", "gpt-4.1", "USD", 2.00, 8.00,
-       source="https://help.openai.com/", confidence="aggregate"),
-    _p("openai", "o4-mini", "USD", 1.10, 4.40,
-       source="https://help.openai.com/", confidence="aggregate"),
-
+    _p("openai", "gpt-4o", "USD", 2.50, 10.00, source="https://help.openai.com/", confidence="aggregate"),
+    _p("openai", "gpt-4o-mini", "USD", 0.15, 0.60, source="https://help.openai.com/", confidence="aggregate"),
+    _p("openai", "gpt-4.1", "USD", 2.00, 8.00, source="https://help.openai.com/", confidence="aggregate"),
+    _p("openai", "o4-mini", "USD", 1.10, 4.40, source="https://help.openai.com/", confidence="aggregate"),
     # ------------------------------------------------------------ §9.3 Anthropic (USD)
-    _p("claude", "claude-sonnet-5", "USD", 2, 10, cached=0.20,
-       source="https://platform.claude.com/docs/en/about-claude/pricing",
-       note="原限时价已转为标准价，原定 9/1 涨价取消"),
-    _p("claude", "claude-opus-5", "USD", 5, 25, cached=0.50,
-       source="https://platform.claude.com/docs/en/about-claude/pricing"),
-    _p("claude", "claude-sonnet-4-6", "USD", 3, 15, cached=0.30,
-       source="https://platform.claude.com/docs/en/about-claude/pricing"),
-    _p("claude", "claude-haiku-4-5", "USD", 1, 5, cached=0.10,
-       source="https://platform.claude.com/docs/en/about-claude/pricing"),
-    _p("claude", "claude-fable-5", "USD", 10, 50, cached=1.00,
-       source="https://platform.claude.com/docs/en/about-claude/pricing"),
-    _p("claude", "claude-mythos-5", "USD", 10, 50, cached=1.00,
-       source="https://platform.claude.com/docs/en/about-claude/pricing"),
-
+    _p(
+        "claude",
+        "claude-sonnet-5",
+        "USD",
+        2,
+        10,
+        cached=0.20,
+        source="https://platform.claude.com/docs/en/about-claude/pricing",
+        note="原限时价已转为标准价，原定 9/1 涨价取消",
+    ),
+    _p(
+        "claude",
+        "claude-opus-5",
+        "USD",
+        5,
+        25,
+        cached=0.50,
+        source="https://platform.claude.com/docs/en/about-claude/pricing",
+    ),
+    _p(
+        "claude",
+        "claude-sonnet-4-6",
+        "USD",
+        3,
+        15,
+        cached=0.30,
+        source="https://platform.claude.com/docs/en/about-claude/pricing",
+    ),
+    _p(
+        "claude",
+        "claude-haiku-4-5",
+        "USD",
+        1,
+        5,
+        cached=0.10,
+        source="https://platform.claude.com/docs/en/about-claude/pricing",
+    ),
+    _p(
+        "claude",
+        "claude-fable-5",
+        "USD",
+        10,
+        50,
+        cached=1.00,
+        source="https://platform.claude.com/docs/en/about-claude/pricing",
+    ),
+    _p(
+        "claude",
+        "claude-mythos-5",
+        "USD",
+        10,
+        50,
+        cached=1.00,
+        source="https://platform.claude.com/docs/en/about-claude/pricing",
+    ),
     # ------------------------------------------------------------ §9.4 Moonshot Kimi (USD 国际站)
-    _p("kimi", "kimi-k3", "USD", 3, 15, cached=0.30, region="international",
-       source="https://api.moonshot.ai/"),
-    _p("kimi", "kimi-k2.6", "USD", 0.95, 4, region="international",
-       source="https://api.moonshot.ai/", confidence="aggregate",
-       note="存在来源冲突（另有聚合站报 $0.60/$2.50）；国内站为 CNY 且价格不同"),
-    _p("kimi", "kimi-k2.5", "USD", 0.60, 3, region="international",
-       source="https://api.moonshot.ai/", confidence="aggregate"),
-
+    _p("kimi", "kimi-k3", "USD", 3, 15, cached=0.30, region="international", source="https://api.moonshot.ai/"),
+    _p(
+        "kimi",
+        "kimi-k2.6",
+        "USD",
+        0.95,
+        4,
+        region="international",
+        source="https://api.moonshot.ai/",
+        confidence="aggregate",
+        note="存在来源冲突（另有聚合站报 $0.60/$2.50）；国内站为 CNY 且价格不同",
+    ),
+    _p(
+        "kimi",
+        "kimi-k2.5",
+        "USD",
+        0.60,
+        3,
+        region="international",
+        source="https://api.moonshot.ai/",
+        confidence="aggregate",
+    ),
     # ------------------------------------------------------------ §9.5 智谱 GLM (CNY)
-    _p("glm", "glm-5.3", "CNY", 8, 28, cached=2,
-       source="https://docs.bigmodel.cn/cn/guide/start/pricing"),
-    _p("glm", "glm-5.3-flash", "CNY", 0.8, 2.8, cached=0.23,
-       source="https://docs.bigmodel.cn/cn/guide/start/pricing"),
-    _p("glm", "glm-5.2", "CNY", 8, 28, cached=2,
-       source="https://docs.bigmodel.cn/cn/guide/start/pricing"),
-    _p("glm", "glm-4.7-flash", "CNY", 0, 0, cached=0,
-       source="https://docs.bigmodel.cn/cn/guide/start/pricing",
-       note="免费模型"),
-
+    _p("glm", "glm-5.3", "CNY", 8, 28, cached=2, source="https://docs.bigmodel.cn/cn/guide/start/pricing"),
+    _p("glm", "glm-5.3-flash", "CNY", 0.8, 2.8, cached=0.23, source="https://docs.bigmodel.cn/cn/guide/start/pricing"),
+    _p("glm", "glm-5.2", "CNY", 8, 28, cached=2, source="https://docs.bigmodel.cn/cn/guide/start/pricing"),
+    _p(
+        "glm",
+        "glm-4.7-flash",
+        "CNY",
+        0,
+        0,
+        cached=0,
+        source="https://docs.bigmodel.cn/cn/guide/start/pricing",
+        note="免费模型",
+    ),
     # ------------------------------------------------------------ §9.6 阿里云百炼 Qwen (CNY, 阶梯)
-    _p("qwen", "qwen3.7-max", "CNY", 12, 36,
-       source="https://help.aliyun.com/zh/model-studio/model-pricing",
-       tiers=(PriceTier(1_000_000, 12, 36),),
-       note="按单次请求输入总量分档"),
-    _p("qwen", "qwen3-max", "CNY", 2.5, 10,
-       source="https://help.aliyun.com/zh/model-studio/model-pricing",
-       tiers=(PriceTier(32_000, 2.5, 10),
-              PriceTier(128_000, 4, 16),
-              PriceTier(256_000, 7, 28)),
-       note="阶梯计费：全部 token 按所选档位结算"),
-    _p("qwen", "qwen3.7-plus", "CNY", 2, 8,
-       source="https://help.aliyun.com/zh/model-studio/model-pricing",
-       tiers=(PriceTier(256_000, 2, 8),)),
-    _p("qwen", "qwen-plus", "CNY", 0.8, 2,
-       source="https://help.aliyun.com/zh/model-studio/model-pricing",
-       tiers=(PriceTier(128_000, 0.8, 2),)),
-
+    _p(
+        "qwen",
+        "qwen3.7-max",
+        "CNY",
+        12,
+        36,
+        source="https://help.aliyun.com/zh/model-studio/model-pricing",
+        tiers=(PriceTier(1_000_000, 12, 36),),
+        note="按单次请求输入总量分档",
+    ),
+    _p(
+        "qwen",
+        "qwen3-max",
+        "CNY",
+        2.5,
+        10,
+        source="https://help.aliyun.com/zh/model-studio/model-pricing",
+        tiers=(PriceTier(32_000, 2.5, 10), PriceTier(128_000, 4, 16), PriceTier(256_000, 7, 28)),
+        note="阶梯计费：全部 token 按所选档位结算",
+    ),
+    _p(
+        "qwen",
+        "qwen3.7-plus",
+        "CNY",
+        2,
+        8,
+        source="https://help.aliyun.com/zh/model-studio/model-pricing",
+        tiers=(PriceTier(256_000, 2, 8),),
+    ),
+    _p(
+        "qwen",
+        "qwen-plus",
+        "CNY",
+        0.8,
+        2,
+        source="https://help.aliyun.com/zh/model-studio/model-pricing",
+        tiers=(PriceTier(128_000, 0.8, 2),),
+    ),
     # ------------------------------------------------------------ §9.7 小米 MiMo（双区域双币种）
-    _p("mimo", "mimo-v2.5-pro", "CNY", 3, 6, region="cn",
-       source="https://platform.xiaomimimo.com/docs/zh-CN/price/pay-as-you-go"),
-    _p("mimo", "mimo-v2.5-pro", "USD", 0.435, 0.87, region="international",
-       source="https://platform.xiaomimimo.com/docs/zh-CN/price/pay-as-you-go"),
-    _p("mimo", "mimo-v2.5", "CNY", 1, 2, region="cn",
-       source="https://platform.xiaomimimo.com/docs/zh-CN/price/pay-as-you-go"),
-    _p("mimo", "mimo-v2.5", "USD", 0.14, 0.28, region="international",
-       source="https://platform.xiaomimimo.com/docs/zh-CN/price/pay-as-you-go"),
-
+    _p(
+        "mimo",
+        "mimo-v2.5-pro",
+        "CNY",
+        3,
+        6,
+        region="cn",
+        source="https://platform.xiaomimimo.com/docs/zh-CN/price/pay-as-you-go",
+    ),
+    _p(
+        "mimo",
+        "mimo-v2.5-pro",
+        "USD",
+        0.435,
+        0.87,
+        region="international",
+        source="https://platform.xiaomimimo.com/docs/zh-CN/price/pay-as-you-go",
+    ),
+    _p(
+        "mimo",
+        "mimo-v2.5",
+        "CNY",
+        1,
+        2,
+        region="cn",
+        source="https://platform.xiaomimimo.com/docs/zh-CN/price/pay-as-you-go",
+    ),
+    _p(
+        "mimo",
+        "mimo-v2.5",
+        "USD",
+        0.14,
+        0.28,
+        region="international",
+        source="https://platform.xiaomimimo.com/docs/zh-CN/price/pay-as-you-go",
+    ),
     # ------------------------------------------------------------ §9.8 聚合/托管平台
-    _p("siliconflow", "deepseek-ai/DeepSeek-V4-Flash", "USD", 0.13, 0.28, cached=0.028,
-       source="https://www.siliconflow.cn/"),
-    _p("siliconflow", "zai-org/GLM-5.3", "USD", 1.40, 4.40, cached=0.26,
-       source="https://www.siliconflow.cn/"),
-    _p("groq", "openai/gpt-oss-120b", "USD", 0.15, 0.60,
-       source="https://console.groq.com/docs/models"),
-    _p("groq", "openai/gpt-oss-20b", "USD", 0.075, 0.30, cached=0.0375,
-       source="https://console.groq.com/docs/models"),
-    _p("groq", "qwen/qwen3.6-27b", "USD", 0.60, 3.00,
-       source="https://console.groq.com/docs/models"),
-    _p("groq", "llama-3.3-70b-versatile", "USD", 0.59, 0.79,
-       source="https://console.groq.com/docs/models"),
-    _p("together", "Qwen/Qwen3.6-Plus", "USD", 0.50, 3.00,
-       source="", confidence="aggregate",
-       note="聚合来源，置信度低"),
+    _p(
+        "siliconflow",
+        "deepseek-ai/DeepSeek-V4-Flash",
+        "USD",
+        0.13,
+        0.28,
+        cached=0.028,
+        source="https://www.siliconflow.cn/",
+    ),
+    _p("siliconflow", "zai-org/GLM-5.3", "USD", 1.40, 4.40, cached=0.26, source="https://www.siliconflow.cn/"),
+    _p("groq", "openai/gpt-oss-120b", "USD", 0.15, 0.60, source="https://console.groq.com/docs/models"),
+    _p("groq", "openai/gpt-oss-20b", "USD", 0.075, 0.30, cached=0.0375, source="https://console.groq.com/docs/models"),
+    _p("groq", "qwen/qwen3.6-27b", "USD", 0.60, 3.00, source="https://console.groq.com/docs/models"),
+    _p("groq", "llama-3.3-70b-versatile", "USD", 0.59, 0.79, source="https://console.groq.com/docs/models"),
+    _p(
+        "together", "Qwen/Qwen3.6-Plus", "USD", 0.50, 3.00, source="", confidence="aggregate", note="聚合来源，置信度低"
+    ),
     # ------------------------------------------------------------ 本地：无计费
     _p("ollama", "*", "CNY", 0, 0, source="", note="本地模型，无计费"),
 )
@@ -304,8 +432,14 @@ def providers_with_pricing() -> tuple:
 def free_price(provider: str, model: str = "*") -> ModelPrice:
     """本地/免费模型的零价（让成本路径统一，不必到处判 None）。"""
     return ModelPrice(
-        provider=provider, model=model, currency="CNY", input=0, output=0,
-        source_url="", confidence="official", note="无计费",
+        provider=provider,
+        model=model,
+        currency="CNY",
+        input=0,
+        output=0,
+        source_url="",
+        confidence="official",
+        note="无计费",
     )
 
 

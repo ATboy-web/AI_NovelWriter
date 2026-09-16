@@ -1,4 +1,5 @@
 """描写库面板混入"""
+
 import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
@@ -18,9 +19,11 @@ class DescriptionsPanelMixin:
         ttk.Label(cat_frame, text="类别:").pack(side=tk.LEFT)
         self.desc_cat_var = tk.StringVar()
         cats = self.desc_lib.get_categories()
-        ttk.Combobox(cat_frame, textvariable=self.desc_cat_var, values=cats, state="readonly", width=15).pack(side=tk.LEFT, padx=5)
+        ttk.Combobox(cat_frame, textvariable=self.desc_cat_var, values=cats, state="readonly", width=15).pack(
+            side=tk.LEFT, padx=5
+        )
 
-        ttk.Label(cat_frame, text="描写对象:").pack(side=tk.LEFT, padx=(10,0))
+        ttk.Label(cat_frame, text="描写对象:").pack(side=tk.LEFT, padx=(10, 0))
         self.desc_subject = ttk.Entry(cat_frame, width=15)
         self.desc_subject.pack(side=tk.LEFT, padx=5)
         ttk.Button(cat_frame, text="生成描写", command=self._gen_description).pack(side=tk.LEFT, padx=5)
@@ -44,8 +47,7 @@ class DescriptionsPanelMixin:
         def run():
             try:
                 result = self.desc_lib.generate_description(
-                    self.ai_client, self.desc_subject.get() or "日出",
-                    self.desc_cat_var.get()
+                    self.ai_client, self.desc_subject.get() or "日出", self.desc_cat_var.get()
                 )
                 self.root.after(0, lambda: self._show_tool_result(self.desc_result, result))
             except Exception as e:

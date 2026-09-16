@@ -1,4 +1,5 @@
 """对话推演面板混入"""
+
 import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
@@ -54,9 +55,7 @@ class DialoguePanelMixin:
 
         def run():
             try:
-                self.dialogue_engine.start_dialogue(
-                    self.dlg_scenario.get(), characters
-                )
+                self.dialogue_engine.start_dialogue(self.dlg_scenario.get(), characters)
                 text = self.dialogue_engine.export_text()
                 self.root.after(0, lambda: self._show_tool_result(self.dlg_result, text))
             except Exception as e:

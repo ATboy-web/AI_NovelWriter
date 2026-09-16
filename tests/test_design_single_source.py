@@ -86,7 +86,14 @@ class TestFontsAndComponentStyles:
     def test_public_api_surface_unchanged(self):
         """公开 API 必须保持不变 —— 测试与文档都在用它。"""
         for attr in (
-            "COLORS", "SPACING", "RADIUS", "FONTS",
-            "BUTTON_PRIMARY", "BUTTON_SECONDARY", "BUTTON_DANGER", "CARD", "AVATAR",
+            "COLORS",
+            "SPACING",
+            "RADIUS",
+            "FONTS",
+            "BUTTON_PRIMARY",
+            "BUTTON_SECONDARY",
+            "BUTTON_DANGER",
+            "CARD",
+            "AVATAR",
         ):
             assert hasattr(DesignTokens, attr), f"缺少公开属性 {attr}"

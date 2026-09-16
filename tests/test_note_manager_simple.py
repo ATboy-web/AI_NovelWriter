@@ -33,10 +33,10 @@ class TestNoteManagerSimple:
 
     def test_has_sticky_note_methods(self):
         """测试便笺方法存在"""
-        assert hasattr(NoteManager, 'get_sticky_notes')
-        assert hasattr(NoteManager, 'save_sticky_notes')
-        assert hasattr(NoteManager, 'add_sticky_note')
-        assert hasattr(NoteManager, 'delete_sticky_note')
+        assert hasattr(NoteManager, "get_sticky_notes")
+        assert hasattr(NoteManager, "save_sticky_notes")
+        assert hasattr(NoteManager, "add_sticky_note")
+        assert hasattr(NoteManager, "delete_sticky_note")
 
     def test_sticky_file_location(self):
         """测试便笺文件位置"""
@@ -47,5 +47,5 @@ class TestNoteManagerSimple:
         assert manager.sticky_file == Path("/tmp/test/sticky_notes.json")
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

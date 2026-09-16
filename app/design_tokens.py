@@ -32,35 +32,31 @@ def _derive_colors() -> dict:
     ui = UIStyle.COLORS
     return {
         # 背景色
-        "bg_primary": ui["bg_dark"],        # 最深背景
-        "bg_secondary": ui["bg_medium"],    # 面板背景
-        "bg_card": ui["bg_card"],           # 卡片/输入框
-        "bg_hover": ui["bg_hover"],         # 悬停状态
-
+        "bg_primary": ui["bg_dark"],  # 最深背景
+        "bg_secondary": ui["bg_medium"],  # 面板背景
+        "bg_card": ui["bg_card"],  # 卡片/输入框
+        "bg_hover": ui["bg_hover"],  # 悬停状态
         # 边框色
-        "border": ui["border"],             # 分隔线/边框
+        "border": ui["border"],  # 分隔线/边框
         "border_light": ui["border_light"],  # 较亮边框
-
         # 主色调
-        "primary": ui["accent"],            # 按钮/高亮
+        "primary": ui["accent"],  # 按钮/高亮
         "primary_hover": ui["accent_hover"],  # 主色悬停
         "primary_light": ui["accent_light"],  # 主色浅色
-
         # 语义色
-        "success": ui["success"],           # 成功
+        "success": ui["success"],  # 成功
         # UIStyle 无 success_light 语义位 → 保持本模块自有取值（浅一档，用于强调）
         "success_light": "#10b981",
-        "error": ui["error"],               # 错误
+        "error": ui["error"],  # 错误
         # UIStyle.error_bg 是"错误背景"语义，与这里的"错误深色（悬停）"不同位
         "error_dark": "#dc2626",
-        "warning": ui["warning"],           # 警告
-        "info": ui["info"],                 # 信息
-
+        "warning": ui["warning"],  # 警告
+        "info": ui["info"],  # 信息
         # 文字色
-        "text_primary": ui["text_primary"],      # 主要文字
+        "text_primary": ui["text_primary"],  # 主要文字
         "text_secondary": ui["text_secondary"],  # 次要文字
-        "text_muted": ui["text_muted"],          # 辅助文字
-        "text_inverse": ui["text_inverse"],      # 反色文字
+        "text_muted": ui["text_muted"],  # 辅助文字
+        "text_inverse": ui["text_inverse"],  # 反色文字
     }
 
 
@@ -104,7 +100,7 @@ class DesignTokens:
             "lg": 15,
             "xl": 18,
             "2xl": 24,
-        }
+        },
     }
 
     # 组件样式

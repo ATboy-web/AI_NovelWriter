@@ -109,7 +109,7 @@ class CinematicPromptGenerator:
             f"({comp})",
             f"({style})",
             "masterpiece, best quality, cinematic, 8k, highly detailed",
-            "professional photography, award-winning"
+            "professional photography, award-winning",
         ]
 
         return ", ".join(prompt_parts), ratio_info
@@ -174,17 +174,67 @@ class SceneDetector:
 
     # 触发关键词（预筛选）
     SCENE_KEYWORDS = [
-        "大战", "对决", "交锋", "激战", "厮杀", "出剑", "拔刀", "施展",
-        "震撼", "壮观", "磅礴", "恢弘", "浩瀚", "天地变色", "风云变幻",
-        "英俊", "潇洒", "飘逸", "凌厉", "霸气", "威严", "冷峻", "邪魅",
-        "绝美", "倾城", "惊艳", "如画", "仙子", "出尘", "清丽", "妩媚",
-        "告白", "拥吻", "热泪", "重逢", "离别", "生死", "牺牲",
-        "踏入", "登临", "俯瞰", "仰望", "穿越", "降临",
+        "大战",
+        "对决",
+        "交锋",
+        "激战",
+        "厮杀",
+        "出剑",
+        "拔刀",
+        "施展",
+        "震撼",
+        "壮观",
+        "磅礴",
+        "恢弘",
+        "浩瀚",
+        "天地变色",
+        "风云变幻",
+        "英俊",
+        "潇洒",
+        "飘逸",
+        "凌厉",
+        "霸气",
+        "威严",
+        "冷峻",
+        "邪魅",
+        "绝美",
+        "倾城",
+        "惊艳",
+        "如画",
+        "仙子",
+        "出尘",
+        "清丽",
+        "妩媚",
+        "告白",
+        "拥吻",
+        "热泪",
+        "重逢",
+        "离别",
+        "生死",
+        "牺牲",
+        "踏入",
+        "登临",
+        "俯瞰",
+        "仰望",
+        "穿越",
+        "降临",
     ]
 
     CHARACTER_KEYWORDS = [
-        "主角", "少年", "少女", "男子", "女子", "将军", "帝王", "仙人",
-        "剑客", "侠女", "公主", "王子", "魔王", "天使",
+        "主角",
+        "少年",
+        "少女",
+        "男子",
+        "女子",
+        "将军",
+        "帝王",
+        "仙人",
+        "剑客",
+        "侠女",
+        "公主",
+        "王子",
+        "魔王",
+        "天使",
     ]
 
     @staticmethod
@@ -210,17 +260,19 @@ class SceneDetector:
                         }
                         prompt, ratio_info = CinematicPromptGenerator.get_cinematic_prompt(scene_data)
 
-                        scenes.append({
-                            "text": desc,
-                            "keyword": keyword,
-                            "type": scene_type,
-                            "prompt": prompt,
-                            "aspect_ratio": ratio_info["ratio"],
-                            "size": ratio_info["size"],
-                            "shot_type": CinematicPromptGenerator._auto_select_shot(scene_type, desc),
-                            "composition": CinematicPromptGenerator._auto_select_composition(scene_type),
-                            "style": CinematicPromptGenerator._auto_select_style(scene_data["mood"]),
-                        })
+                        scenes.append(
+                            {
+                                "text": desc,
+                                "keyword": keyword,
+                                "type": scene_type,
+                                "prompt": prompt,
+                                "aspect_ratio": ratio_info["ratio"],
+                                "size": ratio_info["size"],
+                                "shot_type": CinematicPromptGenerator._auto_select_shot(scene_type, desc),
+                                "composition": CinematicPromptGenerator._auto_select_composition(scene_type),
+                                "style": CinematicPromptGenerator._auto_select_style(scene_data["mood"]),
+                            }
+                        )
 
         # 去重
         seen = set()
@@ -256,9 +308,12 @@ class SceneDetector:
         """用AI筛选最具画面感的场景"""
         scene_summaries = []
         for i, s in enumerate(scenes[:20]):
-            scene_summaries.append(f"{i+1}. [{s['type']}] 第{s['chapter']}章: {s['text'][:80]}")
+            scene_summaries.append(f"{i + 1}. [{s['type']}] 第{s['chapter']}章: {s['text'][:80]}")
 
-        prompt = f"第{volume_num+1}卷有以下候选场景，请选出最具画面感和视觉冲击力的10个场景，输出JSON数组[场景序号]：\n" + "\n".join(scene_summaries)
+        prompt = (
+            f"第{volume_num + 1}卷有以下候选场景，请选出最具画面感和视觉冲击力的10个场景，输出JSON数组[场景序号]：\n"
+            + "\n".join(scene_summaries)
+        )
 
         system = """你是专业的影视选景导演。
 
@@ -280,11 +335,9 @@ class SceneDetector:
 只输出JSON数组，如[1,3,5,7,9,11,13,15,17,19]"""
 
         try:
-            result = ai_client.chat([{"role": "user", "content": prompt}],
-                                   system=system,
-                                   max_tokens=200)
+            result = ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=200)
             selected = json.loads(result.strip().strip("`").replace("json", ""))
-            return [scenes[i-1] for i in selected if 0 < i <= len(scenes)]
+            return [scenes[i - 1] for i in selected if 0 < i <= len(scenes)]
         except Exception:
             return scenes[:10]
 

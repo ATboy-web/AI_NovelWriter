@@ -35,12 +35,7 @@ class TestPerformanceMonitor:
 
     def test_record_request(self, monitor):
         """测试记录请求"""
-        monitor.record_request(
-            path="/api/test",
-            method="GET",
-            status_code=200,
-            duration_ms=100.0
-        )
+        monitor.record_request(path="/api/test", method="GET", status_code=200, duration_ms=100.0)
 
         stats = monitor.get_stats()
         assert stats.total_requests == 1
@@ -50,11 +45,7 @@ class TestPerformanceMonitor:
     def test_record_error_request(self, monitor):
         """测试记录错误请求"""
         monitor.record_request(
-            path="/api/test",
-            method="POST",
-            status_code=500,
-            duration_ms=50.0,
-            error="Internal Server Error"
+            path="/api/test", method="POST", status_code=500, duration_ms=50.0, error="Internal Server Error"
         )
 
         stats = monitor.get_stats()
@@ -68,10 +59,7 @@ class TestPerformanceMonitor:
         # 记录多个请求
         for i in range(10):
             monitor.record_request(
-                path="/api/test",
-                method="GET",
-                status_code=200 if i < 8 else 500,
-                duration_ms=100.0 + i * 10
+                path="/api/test", method="GET", status_code=200 if i < 8 else 500, duration_ms=100.0 + i * 10
             )
 
         stats = monitor.get_stats()
@@ -85,12 +73,7 @@ class TestPerformanceMonitor:
         durations = [10, 20, 30, 40, 50, 100, 200, 300, 400, 1000]
 
         for duration in durations:
-            monitor.record_request(
-                path="/api/test",
-                method="GET",
-                status_code=200,
-                duration_ms=duration
-            )
+            monitor.record_request(path="/api/test", method="GET", status_code=200, duration_ms=duration)
 
         stats = monitor.get_stats()
         assert stats.min_duration_ms == 10
@@ -142,12 +125,7 @@ class TestPerformanceMonitor:
         """测试最大历史记录限制"""
         # 记录超过最大限制的请求
         for i in range(150):
-            monitor.record_request(
-                path=f"/api/test/{i}",
-                method="GET",
-                status_code=200,
-                duration_ms=100
-            )
+            monitor.record_request(path=f"/api/test/{i}", method="GET", status_code=200, duration_ms=100)
 
         # 应该只保留最近100条
         assert len(monitor._request_history) == 100
@@ -188,6 +166,7 @@ class TestMonitorPerformanceDecorator:
 
     def test_successful_function(self):
         """测试成功执行的函数"""
+
         @monitor_performance
         def test_func():
             return "success"
@@ -197,6 +176,7 @@ class TestMonitorPerformanceDecorator:
 
     def test_failed_function(self):
         """测试失败的函数"""
+
         @monitor_performance
         def test_func():
             raise ValueError("test error")
@@ -215,6 +195,7 @@ class TestMonitorPerformanceDecorator:
 
         # 替换全局监控器
         import app.performance_monitor as pm
+
         old_monitor = pm._performance_monitor
         pm._performance_monitor = monitor
 
@@ -239,6 +220,7 @@ class TestPrometheusMetrics:
 
         # 替换全局监控器
         import app.performance_monitor as pm
+
         old_monitor = pm._performance_monitor
         pm._performance_monitor = monitor
 
@@ -254,5 +236,5 @@ class TestPrometheusMetrics:
             pm._performance_monitor = old_monitor
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

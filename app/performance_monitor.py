@@ -16,6 +16,7 @@ from typing import Dict, List, Optional
 @dataclass
 class RequestMetric:
     """请求指标"""
+
     path: str
     method: str
     status_code: int
@@ -27,11 +28,12 @@ class RequestMetric:
 @dataclass
 class PerformanceStats:
     """性能统计"""
+
     total_requests: int = 0
     successful_requests: int = 0
     failed_requests: int = 0
     total_duration_ms: float = 0
-    min_duration_ms: float = float('inf')
+    min_duration_ms: float = float("inf")
     max_duration_ms: float = 0
     p50_duration_ms: float = 0
     p95_duration_ms: float = 0
@@ -63,24 +65,12 @@ class PerformanceMonitor:
         # 启动时间
         self._start_time = time.time()
 
-    def record_request(
-        self,
-        path: str,
-        method: str,
-        status_code: int,
-        duration_ms: float,
-        error: Optional[str] = None
-    ):
+    def record_request(self, path: str, method: str, status_code: int, duration_ms: float, error: Optional[str] = None):
         """记录请求指标"""
         now = time.time()
 
         metric = RequestMetric(
-            path=path,
-            method=method,
-            status_code=status_code,
-            duration_ms=duration_ms,
-            timestamp=now,
-            error=error
+            path=path, method=method, status_code=status_code, duration_ms=duration_ms, timestamp=now, error=error
         )
 
         with self._lock:
@@ -140,7 +130,7 @@ class PerformanceMonitor:
                 p95_duration_ms=durations[p95_idx] if p95_idx < total else 0,
                 p99_duration_ms=durations[p99_idx] if p99_idx < total else 0,
                 error_rate=failed / total if total > 0 else 0,
-                requests_per_second=rps
+                requests_per_second=rps,
             )
 
     def get_path_stats(self) -> Dict[str, Dict]:
@@ -160,7 +150,7 @@ class PerformanceMonitor:
                     "min_ms": sorted_durations[0],
                     "max_ms": sorted_durations[-1],
                     "p50_ms": sorted_durations[int(total * 0.5)] if total > 0 else 0,
-                    "p95_ms": sorted_durations[int(total * 0.95)] if total > 0 else 0
+                    "p95_ms": sorted_durations[int(total * 0.95)] if total > 0 else 0,
                 }
 
             return stats
@@ -210,11 +200,11 @@ class PerformanceMonitor:
                     "max_ms": stats.max_duration_ms,
                     "p50_ms": stats.p50_duration_ms,
                     "p95_ms": stats.p95_duration_ms,
-                    "p99_ms": stats.p99_duration_ms
-                }
+                    "p99_ms": stats.p99_duration_ms,
+                },
             },
             "paths": path_stats,
-            "errors": error_stats
+            "errors": error_stats,
         }
 
     def save_report(self, filepath: str):
@@ -224,7 +214,7 @@ class PerformanceMonitor:
         # 确保目录存在
         Path(filepath).parent.mkdir(parents=True, exist_ok=True)
 
-        with open(filepath, 'w', encoding='utf-8') as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2, ensure_ascii=False)
 
 
@@ -239,6 +229,7 @@ def get_performance_monitor() -> PerformanceMonitor:
 
 def monitor_performance(func):
     """性能监控装饰器"""
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         start_time = time.time()
@@ -261,11 +252,7 @@ def monitor_performance(func):
 
             # 记录指标
             _performance_monitor.record_request(
-                path=path,
-                method=method,
-                status_code=status_code,
-                duration_ms=duration_ms,
-                error=error
+                path=path, method=method, status_code=status_code, duration_ms=duration_ms, error=error
             )
 
     return wrapper
@@ -291,10 +278,10 @@ class PerformanceMiddleware:
 
             # 记录指标
             self.monitor.record_request(
-                path=environ.get('PATH_INFO', '/'),
-                method=environ.get('REQUEST_METHOD', 'GET'),
+                path=environ.get("PATH_INFO", "/"),
+                method=environ.get("REQUEST_METHOD", "GET"),
                 status_code=status_code,
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
             )
 
             return start_response(status, headers, exc_info)
@@ -311,41 +298,41 @@ def create_prometheus_metrics() -> str:
     lines = []
 
     # 总请求数
-    lines.append('# HELP http_requests_total Total number of HTTP requests')
-    lines.append('# TYPE http_requests_total counter')
-    lines.append(f'http_requests_total {stats.total_requests}')
+    lines.append("# HELP http_requests_total Total number of HTTP requests")
+    lines.append("# TYPE http_requests_total counter")
+    lines.append(f"http_requests_total {stats.total_requests}")
 
     # 成功请求数
-    lines.append('# HELP http_requests_successful Successful HTTP requests')
-    lines.append('# TYPE http_requests_successful counter')
-    lines.append(f'http_requests_successful {stats.successful_requests}')
+    lines.append("# HELP http_requests_successful Successful HTTP requests")
+    lines.append("# TYPE http_requests_successful counter")
+    lines.append(f"http_requests_successful {stats.successful_requests}")
 
     # 失败请求数
-    lines.append('# HELP http_requests_failed Failed HTTP requests')
-    lines.append('# TYPE http_requests_failed counter')
-    lines.append(f'http_requests_failed {stats.failed_requests}')
+    lines.append("# HELP http_requests_failed Failed HTTP requests")
+    lines.append("# TYPE http_requests_failed counter")
+    lines.append(f"http_requests_failed {stats.failed_requests}")
 
     # 错误率
-    lines.append('# HELP http_error_rate HTTP error rate')
-    lines.append('# TYPE http_error_rate gauge')
-    lines.append(f'http_error_rate {stats.error_rate}')
+    lines.append("# HELP http_error_rate HTTP error rate")
+    lines.append("# TYPE http_error_rate gauge")
+    lines.append(f"http_error_rate {stats.error_rate}")
 
     # 每秒请求数
-    lines.append('# HELP http_requests_per_second HTTP requests per second')
-    lines.append('# TYPE http_requests_per_second gauge')
-    lines.append(f'http_requests_per_second {stats.requests_per_second}')
+    lines.append("# HELP http_requests_per_second HTTP requests per second")
+    lines.append("# TYPE http_requests_per_second gauge")
+    lines.append(f"http_requests_per_second {stats.requests_per_second}")
 
     # 响应时间
-    lines.append('# HELP http_response_time_ms HTTP response time in milliseconds')
-    lines.append('# TYPE http_response_time_ms summary')
+    lines.append("# HELP http_response_time_ms HTTP response time in milliseconds")
+    lines.append("# TYPE http_response_time_ms summary")
     lines.append(f'http_response_time_ms{{quantile="0.5"}} {stats.p50_duration_ms}')
     lines.append(f'http_response_time_ms{{quantile="0.95"}} {stats.p95_duration_ms}')
     lines.append(f'http_response_time_ms{{quantile="0.99"}} {stats.p99_duration_ms}')
 
     # 按路径统计
     for path, path_stat in path_stats.items():
-        safe_path = path.replace('"', '\\"').replace('\n', '\\n')
+        safe_path = path.replace('"', '\\"').replace("\n", "\\n")
         lines.append(f'http_path_requests{{path="{safe_path}"}} {path_stat["count"]}')
         lines.append(f'http_path_avg_ms{{path="{safe_path}"}} {path_stat["avg_ms"]}')
 
-    return '\n'.join(lines)
+    return "\n".join(lines)

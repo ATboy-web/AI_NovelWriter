@@ -16,6 +16,7 @@ try:
     from loguru import logger
 except ImportError:
     import logging
+
     logger = logging.getLogger(__name__)
 
 from app.events import TOPIC_CHARACTER_CHANGED, TOPIC_TIMELINE_CHANGED
@@ -61,13 +62,13 @@ def _flush_all_on_exit():
 
 class MemoryManager:
     """长上下文记忆管理器 - 分层架构，支持5000章小说
-    
+
     分层架构：
     1. 全局摘要 - 整个故事的核心概述 (1个文件)
     2. 卷级摘要 - 每100章为一卷的概述 (50个文件)
     3. 弧线摘要 - 重要剧情弧线的概述 (200个文件)
     4. 章节摘要 - 每章的详细摘要 (5000个文件)
-    
+
     核心机制：
     1. RAG检索 - 倒排索引+关键词匹配，支持百万级检索
     2. 语义去重 - 相似记忆自动合并
@@ -80,12 +81,54 @@ class MemoryManager:
     VOLUME_SIZE = 100  # 每卷100章
 
     # P1-1: 中文常见停用词提为类常量，避免每次调用重建
-    _STOPWORDS = frozenset({
-        '的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一',
-        '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有',
-        '看', '好', '自己', '这', '他', '她', '它', '们', '那', '被', '把',
-        '可以', '这个', '那个', '什么', '怎么', '因为', '所以', '但是', '然后',
-    })
+    _STOPWORDS = frozenset(
+        {
+            "的",
+            "了",
+            "在",
+            "是",
+            "我",
+            "有",
+            "和",
+            "就",
+            "不",
+            "人",
+            "都",
+            "一",
+            "一个",
+            "上",
+            "也",
+            "很",
+            "到",
+            "说",
+            "要",
+            "去",
+            "你",
+            "会",
+            "着",
+            "没有",
+            "看",
+            "好",
+            "自己",
+            "这",
+            "他",
+            "她",
+            "它",
+            "们",
+            "那",
+            "被",
+            "把",
+            "可以",
+            "这个",
+            "那个",
+            "什么",
+            "怎么",
+            "因为",
+            "所以",
+            "但是",
+            "然后",
+        }
+    )
     # 有界关键词缓存（跨实例共享纯函数结果）
     # M6: 类级共享 → 必须加锁，否则并发下 clear/写读交错会读到半构造状态、
     # 或在上限边界反复清空导致命中率塌陷。
@@ -203,7 +246,7 @@ class MemoryManager:
     def _load_inverted_index(self) -> Dict:
         if self.inverted_index_file.exists():
             try:
-                return json.loads(self.inverted_index_file.read_text(encoding='utf-8'))
+                return json.loads(self.inverted_index_file.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
                 # 不再静默：索引读坏了意味着检索会退化，必须可观测（M5）
                 logger.warning(f"[memory_manager] 倒排索引不可读，本次以空索引继续: {e}")
@@ -232,7 +275,7 @@ class MemoryManager:
     def _load_character_activity(self) -> Dict:
         if self.character_activity_file.exists():
             try:
-                return json.loads(self.character_activity_file.read_text(encoding='utf-8'))
+                return json.loads(self.character_activity_file.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
                 logger.warning(f"[memory_manager] 角色活跃度文件不可读，本次重置: {e}")
         return {}
@@ -255,7 +298,7 @@ class MemoryManager:
         """获取卷级摘要"""
         file = self.volumes_dir / f"volume_{volume_num:03d}.txt"
         if file.exists():
-            return file.read_text(encoding='utf-8')
+            return file.read_text(encoding="utf-8")
         return ""
 
     def get_current_volume_summary(self, chapter_num: int) -> str:
@@ -292,7 +335,7 @@ class MemoryManager:
             "name": arc_name,
             "summary": summary,
             "chapters": chapters or [],
-            "updated_at": datetime.now().isoformat()
+            "updated_at": datetime.now().isoformat(),
         }
         atomic_write_json(file, data, indent=2)
 
@@ -301,7 +344,7 @@ class MemoryManager:
         safe_name = "".join(c for c in arc_name if c.isalnum() or c in "_ -")[:30]
         file = self.arcs_dir / f"arc_{safe_name}.json"
         if file.exists():
-            data = json.loads(file.read_text(encoding='utf-8'))
+            data = json.loads(file.read_text(encoding="utf-8"))
             return data.get("summary", "")
         return ""
 
@@ -310,7 +353,7 @@ class MemoryManager:
         arcs = []
         for f in self.arcs_dir.glob("arc_*.json"):
             try:
-                arcs.append(json.loads(f.read_text(encoding='utf-8')))
+                arcs.append(json.loads(f.read_text(encoding="utf-8")))
             except (FileNotFoundError, json.JSONDecodeError) as _silent_e:
                 logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
         return arcs
@@ -322,7 +365,7 @@ class MemoryManager:
 
     def get_global_summary(self) -> str:
         if self.global_summary_file.exists():
-            return self.global_summary_file.read_text(encoding='utf-8')
+            return self.global_summary_file.read_text(encoding="utf-8")
         return ""
 
     def save_chapter_summary(self, chapter_num: int, summary: str):
@@ -347,7 +390,7 @@ class MemoryManager:
     def get_chapter_summary(self, chapter_num: int) -> str:
         file = self.chapters_dir / f"chapter_{chapter_num:05d}.txt"
         if file.exists():
-            return file.read_text(encoding='utf-8')
+            return file.read_text(encoding="utf-8")
         return ""
 
     def get_recent_summaries(self, count: int = 5) -> str:
@@ -356,7 +399,7 @@ class MemoryManager:
         summaries = []
         for ch in chapters[:count]:
             num_str = ch.stem.split("_")[1]
-            content = ch.read_text(encoding='utf-8')
+            content = ch.read_text(encoding="utf-8")
             summaries.append(f"第{num_str}章摘要：\n{content}")
             self._increment_reference(f"chapter_{num_str}")
         return "\n\n".join(reversed(summaries))
@@ -376,11 +419,7 @@ class MemoryManager:
         """更新角色活跃度"""
         with self._lock:
             if char_name not in self._character_activity:
-                self._character_activity[char_name] = {
-                    "appearances": [],
-                    "last_seen": chapter_num,
-                    "importance": 5
-                }
+                self._character_activity[char_name] = {"appearances": [], "last_seen": chapter_num, "importance": 5}
             activity = self._character_activity[char_name]
             if chapter_num not in activity["appearances"]:
                 activity["appearances"].append(chapter_num)
@@ -422,7 +461,7 @@ class MemoryManager:
 
     def retrieve_relevant(self, query: str, top_k: int = 5) -> List[Dict]:
         """RAG检索：使用倒排索引快速查找
-        
+
         使用倒排索引避免遍历所有chunks，支持百万级检索
         """
         query_keywords = set(self._extract_keywords(query))
@@ -482,7 +521,7 @@ class MemoryManager:
         chapters = sorted(self.chapters_dir.glob("chapter_*.txt"), reverse=True)
         for ch_file in chapters[:100]:  # 只搜索最近100章摘要（摘要文件，非全文）
             try:
-                content = ch_file.read_text(encoding='utf-8')
+                content = ch_file.read_text(encoding="utf-8")
                 doc_id = ch_file.stem
                 meta = self._scores.get(doc_id, {})
                 chunk = {
@@ -514,17 +553,17 @@ class MemoryManager:
                 except (ValueError, IndexError) as _silent_e:
                     logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
             if file.exists():
-                return file.read_text(encoding='utf-8')
+                return file.read_text(encoding="utf-8")
         # 卷级摘要
         elif doc_id.startswith("volume_"):
             file = self.volumes_dir / f"{doc_id}.txt"
             if file.exists():
-                return file.read_text(encoding='utf-8')
+                return file.read_text(encoding="utf-8")
         # 弧线摘要
         elif doc_id.startswith("arc_"):
             file = self.arcs_dir / f"{doc_id}.json"
             if file.exists():
-                data = json.loads(file.read_text(encoding='utf-8'))
+                data = json.loads(file.read_text(encoding="utf-8"))
                 return data.get("summary", "")
         return ""
 
@@ -551,10 +590,10 @@ class MemoryManager:
         # 加权计算
         weights = {"keyword": 0.40, "freshness": 0.20, "importance": 0.30, "ref": 0.10}
         total = (
-            keyword_score * weights["keyword"] +
-            freshness * weights["freshness"] +
-            importance * weights["importance"] +
-            ref_score * weights["ref"]
+            keyword_score * weights["keyword"]
+            + freshness * weights["freshness"]
+            + importance * weights["importance"]
+            + ref_score * weights["ref"]
         )
 
         return round(total, 4)
@@ -578,7 +617,7 @@ class MemoryManager:
         page_file = self.chunks_dir / f"page_{page:04d}.json"
         if page_file.exists():
             try:
-                return json.loads(page_file.read_text(encoding='utf-8'))
+                return json.loads(page_file.read_text(encoding="utf-8"))
             except (FileNotFoundError, json.JSONDecodeError) as _silent_e:
                 logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
         return []
@@ -595,13 +634,14 @@ class MemoryManager:
             return 0
         last_page = sorted(pages)[-1]
         try:
-            chunks = json.loads(last_page.read_text(encoding='utf-8'))
+            chunks = json.loads(last_page.read_text(encoding="utf-8"))
             return (len(pages) - 1) * 100 + len(chunks)
         except (FileNotFoundError, ValueError):
             return 0
 
-    def add_chunk(self, chunk_type: str, content: str, importance: int = 5,
-                  tags: List[str] = None, related_to: List[str] = None):
+    def add_chunk(
+        self, chunk_type: str, content: str, importance: int = 5, tags: List[str] = None, related_to: List[str] = None
+    ):
         """添加记忆块（分页存储，P1-6: 读改写加锁 + 维护页索引）"""
         with self._lock:
             # 去重检查（只检查最近几页）
@@ -648,7 +688,7 @@ class MemoryManager:
             except (ValueError, IndexError):
                 continue
             try:
-                for chunk in json.loads(page_file.read_text(encoding='utf-8')):
+                for chunk in json.loads(page_file.read_text(encoding="utf-8")):
                     self._chunk_page_index[chunk.get("id", "")] = page_num
             except (FileNotFoundError, json.JSONDecodeError):
                 continue
@@ -704,10 +744,18 @@ class MemoryManager:
         """章节号转时间线页码（每100章一页）"""
         return (chapter_num - 1) // 100
 
-    def add_event(self, chapter_num: int, event: str, event_type: str = "story",
-                  characters_involved: List[str] = None,
-                  location: str = "", story_time: str = "", arc: str = "",
-                  source: str = "auto", confidence: str = "high"):
+    def add_event(
+        self,
+        chapter_num: int,
+        event: str,
+        event_type: str = "story",
+        characters_involved: List[str] = None,
+        location: str = "",
+        story_time: str = "",
+        arc: str = "",
+        source: str = "auto",
+        confidence: str = "high",
+    ):
         """添加事件到时间线（分页存储）。
 
         v3 P4b 新增 5 个**可选**字段（`location` 地点 / `story_time` 故事内时间 /
@@ -722,34 +770,39 @@ class MemoryManager:
         events = []
         if page_file.exists():
             try:
-                events = json.loads(page_file.read_text(encoding='utf-8'))
+                events = json.loads(page_file.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as _silent_e:
                 logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
 
-        events.append({
-            "chapter": chapter_num,
-            "event": event,
-            "type": event_type,
-            "characters": characters_involved or [],
-            "timestamp": datetime.now().isoformat(),
-            "location": location or "",
-            "story_time": story_time or "",
-            "arc": arc or "",
-            "source": source or "auto",
-            "confidence": confidence or "high",
-        })
+        events.append(
+            {
+                "chapter": chapter_num,
+                "event": event,
+                "type": event_type,
+                "characters": characters_involved or [],
+                "timestamp": datetime.now().isoformat(),
+                "location": location or "",
+                "story_time": story_time or "",
+                "arc": arc or "",
+                "source": source or "auto",
+                "confidence": confidence or "high",
+            }
+        )
 
         atomic_write_json(page_file, events, indent=1)
 
         # v3 P4：时间线面板据此增量追加（见 app/panels/timeline_panel.py）
-        self._emit(TOPIC_TIMELINE_CHANGED, {
-            "novel_dir": str(self.novel_dir),
-            "chapter": chapter_num,
-            "event": event,
-            "type": event_type,
-            "characters": list(characters_involved or []),
-            "page_file": str(page_file),
-        })
+        self._emit(
+            TOPIC_TIMELINE_CHANGED,
+            {
+                "novel_dir": str(self.novel_dir),
+                "chapter": chapter_num,
+                "event": event,
+                "type": event_type,
+                "characters": list(characters_involved or []),
+                "page_file": str(page_file),
+            },
+        )
 
     def annotate_event(self, chapter_num: int, event: str, **fields) -> bool:
         """给既有事件补写人工字段（地点 / 故事内时间 / 弧线 / 置信度）。
@@ -775,7 +828,7 @@ class MemoryManager:
             if not page_file.exists():
                 return False
             try:
-                events = json.loads(page_file.read_text(encoding='utf-8'))
+                events = json.loads(page_file.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as _silent_e:
                 logger.warning(f"[memory_manager] 标注事件失败（分页不可读）: {_silent_e}")
                 return False
@@ -801,17 +854,20 @@ class MemoryManager:
 
             atomic_write_json(page_file, events, indent=1)
 
-        self._emit(TOPIC_TIMELINE_CHANGED, {
-            "novel_dir": str(self.novel_dir),
-            "chapter": chapter_num,
-            "event": event,
-            # 这里必须是事件**自身**的类型：先前误填成 `changes.get("arc", "")`，
-            # 于是订阅方看到"type=第一卷"这种非类型值（面板只是刷新，但载荷语义是错的）。
-            "type": record_type,
-            "characters": [],
-            "page_file": str(page_file),
-            "annotated": sorted(changes),
-        })
+        self._emit(
+            TOPIC_TIMELINE_CHANGED,
+            {
+                "novel_dir": str(self.novel_dir),
+                "chapter": chapter_num,
+                "event": event,
+                # 这里必须是事件**自身**的类型：先前误填成 `changes.get("arc", "")`，
+                # 于是订阅方看到"type=第一卷"这种非类型值（面板只是刷新，但载荷语义是错的）。
+                "type": record_type,
+                "characters": [],
+                "page_file": str(page_file),
+                "annotated": sorted(changes),
+            },
+        )
         return True
 
     def get_timeline(self, from_chapter: int = 0, to_chapter: int = None) -> List[Dict]:
@@ -827,7 +883,7 @@ class MemoryManager:
             page_file = self.timeline_dir / f"timeline_{page:03d}.json"
             if page_file.exists():
                 try:
-                    events = json.loads(page_file.read_text(encoding='utf-8'))
+                    events = json.loads(page_file.read_text(encoding="utf-8"))
                     for e in events:
                         ch = e.get("chapter", 0)
                         if from_chapter <= ch <= to_chapter:
@@ -839,8 +895,7 @@ class MemoryManager:
 
     # ===== 角色档案和关系图 =====
 
-    def save_characters(self, characters: dict, allow_empty: bool = False,
-                        force: bool = False):
+    def save_characters(self, characters: dict, allow_empty: bool = False, force: bool = False):
         """保存角色档案：原子写 + `.bak` 轮转 + **非空守卫**。
 
         为什么要守卫：角色名是小说内容资产（当前数据量 286 个）。此前
@@ -914,11 +969,14 @@ class MemoryManager:
         # v3 P4：角色/传记/时间线面板据此刷新。
         # 只在写盘成功之后广播 —— 上面两道闸门抛错时不会走到这里，
         # 面板不会被"其实没写成功"的假事件叫醒。
-        self._emit(TOPIC_CHARACTER_CHANGED, {
-            "novel_dir": str(self.novel_dir),
-            "count": len(characters),
-            "file": str(self.characters_file),
-        })
+        self._emit(
+            TOPIC_CHARACTER_CHANGED,
+            {
+                "novel_dir": str(self.novel_dir),
+                "count": len(characters),
+                "file": str(self.characters_file),
+            },
+        )
 
     def _archive_corrupt_characters(self) -> Optional[Path]:
         """把无法解析的角色档案留档，供人工恢复；返回留档路径。
@@ -990,6 +1048,7 @@ class MemoryManager:
 
     def update_character(self, name: str, data: dict):
         """更新角色信息（锁内读-改-写），自动检测关系变化"""
+
         def _mutate(characters: dict):
             old_data = characters.get(name, {})
             if isinstance(old_data, dict) and isinstance(data, dict):
@@ -1008,7 +1067,7 @@ class MemoryManager:
                     chapter_num=0,
                     event=f"角色关系更新: {name} ↔ {rel_name} ({rel_type})",
                     event_type="character",
-                    characters_involved=[name, rel_name]
+                    characters_involved=[name, rel_name],
                 )
 
     # ===== 记忆评分和衰减 =====
@@ -1023,17 +1082,19 @@ class MemoryManager:
                     "references": 0,
                     "created_at": datetime.now().isoformat(),
                 }
-            self._scores[item_id]["importance"] = max(
-                self._scores[item_id].get("importance", 5), importance
-            )
+            self._scores[item_id]["importance"] = max(self._scores[item_id].get("importance", 5), importance)
             self._mark_scores_dirty()
 
     def _increment_reference(self, item_id: str):
         """增加引用计数（P1-5: 内存累加，按阈值批量落盘）"""
         with self._lock:
             if item_id not in self._scores:
-                self._scores[item_id] = {"type": "unknown", "importance": 5, "references": 0,
-                                          "created_at": datetime.now().isoformat()}
+                self._scores[item_id] = {
+                    "type": "unknown",
+                    "importance": 5,
+                    "references": 0,
+                    "created_at": datetime.now().isoformat(),
+                }
             self._scores[item_id]["references"] = self._scores[item_id].get("references", 0) + 1
             self._scores[item_id]["last_referenced"] = datetime.now().isoformat()
             self._mark_scores_dirty()
@@ -1046,13 +1107,13 @@ class MemoryManager:
             self._scores_dirty = 0
 
     def _save_scores(self):
-        with open(self.scores_file, 'w', encoding='utf-8') as f:
+        with open(self.scores_file, "w", encoding="utf-8") as f:
             json.dump(self._scores, f, indent=2, ensure_ascii=False)
 
     def _load_scores(self) -> dict:
         if self.scores_file.exists():
             try:
-                with open(self.scores_file, 'r', encoding='utf-8') as f:
+                with open(self.scores_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 return data if isinstance(data, dict) else {}
             except (OSError, json.JSONDecodeError) as e:
@@ -1063,7 +1124,7 @@ class MemoryManager:
 
     def health_check(self) -> Dict:
         """检查记忆系统的健康状况
-        
+
         参考Supermemory的质量控制思路：
         1. 检测矛盾信息
         2. 检测衰减严重的记忆
@@ -1095,11 +1156,13 @@ class MemoryManager:
                 created = score.get("created_at", "")
                 freshness = self._calc_freshness(created)
                 if freshness < 0.2 and refs < 2:
-                    report["stale_chunks"].append({
-                        "id": chunk["id"],
-                        "type": chunk.get("type", ""),
-                        "freshness": round(freshness, 3),
-                    })
+                    report["stale_chunks"].append(
+                        {
+                            "id": chunk["id"],
+                            "type": chunk.get("type", ""),
+                            "freshness": round(freshness, 3),
+                        }
+                    )
 
         # 生成建议
         if report["stale_chunks"]:
@@ -1116,7 +1179,7 @@ class MemoryManager:
     @staticmethod
     def _extract_keywords(text: str) -> List[str]:
         """提取关键词（简易分词）
-        
+
         P1-1: 命中缓存直接返回，避免同一文本在 update_index / calculate_relevance /
         find_similar_chunk 中被重复分词；停用词为类常量，不再每次重建。
         """
@@ -1130,11 +1193,11 @@ class MemoryManager:
         # 提取2-4字词组（优化版本：使用集合去重，减少内存分配）
         cleaned = []
         for c in text:
-            if '\u4e00' <= c <= '\u9fff' or c.isalnum():
+            if "\u4e00" <= c <= "\u9fff" or c.isalnum():
                 cleaned.append(c)
             else:
-                cleaned.append(' ')
-        cleaned = ''.join(cleaned)
+                cleaned.append(" ")
+        cleaned = "".join(cleaned)
 
         # 使用集合去重，避免重复计数
         seen = set()
@@ -1143,8 +1206,8 @@ class MemoryManager:
         for i in range(text_len):
             for _n in (2, 3, 4):
                 if i + _n <= text_len:
-                    word = cleaned[i:i+_n]
-                    if word not in stopwords and word not in seen and all('\u4e00' <= c <= '\u9fff' for c in word):
+                    word = cleaned[i : i + _n]
+                    if word not in stopwords and word not in seen and all("\u4e00" <= c <= "\u9fff" for c in word):
                         seen.add(word)
                         keywords.append(word)
 
@@ -1160,7 +1223,7 @@ class MemoryManager:
 
     def get_settings(self) -> dict:
         if self.settings_file.exists():
-            with open(self.settings_file, 'r', encoding='utf-8') as f:
+            with open(self.settings_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         return {}
 
@@ -1181,7 +1244,7 @@ class MemoryManager:
         meta_file = self.novel_dir / "meta.json"
         if meta_file.exists():
             try:
-                with open(meta_file, 'r', encoding='utf-8') as f:
+                with open(meta_file, "r", encoding="utf-8") as f:
                     meta = json.load(f)
             except (OSError, json.JSONDecodeError) as e:
                 logger.warning(f"[memory_manager] meta.json 读取失败，按空元数据处理: {e}")
@@ -1197,7 +1260,7 @@ class MemoryManager:
         meta = {}
         if meta_file.exists():
             try:
-                with open(meta_file, 'r', encoding='utf-8') as f:
+                with open(meta_file, "r", encoding="utf-8") as f:
                     loaded = json.load(f)
                 if isinstance(loaded, dict):
                     meta = loaded
@@ -1229,7 +1292,7 @@ class MemoryManager:
     def update_index(self, chapter_num: int, keywords: List[str]):
         index = self._load_index()
         index[str(chapter_num)] = keywords
-        with open(self.index_file, 'w', encoding='utf-8') as f:
+        with open(self.index_file, "w", encoding="utf-8") as f:
             json.dump(index, f, indent=2, ensure_ascii=False)
 
     def search_by_keyword(self, keyword: str) -> List[int]:
@@ -1243,7 +1306,7 @@ class MemoryManager:
     def _load_index(self) -> dict:
         if self.index_file.exists():
             try:
-                with open(self.index_file, 'r', encoding='utf-8') as f:
+                with open(self.index_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 return data if isinstance(data, dict) else {}
             except (OSError, json.JSONDecodeError) as e:
@@ -1252,10 +1315,9 @@ class MemoryManager:
 
     # ===== 智能上下文构建 =====
 
-    def build_smart_context(self, chapter_num: int, query: str = "",
-                            max_items: int = 10) -> str:
+    def build_smart_context(self, chapter_num: int, query: str = "", max_items: int = 10) -> str:
         """智能构建上下文 - 核心RAG方法
-        
+
         优先级排序：
         1. 当前查询相关的记忆块（RAG检索）
         2. 最近章节的事件时间线
@@ -1270,7 +1332,9 @@ class MemoryManager:
             if relevant:
                 items = []
                 for r in relevant:
-                    items.append(f"[{r.get('type', '')}|相关性{r.get('relevance', 0):.2f}] {r.get('content', '')[:200]}")
+                    items.append(
+                        f"[{r.get('type', '')}|相关性{r.get('relevance', 0):.2f}] {r.get('content', '')[:200]}"
+                    )
                 parts.append("【相关记忆】\n" + "\n\n".join(items))
 
         # 2. 最近时间线事件（使用分页加载）

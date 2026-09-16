@@ -136,6 +136,7 @@ def task_tracker(task: str, chapter_param: str = ""):
     `chapter_param` 给出「章号从哪个参数取」（如 `"chapter_num"`）；
     取不到或为 `None` 时不写 `chapter` 字段 —— 不猜。
     """
+
     def decorate(fn):
         index = None
         if chapter_param:
@@ -315,15 +316,18 @@ class UsageTracker:
         completion_tokens = int(completion_tokens or 0)
 
         cost_est = self._estimate_cost(
-            provider, model, prompt_tokens, completion_tokens, cached_tokens,
-            estimated, region,
+            provider,
+            model,
+            prompt_tokens,
+            completion_tokens,
+            cached_tokens,
+            estimated,
+            region,
         )
 
         record = {
             "ts": float(ts if ts is not None else time.time()),
-            "time": datetime.fromtimestamp(
-                float(ts if ts is not None else time.time())
-            ).strftime("%Y-%m-%d %H:%M:%S"),
+            "time": datetime.fromtimestamp(float(ts if ts is not None else time.time())).strftime("%Y-%m-%d %H:%M:%S"),
             "provider": provider or "",
             "model": model or "",
             "chapter": int(chapter) if isinstance(chapter, (int, float)) else chapter,
@@ -373,17 +377,21 @@ class UsageTracker:
         return self._summary
 
     @staticmethod
-    def _estimate_cost(provider, model, prompt_tokens, completion_tokens,
-                       cached_tokens, estimated, region):
+    def _estimate_cost(provider, model, prompt_tokens, completion_tokens, cached_tokens, estimated, region):
         """接价目表算成本。**失败绝不影响记账** —— 用量数据本身比成本更重要。"""
         try:
             from .providers.pricing import estimate_cost
 
             return estimate_cost(
-                provider, model, prompt_tokens, completion_tokens,
-                cached_tokens=cached_tokens, estimated=estimated, region=region,
+                provider,
+                model,
+                prompt_tokens,
+                completion_tokens,
+                cached_tokens=cached_tokens,
+                estimated=estimated,
+                region=region,
             )
-        except Exception:                       # noqa: BLE001 - 成本是增值项，不是必需项
+        except Exception:  # noqa: BLE001 - 成本是增值项，不是必需项
             from .providers.pricing import CostEstimate
 
             return CostEstimate()
@@ -526,17 +534,26 @@ class UsageTracker:
 
     def chapter_tokens(self, novel_dir=None) -> dict:
         """`{章号: 总 token}` —— 供章节列表徽标用（O(1) 查表）。"""
-        return {
-            row["chapter"]: int(row.get("total_tokens") or 0)
-            for row in self.chapter_rows(novel_dir)
-        }
+        return {row["chapter"]: int(row.get("total_tokens") or 0) for row in self.chapter_rows(novel_dir)}
 
     # ------------------------------------------------------------ 导出
 
     CSV_FIELDS = (
-        "time", "provider", "model", "chapter", "generation", "task",
-        "prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens",
-        "estimated", "latency_ms", "cost", "cost_currency", "ok",
+        "time",
+        "provider",
+        "model",
+        "chapter",
+        "generation",
+        "task",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "cached_tokens",
+        "estimated",
+        "latency_ms",
+        "cost",
+        "cost_currency",
+        "ok",
     )
 
     def export_csv(self, path, novel_dir=None) -> Path:
@@ -545,8 +562,7 @@ class UsageTracker:
         path.parent.mkdir(parents=True, exist_ok=True)
         records = self.read_records(novel_dir)
         with open(path, "w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=self.CSV_FIELDS,
-                                    extrasaction="ignore")
+            writer = csv.DictWriter(handle, fieldnames=self.CSV_FIELDS, extrasaction="ignore")
             writer.writeheader()
             for record in records:
                 writer.writerow(record)

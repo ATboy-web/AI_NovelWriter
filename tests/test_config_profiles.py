@@ -27,7 +27,7 @@ from app.secure_config import SecureConfig
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     """把 `Path.home()` 指到临时目录，避免碰到开发机上的真实配置。"""
-    monkeypatch.setattr('pathlib.Path.home', lambda: tmp_path)
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
     return tmp_path
 
 
@@ -52,13 +52,18 @@ class TestLegacyMigration:
 
     def test_legacy_flat_keys_become_default_profile(self, config_dir, home):
         config_dir.mkdir(parents=True, exist_ok=True)
-        (config_dir / "config.json").write_text(json.dumps({
-            "api_provider": "deepseek",
-            "api_base": "https://api.deepseek.com",
-            "model": "deepseek-v4-flash",
-            "temperature": 0.5,
-            "theme": "dark",
-        }), encoding="utf-8")
+        (config_dir / "config.json").write_text(
+            json.dumps(
+                {
+                    "api_provider": "deepseek",
+                    "api_base": "https://api.deepseek.com",
+                    "model": "deepseek-v4-flash",
+                    "temperature": 0.5,
+                    "theme": "dark",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         cfg = AppConfig()
 
@@ -75,10 +80,15 @@ class TestLegacyMigration:
     def test_flat_keys_are_kept_for_rollback(self, config_dir, home):
         """顶层扁平键不得删除 —— 换回旧版本程序也还能跑。"""
         config_dir.mkdir(parents=True, exist_ok=True)
-        (config_dir / "config.json").write_text(json.dumps({
-            "api_provider": "openai",
-            "model": "gpt-4o",
-        }), encoding="utf-8")
+        (config_dir / "config.json").write_text(
+            json.dumps(
+                {
+                    "api_provider": "openai",
+                    "model": "gpt-4o",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         cfg = AppConfig()
         cfg.set("theme", "dark")  # 触发一次落盘
@@ -130,13 +140,10 @@ class TestLegacyMigration:
     def test_partial_user_written_section_is_preserved(self, config_dir, home):
         """手写/半成品的 `ai` 段落要被补全，而不是被重建覆盖。"""
         config_dir.mkdir(parents=True, exist_ok=True)
-        (config_dir / "config.json").write_text(json.dumps({
-            "ai": {
-                "profiles": {
-                    "manual": {"api_provider": "groq", "model": "llama-3.3-70b-versatile"}
-                }
-            }
-        }), encoding="utf-8")
+        (config_dir / "config.json").write_text(
+            json.dumps({"ai": {"profiles": {"manual": {"api_provider": "groq", "model": "llama-3.3-70b-versatile"}}}}),
+            encoding="utf-8",
+        )
 
         cfg = AppConfig()
 
@@ -150,19 +157,24 @@ class TestLegacyMigration:
     def test_garbage_on_disk_does_not_block_startup(self, config_dir, home):
         """磁盘上的历史脏值要降级，不能让程序打不开。"""
         config_dir.mkdir(parents=True, exist_ok=True)
-        (config_dir / "config.json").write_text(json.dumps({
-            "api_provider": "deepseek",
-            "temperature": "0.8",          # 字符串数字（旧版本可能这么写）
-            "timeout": None,               # 空值
-            "max_retries": 999,            # 超范围
-            "thinking_enabled": "yes",     # 宽松布尔
-        }), encoding="utf-8")
+        (config_dir / "config.json").write_text(
+            json.dumps(
+                {
+                    "api_provider": "deepseek",
+                    "temperature": "0.8",  # 字符串数字（旧版本可能这么写）
+                    "timeout": None,  # 空值
+                    "max_retries": 999,  # 超范围
+                    "thinking_enabled": "yes",  # 宽松布尔
+                }
+            ),
+            encoding="utf-8",
+        )
 
         cfg = AppConfig()
         default = cfg.profiles()["default"]
         assert default["temperature"] == 0.8
-        assert default["timeout"] == 600.0        # 非法 → 默认值
-        assert default["max_retries"] == 3        # 超范围 → 默认值
+        assert default["timeout"] == 600.0  # 非法 → 默认值
+        assert default["max_retries"] == 3  # 超范围 → 默认值
         assert default["thinking_enabled"] is True
 
 
@@ -183,7 +195,7 @@ class TestFlatKeyCompatibility:
         cfg.set("model", "gpt-4o")
 
         assert cfg.get("model") == "gpt-4o"
-        assert cfg.config["model"] == "gpt-4o"      # 兼容直接读字典的代码
+        assert cfg.config["model"] == "gpt-4o"  # 兼容直接读字典的代码
         assert _raw(config_dir)["model"] == "gpt-4o"
 
     def test_switch_profile_moves_flat_keys(self, config_dir, home):
@@ -317,14 +329,17 @@ class TestProfileGuards:
         with pytest.raises(ValueError):
             cfg.create_profile(name)
 
-    @pytest.mark.parametrize("field,value", [
-        ("temperature", 5.0),
-        ("temperature", "warm"),
-        ("max_tokens", 0),
-        ("max_retries", -1),
-        ("timeout", 1),
-        ("reasoning_effort", ""),
-    ])
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("temperature", 5.0),
+            ("temperature", "warm"),
+            ("max_tokens", 0),
+            ("max_retries", -1),
+            ("timeout", 1),
+            ("reasoning_effort", ""),
+        ],
+    )
     def test_invalid_user_input_raises(self, home, field, value):
         """界面输入走快速失败，而不是静默夹到边界值。"""
         cfg = AppConfig()
@@ -353,7 +368,7 @@ class TestSharedConfigFileSafety:
         cfg.set("theme", "dark")
         cfg.set("model", "gpt-4o")
 
-        cfg.set("api_key", "sk-secret")   # 这一路径会触发 SecureConfig 落盘
+        cfg.set("api_key", "sk-secret")  # 这一路径会触发 SecureConfig 落盘
 
         data = _raw(config_dir)
         assert data["theme"] == "dark", "改 API Key 不得把主题退回旧值"
@@ -364,7 +379,7 @@ class TestSharedConfigFileSafety:
         cfg = AppConfig()
         cfg.create_profile("work", activate=True)
         cfg.set("api_key", "sk-work-secret")
-        cfg.set("theme", "dark")          # AppConfig 全量落盘
+        cfg.set("theme", "dark")  # AppConfig 全量落盘
 
         assert _raw(config_dir)["ai_keys"]["work"].startswith("gAAAAA")
         reloaded = AppConfig()
@@ -397,16 +412,21 @@ class TestSharedConfigFileSafety:
     def test_no_plaintext_anywhere_in_legacy_file(self, config_dir, home):
         """老文件里的明文密钥不得被迁移进任何新结构。"""
         config_dir.mkdir(parents=True, exist_ok=True)
-        (config_dir / "config.json").write_text(json.dumps({
-            "api_provider": "openai",
-            "api_key": "sk-plaintext-legacy",
-            "model": "gpt-4o",
-        }), encoding="utf-8")
+        (config_dir / "config.json").write_text(
+            json.dumps(
+                {
+                    "api_provider": "openai",
+                    "api_key": "sk-plaintext-legacy",
+                    "model": "gpt-4o",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         cfg = AppConfig()
         assert cfg.get("api_key") == ""
 
-        cfg.set("theme", "dark")          # 触发落盘
+        cfg.set("theme", "dark")  # 触发落盘
         data = _raw(config_dir)
         assert "sk-plaintext-legacy" not in _raw_text(config_dir)
         assert data["api_key"] == ""

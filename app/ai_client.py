@@ -43,6 +43,7 @@ _LABEL_ADAPTERS: Dict[str, OpenAICompatAdapter] = {}
 # AI诊断日志
 try:
     from .diagnostic_logger import get_logger
+
     _diag_logger = get_logger()
 except Exception:
     _diag_logger = None
@@ -51,6 +52,7 @@ except Exception:
 @dataclass
 class TokenStats:
     """Token消耗统计"""
+
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
     total_tokens: int = 0
@@ -61,7 +63,7 @@ class TokenStats:
         with self._lock:
             self.total_prompt_tokens += prompt_tokens
             self.total_completion_tokens += completion_tokens
-            self.total_tokens += (prompt_tokens + completion_tokens)
+            self.total_tokens += prompt_tokens + completion_tokens
             self.request_count += 1
 
     def get_summary(self) -> Dict:
@@ -70,16 +72,16 @@ class TokenStats:
                 "total_tokens": self.total_tokens,
                 "prompt_tokens": self.total_prompt_tokens,
                 "completion_tokens": self.total_completion_tokens,
-                "request_count": self.request_count
+                "request_count": self.request_count,
             }
 
     def get_display(self) -> str:
         """返回用户友好的显示文本"""
         with self._lock:
             if self.total_tokens >= 1000000:
-                return f"{self.total_tokens/1000000:.1f}M tokens ({self.request_count}次调用)"
+                return f"{self.total_tokens / 1000000:.1f}M tokens ({self.request_count}次调用)"
             elif self.total_tokens >= 1000:
-                return f"{self.total_tokens/1000:.1f}K tokens ({self.request_count}次调用)"
+                return f"{self.total_tokens / 1000:.1f}K tokens ({self.request_count}次调用)"
             else:
                 return f"{self.total_tokens} tokens ({self.request_count}次调用)"
 
@@ -220,7 +222,7 @@ class PromptManager:
 
 ## 小说上下文
 {context}""",
-            "default_rules": "直接输出小说正文，不需要任何解释。"
+            "default_rules": "直接输出小说正文，不需要任何解释。",
         },
         "reviewer": {
             "system": """你是一位专业的小说审校（Reviewer Agent），精通文学批评理论。
@@ -460,7 +462,7 @@ class AIClient:
         "claude-3-5-haiku-20241022": "claude-haiku-4-5",
         # --- DeepSeek
         "deepseek-v4-pro": "deepseek-v4-flash",
-        "deepseek-chat": "deepseek-v4-flash",       # 2026-07-24 已弃用
+        "deepseek-chat": "deepseek-v4-flash",  # 2026-07-24 已弃用
         "deepseek-reasoner": "deepseek-v4-pro",
         # --- 智谱 GLM
         "glm-5.3": "glm-5.3-flash",
@@ -502,6 +504,7 @@ class AIClient:
         """日志记录（静默模式，不影响主流程）"""
         try:
             from loguru import logger
+
             logger.info(f"[AI] {msg}")
         except Exception as _silent_e:
             logger.debug(f"[ai_client] 捕获异常: {_silent_e}")
@@ -525,7 +528,7 @@ class AIClient:
     def _cfg_float(self, key: str, default: float) -> float:
         try:
             value = self.config.get(key, default)
-        except Exception:                             # noqa: BLE001
+        except Exception:  # noqa: BLE001
             return float(default)
         if value is None or value == "":
             return float(default)
@@ -555,9 +558,7 @@ class AIClient:
             return url
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https"):
-            raise ValueError(
-                f"AI 端点协议非法: {url!r}（仅支持 http/https），请在设置中修正 api_base"
-            )
+            raise ValueError(f"AI 端点协议非法: {url!r}（仅支持 http/https），请在设置中修正 api_base")
         host = (parsed.hostname or "").lower()
         if parsed.scheme == "http" and host not in cls._LOCAL_HOSTS:
             raise ValueError(
@@ -604,8 +605,7 @@ class AIClient:
         return detected, spec, adapter, base
 
     @staticmethod
-    def _merged_headers(adapter: ProviderAdapter, spec: ProviderSpec,
-                        api_key: str, prepared=None) -> dict:
+    def _merged_headers(adapter: ProviderAdapter, spec: ProviderSpec, api_key: str, prepared=None) -> dict:
         """请求头 = spec 默认头 + adapter 产出头 + 鉴权头。"""
         headers = dict(getattr(spec, "default_headers", {}) or {})
         if prepared is not None:
@@ -649,7 +649,9 @@ class AIClient:
         # 注：单测断言 `client.client.headers` 里的 Authorization 必须随 api_key
         # 变化 —— 所以客户端级鉴权头必须保留（不能只走 per-request header）。
         self._client_fingerprint = (
-            provider, api_key, api_base,
+            provider,
+            api_key,
+            api_base,
             self.config.get("model", ""),
             self._timeout_pair(spec),
         )
@@ -766,9 +768,9 @@ class AIClient:
         """注入给余额适配器的 HTTP GET（独立出来便于单测替换）。"""
         return httpx.get(url, headers=headers, timeout=timeout)
 
-    def probe_connection(self, provider: str = "", api_base: str = "",
-                         api_key: str = "", model: str = "",
-                         timeout: float = 30.0) -> dict:
+    def probe_connection(
+        self, provider: str = "", api_base: str = "", api_key: str = "", model: str = "", timeout: float = 30.0
+    ) -> dict:
         """用一次**最小请求**验证「端点 + 鉴权 + 模型名」是否真的可用。
 
         设置页「测试连接」按钮用它。设计要点：
@@ -806,16 +808,15 @@ class AIClient:
         try:
             prepared = adapter.build_request(request)
             headers = self._merged_headers(adapter, spec, api_key, prepared)
-        except Exception as exc:                        # noqa: BLE001 - 需原样回报
+        except Exception as exc:  # noqa: BLE001 - 需原样回报
             return {"ok": False, "url": url, "reason": f"请求构造失败：{exc}"}
 
         try:
-            response = httpx.post(
-                url, json=prepared.json_body, headers=headers, timeout=timeout
-            )
-        except Exception as exc:                        # noqa: BLE001 - 需原样回报
+            response = httpx.post(url, json=prepared.json_body, headers=headers, timeout=timeout)
+        except Exception as exc:  # noqa: BLE001 - 需原样回报
             return {
-                "ok": False, "url": url,
+                "ok": False,
+                "url": url,
                 "reason": f"无法连接：{type(exc).__name__}: {exc}",
             }
 
@@ -823,21 +824,28 @@ class AIClient:
             # 只截前 200 字符：错误体里可能回显请求内容，不宜整段展示或落盘
             detail = (response.text or "")[:200]
             return {
-                "ok": False, "url": url, "status": response.status_code,
+                "ok": False,
+                "url": url,
+                "status": response.status_code,
                 "reason": self._explain_status(response.status_code, detail),
             }
 
         try:
             result = adapter.parse_response(response.json())
-        except Exception as exc:                        # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             return {
-                "ok": False, "url": url, "status": response.status_code,
+                "ok": False,
+                "url": url,
+                "status": response.status_code,
                 "reason": f"响应格式无法解析（{type(exc).__name__}）：{exc}",
             }
 
         return {
-            "ok": True, "url": url, "status": response.status_code,
-            "model": request.model, "label": adapter.label,
+            "ok": True,
+            "url": url,
+            "status": response.status_code,
+            "model": request.model,
+            "label": adapter.label,
             "sample": result.text.strip()[:60],
         }
 
@@ -876,9 +884,7 @@ class AIClient:
             "thinking_enabled",
             self._as_bool(self.config.get("thinking_enabled", True), True),
         )
-        reasoning_effort = kwargs.get(
-            "reasoning_effort", self.config.get("reasoning_effort", "high")
-        )
+        reasoning_effort = kwargs.get("reasoning_effort", self.config.get("reasoning_effort", "high"))
 
         # 自动检测模型类型，选择正确的provider
         detected_provider = self._detect_provider(provider, model)
@@ -887,8 +893,10 @@ class AIClient:
         api_key = self.config.get("api_key", "") or ""
         spec = self.registry.resolve(detected_provider)
         if spec.auth != AuthStyle.NONE and (not api_key or len(api_key.strip()) < 8):
-            msg = (f"API Key未配置或无效 (provider={detected_provider}, "
-                   f"key_len={len(api_key)}). 请在设置中填写有效的API Key。")
+            msg = (
+                f"API Key未配置或无效 (provider={detected_provider}, "
+                f"key_len={len(api_key)}). 请在设置中填写有效的API Key。"
+            )
             self._log(f"[错误] {msg}")
             raise Exception(msg)
 
@@ -904,15 +912,22 @@ class AIClient:
                     "max_tokens": max_tokens,
                     "temperature": temperature,
                     "thinking_enabled": thinking_enabled,
-                    "messages_count": len(messages)
-                }
+                    "messages_count": len(messages),
+                },
             )
 
         try:
             result = self._invoke_chat(
-                provider, messages, system, model, max_tokens, temperature,
-                thinking_enabled, reasoning_effort,
-                api_key=api_key, api_base=self.config.get("api_base", "") or "",
+                provider,
+                messages,
+                system,
+                model,
+                max_tokens,
+                temperature,
+                thinking_enabled,
+                reasoning_effort,
+                api_key=api_key,
+                api_base=self.config.get("api_base", "") or "",
             )
 
             latency = time.time() - start
@@ -923,10 +938,11 @@ class AIClient:
             # 会把 AI 正文（含用户设定）落到诊断日志文件里。
             if _diag_logger:
                 _diag_logger.api_call(
-                    provider=detected_provider, endpoint=f"chat/{model}",
+                    provider=detected_provider,
+                    endpoint=f"chat/{model}",
                     request_data={"model": model, "messages_count": len(messages)},
                     response_data={"status": "success", "result_len": len(result)},
-                    duration_ms=latency * 1000
+                    duration_ms=latency * 1000,
                 )
 
             # 记录空响应（帮助调试）
@@ -942,25 +958,31 @@ class AIClient:
 
             # 检查是否为认证错误（不可重试）
             is_auth_error = False
-            if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+            if hasattr(e, "response") and hasattr(e.response, "status_code"):
                 status = e.response.status_code
                 if status == 401:
                     is_auth_error = True
-                    self._log(f"[错误] API认证失败 (401) - 请检查API Key是否有效、是否过期。"
-                             f" provider={provider}, model={model}")
+                    self._log(
+                        f"[错误] API认证失败 (401) - 请检查API Key是否有效、是否过期。"
+                        f" provider={provider}, model={model}"
+                    )
                 elif status == 403:
                     is_auth_error = True
-                    self._log(f"[错误] API权限不足 (403) - 请检查API Key是否有访问该模型的权限。"
-                             f" provider={provider}, model={model}")
+                    self._log(
+                        f"[错误] API权限不足 (403) - 请检查API Key是否有访问该模型的权限。"
+                        f" provider={provider}, model={model}"
+                    )
                 elif status == 429:
                     self._log("[错误] API请求过于频繁 (429) - 请稍后重试。")
 
             # 🔍 失败日志
             if _diag_logger:
                 _diag_logger.api_call(
-                    provider=provider, endpoint=f"chat/{model}",
+                    provider=provider,
+                    endpoint=f"chat/{model}",
                     request_data={"model": model, "messages_count": len(messages)},
-                    error=e, duration_ms=latency * 1000
+                    error=e,
+                    duration_ms=latency * 1000,
                 )
 
             # 认证错误不重试、不降级
@@ -976,9 +998,16 @@ class AIClient:
                 # 由 _resolve_endpoint 按降级后的模型名重新判定归属。
                 try:
                     result = self._invoke_chat(
-                        provider, messages, system, model, max_tokens, temperature,
-                        thinking_enabled, reasoning_effort,
-                        api_key=api_key, api_base=self.config.get("api_base", "") or "",
+                        provider,
+                        messages,
+                        system,
+                        model,
+                        max_tokens,
+                        temperature,
+                        thinking_enabled,
+                        reasoning_effort,
+                        api_key=api_key,
+                        api_base=self.config.get("api_base", "") or "",
                     )
                     latency = time.time() - start
                     self.metrics.record(latency)
@@ -991,9 +1020,19 @@ class AIClient:
 
             raise
 
-    def _invoke_chat(self, configured: str, messages, system, model, max_tokens,
-                     temperature, thinking_enabled, reasoning_effort,
-                     api_key: str, api_base: str) -> str:
+    def _invoke_chat(
+        self,
+        configured: str,
+        messages,
+        system,
+        model,
+        max_tokens,
+        temperature,
+        thinking_enabled,
+        reasoning_effort,
+        api_key: str,
+        api_base: str,
+    ) -> str:
         """统一执行层：构造请求 → 发送（含重试）→ 解析 → 收尾。
 
         这是 v2 里 `_dispatch_chat` + 7 个 `_chat_*` + `_dispatch_with_retry`
@@ -1002,13 +1041,9 @@ class AIClient:
         `configured` 是**用户配置的** provider（不是检测结果）——
         由 `_resolve_endpoint` 结合模型名做最终判定。
         """
-        _detected, spec, adapter, base = self._resolve_endpoint(
-            configured, model, api_base
-        )
+        _detected, spec, adapter, base = self._resolve_endpoint(configured, model, api_base)
         if not base:
-            raise Exception(
-                f"provider={configured!r} 未配置 API 地址（api_base 为空）。请在设置中填写。"
-            )
+            raise Exception(f"provider={configured!r} 未配置 API 地址（api_base 为空）。请在设置中填写。")
 
         request = ChatRequest(
             model=model,
@@ -1029,16 +1064,19 @@ class AIClient:
             raise
         latency_ms = (time.time() - started) * 1000.0
         self._record_usage(
-            result.usage, spec.key, model,
-            messages=messages, system=system or "", output_text=result.text,
+            result.usage,
+            spec.key,
+            model,
+            messages=messages,
+            system=system or "",
+            output_text=result.text,
             latency_ms=latency_ms,
         )
         if result.reasoning:
             self._log_thinking(result.reasoning)
         return self._finalize_text(result, adapter.label, model)
 
-    def _send(self, adapter: ProviderAdapter, spec: ProviderSpec, base: str,
-              request: ChatRequest, api_key: str):
+    def _send(self, adapter: ProviderAdapter, spec: ProviderSpec, base: str, request: ChatRequest, api_key: str):
         """发送请求并对**瞬时故障**做指数退避重试（修 P3）。
 
         v2 的重试只判 `status == 429`，与 `_is_transient_error` 里写好的判据
@@ -1061,7 +1099,7 @@ class AIClient:
                 )
                 response.raise_for_status()
                 return adapter.parse_response(response.json())
-            except Exception as exc:                   # noqa: BLE001 - 需按类型分流
+            except Exception as exc:  # noqa: BLE001 - 需按类型分流
                 status = getattr(getattr(exc, "response", None), "status_code", None)
                 if attempt < max_retries and adapter.is_transient(exc):
                     detail = f", HTTP {status}" if status else ""
@@ -1089,14 +1127,20 @@ class AIClient:
                 "使用 reasoning_content 作为结果"
             )
             return result.reasoning
-        raise Exception(
-            f"{label}返回空内容 (reasoning_len={len(result.reasoning)}, "
-            f"finish={result.finish_reason})"
-        )
+        raise Exception(f"{label}返回空内容 (reasoning_len={len(result.reasoning)}, finish={result.finish_reason})")
 
-    def _record_usage(self, usage: UsageData, provider: str, model: str, *,
-                      messages=None, system: str = "", output_text: str = "",
-                      latency_ms: float = 0.0, ok: bool = True) -> None:
+    def _record_usage(
+        self,
+        usage: UsageData,
+        provider: str,
+        model: str,
+        *,
+        messages=None,
+        system: str = "",
+        output_text: str = "",
+        latency_ms: float = 0.0,
+        ok: bool = True,
+    ) -> None:
         """把 token 用量计入全局统计并持久化（v3 §3.5，修 P6 的完整版）。
 
         v2 只有 openai 与 `_parse_thinking_response` 两条路径记录，
@@ -1130,13 +1174,11 @@ class AIClient:
         self._persist_usage(usage, provider, model, latency_ms, ok)
         self._observe_call(provider, model, latency_ms, ok=ok)
 
-    def _finalized_usage(self, usage, messages, system: str,
-                         output_text: str) -> Optional[UsageData]:
+    def _finalized_usage(self, usage, messages, system: str, output_text: str) -> Optional[UsageData]:
         """拿到可入账的用量：实测优先，估算兜底；两者皆无则返回 `None`。"""
         if usage is not None and usage.total_tokens > 0:
             return usage
-        prompt_tokens = estimate_messages_tokens(messages, system) if messages else \
-            estimate_tokens(system)
+        prompt_tokens = estimate_messages_tokens(messages, system) if messages else estimate_tokens(system)
         completion_tokens = estimate_tokens(output_text)
         if prompt_tokens <= 0 and completion_tokens <= 0:
             return None
@@ -1146,8 +1188,7 @@ class AIClient:
             estimated=True,
         )
 
-    def _persist_usage(self, usage: UsageData, provider: str, model: str,
-                       latency_ms: float, ok: bool) -> None:
+    def _persist_usage(self, usage: UsageData, provider: str, model: str, latency_ms: float, ok: bool) -> None:
         """落一条明细（含归因与成本）。记账失败**绝不影响**主流程。"""
         try:
             usage_tracker.record(
@@ -1160,11 +1201,10 @@ class AIClient:
                 latency_ms=latency_ms,
                 ok=ok,
             )
-        except Exception as exc:                   # noqa: BLE001 - 记账是增值项
+        except Exception as exc:  # noqa: BLE001 - 记账是增值项
             self._log(f"[用量] 记账失败（不影响主流程）: {type(exc).__name__}: {exc}")
 
-    def _observe_call(self, provider: str, model: str, latency_ms: float,
-                      ok: bool) -> None:
+    def _observe_call(self, provider: str, model: str, latency_ms: float, ok: bool) -> None:
         """把耗时/成败喂给 `performance_monitor`（v3 §3.5(6)：让零调用模块接线）。"""
         try:
             from .performance_monitor import get_performance_monitor
@@ -1175,13 +1215,14 @@ class AIClient:
                 status_code=200 if ok else 500,
                 duration_ms=float(latency_ms or 0.0),
             )
-        except Exception as exc:                   # noqa: BLE001 - 监控是增值项
+        except Exception as exc:  # noqa: BLE001 - 监控是增值项
             self._log(f"[监控] 记录失败（不影响主流程）: {type(exc).__name__}: {exc}")
 
     # ============================================================ 主入口: 流式
 
-    def chat_stream(self, messages: List[Dict], system: str = "",
-                    callback: Optional[Callable[[str], None]] = None, **kwargs) -> str:
+    def chat_stream(
+        self, messages: List[Dict], system: str = "", callback: Optional[Callable[[str], None]] = None, **kwargs
+    ) -> str:
         """流式聊天 - 实时输出（签名与 v2 一致）。"""
         self.refresh_if_needed()
         if not self.is_configured():
@@ -1194,9 +1235,7 @@ class AIClient:
 
         _detected, spec, adapter, base = self._resolve_endpoint(provider, model, api_base)
         if not base:
-            raise Exception(
-                f"provider={provider!r} 未配置 API 地址（api_base 为空）。请在设置中填写。"
-            )
+            raise Exception(f"provider={provider!r} 未配置 API 地址（api_base 为空）。请在设置中填写。")
 
         request = ChatRequest(
             model=model,
@@ -1207,16 +1246,20 @@ class AIClient:
             thinking_enabled=self._as_bool(
                 kwargs.get("thinking_enabled", self.config.get("thinking_enabled", True)), True
             ),
-            reasoning_effort=kwargs.get(
-                "reasoning_effort", self.config.get("reasoning_effort", "high")
-            ),
+            reasoning_effort=kwargs.get("reasoning_effort", self.config.get("reasoning_effort", "high")),
             stream=True,
         )
         return self._stream(adapter, spec, base, request, api_key, callback)
 
-    def _stream(self, adapter: ProviderAdapter, spec: ProviderSpec, base: str,
-                request: ChatRequest, api_key: str,
-                callback: Optional[Callable[[str], None]]) -> str:
+    def _stream(
+        self,
+        adapter: ProviderAdapter,
+        spec: ProviderSpec,
+        base: str,
+        request: ChatRequest,
+        api_key: str,
+        callback: Optional[Callable[[str], None]],
+    ) -> str:
         """流式执行层：分片循环统一，**分片格式由 adapter 解析**（需求 4 的落点）。
 
         v2 的两套 `_stream_*` 各自硬编码：ollama 读裸 JSON 行、openai 读 `data: `
@@ -1233,7 +1276,8 @@ class AIClient:
 
         try:
             with self.client.stream(
-                prepared.method, url,
+                prepared.method,
+                url,
                 json=prepared.json_body,
                 headers=headers,
                 timeout=self._httpx_timeout(spec),
@@ -1244,7 +1288,7 @@ class AIClient:
                         continue
                     try:
                         delta = adapter.parse_stream_chunk(line)
-                    except Exception as exc:               # noqa: BLE001
+                    except Exception as exc:  # noqa: BLE001
                         if _diag_logger:
                             _diag_logger.log("API_CALL", "stream_chunk_parse_error", error=exc)
                         continue
@@ -1259,17 +1303,19 @@ class AIClient:
                     if delta.done:
                         break
         except Exception:
-            self._observe_call(
-                spec.key, request.model, (time.time() - started) * 1000.0, ok=False
-            )
+            self._observe_call(spec.key, request.model, (time.time() - started) * 1000.0, ok=False)
             raise
 
         text = "".join(pieces)
         # v3：流式路径此前**从不记账**。现在无论 provider 是否回传 usage 都入账
         # （没有 usage 就走估算兜底并标记 `estimated`）。
         self._record_usage(
-            usage, spec.key, request.model,
-            messages=request.messages, system=request.system, output_text=text,
+            usage,
+            spec.key,
+            request.model,
+            messages=request.messages,
+            system=request.system,
+            output_text=text,
             latency_ms=(time.time() - started) * 1000.0,
         )
         return text
@@ -1306,10 +1352,7 @@ class AIClient:
     def _log_thinking(self, reasoning: str):
         """记录思考过程"""
         if _diag_logger:
-            _diag_logger.log("THINKING", "reasoning_content", {
-                "preview": reasoning[:500],
-                "length": len(reasoning)
-            })
+            _diag_logger.log("THINKING", "reasoning_content", {"preview": reasoning[:500], "length": len(reasoning)})
 
     # ============================================================ 兼容层
 

@@ -19,7 +19,7 @@ def create_mock_agent():
     agent.ai = MagicMock()
     agent.memory = MagicMock()
     agent.log = lambda msg: None
-    agent._log_lock = __import__('threading').Lock()
+    agent._log_lock = __import__("threading").Lock()
     agent._conversation_log = []
     agent._revision_memory = []
     agent.tools = MagicMock()
@@ -36,20 +36,21 @@ class TestGenerateOutline:
 
     def test_small_count(self):
         agent = create_mock_agent()
-        agent._generate_outline_batch = MagicMock(return_value=[
-            {"chapter": 1, "title": "标题1", "summary": "概要1"},
-            {"chapter": 2, "title": "标题2", "summary": "概要2"},
-        ])
+        agent._generate_outline_batch = MagicMock(
+            return_value=[
+                {"chapter": 1, "title": "标题1", "summary": "概要1"},
+                {"chapter": 2, "title": "标题2", "summary": "概要2"},
+            ]
+        )
 
         result = agent.generate_outline("玄幻", "测试小说", 10, "概念")
         assert len(result) == 2
 
     def test_medium_count(self):
         agent = create_mock_agent()
-        agent._generate_outline_batch = MagicMock(return_value=[
-            {"chapter": i, "title": f"标题{i}", "summary": f"概要{i}"}
-            for i in range(1, 16)
-        ])
+        agent._generate_outline_batch = MagicMock(
+            return_value=[{"chapter": i, "title": f"标题{i}", "summary": f"概要{i}"} for i in range(1, 16)]
+        )
         agent._plan_story_arcs = MagicMock(return_value="弧线规划")
 
         result = agent.generate_outline("玄幻", "测试小说", 30, "概念")
@@ -57,10 +58,9 @@ class TestGenerateOutline:
 
     def test_large_count(self):
         agent = create_mock_agent()
-        agent._generate_outline_batch = MagicMock(return_value=[
-            {"chapter": i, "title": f"标题{i}", "summary": f"概要{i}"}
-            for i in range(1, 16)
-        ])
+        agent._generate_outline_batch = MagicMock(
+            return_value=[{"chapter": i, "title": f"标题{i}", "summary": f"概要{i}"} for i in range(1, 16)]
+        )
         agent._plan_story_arcs = MagicMock(return_value="弧线规划")
 
         result = agent.generate_outline("玄幻", "测试小说", 100, "概念")
@@ -97,10 +97,12 @@ class TestGenerateOutlineBatch:
 
     def test_basic(self):
         agent = create_mock_agent()
-        agent.ai.chat.return_value = json.dumps([
-            {"chapter": 1, "title": "标题1", "summary": "概要1"},
-            {"chapter": 2, "title": "标题2", "summary": "概要2"},
-        ])
+        agent.ai.chat.return_value = json.dumps(
+            [
+                {"chapter": 1, "title": "标题1", "summary": "概要1"},
+                {"chapter": 2, "title": "标题2", "summary": "概要2"},
+            ]
+        )
         agent.memory.get_meta.return_value = ""
 
         result = agent._generate_outline_batch("玄幻", "测试小说", 2, 1, "概念")
@@ -108,9 +110,11 @@ class TestGenerateOutlineBatch:
 
     def test_with_protagonist(self):
         agent = create_mock_agent()
-        agent.ai.chat.return_value = json.dumps([
-            {"chapter": 1, "title": "标题1", "summary": "概要1"},
-        ])
+        agent.ai.chat.return_value = json.dumps(
+            [
+                {"chapter": 1, "title": "标题1", "summary": "概要1"},
+            ]
+        )
         agent.memory.get_meta.return_value = "张三"
 
         result = agent._generate_outline_batch("玄幻", "测试小说", 1, 1, "概念")
@@ -126,9 +130,11 @@ class TestGenerateOutlineBatch:
 
     def test_partial_outline(self):
         agent = create_mock_agent()
-        agent.ai.chat.return_value = json.dumps([
-            {"chapter": 1, "title": "标题1", "summary": "概要1"},
-        ])
+        agent.ai.chat.return_value = json.dumps(
+            [
+                {"chapter": 1, "title": "标题1", "summary": "概要1"},
+            ]
+        )
         agent.memory.get_meta.return_value = ""
 
         result = agent._generate_outline_batch("玄幻", "测试小说", 3, 1, "概念")
@@ -140,9 +146,11 @@ class TestGenerateOutlineContinuation:
 
     def test_basic(self):
         agent = create_mock_agent()
-        agent.ai.chat.return_value = json.dumps([
-            {"chapter": 11, "title": "标题11", "summary": "概要11"},
-        ])
+        agent.ai.chat.return_value = json.dumps(
+            [
+                {"chapter": 11, "title": "标题11", "summary": "概要11"},
+            ]
+        )
         agent.memory.get_meta.return_value = ""
 
         result = agent.generate_outline_continuation("玄幻", "测试小说", 1, "上下文", 10)
@@ -150,9 +158,11 @@ class TestGenerateOutlineContinuation:
 
     def test_with_protagonist(self):
         agent = create_mock_agent()
-        agent.ai.chat.return_value = json.dumps([
-            {"chapter": 11, "title": "标题11", "summary": "概要11"},
-        ])
+        agent.ai.chat.return_value = json.dumps(
+            [
+                {"chapter": 11, "title": "标题11", "summary": "概要11"},
+            ]
+        )
         agent.memory.get_meta.return_value = "张三"
 
         result = agent.generate_outline_continuation("玄幻", "测试小说", 1, "上下文", 10)
@@ -182,7 +192,7 @@ class TestFinalizeChapter:
         agent.memory.get_characters.return_value = {}
         agent._update_character_progression = MagicMock()
 
-        with patch('app.novel_agent.writing_skill_manager', create=True):
+        with patch("app.novel_agent.writing_skill_manager", create=True):
             agent.finalize_chapter(1, "章节内容")
 
     def test_summary_generation_fails(self):
@@ -205,16 +215,20 @@ class TestUpdateCharacterProgression:
 
     def test_basic(self):
         agent = create_mock_agent()
-        agent.ai.chat.return_value = json.dumps({
-            "updates": [{"name": "张三", "change": "+力量+3", "reason": "战斗突破"}],
-            "skills_learned": [{"name": "张三", "skill": "剑法", "type": "攻击", "how": "战斗领悟"}],
-            "relationship_changes": [{"name1": "张三", "name2": "李四", "old": "朋友", "new": "敌人", "reason": "背叛"}],
-            "items_gained": [{"name": "张三", "item": "宝剑", "quality": "稀有", "from": "战斗获得"}],
-            "items_lost": [{"name": "张三", "item": "盾牌", "reason": "战斗毁坏"}],
-            "deaths": ["王五"],
-            "new_allies": ["赵六"],
-            "new_enemies": ["钱七"]
-        })
+        agent.ai.chat.return_value = json.dumps(
+            {
+                "updates": [{"name": "张三", "change": "+力量+3", "reason": "战斗突破"}],
+                "skills_learned": [{"name": "张三", "skill": "剑法", "type": "攻击", "how": "战斗领悟"}],
+                "relationship_changes": [
+                    {"name1": "张三", "name2": "李四", "old": "朋友", "new": "敌人", "reason": "背叛"}
+                ],
+                "items_gained": [{"name": "张三", "item": "宝剑", "quality": "稀有", "from": "战斗获得"}],
+                "items_lost": [{"name": "张三", "item": "盾牌", "reason": "战斗毁坏"}],
+                "deaths": ["王五"],
+                "new_allies": ["赵六"],
+                "new_enemies": ["钱七"],
+            }
+        )
         agent.memory.get_characters.return_value = {"张三": {"category": "主角"}}
         agent.memory.add_event = MagicMock()
         agent.memory.update_character = MagicMock()
@@ -234,6 +248,7 @@ class TestUpdateCharacterProgression:
 
         # Patch _diag to avoid NameError
         import app.novel_agent as na
+
         na._diag = MagicMock()
         agent._update_character_progression(1, "章节内容", "摘要")
 
@@ -250,11 +265,13 @@ class TestAnalyzeStyle:
 
     def test_basic(self):
         agent = create_mock_agent()
-        agent.ai.chat.return_value = json.dumps({
-            "author": "测试作者",
-            "sentence_style": "长短句结合",
-            "word_choice": "古风词汇",
-        })
+        agent.ai.chat.return_value = json.dumps(
+            {
+                "author": "测试作者",
+                "sentence_style": "长短句结合",
+                "word_choice": "古风词汇",
+            }
+        )
 
         result = agent.analyze_style("测试文本", "测试作者")
         assert result["author"] == "测试作者"
@@ -344,7 +361,7 @@ class TestParseJsonResponseExtended:
         assert isinstance(result, dict)
 
     def test_list_with_markdown(self):
-        text = '```json\n[1, 2, 3]\n```'
+        text = "```json\n[1, 2, 3]\n```"
         result = NovelAgent._parse_json_response(text, [], is_list=True)
         assert result == [1, 2, 3]
 

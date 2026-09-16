@@ -12,6 +12,7 @@ try:
     from loguru import logger
 except ImportError:
     import logging
+
     logger = logging.getLogger(__name__)
 
 from .ai_client import AIClient
@@ -21,8 +22,15 @@ from .config import AppConfig
 class FullscreenWriter:
     """全屏沉浸式写作窗口"""
 
-    def __init__(self, parent, ai_client: AIClient, config: AppConfig,
-                 initial_text: str = "", save_callback=None, shared_context: str = ""):
+    def __init__(
+        self,
+        parent,
+        ai_client: AIClient,
+        config: AppConfig,
+        initial_text: str = "",
+        save_callback=None,
+        shared_context: str = "",
+    ):
         self.parent = parent
         self.ai = ai_client
         self.config = config
@@ -45,8 +53,8 @@ class FullscreenWriter:
         # 创建窗口
         self.win = tk.Toplevel(parent)
         self.win.title("全屏写作")
-        self.win.attributes('-fullscreen', True)
-        self.win.configure(bg='#1a1a2e')
+        self.win.attributes("-fullscreen", True)
+        self.win.configure(bg="#1a1a2e")
 
         self._create_widgets()
         self._bind_events()
@@ -58,108 +66,164 @@ class FullscreenWriter:
         """创建全屏写作界面"""
 
         # 顶部工具栏
-        self.toolbar = tk.Frame(self.win, bg='#16213e', height=40)
+        self.toolbar = tk.Frame(self.win, bg="#16213e", height=40)
         self.toolbar.pack(fill=tk.X)
         self.toolbar.pack_propagate(False)
 
         # 左侧按钮
-        left_btns = tk.Frame(self.toolbar, bg='#16213e')
+        left_btns = tk.Frame(self.toolbar, bg="#16213e")
         left_btns.pack(side=tk.LEFT, padx=15, fill=tk.Y)
 
-        tk.Button(left_btns, text="退出 (Esc)", font=('微软雅黑', 9),
-                 bg='#e74c3c', fg='white', relief=tk.FLAT, padx=10,
-                 command=self._exit_fullscreen).pack(side=tk.LEFT, pady=5)
-        tk.Button(left_btns, text="保存", font=('微软雅黑', 9),
-                 bg='#27ae60', fg='white', relief=tk.FLAT, padx=10,
-                 command=self._save).pack(side=tk.LEFT, padx=8, pady=5)
+        tk.Button(
+            left_btns,
+            text="退出 (Esc)",
+            font=("微软雅黑", 9),
+            bg="#e74c3c",
+            fg="white",
+            relief=tk.FLAT,
+            padx=10,
+            command=self._exit_fullscreen,
+        ).pack(side=tk.LEFT, pady=5)
+        tk.Button(
+            left_btns,
+            text="保存",
+            font=("微软雅黑", 9),
+            bg="#27ae60",
+            fg="white",
+            relief=tk.FLAT,
+            padx=10,
+            command=self._save,
+        ).pack(side=tk.LEFT, padx=8, pady=5)
 
         # AI功能按钮区
-        ai_btns = tk.Frame(self.toolbar, bg='#16213e')
+        ai_btns = tk.Frame(self.toolbar, bg="#16213e")
         ai_btns.pack(side=tk.LEFT, padx=20, fill=tk.Y)
 
-        tk.Label(ai_btns, text="AI辅助:", font=('微软雅黑', 9),
-                bg='#16213e', fg='#a78bfa').pack(side=tk.LEFT, pady=5)
+        tk.Label(ai_btns, text="AI辅助:", font=("微软雅黑", 9), bg="#16213e", fg="#a78bfa").pack(side=tk.LEFT, pady=5)
 
         ai_features = [
-            ("续写 (Tab)", self._ai_continue, '#7c3aed'),
-            ("扩写", self._ai_expand, '#3b82f6'),
-            ("简写", self._ai_compress, '#f59e0b'),
-            ("润色", self._ai_polish, '#10b981'),
-            ("改写", self._ai_rewrite, '#ef4444'),
-            ("对话", self._ai_dialogue, '#8b5cf6'),
+            ("续写 (Tab)", self._ai_continue, "#7c3aed"),
+            ("扩写", self._ai_expand, "#3b82f6"),
+            ("简写", self._ai_compress, "#f59e0b"),
+            ("润色", self._ai_polish, "#10b981"),
+            ("改写", self._ai_rewrite, "#ef4444"),
+            ("对话", self._ai_dialogue, "#8b5cf6"),
         ]
 
         for text, cmd, color in ai_features:
-            tk.Button(ai_btns, text=text, font=('微软雅黑', 8),
-                     bg=color, fg='white', relief=tk.FLAT, padx=8, pady=3,
-                     cursor='hand2', activebackground=color,
-                     command=cmd).pack(side=tk.LEFT, padx=2, pady=5)
+            tk.Button(
+                ai_btns,
+                text=text,
+                font=("微软雅黑", 8),
+                bg=color,
+                fg="white",
+                relief=tk.FLAT,
+                padx=8,
+                pady=3,
+                cursor="hand2",
+                activebackground=color,
+                command=cmd,
+            ).pack(side=tk.LEFT, padx=2, pady=5)
 
         # 右侧控件
-        right_ctrls = tk.Frame(self.toolbar, bg='#16213e')
+        right_ctrls = tk.Frame(self.toolbar, bg="#16213e")
         right_ctrls.pack(side=tk.RIGHT, padx=15, fill=tk.Y)
 
         # 打字机模式
         self.tw_var = tk.BooleanVar(value=self.typewriter_mode)
-        tk.Checkbutton(right_ctrls, text="打字机", variable=self.tw_var,
-                      font=('微软雅黑', 9), bg='#16213e', fg='#94a3b8',
-                      selectcolor='#7c3aed', activebackground='#16213e',
-                      command=self._toggle_typewriter).pack(side=tk.LEFT, pady=5)
+        tk.Checkbutton(
+            right_ctrls,
+            text="打字机",
+            variable=self.tw_var,
+            font=("微软雅黑", 9),
+            bg="#16213e",
+            fg="#94a3b8",
+            selectcolor="#7c3aed",
+            activebackground="#16213e",
+            command=self._toggle_typewriter,
+        ).pack(side=tk.LEFT, pady=5)
 
         # 字数统计
-        self.word_count_label = tk.Label(right_ctrls, text="字数: 0",
-                                        font=('微软雅黑', 9), bg='#16213e', fg='#94a3b8')
+        self.word_count_label = tk.Label(right_ctrls, text="字数: 0", font=("微软雅黑", 9), bg="#16213e", fg="#94a3b8")
         self.word_count_label.pack(side=tk.LEFT, padx=15, pady=5)
 
         # 设置按钮
-        tk.Button(right_ctrls, text="设置", font=('微软雅黑', 9),
-                 bg='#353548', fg='#94a3b8', relief=tk.FLAT, padx=10,
-                 command=self._show_writer_settings).pack(side=tk.LEFT, pady=5)
+        tk.Button(
+            right_ctrls,
+            text="设置",
+            font=("微软雅黑", 9),
+            bg="#353548",
+            fg="#94a3b8",
+            relief=tk.FLAT,
+            padx=10,
+            command=self._show_writer_settings,
+        ).pack(side=tk.LEFT, pady=5)
 
         # 背景层
-        self.bg_frame = tk.Frame(self.win, bg='#1a1a2e')
+        self.bg_frame = tk.Frame(self.win, bg="#1a1a2e")
         self.bg_frame.pack(fill=tk.BOTH, expand=True)
 
         # 纸张容器（用于控制位置）
-        self.paper_container = tk.Frame(self.bg_frame, bg='#1a1a2e')
+        self.paper_container = tk.Frame(self.bg_frame, bg="#1a1a2e")
         self.paper_container.pack(fill=tk.BOTH, expand=True, padx=50, pady=20)
 
         # 纸张
-        self.paper = tk.Frame(self.paper_container, bg='#f5f0e8',
-                             width=self.paper_width, relief=tk.FLAT)
+        self.paper = tk.Frame(self.paper_container, bg="#f5f0e8", width=self.paper_width, relief=tk.FLAT)
 
         # 内边距
-        self.inner_frame = tk.Frame(self.paper, bg='#f5f0e8')
+        self.inner_frame = tk.Frame(self.paper, bg="#f5f0e8")
         self.inner_frame.pack(fill=tk.BOTH, expand=True, padx=60, pady=40)
 
         # Markdown工具栏
-        md_toolbar = tk.Frame(self.inner_frame, bg='#f5f0e8')
+        md_toolbar = tk.Frame(self.inner_frame, bg="#f5f0e8")
         md_toolbar.pack(fill=tk.X, pady=(0, 5))
 
         md_btns = [
-            ("H1", "heading1", "# "), ("H2", "heading2", "## "), ("H3", "heading3", "### "),
-            ("B", "bold", "**"), ("I", "italic", "*"), ("S", "strike", "~~"),
-            ("•", "list", "- "), ("1.", "olist", "1. "), (">", "quote", "> "),
-            ("—", "hr", "\n---\n"), ("`", "code", "`"), ("```", "codeblock", "```\n"),
+            ("H1", "heading1", "# "),
+            ("H2", "heading2", "## "),
+            ("H3", "heading3", "### "),
+            ("B", "bold", "**"),
+            ("I", "italic", "*"),
+            ("S", "strike", "~~"),
+            ("•", "list", "- "),
+            ("1.", "olist", "1. "),
+            (">", "quote", "> "),
+            ("—", "hr", "\n---\n"),
+            ("`", "code", "`"),
+            ("```", "codeblock", "```\n"),
         ]
 
         for text, name, prefix in md_btns:
-            btn = tk.Button(md_toolbar, text=text, font=('Consolas', 9, 'bold'),
-                          bg='#e8e3d8', fg='#5c5647', relief=tk.FLAT,
-                          padx=6, pady=2, cursor='hand2',
-                          activebackground='#d4cfc4',
-                          command=lambda p=prefix, n=name: self._insert_markdown(p, n))
+            btn = tk.Button(
+                md_toolbar,
+                text=text,
+                font=("Consolas", 9, "bold"),
+                bg="#e8e3d8",
+                fg="#5c5647",
+                relief=tk.FLAT,
+                padx=6,
+                pady=2,
+                cursor="hand2",
+                activebackground="#d4cfc4",
+                command=lambda p=prefix, n=name: self._insert_markdown(p, n),
+            )
             btn.pack(side=tk.LEFT, padx=1)
 
         # Markdown预览开关
         self.preview_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(md_toolbar, text="预览", variable=self.preview_var,
-                      font=('微软雅黑', 8), bg='#f5f0e8', fg='#5c5647',
-                      selectcolor='#7c3aed',
-                      command=self._toggle_preview).pack(side=tk.RIGHT, padx=5)
+        tk.Checkbutton(
+            md_toolbar,
+            text="预览",
+            variable=self.preview_var,
+            font=("微软雅黑", 8),
+            bg="#f5f0e8",
+            fg="#5c5647",
+            selectcolor="#7c3aed",
+            command=self._toggle_preview,
+        ).pack(side=tk.RIGHT, padx=5)
 
         # 写作区域容器（编辑+预览）
-        self.text_container = tk.Frame(self.inner_frame, bg='#f5f0e8')
+        self.text_container = tk.Frame(self.inner_frame, bg="#f5f0e8")
         self.text_container.pack(fill=tk.BOTH, expand=True)
 
         # 写作区域
@@ -167,16 +231,16 @@ class FullscreenWriter:
             self.text_container,
             wrap=tk.WORD,
             font=("Consolas", self.font_size),
-            bg='#f5f0e8',
-            fg='#2c2c2c',
-            insertbackground='#e74c3c',
+            bg="#f5f0e8",
+            fg="#2c2c2c",
+            insertbackground="#e74c3c",
             insertwidth=3,
             relief=tk.FLAT,
             padx=20,
             pady=20,
             spacing1=2,
             spacing3=2,
-            selectbackground='#3498db',
+            selectbackground="#3498db",
             undo=True,
         )
         self.text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -186,8 +250,8 @@ class FullscreenWriter:
             self.text_container,
             wrap=tk.WORD,
             font=("微软雅黑", self.font_size),
-            bg='#ffffff',
-            fg='#2c2c2c',
+            bg="#ffffff",
+            fg="#2c2c2c",
             relief=tk.FLAT,
             padx=20,
             pady=20,
@@ -204,22 +268,30 @@ class FullscreenWriter:
 
         # AI续写提示标签
         self.suggestion_label = tk.Label(
-            self.inner_frame, text="", font=("微软雅黑", self.font_size),
-            fg='#999999', bg='#f5f0e8', anchor=tk.W, justify=tk.LEFT
+            self.inner_frame,
+            text="",
+            font=("微软雅黑", self.font_size),
+            fg="#999999",
+            bg="#f5f0e8",
+            anchor=tk.W,
+            justify=tk.LEFT,
         )
 
         # AI处理状态标签
         self.ai_status_label = tk.Label(
-            self.inner_frame, text="", font=("微软雅黑", 12),
-            fg='#f59e0b', bg='#f5f0e8', anchor=tk.CENTER
+            self.inner_frame, text="", font=("微软雅黑", 12), fg="#f59e0b", bg="#f5f0e8", anchor=tk.CENTER
         )
 
         # 右键菜单
-        self.context_menu = tk.Menu(self.text_widget, tearoff=0,
-                                   font=('微软雅黑', 10),
-                                   bg='#2d2d3f', fg='#f8fafc',
-                                   activebackground='#7c3aed',
-                                   activeforeground='white')
+        self.context_menu = tk.Menu(
+            self.text_widget,
+            tearoff=0,
+            font=("微软雅黑", 10),
+            bg="#2d2d3f",
+            fg="#f8fafc",
+            activebackground="#7c3aed",
+            activeforeground="white",
+        )
         self.context_menu.add_command(label="AI续写 (Tab)", command=self._ai_continue)
         self.context_menu.add_command(label="AI扩写", command=self._ai_expand)
         self.context_menu.add_command(label="AI简写", command=self._ai_compress)
@@ -234,43 +306,44 @@ class FullscreenWriter:
         self.text_widget.bind("<Button-3>", self._show_context_menu)
 
         # 底部状态栏
-        self.status_bar = tk.Frame(self.win, bg='#16213e')
+        self.status_bar = tk.Frame(self.win, bg="#16213e")
         self.status_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
-        self.status_label = ttk.Label(self.status_bar, text="AI辅助: 开启 | 打字机模式: 开启",
-                                      background='#16213e', foreground='white')
+        self.status_label = ttk.Label(
+            self.status_bar, text="AI辅助: 开启 | 打字机模式: 开启", background="#16213e", foreground="white"
+        )
         self.status_label.pack(side=tk.LEFT, padx=20, pady=5)
 
         self._update_paper_position()
 
     def _bind_events(self):
         """绑定事件"""
-        self.win.bind('<Escape>', lambda e: self._exit_fullscreen())
-        self.win.bind('<Control-s>', lambda e: self._save())
-        self.win.bind('<Control-z>', lambda e: self.text_widget.edit_undo())
-        self.win.bind('<Control-y>', lambda e: self.text_widget.edit_redo())
+        self.win.bind("<Escape>", lambda e: self._exit_fullscreen())
+        self.win.bind("<Control-s>", lambda e: self._save())
+        self.win.bind("<Control-z>", lambda e: self.text_widget.edit_undo())
+        self.win.bind("<Control-y>", lambda e: self.text_widget.edit_redo())
 
         # AI功能快捷键
-        self.win.bind('<Control-e>', lambda e: self._ai_expand())   # Ctrl+E 扩写
-        self.win.bind('<Control-q>', lambda e: self._ai_compress()) # Ctrl+Q 简写
-        self.win.bind('<Control-r>', lambda e: self._ai_rewrite())  # Ctrl+R 改写
-        self.win.bind('<Control-p>', lambda e: self._ai_polish())   # Ctrl+P 润色
+        self.win.bind("<Control-e>", lambda e: self._ai_expand())  # Ctrl+E 扩写
+        self.win.bind("<Control-q>", lambda e: self._ai_compress())  # Ctrl+Q 简写
+        self.win.bind("<Control-r>", lambda e: self._ai_rewrite())  # Ctrl+R 改写
+        self.win.bind("<Control-p>", lambda e: self._ai_polish())  # Ctrl+P 润色
 
         # Markdown快捷键
-        self.win.bind('<Control-b>', lambda e: self._insert_markdown('**', 'bold'))     # Ctrl+B 加粗
-        self.win.bind('<Control-i>', lambda e: self._insert_markdown('*', 'italic'))    # Ctrl+I 斜体
-        self.win.bind('<Control-`>', lambda e: self._insert_markdown('`', 'code'))      # Ctrl+` 代码
-        self.win.bind('<Control-l>', lambda e: self._insert_markdown('- ', 'list'))     # Ctrl+L 列表
-        self.win.bind('<Control-Shift-P>', lambda e: self._toggle_preview())            # Ctrl+Shift+P 预览
+        self.win.bind("<Control-b>", lambda e: self._insert_markdown("**", "bold"))  # Ctrl+B 加粗
+        self.win.bind("<Control-i>", lambda e: self._insert_markdown("*", "italic"))  # Ctrl+I 斜体
+        self.win.bind("<Control-`>", lambda e: self._insert_markdown("`", "code"))  # Ctrl+` 代码
+        self.win.bind("<Control-l>", lambda e: self._insert_markdown("- ", "list"))  # Ctrl+L 列表
+        self.win.bind("<Control-Shift-P>", lambda e: self._toggle_preview())  # Ctrl+Shift+P 预览
 
         # 按键事件 - 用于打字机模式和AI辅助
-        self.text_widget.bind('<KeyRelease>', self._on_key_release)
-        self.text_widget.bind('<Tab>', self._on_tab)
+        self.text_widget.bind("<KeyRelease>", self._on_key_release)
+        self.text_widget.bind("<Tab>", self._on_tab)
 
         # 字体大小调整
-        self.win.bind('<Control-plus>', lambda e: self._change_font_size(1))
-        self.win.bind('<Control-minus>', lambda e: self._change_font_size(-1))
-        self.win.bind('<Control-equal>', lambda e: self._change_font_size(1))
+        self.win.bind("<Control-plus>", lambda e: self._change_font_size(1))
+        self.win.bind("<Control-minus>", lambda e: self._change_font_size(-1))
+        self.win.bind("<Control-equal>", lambda e: self._change_font_size(1))
 
     def _show_context_menu(self, event):
         """显示右键菜单"""
@@ -287,11 +360,15 @@ class FullscreenWriter:
         if self.typewriter_mode:
             self._center_current_line()
 
-        if self.suggestion_active and event and event.keysym not in ('Tab', 'Shift_L', 'Shift_R', 'Control_L', 'Control_R'):
+        if (
+            self.suggestion_active
+            and event
+            and event.keysym not in ("Tab", "Shift_L", "Shift_R", "Control_L", "Control_R")
+        ):
             self._clear_suggestion()
 
         # Markdown高亮（延迟更新避免频繁触发）
-        if hasattr(self, '_highlight_after_id'):
+        if hasattr(self, "_highlight_after_id"):
             self.win.after_cancel(self._highlight_after_id)
         self._highlight_after_id = self.win.after(300, self._update_markdown_highlighting)
 
@@ -328,7 +405,7 @@ class FullscreenWriter:
                     [{"role": "user", "content": f"请续写以下内容：\n\n{context}"}],
                     system=system,
                     max_tokens=200,
-                    temperature=0.8
+                    temperature=0.8,
                 )
 
                 self.ai_suggestion = response.strip()[:100]  # 限制长度
@@ -358,7 +435,7 @@ class FullscreenWriter:
         """打字机模式 - 当前行居中"""
         try:
             # 获取光标位置
-            cursor_line = self.text_widget.index(tk.INSERT).split('.')[0]
+            cursor_line = self.text_widget.index(tk.INSERT).split(".")[0]
 
             # 获取文本框高度
             self.text_widget.update_idletasks()
@@ -368,7 +445,7 @@ class FullscreenWriter:
             line_y = self.text_widget.dlineinfo(f"{cursor_line}.0")
             if line_y:
                 # 计算滚动位置，使当前行居中
-                total_lines = int(self.text_widget.index(tk.END).split('.')[0])
+                total_lines = int(self.text_widget.index(tk.END).split(".")[0])
                 target_pos = (int(cursor_line) - widget_height / (self.font_size * 2)) / total_lines
                 target_pos = max(0, min(1, target_pos))
                 self.text_widget.yview_moveto(target_pos)
@@ -451,18 +528,18 @@ class FullscreenWriter:
         except tk.TclError:
             # 没有选中文本，获取光标所在段落
             cursor_pos = self.text_widget.index(tk.INSERT)
-            line_start = cursor_pos.split('.')[0] + '.0'
+            line_start = cursor_pos.split(".")[0] + ".0"
             # 找到段落开头
-            while line_start > '1.0':
+            while line_start > "1.0":
                 prev_line = self.text_widget.get(f"{line_start}-1l", line_start)
-                if prev_line.strip() == '':
+                if prev_line.strip() == "":
                     break
                 line_start = f"{line_start}-1l"
             # 找到段落结尾
             line_end = line_start
             while True:
                 next_line = self.text_widget.get(line_end, f"{line_end}+1l")
-                if next_line.strip() == '' or line_end == self.text_widget.index(tk.END):
+                if next_line.strip() == "" or line_end == self.text_widget.index(tk.END):
                     break
                 line_end = f"{line_end}+1l"
             selected = self.text_widget.get(line_start, line_end).strip()
@@ -515,7 +592,7 @@ class FullscreenWriter:
                     [{"role": "user", "content": prompt["user"]}],
                     system=system,
                     max_tokens=prompt["max_tokens"],
-                    temperature=0.7
+                    temperature=0.7,
                 )
 
                 # 在主线程中替换文本
@@ -553,13 +630,13 @@ class FullscreenWriter:
 
     def _show_ai_status(self, text: str):
         """显示AI处理状态"""
-        if hasattr(self, 'ai_status_label'):
+        if hasattr(self, "ai_status_label"):
             self.ai_status_label.config(text=text)
             self.ai_status_label.place(relx=0.5, rely=0.05, anchor=tk.CENTER)
 
     def _hide_ai_status(self):
         """隐藏AI处理状态"""
-        if hasattr(self, 'ai_status_label'):
+        if hasattr(self, "ai_status_label"):
             self.ai_status_label.place_forget()
 
     # ===== Markdown功能 =====
@@ -567,96 +644,110 @@ class FullscreenWriter:
     def _setup_markdown_highlighting(self):
         """设置Markdown语法高亮"""
         # 定义标签样式
-        self.text_widget.tag_configure('md_h1', font=('微软雅黑', self.font_size + 6, 'bold'), foreground='#1a1a2e')
-        self.text_widget.tag_configure('md_h2', font=('微软雅黑', self.font_size + 4, 'bold'), foreground='#2d2d3f')
-        self.text_widget.tag_configure('md_h3', font=('微软雅黑', self.font_size + 2, 'bold'), foreground='#3d3d52')
-        self.text_widget.tag_configure('md_bold', font=('Consolas', self.font_size, 'bold'))
-        self.text_widget.tag_configure('md_italic', font=('Consolas', self.font_size, 'italic'))
-        self.text_widget.tag_configure('md_strike', overstrike=True, foreground='#888888')
-        self.text_widget.tag_configure('md_code', font=('Consolas', self.font_size - 1),
-                                      background='#e8e3d8', foreground='#c0392b')
-        self.text_widget.tag_configure('md_codeblock', font=('Consolas', self.font_size - 1),
-                                      background='#e8e3d8', foreground='#2c3e50')
-        self.text_widget.tag_configure('md_quote', foreground='#7f8c8d', lmargin1=20, lmargin2=20)
-        self.text_widget.tag_configure('md_list', lmargin1=20, lmargin2=30)
-        self.text_widget.tag_configure('md_link', foreground='#3498db', underline=True)
-        self.text_widget.tag_configure('md_hr', foreground='#bdc3c7')
+        self.text_widget.tag_configure("md_h1", font=("微软雅黑", self.font_size + 6, "bold"), foreground="#1a1a2e")
+        self.text_widget.tag_configure("md_h2", font=("微软雅黑", self.font_size + 4, "bold"), foreground="#2d2d3f")
+        self.text_widget.tag_configure("md_h3", font=("微软雅黑", self.font_size + 2, "bold"), foreground="#3d3d52")
+        self.text_widget.tag_configure("md_bold", font=("Consolas", self.font_size, "bold"))
+        self.text_widget.tag_configure("md_italic", font=("Consolas", self.font_size, "italic"))
+        self.text_widget.tag_configure("md_strike", overstrike=True, foreground="#888888")
+        self.text_widget.tag_configure(
+            "md_code", font=("Consolas", self.font_size - 1), background="#e8e3d8", foreground="#c0392b"
+        )
+        self.text_widget.tag_configure(
+            "md_codeblock", font=("Consolas", self.font_size - 1), background="#e8e3d8", foreground="#2c3e50"
+        )
+        self.text_widget.tag_configure("md_quote", foreground="#7f8c8d", lmargin1=20, lmargin2=20)
+        self.text_widget.tag_configure("md_list", lmargin1=20, lmargin2=30)
+        self.text_widget.tag_configure("md_link", foreground="#3498db", underline=True)
+        self.text_widget.tag_configure("md_hr", foreground="#bdc3c7")
 
         # 绑定按键事件 - 用于打字机模式和AI辅助
-        self.text_widget.bind('<KeyRelease>', self._on_key_release)
+        self.text_widget.bind("<KeyRelease>", self._on_key_release)
 
     def _update_markdown_highlighting(self):
         """更新Markdown语法高亮"""
         content = self.text_widget.get("1.0", tk.END)
 
         # 清除所有高亮标签
-        for tag in ['md_h1', 'md_h2', 'md_h3', 'md_bold', 'md_italic',
-                    'md_strike', 'md_code', 'md_codeblock', 'md_quote', 'md_list', 'md_link', 'md_hr']:
+        for tag in [
+            "md_h1",
+            "md_h2",
+            "md_h3",
+            "md_bold",
+            "md_italic",
+            "md_strike",
+            "md_code",
+            "md_codeblock",
+            "md_quote",
+            "md_list",
+            "md_link",
+            "md_hr",
+        ]:
             self.text_widget.tag_remove(tag, "1.0", tk.END)
 
         # 标题高亮
-        for match in re.finditer(r'^(# .+)$', content, re.MULTILINE):
+        for match in re.finditer(r"^(# .+)$", content, re.MULTILINE):
             start = f"1.0+{match.start()}c"
             end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_h1', start, end)
+            self.text_widget.tag_add("md_h1", start, end)
 
-        for match in re.finditer(r'^(## .+)$', content, re.MULTILINE):
+        for match in re.finditer(r"^(## .+)$", content, re.MULTILINE):
             start = f"1.0+{match.start()}c"
             end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_h2', start, end)
+            self.text_widget.tag_add("md_h2", start, end)
 
-        for match in re.finditer(r'^(### .+)$', content, re.MULTILINE):
+        for match in re.finditer(r"^(### .+)$", content, re.MULTILINE):
             start = f"1.0+{match.start()}c"
             end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_h3', start, end)
+            self.text_widget.tag_add("md_h3", start, end)
 
         # 加粗
-        for match in re.finditer(r'(\*\*[^*]+\*\*)', content):
+        for match in re.finditer(r"(\*\*[^*]+\*\*)", content):
             start = f"1.0+{match.start()}c"
             end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_bold', start, end)
+            self.text_widget.tag_add("md_bold", start, end)
 
         # 斜体
-        for match in re.finditer(r'(\*[^*]+\*)', content):
+        for match in re.finditer(r"(\*[^*]+\*)", content):
             start = f"1.0+{match.start()}c"
             end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_italic', start, end)
+            self.text_widget.tag_add("md_italic", start, end)
 
         # 删除线
-        for match in re.finditer(r'(~~[^~]+~~)', content):
+        for match in re.finditer(r"(~~[^~]+~~)", content):
             start = f"1.0+{match.start()}c"
             end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_strike', start, end)
+            self.text_widget.tag_add("md_strike", start, end)
 
         # 行内代码
-        for match in re.finditer(r'(`[^`]+`)', content):
+        for match in re.finditer(r"(`[^`]+`)", content):
             start = f"1.0+{match.start()}c"
             end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_code', start, end)
+            self.text_widget.tag_add("md_code", start, end)
 
         # 代码块
-        for match in re.finditer(r'(```[\s\S]*?```)', content):
+        for match in re.finditer(r"(```[\s\S]*?```)", content):
             start = f"1.0+{match.start()}c"
             end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_codeblock', start, end)
+            self.text_widget.tag_add("md_codeblock", start, end)
 
         # 引用
-        for match in re.finditer(r'^(> .+)$', content, re.MULTILINE):
+        for match in re.finditer(r"^(> .+)$", content, re.MULTILINE):
             start = f"1.0+{match.start()}c"
             end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_quote', start, end)
+            self.text_widget.tag_add("md_quote", start, end)
 
         # 列表
-        for match in re.finditer(r'^(\- .+|\* .+|\d+\. .+)$', content, re.MULTILINE):
+        for match in re.finditer(r"^(\- .+|\* .+|\d+\. .+)$", content, re.MULTILINE):
             start = f"1.0+{match.start()}c"
             end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_list', start, end)
+            self.text_widget.tag_add("md_list", start, end)
 
         # 分割线
-        for match in re.finditer(r'^(---+|\*\*\*+)$', content, re.MULTILINE):
+        for match in re.finditer(r"^(---+|\*\*\*+)$", content, re.MULTILINE):
             start = f"1.0+{match.start()}c"
             end = f"1.0+{match.end()}c"
-            self.text_widget.tag_add('md_hr', start, end)
+            self.text_widget.tag_add("md_hr", start, end)
 
     def _insert_markdown(self, prefix: str, name: str):
         """插入Markdown标记"""
@@ -664,11 +755,11 @@ class FullscreenWriter:
             # 获取选中文本
             selected = self.text_widget.get(tk.SEL_FIRST, tk.SEL_LAST)
 
-            if name in ['bold', 'italic', 'strike', 'code']:
+            if name in ["bold", "italic", "strike", "code"]:
                 # 包围选中文本
                 self.text_widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
                 self.text_widget.insert(tk.INSERT, f"{prefix}{selected}{prefix}")
-            elif name == 'link':
+            elif name == "link":
                 # 插入链接
                 self.text_widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
                 self.text_widget.insert(tk.INSERT, f"[{selected}](url)")
@@ -678,22 +769,22 @@ class FullscreenWriter:
                 self.text_widget.insert(tk.INSERT, f"{prefix}{selected}")
         except tk.TclError:
             # 没有选中文本
-            if name in ['heading1', 'heading2', 'heading3']:
+            if name in ["heading1", "heading2", "heading3"]:
                 # 在行首插入标题
                 cursor_pos = self.text_widget.index(tk.INSERT)
-                line_start = cursor_pos.split('.')[0] + '.0'
+                line_start = cursor_pos.split(".")[0] + ".0"
                 self.text_widget.insert(line_start, prefix)
-            elif name == 'hr':
+            elif name == "hr":
                 self.text_widget.insert(tk.INSERT, "\n---\n")
-            elif name == 'codeblock':
+            elif name == "codeblock":
                 self.text_widget.insert(tk.INSERT, "```\n\n```")
                 # 移动光标到代码块中间
                 cursor_pos = self.text_widget.index(tk.INSERT)
                 self.text_widget.mark_set(tk.INSERT, f"{cursor_pos}-3l")
-            elif name in ['list', 'olist', 'quote']:
+            elif name in ["list", "olist", "quote"]:
                 # 在行首插入
                 cursor_pos = self.text_widget.index(tk.INSERT)
-                line_start = cursor_pos.split('.')[0] + '.0'
+                line_start = cursor_pos.split(".")[0] + ".0"
                 self.text_widget.insert(line_start, prefix)
             else:
                 # 在光标位置插入标记
@@ -723,16 +814,16 @@ class FullscreenWriter:
 
         # 转换Markdown为可读文本
         preview = content
-        preview = re.sub(r'^# (.+)$', r'【标题】\1', preview, flags=re.MULTILINE)
-        preview = re.sub(r'^## (.+)$', r'【大标题】\1', preview, flags=re.MULTILINE)
-        preview = re.sub(r'^### (.+)$', r'【小标题】\1', preview, flags=re.MULTILINE)
-        preview = re.sub(r'\*\*([^*]+)\*\*', r'【加粗】\1', preview)
-        preview = re.sub(r'\*([^*]+)\*', r'【斜体】\1', preview)
-        preview = re.sub(r'~~([^~]+)~~', r'【删除】\1', preview)
-        preview = re.sub(r'`([^`]+)`', r'「\1」', preview)
-        preview = re.sub(r'^> (.+)$', r'  ┃ \1', preview, flags=re.MULTILINE)
-        preview = re.sub(r'^- (.+)$', r'  • \1', preview, flags=re.MULTILINE)
-        preview = re.sub(r'^---+$', '─' * 40, preview, flags=re.MULTILINE)
+        preview = re.sub(r"^# (.+)$", r"【标题】\1", preview, flags=re.MULTILINE)
+        preview = re.sub(r"^## (.+)$", r"【大标题】\1", preview, flags=re.MULTILINE)
+        preview = re.sub(r"^### (.+)$", r"【小标题】\1", preview, flags=re.MULTILINE)
+        preview = re.sub(r"\*\*([^*]+)\*\*", r"【加粗】\1", preview)
+        preview = re.sub(r"\*([^*]+)\*", r"【斜体】\1", preview)
+        preview = re.sub(r"~~([^~]+)~~", r"【删除】\1", preview)
+        preview = re.sub(r"`([^`]+)`", r"「\1」", preview)
+        preview = re.sub(r"^> (.+)$", r"  ┃ \1", preview, flags=re.MULTILINE)
+        preview = re.sub(r"^- (.+)$", r"  • \1", preview, flags=re.MULTILINE)
+        preview = re.sub(r"^---+$", "─" * 40, preview, flags=re.MULTILINE)
 
         self.preview_widget.config(state=tk.NORMAL)
         self.preview_widget.delete("1.0", tk.END)
@@ -747,15 +838,15 @@ class FullscreenWriter:
         dialog.transient(self.win)
         dialog.grab_set()
 
-        ttk.Label(dialog, text="字体大小:").pack(anchor=tk.W, padx=20, pady=(15,3))
+        ttk.Label(dialog, text="字体大小:").pack(anchor=tk.W, padx=20, pady=(15, 3))
         font_var = tk.IntVar(value=self.font_size)
         ttk.Scale(dialog, from_=12, to=36, variable=font_var, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=20)
 
-        ttk.Label(dialog, text="纸张宽度:").pack(anchor=tk.W, padx=20, pady=(10,3))
+        ttk.Label(dialog, text="纸张宽度:").pack(anchor=tk.W, padx=20, pady=(10, 3))
         width_var = tk.IntVar(value=self.paper_width)
         ttk.Scale(dialog, from_=400, to=1000, variable=width_var, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=20)
 
-        ttk.Label(dialog, text="纸张位置:").pack(anchor=tk.W, padx=20, pady=(10,3))
+        ttk.Label(dialog, text="纸张位置:").pack(anchor=tk.W, padx=20, pady=(10, 3))
         pos_var = tk.StringVar(value=self.paper_position)
         pos_frame = ttk.Frame(dialog)
         pos_frame.pack(fill=tk.X, padx=20)
@@ -763,20 +854,19 @@ class FullscreenWriter:
         ttk.Radiobutton(pos_frame, text="左侧", variable=pos_var, value="left").pack(side=tk.LEFT, padx=10)
         ttk.Radiobutton(pos_frame, text="右侧", variable=pos_var, value="right").pack(side=tk.LEFT, padx=10)
 
-        ttk.Label(dialog, text="背景透明度:").pack(anchor=tk.W, padx=20, pady=(10,3))
+        ttk.Label(dialog, text="背景透明度:").pack(anchor=tk.W, padx=20, pady=(10, 3))
         opacity_var = tk.DoubleVar(value=self.bg_opacity)
         ttk.Scale(dialog, from_=0.3, to=1.0, variable=opacity_var, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=20)
 
-        ttk.Label(dialog, text="背景颜色:").pack(anchor=tk.W, padx=20, pady=(10,3))
+        ttk.Label(dialog, text="背景颜色:").pack(anchor=tk.W, padx=20, pady=(10, 3))
         bg_var = tk.StringVar(value="#f5f0e8")
         colors = [("#f5f0e8", "米白"), ("#ffffff", "纯白"), ("#2c2c2c", "深灰"), ("#1a1a2e", "深蓝黑")]
         color_frame = ttk.Frame(dialog)
         color_frame.pack(fill=tk.X, padx=20)
         for color, name in colors:
-            btn = tk.Button(color_frame, bg=color, width=4, height=2,
-                          command=lambda c=color: bg_var.set(c))
+            btn = tk.Button(color_frame, bg=color, width=4, height=2, command=lambda c=color: bg_var.set(c))
             btn.pack(side=tk.LEFT, padx=5)
-            ttk.Label(color_frame, text=name).pack(side=tk.LEFT, padx=(0,10))
+            ttk.Label(color_frame, text=name).pack(side=tk.LEFT, padx=(0, 10))
 
         def apply():
             self.font_size = font_var.get()
@@ -801,7 +891,7 @@ class FullscreenWriter:
         if self.config:
             settings_file = self.config.config_dir / "writer_settings.json"
             if settings_file.exists():
-                with open(settings_file, 'r') as f:
+                with open(settings_file, "r") as f:
                     s = json.load(f)
                 self.font_size = s.get("font_size", 18)
                 self.paper_width = s.get("paper_width", 700)
@@ -814,15 +904,19 @@ class FullscreenWriter:
         """保存写作设置"""
         if self.config:
             settings_file = self.config.config_dir / "writer_settings.json"
-            with open(settings_file, 'w') as f:
-                json.dump({
-                    "font_size": self.font_size,
-                    "paper_width": self.paper_width,
-                    "paper_position": self.paper_position,
-                    "bg_opacity": self.bg_opacity,
-                    "typewriter_mode": self.typewriter_mode,
-                    "ai_assist": self.ai_assist_enabled,
-                }, f, indent=2)
+            with open(settings_file, "w") as f:
+                json.dump(
+                    {
+                        "font_size": self.font_size,
+                        "paper_width": self.paper_width,
+                        "paper_position": self.paper_position,
+                        "bg_opacity": self.bg_opacity,
+                        "typewriter_mode": self.typewriter_mode,
+                        "ai_assist": self.ai_assist_enabled,
+                    },
+                    f,
+                    indent=2,
+                )
 
     def _save(self):
         """保存内容"""

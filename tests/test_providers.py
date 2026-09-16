@@ -73,8 +73,21 @@ class TestProviderRegistry:
     def test_all_builtin_providers_are_registered(self):
         """P4：v2 的「伪 provider」（glm/qwen/kimi）必须有真实条目。"""
         reg = default_registry()
-        for key in ("ollama", "openai", "deepseek", "claude", "glm", "qwen", "kimi",
-                    "mimo", "siliconflow", "together", "groq", "dashscope", "custom"):
+        for key in (
+            "ollama",
+            "openai",
+            "deepseek",
+            "claude",
+            "glm",
+            "qwen",
+            "kimi",
+            "mimo",
+            "siliconflow",
+            "together",
+            "groq",
+            "dashscope",
+            "custom",
+        ):
             assert key in reg, f"{key} 未注册"
 
     def test_every_provider_has_a_base_url_except_custom(self):
@@ -90,8 +103,8 @@ class TestProviderRegistry:
 
     def test_keys_are_ordered_by_canonical_order(self):
         keys = default_registry().keys()
-        assert keys[0] == "ollama"          # 本地排最前
-        assert keys[-1] == "custom"         # 兜底排最后
+        assert keys[0] == "ollama"  # 本地排最前
+        assert keys[-1] == "custom"  # 兜底排最后
 
     def test_unknown_key_falls_back_to_custom(self):
         reg = default_registry()
@@ -156,8 +169,7 @@ class TestProviderRegistry:
 
     def test_registry_register_is_extensible(self):
         reg = ProviderRegistry()
-        spec = ProviderSpec(key="myapi", name="My API", base_url="https://x.example.com/v1",
-                            base_url_includes_v1=True)
+        spec = ProviderSpec(key="myapi", name="My API", base_url="https://x.example.com/v1", base_url_includes_v1=True)
         reg.register(spec)
         assert reg.get("myapi") is spec
         assert isinstance(reg.adapter("myapi"), OpenAICompatAdapter)
@@ -202,33 +214,36 @@ class TestJoinUrl:
     """P2：`/v1` 拼接必须显式，不再靠隐式行为。"""
 
     def test_base_with_v1_plus_plain_path(self):
-        assert join_url("https://api.openai.com/v1", "/chat/completions", True) == \
-            "https://api.openai.com/v1/chat/completions"
+        assert (
+            join_url("https://api.openai.com/v1", "/chat/completions", True)
+            == "https://api.openai.com/v1/chat/completions"
+        )
 
     def test_v1_is_not_duplicated(self):
         """这是 P2 的核心：base 有 /v1 且 path 也有 /v1 时只保留一个。"""
-        assert join_url("https://x.example.com/v1", "/v1/chat/completions", True) == \
-            "https://x.example.com/v1/chat/completions"
+        assert (
+            join_url("https://x.example.com/v1", "/v1/chat/completions", True)
+            == "https://x.example.com/v1/chat/completions"
+        )
 
     def test_base_without_v1_keeps_path_v1(self):
-        assert join_url("https://api.anthropic.com", "/v1/messages", False) == \
-            "https://api.anthropic.com/v1/messages"
+        assert join_url("https://api.anthropic.com", "/v1/messages", False) == "https://api.anthropic.com/v1/messages"
 
     def test_trailing_slash_on_base_is_normalised(self):
-        assert join_url("https://api.deepseek.com/", "/chat/completions", False) == \
-            "https://api.deepseek.com/chat/completions"
+        assert (
+            join_url("https://api.deepseek.com/", "/chat/completions", False)
+            == "https://api.deepseek.com/chat/completions"
+        )
 
     def test_empty_base_returns_path(self):
         assert join_url("", "/chat/completions") == "/chat/completions"
 
     def test_resolved_url_uses_spec_defaults_when_config_empty(self):
-        assert default_registry().get("deepseek").resolved_url("") == \
-            "https://api.deepseek.com/chat/completions"
+        assert default_registry().get("deepseek").resolved_url("") == "https://api.deepseek.com/chat/completions"
 
     def test_resolved_url_prefers_configured_base(self):
         spec = default_registry().get("claude")
-        assert spec.resolved_url("https://my-proxy.example.com") == \
-            "https://my-proxy.example.com/v1/messages"
+        assert spec.resolved_url("https://my-proxy.example.com") == "https://my-proxy.example.com/v1/messages"
 
 
 # ================================================== OpenAI 兼容 adapter
@@ -252,14 +267,12 @@ class TestOpenAICompatAdapter:
         assert adapter_for("openai").build_request(req(stream=True)).json_body["stream"] is True
 
     def test_extra_body_is_merged(self):
-        spec = ProviderSpec(key="x", name="x", base_url="https://x.example.com",
-                            extra_body={"top_p": 0.9})
+        spec = ProviderSpec(key="x", name="x", base_url="https://x.example.com", extra_body={"top_p": 0.9})
         adapter = OpenAICompatAdapter(spec)
         assert adapter.build_request(req()).json_body["top_p"] == 0.9
 
     def test_extra_body_does_not_override_explicit_fields(self):
-        spec = ProviderSpec(key="x", name="x", base_url="https://x.example.com",
-                            extra_body={"model": "hijacked"})
+        spec = ProviderSpec(key="x", name="x", base_url="https://x.example.com", extra_body={"model": "hijacked"})
         adapter = OpenAICompatAdapter(spec)
         assert adapter.build_request(req()).json_body["model"] == "test-model"
 
@@ -268,11 +281,12 @@ class TestOpenAICompatAdapter:
         assert prepared.json_body["top_p"] == 0.5
 
     def test_parse_response(self):
-        result = adapter_for("openai").parse_response({
-            "choices": [{"message": {"content": "hello", "reasoning_content": "think"},
-                         "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
-        })
+        result = adapter_for("openai").parse_response(
+            {
+                "choices": [{"message": {"content": "hello", "reasoning_content": "think"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+            }
+        )
         assert result.text == "hello"
         assert result.reasoning == "think"
         assert result.finish_reason == "stop"
@@ -289,8 +303,7 @@ class TestOpenAICompatAdapter:
 
     def test_usage_reads_openai_cached_tokens(self):
         usage = adapter_for("openai")._parse_usage(
-            {"prompt_tokens": 100, "completion_tokens": 10,
-             "prompt_tokens_details": {"cached_tokens": 64}}
+            {"prompt_tokens": 100, "completion_tokens": 10, "prompt_tokens_details": {"cached_tokens": 64}}
         )
         assert usage.cached_tokens == 64
 
@@ -302,18 +315,14 @@ class TestOpenAICompatAdapter:
         assert usage.cached_tokens == 32
 
     def test_usage_total_is_derived_when_absent(self):
-        usage = adapter_for("openai")._parse_usage(
-            {"prompt_tokens": 7, "completion_tokens": 3}
-        )
+        usage = adapter_for("openai")._parse_usage({"prompt_tokens": 7, "completion_tokens": 3})
         assert usage.total_tokens == 10
 
     def test_usage_of_none_is_empty(self):
         assert adapter_for("openai")._parse_usage(None).is_empty
 
     def test_stream_chunk_parses_content(self):
-        delta = adapter_for("openai").parse_stream_chunk(
-            'data: {"choices": [{"delta": {"content": "Hi"}}]}'
-        )
+        delta = adapter_for("openai").parse_stream_chunk('data: {"choices": [{"delta": {"content": "Hi"}}]}')
         assert delta.text == "Hi"
         assert delta.done is False
 
@@ -359,54 +368,38 @@ class TestReasoningAdapter:
     def test_small_request_disables_thinking(self):
         """v2 的保护必须保留：小请求开思考会把预算耗光，content 为空。"""
         for key in ("deepseek", "glm", "qwen", "kimi"):
-            body = adapter_for(key).build_request(
-                req(thinking_enabled=True, max_tokens=500)
-            ).json_body
+            body = adapter_for(key).build_request(req(thinking_enabled=True, max_tokens=500)).json_body
             assert "thinking" not in body, key
             assert "enable_thinking" not in body, key
 
     def test_threshold_boundary(self):
-        body = adapter_for("deepseek").build_request(
-            req(thinking_enabled=True, max_tokens=1000)
-        ).json_body
+        body = adapter_for("deepseek").build_request(req(thinking_enabled=True, max_tokens=1000)).json_body
         assert body["thinking"] == {"type": "enabled"}
 
     def test_glm_forces_temperature_to_one(self):
-        body = adapter_for("glm").build_request(
-            req(thinking_enabled=True, model="glm-5.2")
-        ).json_body
+        body = adapter_for("glm").build_request(req(thinking_enabled=True, model="glm-5.2")).json_body
         assert body["temperature"] == 1.0
         assert body["thinking"] == {"type": "enabled"}
 
     def test_glm_reasoning_effort_only_for_newer_generations(self):
-        new = adapter_for("glm").build_request(
-            req(thinking_enabled=True, model="glm-5.2")
-        ).json_body
-        old = adapter_for("glm").build_request(
-            req(thinking_enabled=True, model="glm-4.7-flash")
-        ).json_body
+        new = adapter_for("glm").build_request(req(thinking_enabled=True, model="glm-5.2")).json_body
+        old = adapter_for("glm").build_request(req(thinking_enabled=True, model="glm-4.7-flash")).json_body
         assert "reasoning_effort" in new
         assert "reasoning_effort" not in old
 
     def test_qwen_uses_enable_thinking_and_budget(self):
-        body = adapter_for("qwen").build_request(
-            req(thinking_enabled=True, max_tokens=4000)
-        ).json_body
+        body = adapter_for("qwen").build_request(req(thinking_enabled=True, max_tokens=4000)).json_body
         assert body["enable_thinking"] is True
         assert body["thinking_budget"] == 2000
 
     def test_kimi_sets_keep_all_and_drops_temperature(self):
-        body = adapter_for("kimi").build_request(
-            req(thinking_enabled=True, model="kimi-k2.6")
-        ).json_body
+        body = adapter_for("kimi").build_request(req(thinking_enabled=True, model="kimi-k2.6")).json_body
         assert body["thinking"] == {"type": "enabled", "keep": "all"}
         assert "temperature" not in body
 
     def test_kimi_k27_rejects_thinking_param(self):
         """kimi-k2.7-code 始终思考，不接受 thinking 参数。"""
-        body = adapter_for("kimi").build_request(
-            req(thinking_enabled=True, model="kimi-k2.7-code")
-        ).json_body
+        body = adapter_for("kimi").build_request(req(thinking_enabled=True, model="kimi-k2.7-code")).json_body
         assert "thinking" not in body
 
     def test_non_reasoning_provider_never_gets_thinking_fields(self):
@@ -444,18 +437,20 @@ class TestAnthropicAdapter:
 
     def test_parse_response_skips_non_text_blocks(self):
         """v2 硬取 content[0]；首块是 thinking 时会返回空字符串。"""
-        result = adapter_for("claude").parse_response({
-            "content": [
-                {"type": "thinking", "thinking": "internal"},
-                {"type": "text", "text": "answer"},
-            ]
-        })
+        result = adapter_for("claude").parse_response(
+            {
+                "content": [
+                    {"type": "thinking", "thinking": "internal"},
+                    {"type": "text", "text": "answer"},
+                ]
+            }
+        )
         assert result.text == "answer"
 
     def test_parse_response_joins_multiple_text_blocks(self):
-        result = adapter_for("claude").parse_response({
-            "content": [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]
-        })
+        result = adapter_for("claude").parse_response(
+            {"content": [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]}
+        )
         assert result.text == "ab"
 
     def test_parse_response_without_content_raises(self):
@@ -486,9 +481,7 @@ class TestAnthropicAdapter:
         assert delta.text == ""
 
     def test_stream_chunk_message_stop_is_done(self):
-        assert adapter_for("claude").parse_stream_chunk(
-            'data: {"type": "message_stop"}'
-        ).done is True
+        assert adapter_for("claude").parse_stream_chunk('data: {"type": "message_stop"}').done is True
 
     def test_stream_chunk_ignores_unknown_events(self):
         assert adapter_for("claude").parse_stream_chunk('data: {"type": "ping"}') is None
@@ -527,14 +520,10 @@ class TestOllamaAdapter:
         delta = adapter_for("ollama").parse_stream_chunk('{"message": {"content": "Hi"}}')
         assert delta.text == "Hi"
         # 带 data: 前缀反而不该被解析
-        assert adapter_for("ollama").parse_stream_chunk(
-            'data: {"message": {"content": "Hi"}}'
-        ) is None
+        assert adapter_for("ollama").parse_stream_chunk('data: {"message": {"content": "Hi"}}') is None
 
     def test_stream_chunk_final_chunk_carries_usage(self):
-        delta = adapter_for("ollama").parse_stream_chunk(
-            '{"done": true, "prompt_eval_count": 5, "eval_count": 6}'
-        )
+        delta = adapter_for("ollama").parse_stream_chunk('{"done": true, "prompt_eval_count": 5, "eval_count": 6}')
         assert delta.done is True
         assert delta.usage.total_tokens == 11
 
@@ -582,8 +571,7 @@ class TestBalanceResultHonesty:
         assert "500" in failed.format_total()
 
     def test_ok_result_formats_with_currency_and_grant(self):
-        result = BalanceResult(provider="deepseek", supported=True, currency="CNY",
-                               total="110.00", granted="10.00")
+        result = BalanceResult(provider="deepseek", supported=True, currency="CNY", total="110.00", granted="10.00")
         text = result.format_total()
         assert "110.00" in text and "CNY" in text and "赠金" in text
 
@@ -595,12 +583,14 @@ class TestFetchBalance:
     def _deepseek_payload(self):
         return {
             "is_available": True,
-            "balance_infos": [{
-                "currency": "CNY",
-                "total_balance": "110.00",
-                "granted_balance": "10.00",
-                "topped_up_balance": "100.00",
-            }],
+            "balance_infos": [
+                {
+                    "currency": "CNY",
+                    "total_balance": "110.00",
+                    "granted_balance": "10.00",
+                    "topped_up_balance": "100.00",
+                }
+            ],
         }
 
     def test_deepseek_probe_parses_fields(self):
@@ -610,8 +600,10 @@ class TestFetchBalance:
             return httpx.Response(200, json=self._deepseek_payload())
 
         result = fetch_balance(
-            default_registry().get("deepseek"), http_get,
-            api_key="k", base_url="https://api.deepseek.com",
+            default_registry().get("deepseek"),
+            http_get,
+            api_key="k",
+            base_url="https://api.deepseek.com",
         )
         assert result.ok is True
         assert result.currency == "CNY"
@@ -642,7 +634,9 @@ class TestFetchBalance:
             return httpx.Response(200, json={"data": {"amount": 42, "unit": "USD"}})
 
         result = fetch_balance(
-            default_registry().get("kimi"), http_get, api_key="k",
+            default_registry().get("kimi"),
+            http_get,
+            api_key="k",
             override_url="https://custom.example.com/bal",
             override_paths={"total": "data.amount", "currency": "data.unit"},
         )
@@ -654,25 +648,29 @@ class TestFetchBalance:
         def http_get(url, headers, timeout):
             return httpx.Response(401)
 
-        result = fetch_balance(default_registry().get("deepseek"), http_get,
-                               api_key="k", base_url="https://api.deepseek.com")
+        result = fetch_balance(
+            default_registry().get("deepseek"), http_get, api_key="k", base_url="https://api.deepseek.com"
+        )
         assert result.error == "HTTP 401"
 
     def test_network_exception_becomes_failure(self):
         def http_get(url, headers, timeout):
             raise httpx.ConnectError("boom")
 
-        result = fetch_balance(default_registry().get("deepseek"), http_get,
-                               api_key="k", base_url="https://api.deepseek.com")
+        result = fetch_balance(
+            default_registry().get("deepseek"), http_get, api_key="k", base_url="https://api.deepseek.com"
+        )
         assert "ConnectError" in result.error
 
     def test_changed_api_shape_is_reported_not_silently_zero(self):
         """接口改了字段名时，必须说"未找到余额字段"，而不是显示余额为 0。"""
+
         def http_get(url, headers, timeout):
             return httpx.Response(200, json={"unexpected": True})
 
-        result = fetch_balance(default_registry().get("deepseek"), http_get,
-                               api_key="k", base_url="https://api.deepseek.com")
+        result = fetch_balance(
+            default_registry().get("deepseek"), http_get, api_key="k", base_url="https://api.deepseek.com"
+        )
         assert result.supported is True
         assert result.total is None
         assert "未找到余额字段" in result.format_total()
@@ -689,8 +687,7 @@ class TestBalanceCache:
         cache = BalanceCache(ttl=60)
         spec = default_registry().get("deepseek")
         for _ in range(3):
-            fetch_balance(spec, http_get, api_key="k",
-                          base_url="https://api.deepseek.com", cache=cache)
+            fetch_balance(spec, http_get, api_key="k", base_url="https://api.deepseek.com", cache=cache)
         assert len(calls) == 1
 
     def test_expired_cache_refetches(self):
@@ -702,10 +699,8 @@ class TestBalanceCache:
 
         cache = BalanceCache(ttl=60)
         spec = default_registry().get("deepseek")
-        fetch_balance(spec, http_get, api_key="k",
-                      base_url="https://api.deepseek.com", cache=cache, now=1000.0)
-        fetch_balance(spec, http_get, api_key="k",
-                      base_url="https://api.deepseek.com", cache=cache, now=1100.0)
+        fetch_balance(spec, http_get, api_key="k", base_url="https://api.deepseek.com", cache=cache, now=1000.0)
+        fetch_balance(spec, http_get, api_key="k", base_url="https://api.deepseek.com", cache=cache, now=1100.0)
         assert len(calls) == 2
 
     def test_cached_result_is_marked(self):
@@ -714,10 +709,8 @@ class TestBalanceCache:
 
         cache = BalanceCache(ttl=60)
         spec = default_registry().get("deepseek")
-        fetch_balance(spec, http_get, api_key="k",
-                      base_url="https://api.deepseek.com", cache=cache, now=1.0)
-        second = fetch_balance(spec, http_get, api_key="k",
-                               base_url="https://api.deepseek.com", cache=cache, now=2.0)
+        fetch_balance(spec, http_get, api_key="k", base_url="https://api.deepseek.com", cache=cache, now=1.0)
+        second = fetch_balance(spec, http_get, api_key="k", base_url="https://api.deepseek.com", cache=cache, now=2.0)
         assert second.cached is True
         assert "缓存" in second.format_total()
 
@@ -732,8 +725,7 @@ class TestBalanceCache:
         cache = BalanceCache(ttl=60)
         spec = default_registry().get("deepseek")
         for _ in range(2):
-            fetch_balance(spec, http_get, api_key="k",
-                          base_url="https://api.deepseek.com", cache=cache)
+            fetch_balance(spec, http_get, api_key="k", base_url="https://api.deepseek.com", cache=cache)
         assert len(calls) == 2
 
 
@@ -770,8 +762,7 @@ class TestPricingCached:
     """§9.9 约束 1：缓存价独立，价差可达 50 倍。"""
 
     def test_cached_tokens_use_cached_rate(self):
-        est = estimate_cost("deepseek", "deepseek-v4-pro", 1_000_000, 1_000_000,
-                            cached_tokens=500_000)
+        est = estimate_cost("deepseek", "deepseek-v4-pro", 1_000_000, 1_000_000, cached_tokens=500_000)
         expected = (500_000 * 3 + 500_000 * 0.025 + 1_000_000 * 6) / 1_000_000
         assert est.cost == pytest.approx(expected)
 
@@ -884,14 +875,16 @@ class TestEndpointResolutionFixes:
 
     def test_p1_claude_respects_configured_api_base(self):
         """P1：v2 对 claude 硬编码 api.anthropic.com，用户无法用中转地址。"""
-        client = self._client(api_provider="claude", api_key="sk-1234567890",
-                              api_base="https://my-proxy.example.com",
-                              model="claude-sonnet-5")
+        client = self._client(
+            api_provider="claude",
+            api_key="sk-1234567890",
+            api_base="https://my-proxy.example.com",
+            model="claude-sonnet-5",
+        )
         assert client.preview_url() == "https://my-proxy.example.com/v1/messages"
 
     def test_claude_falls_back_to_default_when_unset(self):
-        client = self._client(api_provider="claude", api_key="sk-1234567890",
-                              model="claude-sonnet-5")
+        client = self._client(api_provider="claude", api_key="sk-1234567890", model="claude-sonnet-5")
         assert client.preview_url() == "https://api.anthropic.com/v1/messages"
 
     def test_p2_no_v1_duplication_anywhere(self):
@@ -906,26 +899,26 @@ class TestEndpointResolutionFixes:
 
     def test_p4_qwen_model_while_openai_selected_goes_to_qwen(self):
         """P4 的核心场景：填了 qwen 模型名却选了 openai，参数不该发到 openai。"""
-        client = self._client(api_provider="openai", api_key="sk-1234567890",
-                              api_base="https://api.openai.com/v1",
-                              model="qwen3-max")
-        assert client.preview_url() == \
-            "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+        client = self._client(
+            api_provider="openai", api_key="sk-1234567890", api_base="https://api.openai.com/v1", model="qwen3-max"
+        )
+        assert client.preview_url() == "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 
     def test_p4_glm_and_kimi_also_route_correctly(self):
         openai_base = "https://api.openai.com/v1"
-        glm = self._client(api_provider="openai", api_key="sk-1234567890",
-                           api_base=openai_base, model="glm-5.2")
-        kimi = self._client(api_provider="openai", api_key="sk-1234567890",
-                            api_base=openai_base, model="kimi-k2.6")
+        glm = self._client(api_provider="openai", api_key="sk-1234567890", api_base=openai_base, model="glm-5.2")
+        kimi = self._client(api_provider="openai", api_key="sk-1234567890", api_base=openai_base, model="kimi-k2.6")
         assert "bigmodel.cn" in glm.preview_url()
         assert "moonshot.cn" in kimi.preview_url()
 
     def test_same_provider_still_honours_user_base(self):
         """检测结果与配置一致时，用户的代理地址必须照常生效。"""
-        client = self._client(api_provider="deepseek", api_key="sk-1234567890",
-                              api_base="https://my-relay.example.com",
-                              model="deepseek-v4-pro")
+        client = self._client(
+            api_provider="deepseek",
+            api_key="sk-1234567890",
+            api_base="https://my-relay.example.com",
+            model="deepseek-v4-pro",
+        )
         assert client.preview_url() == "https://my-relay.example.com/chat/completions"
 
     def test_preview_reports_configuration_error_instead_of_raising(self):
@@ -934,9 +927,12 @@ class TestEndpointResolutionFixes:
         构造时用的是合法 https 地址（否则 `_init_client` 的 S7 校验会先抛），
         之后再把配置改成不合法值 —— 这时预览必须仍然可用。
         """
-        client = self._client(api_provider="deepseek", api_key="sk-1234567890",
-                              api_base="https://api.deepseek.com",
-                              model="deepseek-v4-pro")
+        client = self._client(
+            api_provider="deepseek",
+            api_key="sk-1234567890",
+            api_base="https://api.deepseek.com",
+            model="deepseek-v4-pro",
+        )
         client.config.values["api_base"] = "http://api.deepseek.com"
         assert "配置有误" in client.preview_url()
 
@@ -961,21 +957,22 @@ class TestClientConfiguredByCapability:
         return AIClient(FakeConfig(**values))
 
     def test_local_provider_needs_no_key(self):
-        assert self._client(api_provider="ollama",
-                            api_base="http://localhost:11434").is_configured() is True
+        assert self._client(api_provider="ollama", api_base="http://localhost:11434").is_configured() is True
 
     def test_remote_provider_without_key_is_unconfigured(self):
-        assert self._client(api_provider="deepseek",
-                            api_base="https://api.deepseek.com").is_configured() is False
+        assert self._client(api_provider="deepseek", api_base="https://api.deepseek.com").is_configured() is False
 
     def test_remote_provider_with_key_is_configured(self):
-        assert self._client(api_provider="deepseek", api_key="sk-1234567890",
-                            api_base="https://api.deepseek.com").is_configured() is True
+        assert (
+            self._client(
+                api_provider="deepseek", api_key="sk-1234567890", api_base="https://api.deepseek.com"
+            ).is_configured()
+            is True
+        )
 
     def test_unknown_provider_falls_back_to_custom_and_is_unconfigured(self):
         assert self._client(api_provider="nope").is_configured() is False
 
     def test_plaintext_http_to_remote_is_still_rejected(self):
         with pytest.raises(ValueError, match="明文 HTTP"):
-            self._client(api_provider="deepseek", api_key="sk-1234567890",
-                         api_base="http://api.deepseek.com")
+            self._client(api_provider="deepseek", api_key="sk-1234567890", api_base="http://api.deepseek.com")

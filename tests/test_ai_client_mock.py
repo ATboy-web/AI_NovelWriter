@@ -88,10 +88,13 @@ class TestAIClientOpenAI:
         }.get(key, default)
 
         respx.post("https://api.openai.com/v1/chat/completions").mock(
-            return_value=httpx.Response(200, json={
-                "choices": [{"message": {"content": "OpenAI回复"}}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
-            })
+            return_value=httpx.Response(
+                200,
+                json={
+                    "choices": [{"message": {"content": "OpenAI回复"}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+                },
+            )
         )
 
         client = AIClient(config)
@@ -115,10 +118,13 @@ class TestAIClientDeepSeek:
         }.get(key, default)
 
         respx.post("https://api.deepseek.com/chat/completions").mock(
-            return_value=httpx.Response(200, json={
-                "choices": [{"message": {"content": "DeepSeek回复", "reasoning_content": ""}}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
-            })
+            return_value=httpx.Response(
+                200,
+                json={
+                    "choices": [{"message": {"content": "DeepSeek回复", "reasoning_content": ""}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+                },
+            )
         )
 
         client = AIClient(config)
@@ -138,10 +144,13 @@ class TestAIClientDeepSeek:
         }.get(key, default)
 
         respx.post("https://api.deepseek.com/chat/completions").mock(
-            return_value=httpx.Response(200, json={
-                "choices": [{"message": {"content": "回复", "reasoning_content": "思考过程"}}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
-            })
+            return_value=httpx.Response(
+                200,
+                json={
+                    "choices": [{"message": {"content": "回复", "reasoning_content": "思考过程"}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+                },
+            )
         )
 
         client = AIClient(config)
@@ -163,9 +172,7 @@ class TestAIClientClaude:
         }.get(key, default)
 
         respx.post("https://api.anthropic.com/v1/messages").mock(
-            return_value=httpx.Response(200, json={
-                "content": [{"text": "Claude回复"}]
-            })
+            return_value=httpx.Response(200, json={"content": [{"text": "Claude回复"}]})
         )
 
         client = AIClient(config)
@@ -231,7 +238,7 @@ class TestParseThinkingResponse:
 
         result = {
             "choices": [{"message": {"content": "回复内容"}}],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
         }
         assert client._parse_thinking_response(result, "Test") == "回复内容"
 
@@ -244,7 +251,7 @@ class TestParseThinkingResponse:
 
         result = {
             "choices": [{"message": {"content": "回复", "reasoning_content": "思考"}}],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
         }
         assert client._parse_thinking_response(result, "Test") == "回复"
 
@@ -257,7 +264,7 @@ class TestParseThinkingResponse:
 
         result = {
             "choices": [{"message": {"content": "", "reasoning_content": "x" * 20}, "finish_reason": "length"}],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
         }
         assert client._parse_thinking_response(result, "Test") == "x" * 20
 
@@ -288,10 +295,7 @@ class TestAIClientFallback:
 
         # First call fails, second succeeds
         respx.post("http://localhost:11434/api/chat").mock(
-            side_effect=[
-                httpx.Response(500),
-                httpx.Response(200, json={"message": {"content": "降级回复"}})
-            ]
+            side_effect=[httpx.Response(500), httpx.Response(200, json={"message": {"content": "降级回复"}})]
         )
 
         client = AIClient(config)
@@ -315,9 +319,7 @@ class TestAIClientGetModels:
         }.get(key, default)
 
         respx.get("http://localhost:11434/api/tags").mock(
-            return_value=httpx.Response(200, json={
-                "models": [{"name": "qwen2.5:14b"}, {"name": "llama3:8b"}]
-            })
+            return_value=httpx.Response(200, json={"models": [{"name": "qwen2.5:14b"}, {"name": "llama3:8b"}]})
         )
 
         client = AIClient(config)
@@ -334,9 +336,7 @@ class TestAIClientGetModels:
             "api_base": "http://localhost:11434",
         }.get(key, default)
 
-        respx.get("http://localhost:11434/api/tags").mock(
-            return_value=httpx.Response(500)
-        )
+        respx.get("http://localhost:11434/api/tags").mock(return_value=httpx.Response(500))
 
         client = AIClient(config)
         models = client.get_ollama_models()

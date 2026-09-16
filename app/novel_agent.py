@@ -12,6 +12,7 @@ try:
     from loguru import logger
 except ImportError:
     import logging
+
     logger = logging.getLogger(__name__)
 
 import json
@@ -33,12 +34,14 @@ from .usage_tracker import task_tracker
 # 诊断日志
 try:
     from .diagnostic_logger import get_logger
+
     _diag = get_logger()
 except Exception:
     _diag = None
 
 
 # ===== 标准化通信协议 (参考 MCP/A2A) =====
+
 
 class MessageRole(Enum):
     SYSTEM = "system"
@@ -49,8 +52,10 @@ class MessageRole(Enum):
     EDITOR = "editor"
     TOOL = "tool"
 
+
 class AgentMessage:
     """标准化Agent消息 - 参考MCP协议"""
+
     def __init__(self, role: MessageRole, action: str, content: str, metadata: Dict = None):
         self.role = role
         self.action = action
@@ -64,16 +69,19 @@ class AgentMessage:
             "action": self.action,
             "content": self.content[:300],
             "metadata": self.metadata,
-            "timestamp": self.timestamp
+            "timestamp": self.timestamp,
         }
 
 
 # ===== 标准化工具系统 (参考 MCP Tool协议) =====
 
+
 class Tool:
     """标准化工具定义"""
-    def __init__(self, name: str, description: str, func: Callable,
-                 input_schema: Dict = None, category: str = "general"):
+
+    def __init__(
+        self, name: str, description: str, func: Callable, input_schema: Dict = None, category: str = "general"
+    ):
         self.name = name
         self.description = description
         self.func = func
@@ -90,6 +98,7 @@ class Tool:
 
 class ToolRegistry:
     """工具注册中心 - 参考MCP工具列表"""
+
     def __init__(self):
         self._tools: Dict[str, Tool] = {}
 
@@ -102,12 +111,14 @@ class ToolRegistry:
         for name, tool in self._tools.items():
             if agent_type and tool.category != agent_type and tool.category != "general":
                 continue
-            tools.append({
-                "name": tool.name,
-                "description": tool.description,
-                "category": tool.category,
-                "input_schema": tool.input_schema
-            })
+            tools.append(
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "category": tool.category,
+                    "input_schema": tool.input_schema,
+                }
+            )
         return tools
 
     def call(self, tool_name: str, **kwargs) -> Dict:
@@ -118,16 +129,16 @@ class ToolRegistry:
 
 class NovelAgent:
     """小说创作智能体 - 参考Hello-Agents多智能体架构
-    
+
     智能体角色（扩展版）：
     - PlotDesigner (情节设计): 负责大纲分解、伏笔管理、节奏控制
     - WorldBuilder (世界构建): 负责世界观一致性、场景描写
     - Writer (作家): 负责创作小说内容
     - Reviewer (审校): 负责检查质量和一致性
     - Editor (编辑/质量门): 负责最终裁定是否通过
-    
+
     工具系统：标准化注册/调用，Agent自主选择工具
-    
+
     协作流程（参考AutoGen的GroupChat模式）：
     1. PlotDesigner分析大纲 → 2. WorldBuilder构建场景
     3. Writer生成内容 → 4. Reviewer审校 → 5. Editor判定
@@ -160,7 +171,8 @@ class NovelAgent:
         # 加载写作技能数据（如果存在）
         try:
             from .writing_skills import writing_skill_manager
-            if memory and hasattr(memory, 'novel_dir'):
+
+            if memory and hasattr(memory, "novel_dir"):
                 skills_dir = str(memory.novel_dir / "writing_skills")
                 writing_skill_manager.load_all(skills_dir)
                 self.log("[写作技能] 已加载历史数据")
@@ -177,6 +189,7 @@ class NovelAgent:
         """获取写作风格提示词（基于写作技能模块的配置）"""
         try:
             from .writing_skills import writing_skill_manager
+
             config = writing_skill_manager.style_config
 
             style_parts = []
@@ -220,33 +233,71 @@ class NovelAgent:
 
     def _register_tools(self):
         """注册标准化工具"""
-        self.tools.register(Tool("detect_scenes", "检测名场面",
-            lambda content="", chapter_num=0: self.memory.add_event(chapter_num, f"场景检测: {content[:50]}", "scene"),
-            category="writer"))
-        self.tools.register(Tool("check_consistency", "检查一致性",
-            lambda content="": f"一致性检查完成, 内容长度:{len(content)}",
-            category="reviewer"))
-        self.tools.register(Tool("generate_summary", "生成摘要",
-            lambda chapter_num=0, content="": self.memory.get_chapter_summary(chapter_num) or "无",
-            category="editor"))
-        self.tools.register(Tool("get_characters", "获取角色列表",
-            lambda: list(self.memory.get_characters().keys())[:10],
-            category="general"))
-        self.tools.register(Tool("get_outline", "获取章节大纲",
-            lambda chapter_num=0: self.memory.get_meta("outline", {}).get(str(chapter_num), "无"),
-            category="general"))
+        self.tools.register(
+            Tool(
+                "detect_scenes",
+                "检测名场面",
+                lambda content="", chapter_num=0: self.memory.add_event(
+                    chapter_num, f"场景检测: {content[:50]}", "scene"
+                ),
+                category="writer",
+            )
+        )
+        self.tools.register(
+            Tool(
+                "check_consistency",
+                "检查一致性",
+                lambda content="": f"一致性检查完成, 内容长度:{len(content)}",
+                category="reviewer",
+            )
+        )
+        self.tools.register(
+            Tool(
+                "generate_summary",
+                "生成摘要",
+                lambda chapter_num=0, content="": self.memory.get_chapter_summary(chapter_num) or "无",
+                category="editor",
+            )
+        )
+        self.tools.register(
+            Tool(
+                "get_characters",
+                "获取角色列表",
+                lambda: list(self.memory.get_characters().keys())[:10],
+                category="general",
+            )
+        )
+        self.tools.register(
+            Tool(
+                "get_outline",
+                "获取章节大纲",
+                lambda chapter_num=0: self.memory.get_meta("outline", {}).get(str(chapter_num), "无"),
+                category="general",
+            )
+        )
         # 写作技能工具
-        self.tools.register(Tool("check_ai_slop", "检查AI写作痕迹",
-            lambda content="": self._call_anti_slop_check(content),
-            category="reviewer"))
-        self.tools.register(Tool("get_kg_context", "获取知识图谱上下文",
-            lambda character=None: self._get_knowledge_graph_context(character),
-            category="writer"))
+        self.tools.register(
+            Tool(
+                "check_ai_slop",
+                "检查AI写作痕迹",
+                lambda content="": self._call_anti_slop_check(content),
+                category="reviewer",
+            )
+        )
+        self.tools.register(
+            Tool(
+                "get_kg_context",
+                "获取知识图谱上下文",
+                lambda character=None: self._get_knowledge_graph_context(character),
+                category="writer",
+            )
+        )
 
     def _call_anti_slop_check(self, content: str) -> list:
         """调用写作技能进行去AI味检查"""
         try:
             from .writing_skills import writing_skill_manager
+
             issues = writing_skill_manager.anti_slop.check_text(content)
 
             # 收集所有问题
@@ -264,6 +315,7 @@ class NovelAgent:
         """从知识图谱获取上下文"""
         try:
             from .writing_skills import writing_skill_manager
+
             return writing_skill_manager.knowledge_graph.to_context_string(character)
         except Exception as e:
             self.log(f"[知识图谱] 获取上下文失败: {e}")
@@ -272,18 +324,24 @@ class NovelAgent:
     def _record_conversation(self, agent: str, action: str, content: str):
         """记录智能体对话 - 使用标准AgentMessage协议"""
         # BUG-2修复: 角色名到枚举的正确映射
-        _ROLE_MAP = {"PlotDesigner": "PLOT", "WorldBuilder": "WORLD",
-                     "Writer": "WRITER", "Reviewer": "REVIEWER", "Editor": "EDITOR"}
+        _ROLE_MAP = {
+            "PlotDesigner": "PLOT",
+            "WorldBuilder": "WORLD",
+            "Writer": "WRITER",
+            "Reviewer": "REVIEWER",
+            "Editor": "EDITOR",
+        }
         role_name = _ROLE_MAP.get(agent, "SYSTEM")
         role = MessageRole[role_name]
         msg = AgentMessage(role, action, content)
         with self._log_lock:
             self._conversation_log.append(msg)
 
-    def _build_context(self, chapter_num: int, extra_context: str = "", max_chars: int = None,
-                       writing_phase: str = "writing") -> str:
+    def _build_context(
+        self, chapter_num: int, extra_context: str = "", max_chars: int = None, writing_phase: str = "writing"
+    ) -> str:
         """动态上下文工程 - 根据写作阶段智能分配比例 (Hello-Agents参考)
-        
+
         写作阶段:
         - opening: 开头阶段，需要更多世界/角色描述
         - writing: 常规写作，平衡分配
@@ -300,11 +358,11 @@ class NovelAgent:
 
         # 动态比例分配 — extra_context(前文内容)是连贯性关键，必须占大比例
         ratios = {
-            "opening":  {"global": 0.10, "volume": 0.05, "chars": 0.15, "recent": 0.10, "rag": 0.10, "extra": 0.50},
-            "writing":  {"global": 0.08, "volume": 0.07, "chars": 0.10, "recent": 0.10, "rag": 0.10, "extra": 0.55},
-            "action":   {"global": 0.05, "volume": 0.05, "chars": 0.05, "recent": 0.10, "rag": 0.10, "extra": 0.65},
+            "opening": {"global": 0.10, "volume": 0.05, "chars": 0.15, "recent": 0.10, "rag": 0.10, "extra": 0.50},
+            "writing": {"global": 0.08, "volume": 0.07, "chars": 0.10, "recent": 0.10, "rag": 0.10, "extra": 0.55},
+            "action": {"global": 0.05, "volume": 0.05, "chars": 0.05, "recent": 0.10, "rag": 0.10, "extra": 0.65},
             "dialogue": {"global": 0.05, "volume": 0.05, "chars": 0.25, "recent": 0.10, "rag": 0.10, "extra": 0.45},
-            "ending":   {"global": 0.10, "volume": 0.05, "chars": 0.05, "recent": 0.10, "rag": 0.10, "extra": 0.60},
+            "ending": {"global": 0.10, "volume": 0.05, "chars": 0.05, "recent": 0.10, "rag": 0.10, "extra": 0.60},
         }
         ratio = ratios.get(writing_phase, ratios["writing"])
 
@@ -383,6 +441,7 @@ class NovelAgent:
         # 写作技能上下文（知识图谱、写作技巧）
         try:
             from .writing_skills import writing_skill_manager
+
             skills_context = writing_skill_manager.get_writing_context()
             if skills_context and len(skills_context) > 20:
                 skill_budget = max(0, min(500, max_chars - used))
@@ -474,8 +533,22 @@ class NovelAgent:
                 return ""
 
             # 从全局摘要中提取伏笔关键词
-            foreshadow_keywords = ["伏笔", "悬念", "暗示", "预示", "未解之谜", "神秘", "秘密",
-                                  "阴谋", "真相", "预言", "轮回", "宿命", "传承", "使命"]
+            foreshadow_keywords = [
+                "伏笔",
+                "悬念",
+                "暗示",
+                "预示",
+                "未解之谜",
+                "神秘",
+                "秘密",
+                "阴谋",
+                "真相",
+                "预言",
+                "轮回",
+                "宿命",
+                "传承",
+                "使命",
+            ]
 
             unresolved = []
             for keyword in foreshadow_keywords:
@@ -504,7 +577,7 @@ class NovelAgent:
         used = 0
         for key in priority_keys:
             if key in settings and used < budget:
-                val = str(settings[key])[:budget - used - len(key) - 3]
+                val = str(settings[key])[: budget - used - len(key) - 3]
                 result.append(f"{key}: {val}")
                 used += len(val) + len(key) + 2
         return "\n".join(result)
@@ -514,47 +587,56 @@ class NovelAgent:
         result = []
         used = 0
         for name, info in list(chars.items())[:8]:
-            if used >= budget: break
+            if used >= budget:
+                break
             if isinstance(info, dict):
-                extra = "; ".join(f"{f}:{str(info.get(f,''))[:50]}" for f in core if f in info)
-                line = f"- {name}: {extra}"[:budget - used]
+                extra = "; ".join(f"{f}:{str(info.get(f, ''))[:50]}" for f in core if f in info)
+                line = f"- {name}: {extra}"[: budget - used]
             else:
-                line = f"- {name}: {str(info)[:100]}"[:budget - used]
+                line = f"- {name}: {str(info)[:100]}"[: budget - used]
             result.append(line)
             used += len(line) + 1
         return "\n".join(result)
 
     def _compress_text(self, text: str, budget: int, keep_tail: bool = True) -> str:
-        if len(text) <= budget: return text
-        if budget < 50: return text[:budget] + "..."
+        if len(text) <= budget:
+            return text
+        if budget < 50:
+            return text[:budget] + "..."
         if keep_tail:
             head = int(budget * 0.3)
-            return text[:head] + "...\n\n" + text[-(budget - head - 5):]
+            return text[:head] + "...\n\n" + text[-(budget - head - 5) :]
         else:
             head = int(budget * 0.7)
-            return text[:head] + "...\n\n" + text[-(budget - head - 5):]
+            return text[:head] + "...\n\n" + text[-(budget - head - 5) :]
 
     def _compress_recent_chapters(self, recent_text: str, budget: int, chapter_num: int) -> str:
         chapters = recent_text.split("\n\n")
-        if len(chapters) <= 1: return self._compress_text(recent_text, budget, True)
+        if len(chapters) <= 1:
+            return self._compress_text(recent_text, budget, True)
         result = []
         used = 0
         latest = chapters[-1] if chapters else ""
         lb = min(int(budget * 0.4), len(latest))
-        if latest: result.append(latest[:lb]); used += lb
+        if latest:
+            result.append(latest[:lb])
+            used += lb
         for ch in reversed(chapters[:-1]):
-            if used >= budget: break
+            if used >= budget:
+                break
             cb = min(int((budget - used) * 0.3), len(ch))
-            if cb > 50: result.insert(0, self._compress_text(ch, cb, True)); used += cb
+            if cb > 50:
+                result.insert(0, self._compress_text(ch, cb, True))
+                used += cb
         return "\n\n".join(result)
 
     # ===== 多智能体协作核心 =====
 
-    def generate_with_collaboration(self, chapter_num: int, chapter_title: str,
-                                     chapter_outline: str, word_count: int = 3000,
-                                     prev_context: str = "") -> str:
+    def generate_with_collaboration(
+        self, chapter_num: int, chapter_title: str, chapter_outline: str, word_count: int = 3000, prev_context: str = ""
+    ) -> str:
         """多智能体协作生成章节 v3.0 - 5Agent协作
-        
+
         Hello-Agents参考流程: PlotDesigner→WorldBuilder→Writer→Reviewer→Editor
         """
         with self._log_lock:
@@ -565,7 +647,8 @@ class NovelAgent:
         prev_ending = ""
         if prev_context and "【前一章" in str(prev_context):
             import re as _re
-            m = _re.search(r'【前一章·第\d+章结尾.*?】\n(.+?)(?:\n---|\n【|\Z)', str(prev_context), _re.DOTALL)
+
+            m = _re.search(r"【前一章·第\d+章结尾.*?】\n(.+?)(?:\n---|\n【|\Z)", str(prev_context), _re.DOTALL)
             if m:
                 prev_ending = m.group(1).strip()[-1200:]
 
@@ -591,7 +674,9 @@ class NovelAgent:
         # Phase 3: Writer - 创作内容
         self.log(f"[Writer] 正在创作第{chapter_num}章初稿...")
         self._record_conversation("Writer", "generate", f"开始创作第{chapter_num}章")
-        content = self._writer_generate(chapter_num, chapter_title, chapter_outline, word_count, context=context, prev_ending=prev_ending)
+        content = self._writer_generate(
+            chapter_num, chapter_title, chapter_outline, word_count, context=context, prev_ending=prev_ending
+        )
 
         # Phase 4-5: Reviewer → Editor 迭代修订
         prev_feedback = ""
@@ -611,8 +696,9 @@ class NovelAgent:
                 self.log(f"[写作技能] 发现{len(slop_issues)}个AI写作痕迹，扣分")
 
             self.log(f"[Editor] 质量裁定：{review.get('overall_score', 0)}分")
-            self._record_conversation("Editor", "judge",
-                f"评分{review.get('overall_score', 0)}，阈值{self.QUALITY_THRESHOLD}")
+            self._record_conversation(
+                "Editor", "judge", f"评分{review.get('overall_score', 0)}，阈值{self.QUALITY_THRESHOLD}"
+            )
 
             if review.get("overall_score", 0) >= self.QUALITY_THRESHOLD:
                 self.log("[Editor] ✅ 通过！质量达标。")
@@ -622,20 +708,26 @@ class NovelAgent:
             suggestions = review.get("suggestions", [])
             issues = review.get("issues", [])
             prev_feedback = f"上轮问题: {'; '.join(issues[:5])}" if issues else ""
-            self.log(f"[Editor] ⚠️ 质量不达标（{review.get('overall_score', 0)}/{self.QUALITY_THRESHOLD}），"
-                    f"触发第{round_num}轮修订...")
+            self.log(
+                f"[Editor] ⚠️ 质量不达标（{review.get('overall_score', 0)}/{self.QUALITY_THRESHOLD}），"
+                f"触发第{round_num}轮修订..."
+            )
 
             with self._log_lock:
-                self._revision_memory.append({
-                    "chapter": chapter_num,
-                    "round": round_num,
-                    "issues": issues,
-                    "suggestions": suggestions,
-                })
+                self._revision_memory.append(
+                    {
+                        "chapter": chapter_num,
+                        "round": round_num,
+                        "issues": issues,
+                        "suggestions": suggestions,
+                    }
+                )
 
             self.log("[Writer] 正在根据审校意见修订...")
             self._record_conversation("Writer", "revise", f"第{round_num}轮修订")
-            content = self._writer_revise(chapter_num, content, review, chapter_outline, context=context, prev_ending=prev_ending)
+            content = self._writer_revise(
+                chapter_num, content, review, chapter_outline, context=context, prev_ending=prev_ending
+            )
 
         self.log(f"[编排器] 第{chapter_num}章5Agent协作完成 ({len(content)}字)")
         return content
@@ -643,40 +735,45 @@ class NovelAgent:
     def _plot_designer_analyze(self, chapter_num: int, title: str, outline: str) -> Dict:
         """PlotDesigner: 分析情节类型、节奏、伏笔"""
         if not outline or len(outline) < 10:
-            if chapter_num <= 3: plot_type = "opening"
-            elif chapter_num % 10 == 0: plot_type = "ending"
-            else: plot_type = "writing"
+            if chapter_num <= 3:
+                plot_type = "opening"
+            elif chapter_num % 10 == 0:
+                plot_type = "ending"
+            else:
+                plot_type = "writing"
             return {"type": plot_type, "pace": "medium", "foreshadowing": []}
 
-        system = "你是专业情节设计师。分析章节大纲，输出JSON: {\"type\": \"opening/writing/action/dialogue/ending\", \"pace\": \"slow/medium/fast\", \"foreshadowing\": []}"
+        system = '你是专业情节设计师。分析章节大纲，输出JSON: {"type": "opening/writing/action/dialogue/ending", "pace": "slow/medium/fast", "foreshadowing": []}'
         prompt = f"第{chapter_num}章: {title}\n大纲: {outline[:500]}"
         try:
             response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=1000)
             if response:
                 import re
+
                 # Strategy 1: 括号深度追踪（最可靠）
-                start = response.find('{')
+                start = response.find("{")
                 if start >= 0:
                     depth = 0
                     end_idx = -1
                     for i in range(start, len(response)):
-                        if response[i] == '{': depth += 1
-                        elif response[i] == '}':
+                        if response[i] == "{":
+                            depth += 1
+                        elif response[i] == "}":
                             depth -= 1
                             if depth == 0:
                                 end_idx = i + 1
                                 break
                     if end_idx > start:
                         json_str = response[start:end_idx]
-                        json_str = re.sub(r',\s*}', '}', json_str)
-                        json_str = re.sub(r',\s*]', ']', json_str)
+                        json_str = re.sub(r",\s*}", "}", json_str)
+                        json_str = re.sub(r",\s*]", "]", json_str)
                         try:
                             return json.loads(json_str)
                         except json.JSONDecodeError as _silent_e:
                             logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
 
                 # Strategy 2: 正则匹配
-                match = re.search(r'\{[\s\S]*\}', response)
+                match = re.search(r"\{[\s\S]*\}", response)
                 if match:
                     try:
                         return json.loads(match.group())
@@ -697,9 +794,15 @@ class NovelAgent:
                     return f"世界观场景: {', '.join(known)}"
         return ""
 
-    def _writer_generate(self, chapter_num: int, chapter_title: str,
-                         chapter_outline: str, word_count: int,
-                         context: str = None, prev_ending: str = "") -> str:
+    def _writer_generate(
+        self,
+        chapter_num: int,
+        chapter_title: str,
+        chapter_outline: str,
+        word_count: int,
+        context: str = None,
+        prev_ending: str = "",
+    ) -> str:
         """Writer智能体：生成章节内容"""
         if context is None:
             context = self._build_context(chapter_num)
@@ -764,7 +867,8 @@ class NovelAgent:
         # 直接使用传入的前一章结尾（从generate_with_collaboration提取，未被压缩）
         if not prev_ending and "【前一章" in str(context):
             import re as _re
-            m = _re.search(r'【前一章·第\d+章结尾.*?】\n(.+?)(?:\n【|\Z)', str(context), _re.DOTALL)
+
+            m = _re.search(r"【前一章·第\d+章结尾.*?】\n(.+?)(?:\n【|\Z)", str(context), _re.DOTALL)
             if m:
                 prev_ending = m.group(1).strip()[-800:]
 
@@ -774,7 +878,9 @@ class NovelAgent:
             prompt = f"请创作第{chapter_num}章：{chapter_title}\n\n章节大纲：{chapter_outline}\n\n目标字数：{word_count}字\n\n请直接输出正文："
 
         if word_count > 3000:
-            return self._generate_long_chapter(chapter_num, chapter_title, chapter_outline, word_count, context, prev_ending)
+            return self._generate_long_chapter(
+                chapter_num, chapter_title, chapter_outline, word_count, context, prev_ending
+            )
 
         # 动态计算max_tokens：中文约2 tokens/字，预留足够空间
         max_tokens = max(word_count * 2, 8192)
@@ -782,10 +888,9 @@ class NovelAgent:
         self.log(f"[Writer] 第{chapter_num}章初稿完成，字数：{len(response) if response else 0}")
         return response or ""
 
-    def _reviewer_evaluate(self, chapter_num: int, content: str,
-                           previous_feedback: str = "") -> dict:
+    def _reviewer_evaluate(self, chapter_num: int, content: str, previous_feedback: str = "") -> dict:
         """Reviewer智能体：审校章节
-        
+
         参考AutoGen的code_reviewer角色，检查质量和一致性
         """
         context = self._build_context(chapter_num)
@@ -853,7 +958,7 @@ class NovelAgent:
         if len(content) > 4000:
             sample_parts.append(content[:2000])
             mid = len(content) // 2
-            sample_parts.append(content[mid-500:mid+500])
+            sample_parts.append(content[mid - 500 : mid + 500])
             sample_parts.append(content[-1000:])
             sample = "\n...（中间省略）...\n".join(sample_parts)
         else:
@@ -867,10 +972,17 @@ class NovelAgent:
         except Exception:
             return {"overall_score": 70, "issues": [], "suggestions": [], "raw": response}
 
-    def _writer_revise(self, chapter_num: int, original: str, review: dict,
-                       chapter_outline: str, context: str = None, prev_ending: str = "") -> str:
+    def _writer_revise(
+        self,
+        chapter_num: int,
+        original: str,
+        review: dict,
+        chapter_outline: str,
+        context: str = None,
+        prev_ending: str = "",
+    ) -> str:
         """Writer智能体：根据审校意见修订章节
-        
+
         参考AutoGen的迭代优化循环
         """
         suggestions = review.get("suggestions", [])
@@ -910,7 +1022,13 @@ class NovelAgent:
         # 采样策略：开头2000 + 中间1000 + 结尾2000，让AI了解全文结构
         if original_len > 5000:
             mid = original_len // 2
-            original_sample = original[:2000] + "\n...(中间省略)...\n" + original[mid-500:mid+500] + "\n...(省略)...\n" + original[-2000:]
+            original_sample = (
+                original[:2000]
+                + "\n...(中间省略)...\n"
+                + original[mid - 500 : mid + 500]
+                + "\n...(省略)...\n"
+                + original[-2000:]
+            )
         else:
             original_sample = original
 
@@ -943,14 +1061,14 @@ class NovelAgent:
     # ===== 传统方法（兼容旧接口）=====
 
     @task_tracker("chapter", chapter_param="chapter_num")
-    def generate_chapter(self, chapter_num: int, chapter_title: str,
-                         chapter_outline: str, word_count: int = 3000,
-                         prev_context: str = "") -> str:
+    def generate_chapter(
+        self, chapter_num: int, chapter_title: str, chapter_outline: str, word_count: int = 3000, prev_context: str = ""
+    ) -> str:
         """生成章节 - 带重复检测与修复"""
         max_retries = 3
-        content = self.generate_with_collaboration(chapter_num, chapter_title,
-                                                    chapter_outline, word_count,
-                                                    prev_context)
+        content = self.generate_with_collaboration(
+            chapter_num, chapter_title, chapter_outline, word_count, prev_context
+        )
 
         if not content:
             self.log(f"第{chapter_num}章生成失败，返回空内容")
@@ -962,7 +1080,9 @@ class NovelAgent:
                 self.log(f"第{chapter_num}章质量检测通过 ({actual_words}字)")
                 return content
 
-            self.log(f"[重试{retry+1}/{max_retries}] 第{chapter_num}章重复问题: 当前{actual_words}字→目标{word_count}字")
+            self.log(
+                f"[重试{retry + 1}/{max_retries}] 第{chapter_num}章重复问题: 当前{actual_words}字→目标{word_count}字"
+            )
 
             # 重试前等待，避免API过载
             if retry > 0:
@@ -972,7 +1092,7 @@ class NovelAgent:
 【核心要求】
 1. 目标字数{word_count}字，必须达标
 2. 绝不允许重复内容。每500字推进一次剧情
-3. 用{max(word_count//2000, 1)}个不同的场景段落来写
+3. 用{max(word_count // 2000, 1)}个不同的场景段落来写
 4. 每个场景换地点、换人物、换冲突
 5. 禁止Markdown格式（禁止**加粗**、*斜体*等标记），纯文本输出
 
@@ -985,10 +1105,11 @@ class NovelAgent:
             try:
                 new_content = self.ai.chat(
                     [{"role": "user", "content": f"创作第{chapter_num}章：{chapter_title}，{word_count}字"}],
-                    system=strict_system, max_tokens=retry_tokens
+                    system=strict_system,
+                    max_tokens=retry_tokens,
                 )
             except Exception as e:
-                self.log(f"第{chapter_num}章重试{retry+1}失败: {e}")
+                self.log(f"第{chapter_num}章重试{retry + 1}失败: {e}")
                 new_content = None
                 # 如果是最后一次重试失败，保留原内容
                 if retry == max_retries - 1:
@@ -1002,7 +1123,7 @@ class NovelAgent:
 
     def _has_excessive_repetition(self, content: str, target_words: int) -> tuple:
         """检测是否存在过度重复，返回 (has_repetition, actual_word_count)"""
-        paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
+        paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
         actual_chars = len(content)
         actual_words = actual_chars  # 中文字符数=字数
 
@@ -1016,7 +1137,7 @@ class NovelAgent:
         # 检测相似段落 — BUG-3修复: 使用字符级4-gram匹配（中文无空格分词）
         def _char_ngrams(text, n=4):
             """提取字符级n-gram集合"""
-            return set(text[i:i+n] for i in range(max(0, len(text)-n+1)))
+            return set(text[i : i + n] for i in range(max(0, len(text) - n + 1)))
 
         similar_count = 0
         for i in range(len(paragraphs)):
@@ -1033,12 +1154,16 @@ class NovelAgent:
         short_paras = sum(1 for p in paragraphs if len(p) < 30)
         short_ratio = short_paras / len(paragraphs)
 
-        self.log(f"[质量检测] 相似段落对:{similar_count}, 短段落比:{short_ratio:.2f}, 字数:{actual_words}/{target_words}")
+        self.log(
+            f"[质量检测] 相似段落对:{similar_count}, 短段落比:{short_ratio:.2f}, 字数:{actual_words}/{target_words}"
+        )
 
         # 只有同时满足多个条件才判定为重复
-        has_rep = (similar_count > 10 or
-                  (actual_words < target_words * 0.4 and short_ratio > 0.5) or
-                  (similar_count > 3 and short_ratio > 0.7))
+        has_rep = (
+            similar_count > 10
+            or (actual_words < target_words * 0.4 and short_ratio > 0.5)
+            or (similar_count > 3 and short_ratio > 0.7)
+        )
         return (has_rep, actual_words)
 
     @task_tracker("review", chapter_param="chapter_num")
@@ -1083,9 +1208,12 @@ class NovelAgent:
         """生成角色 - 根据小说规模智能确定角色数量"""
         if count is None:
             chapter_count = self.memory.get_meta("chapter_count", 20)
-            if chapter_count <= 20: count = 3
-            elif chapter_count <= 50: count = 5
-            else: count = 8
+            if chapter_count <= 20:
+                count = 3
+            elif chapter_count <= 50:
+                count = 5
+            else:
+                count = 8
 
         # 🔒 读取已锁定的主角名，确保每次生成都用同一个名字
         protagonist = self.memory.get_meta("protagonist", "")
@@ -1145,7 +1273,7 @@ class NovelAgent:
                 if "401" in str(e) or "Authorization" in str(e) or "API Key" in str(e):
                     raise  # 认证错误不重试
                 if attempt < 2:
-                    self.log(f"[角色] 调用失败({attempt+1}/3): {e}，重试...")
+                    self.log(f"[角色] 调用失败({attempt + 1}/3): {e}，重试...")
                     time.sleep(3)
                     continue
                 raise
@@ -1153,7 +1281,7 @@ class NovelAgent:
             if response and len(response) > 50:
                 break
             if attempt < 2:
-                self.log(f"[角色] AI响应较慢，正在重试({attempt+1}/3)，请稍候...")
+                self.log(f"[角色] AI响应较慢，正在重试({attempt + 1}/3)，请稍候...")
                 time.sleep(3)
 
         chars = self._parse_json_response(response, None)
@@ -1164,8 +1292,12 @@ class NovelAgent:
             self.log(f"[角色] 初步解析仅获得 {parsed_count}/{count} 个角色，尝试从原始响应补充...")
 
         # 多层回退：如果标准解析失败（或数量不足），尝试从原始响应中提取
-        need_extract = (chars is None or not isinstance(chars, dict) or len(chars) == 0 or
-                        (isinstance(chars, dict) and len(chars) < count))
+        need_extract = (
+            chars is None
+            or not isinstance(chars, dict)
+            or len(chars) == 0
+            or (isinstance(chars, dict) and len(chars) < count)
+        )
         if need_extract:
             self.log(f"[角色] 解析遇到问题 (当前{len(chars) if chars else 0}/{count})，尝试从原始响应恢复...")
             if response:
@@ -1187,22 +1319,42 @@ class NovelAgent:
             self.log("[角色] 尝试最终回退策略: 从响应中提取角色名...")
             if response:
                 import re as _char_re
+
                 name_patterns = _char_re.findall(r'"([^"]{1,6})"\s*:\s*\{', response)
                 if name_patterns:
                     t = title
                     for name in name_patterns[:count]:
-                        if name not in ['gender','age','category','faction','personality',
-                                       'background','appearance','weapon','attributes',
-                                       'skill_suggestions','goal','relationship_to_main',
-                                       'title','summary','key_events']:
+                        if name not in [
+                            "gender",
+                            "age",
+                            "category",
+                            "faction",
+                            "personality",
+                            "background",
+                            "appearance",
+                            "weapon",
+                            "attributes",
+                            "skill_suggestions",
+                            "goal",
+                            "relationship_to_main",
+                            "title",
+                            "summary",
+                            "key_events",
+                        ]:
                             if name not in (chars or {}):
                                 chars[name] = {
-                                    "gender": "未知", "age": 25, "category": "关键人物",
-                                    "faction": "中立", "personality": "待展开",
-                                    "background": f"《{t}》中的重要角色", "appearance": "待展开",
+                                    "gender": "未知",
+                                    "age": 25,
+                                    "category": "关键人物",
+                                    "faction": "中立",
+                                    "personality": "待展开",
+                                    "background": f"《{t}》中的重要角色",
+                                    "appearance": "待展开",
                                     "weapon": {"name": "未设定", "quality": "普通", "desc": "待展开"},
-                                    "skill_suggestions": [], "attributes": {"力量":50,"敏捷":50,"智力":50,"体力":50,"魅力":50},
-                                    "relationship_to_main": "待展开", "goal": "待展开"
+                                    "skill_suggestions": [],
+                                    "attributes": {"力量": 50, "敏捷": 50, "智力": 50, "体力": 50, "魅力": 50},
+                                    "relationship_to_main": "待展开",
+                                    "goal": "待展开",
                                 }
                     if chars:
                         self.log(f"[角色] 最终回退创建了 {len(chars)} 个基础角色")
@@ -1211,23 +1363,49 @@ class NovelAgent:
             self.log(f"[角色] 角色不足 (当前{len(chars)}/{count})，从响应补充基础角色...")
             if response:
                 import re as _char_re2
+
                 name_patterns = _char_re2.findall(r'"([^"]{1,6})"\s*:\s*\{', response)
                 existing = set(chars.keys())
-                field_names = {'gender','age','category','faction','personality','background',
-                              'appearance','weapon','attributes','skill_suggestions','goal',
-                              'relationship_to_main','title','summary','key_events','name',
-                              'level','hp','mp','exp','stats'}
+                field_names = {
+                    "gender",
+                    "age",
+                    "category",
+                    "faction",
+                    "personality",
+                    "background",
+                    "appearance",
+                    "weapon",
+                    "attributes",
+                    "skill_suggestions",
+                    "goal",
+                    "relationship_to_main",
+                    "title",
+                    "summary",
+                    "key_events",
+                    "name",
+                    "level",
+                    "hp",
+                    "mp",
+                    "exp",
+                    "stats",
+                }
                 t = title
                 added = 0
                 for name in name_patterns:
                     if name not in existing and name not in field_names and added < count - len(chars):
                         chars[name] = {
-                            "gender": "未知", "age": 25, "category": "配角",
-                            "faction": "中立", "personality": "待AI展开",
-                            "background": f"《{t}》中的{name}", "appearance": "待AI展开",
+                            "gender": "未知",
+                            "age": 25,
+                            "category": "配角",
+                            "faction": "中立",
+                            "personality": "待AI展开",
+                            "background": f"《{t}》中的{name}",
+                            "appearance": "待AI展开",
                             "weapon": {"name": "未设定", "quality": "普通", "desc": "待展开"},
-                            "skill_suggestions": [], "attributes": {"力量":50,"敏捷":50,"智力":50,"体力":50,"魅力":50},
-                            "relationship_to_main": "与主角的关系待展开", "goal": "待AI展开"
+                            "skill_suggestions": [],
+                            "attributes": {"力量": 50, "敏捷": 50, "智力": 50, "体力": 50, "魅力": 50},
+                            "relationship_to_main": "与主角的关系待展开",
+                            "goal": "待AI展开",
                         }
                         existing.add(name)
                         added += 1
@@ -1246,7 +1424,7 @@ class NovelAgent:
 
         # 保存角色文件
         saved_count = 0
-        chars_dir = self.memory.novel_dir / "characters" if hasattr(self.memory, 'novel_dir') else None
+        chars_dir = self.memory.novel_dir / "characters" if hasattr(self.memory, "novel_dir") else None
         if chars_dir is None:
             chars_dir = self.memory.memory_dir.parent / "characters"
         chars_dir.mkdir(exist_ok=True)
@@ -1303,15 +1481,16 @@ class NovelAgent:
         return chars
 
     @task_tracker("outline")
-    def generate_outline(self, genre: str, title: str, chapter_count: int, concept: str = "",
-                          total_chapters: int = None) -> list:
+    def generate_outline(
+        self, genre: str, title: str, chapter_count: int, concept: str = "", total_chapters: int = None
+    ) -> list:
         """生成大纲 - 智能分批+故事弧线
-        
+
         策略:
         - 小量(<20章): 一次生成
         - 中量(20-100章): 按故事弧线分批(开端/发展/高潮/结局)
         - 大量(100+章): 生成全局弧线+分批详细大纲
-        
+
         total_chapters: 小说真实总章数，用于计算故事阶段。默认=chapter_count
         """
         if total_chapters is None:
@@ -1340,7 +1519,7 @@ class NovelAgent:
             if all_outline:
                 recent = all_outline[-3:]
                 ctx = "前文概要:\n" + "\n".join(
-                    f"第{r.get('chapter','?')}章 {r.get('title','?')}: {str(r.get('summary',''))[:40]}"
+                    f"第{r.get('chapter', '?')}章 {r.get('title', '?')}: {str(r.get('summary', ''))[:40]}"
                     for r in recent
                 )
 
@@ -1362,11 +1541,16 @@ class NovelAgent:
             if arc_plan:
                 phase += f"\n全局弧线规划: {arc_plan[:200]}"
 
-            self.log(f"[大纲] 第{start_ch}-{start_ch+batch_count-1}章 ({batch_idx+1}/{total_batches}) {phase[:20]}")
+            self.log(
+                f"[大纲] 第{start_ch}-{start_ch + batch_count - 1}章 ({batch_idx + 1}/{total_batches}) {phase[:20]}"
+            )
 
             batch_outline = self._generate_outline_batch(
-                genre, title, batch_count, start_ch,
-                f"{ctx}\n创作阶段: {phase}\n剩余{chapter_count-start_ch+1-batch_count}章"
+                genre,
+                title,
+                batch_count,
+                start_ch,
+                f"{ctx}\n创作阶段: {phase}\n剩余{chapter_count - start_ch + 1 - batch_count}章",
             )
             all_outline.extend(batch_outline)
 
@@ -1398,8 +1582,7 @@ class NovelAgent:
         prompt = f"类型:{genre} 标题:{title} 从第{start_num}章起{count}章。{concept}"
 
         # 增加max_tokens: 每章约60 tokens，加上buffer
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system,
-                              max_tokens=max(count * 150, 4000))
+        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=max(count * 150, 4000))
         outline = self._parse_json_response(response, [], is_list=True)
 
         if not outline or len(outline) < count:
@@ -1408,20 +1591,16 @@ class NovelAgent:
             for i in range(count):
                 ch_num = start_num + i
                 if ch_num not in existing:
-                    outline.append({
-                        "chapter": ch_num,
-                        "title": f"第{ch_num}章",
-                        "summary": "待规划"
-                    })
+                    outline.append({"chapter": ch_num, "title": f"第{ch_num}章", "summary": "待规划"})
 
         # 确保有序
         outline.sort(key=lambda x: x.get("chapter", 0))
         return outline
 
     @task_tracker("outline")
-    def generate_outline_continuation(self, genre: str, title: str,
-                                      add_count: int, global_context: str,
-                                      current_count: int) -> list:
+    def generate_outline_continuation(
+        self, genre: str, title: str, add_count: int, global_context: str, current_count: int
+    ) -> list:
         """续写大纲 - 在已有章节基础上生成新章"""
         self.log(f"[智能体] 基于已有{current_count}章，续写{add_count}章大纲...")
 
@@ -1436,16 +1615,18 @@ class NovelAgent:
             f"你是专业小说大纲规划师。已有{current_count}章内容。\n"
             f"历史摘要：{context}\n\n"
             f"请在已有章节基础上，规划{add_count}章新内容实现故事续写。\n"
-            f"章节从第{current_count+1}章开始编号。\n"
+            f"章节从第{current_count + 1}章开始编号。\n"
             f"必须延续已有剧情、保持风格。{protagonist_hint}\n"
-            f"输出JSON数组：[{{'chapter':{current_count+1},'title':'','summary':'','key_events':[],'characters_involved':[]}}]"
+            f"输出JSON数组：[{{'chapter':{current_count + 1},'title':'','summary':'','key_events':[],'characters_involved':[]}}]"
         )
-        prompt = f"小说类型：{genre}\n标题：{title}\n续写{add_count}章，从第{current_count+1}章开始"
+        prompt = f"小说类型：{genre}\n标题：{title}\n续写{add_count}章，从第{current_count + 1}章开始"
         response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
         outline = self._parse_json_response(response, [], is_list=True)
         if not outline:
-            outline = [{"chapter": current_count+i+1, "title": f"第{current_count+i+1}章",
-                       "summary": "待规划"} for i in range(add_count)]
+            outline = [
+                {"chapter": current_count + i + 1, "title": f"第{current_count + i + 1}章", "summary": "待规划"}
+                for i in range(add_count)
+            ]
         return outline
 
     def finalize_chapter(self, chapter_num: int, content: str):
@@ -1456,7 +1637,8 @@ class NovelAgent:
         try:
             result = self.ai.chat(
                 [{"role": "user", "content": f"请生成摘要（100-200字）：\n{content[:2000]}"}],
-                system="你是故事摘要助手。", max_tokens=1000
+                system="你是故事摘要助手。",
+                max_tokens=1000,
             )
             if result:
                 summary = result
@@ -1470,7 +1652,8 @@ class NovelAgent:
             old = self.memory.get_global_summary()
             new = self.ai.chat(
                 [{"role": "user", "content": f"更新全局摘要：\n旧：{old}\n新章节：{summary}"}],
-                system="你是故事摘要助手。", max_tokens=1500
+                system="你是故事摘要助手。",
+                max_tokens=1500,
             )
             if new:
                 self.memory.save_global_summary(new)
@@ -1479,8 +1662,11 @@ class NovelAgent:
 
         # 关键词索引（带异常保护）
         try:
-            kw = self.ai.chat([{"role": "user", "content": f"提取10个关键词，逗号分隔：\n{content[:1000]}"}],
-                             system="提取关键词。", max_tokens=1000)
+            kw = self.ai.chat(
+                [{"role": "user", "content": f"提取10个关键词，逗号分隔：\n{content[:1000]}"}],
+                system="提取关键词。",
+                max_tokens=1000,
+            )
             keywords = [k.strip() for k in (kw or "").split(",") if k.strip()]
             self.memory.update_index(chapter_num, keywords)
         except Exception as e:
@@ -1489,8 +1675,7 @@ class NovelAgent:
 
         # 添加记忆块
         try:
-            self.memory.add_chunk("plot", summary, importance=8,
-                                 tags=keywords[:5] if keywords else [])
+            self.memory.add_chunk("plot", summary, importance=8, tags=keywords[:5] if keywords else [])
             self.memory.add_event(chapter_num, summary, "story")
         except Exception as e:
             self.log(f"[定稿] 记忆块添加失败: {e}")
@@ -1504,6 +1689,7 @@ class NovelAgent:
         # 写作技能学习（从成功章节中学习）
         try:
             from .writing_skills import writing_skill_manager
+
             # 提取角色名
             chars = list(self.memory.get_characters().keys())[:10]
             novel_dir = str(self.memory.novel_dir) if self.memory else None
@@ -1574,36 +1760,50 @@ class NovelAgent:
             # 采样策略：开头2000 + 中间1000 + 结尾1000，覆盖全文
             if len(content) > 4000:
                 mid = len(content) // 2
-                sample = content[:2000] + "\n...(中间省略)...\n" + content[mid-500:mid+500] + "\n...(省略)...\n" + content[-1000:]
+                sample = (
+                    content[:2000]
+                    + "\n...(中间省略)...\n"
+                    + content[mid - 500 : mid + 500]
+                    + "\n...(省略)...\n"
+                    + content[-1000:]
+                )
             else:
                 sample = content
 
             response = self.ai.chat(
-                [{"role": "user", "content": f"章节摘要: {summary}\n内容片段: {sample}\n\n请直接输出JSON，不要分析过程。"}],
-                system=system, max_tokens=3000
+                [
+                    {
+                        "role": "user",
+                        "content": f"章节摘要: {summary}\n内容片段: {sample}\n\n请直接输出JSON，不要分析过程。",
+                    }
+                ],
+                system=system,
+                max_tokens=3000,
             )
             if not response:
                 return
 
             import re
+
             data = None
 
             # Strategy 1: 括号深度追踪（最可靠，提取完整外层JSON）
-            start = response.find('{')
+            start = response.find("{")
             if start >= 0:
                 depth = 0
                 end_idx = -1
                 for i in range(start, len(response)):
-                    if response[i] == '{': depth += 1
-                    elif response[i] == '}':
+                    if response[i] == "{":
+                        depth += 1
+                    elif response[i] == "}":
                         depth -= 1
                         if depth == 0:
                             end_idx = i + 1
                             break
                 if end_idx > start:
                     json_str = response[start:end_idx]
-                    json_str = re.sub(r',\s*}', '}', json_str)
-                    json_str = re.sub(r',\s*]', ']', json_str)
+                    json_str = re.sub(r",\s*}", "}", json_str)
+                    json_str = re.sub(r",\s*]", "]", json_str)
                     try:
                         data = json.loads(json_str)
                     except json.JSONDecodeError as _silent_e:
@@ -1611,22 +1811,23 @@ class NovelAgent:
 
             # Strategy 2: 如果括号追踪失败，尝试正则提取
             if not data:
-                match = re.search(r'\{[\s\S]*\}', response)
+                match = re.search(r"\{[\s\S]*\}", response)
                 if match:
                     s_start = match.start()
                     depth = 0
                     end_idx = -1
                     for i in range(s_start, len(response)):
-                        if response[i] == '{': depth += 1
-                        elif response[i] == '}':
+                        if response[i] == "{":
+                            depth += 1
+                        elif response[i] == "}":
                             depth -= 1
                             if depth == 0:
                                 end_idx = i + 1
                                 break
                     if end_idx > s_start:
                         json_str = response[s_start:end_idx]
-                        json_str = re.sub(r',\s*}', '}', json_str)
-                        json_str = re.sub(r',\s*]', ']', json_str)
+                        json_str = re.sub(r",\s*}", "}", json_str)
+                        json_str = re.sub(r",\s*]", "]", json_str)
                         try:
                             data = json.loads(json_str)
                         except json.JSONDecodeError as _silent_e:
@@ -1641,7 +1842,7 @@ class NovelAgent:
                     cleaned = cleaned[3:]
                 if cleaned.endswith("```"):
                     cleaned = cleaned[:-3]
-                match = re.search(r'\{[\s\S]*\}', cleaned.strip())
+                match = re.search(r"\{[\s\S]*\}", cleaned.strip())
                 if match:
                     try:
                         data = json.loads(match.group())
@@ -1664,11 +1865,13 @@ class NovelAgent:
                             change = re.search(r'"change"\s*:\s*"([^"]*)"', obj_str)
                             reason = re.search(r'"reason"\s*:\s*"([^"]*)"', obj_str)
                             if name:
-                                updates.append({
-                                    "name": name.group(1),
-                                    "change": change.group(1) if change else "",
-                                    "reason": reason.group(1) if reason else ""
-                                })
+                                updates.append(
+                                    {
+                                        "name": name.group(1),
+                                        "change": change.group(1) if change else "",
+                                        "reason": reason.group(1) if reason else "",
+                                    }
+                                )
                         if updates:
                             data = {"updates": updates}
                 except Exception as _silent_e:
@@ -1677,11 +1880,15 @@ class NovelAgent:
             if not data:
                 self.log("[角色成长] JSON解析失败，跳过本章")
                 if _diag:
-                    _diag.log("WARN", "character_growth_parse_failed", {
-                        "chapter": chapter_num,
-                        "response_preview": response[:200] if response else "null",
-                        "response_len": len(response) if response else 0
-                    })
+                    _diag.log(
+                        "WARN",
+                        "character_growth_parse_failed",
+                        {
+                            "chapter": chapter_num,
+                            "response_preview": response[:200] if response else "null",
+                            "response_len": len(response) if response else 0,
+                        },
+                    )
                 return
 
             # 保存到记忆
@@ -1689,70 +1896,79 @@ class NovelAgent:
             if data.get("updates"):
                 for u in data["updates"]:
                     if isinstance(u, dict) and u.get("name"):
-                        self.memory.add_event(chapter_num,
-                            f"角色变化: {u['name']} {u.get('change','')} ({u.get('reason','')})",
-                            "character_growth")
+                        self.memory.add_event(
+                            chapter_num,
+                            f"角色变化: {u['name']} {u.get('change', '')} ({u.get('reason', '')})",
+                            "character_growth",
+                        )
                         changes += 1
 
             if data.get("skills_learned"):
                 for s in data["skills_learned"]:
                     if isinstance(s, dict) and s.get("name"):
-                        self.memory.add_event(chapter_num,
-                            f"技能领悟: {s['name']} 学会 {s.get('skill','')}",
-                            "skill_learn")
+                        self.memory.add_event(
+                            chapter_num, f"技能领悟: {s['name']} 学会 {s.get('skill', '')}", "skill_learn"
+                        )
                         changes += 1
 
             if data.get("relationship_changes"):
                 for r in data["relationship_changes"]:
                     if isinstance(r, dict) and r.get("name1"):
-                        self.memory.add_event(chapter_num,
-                            f"关系变化: {r['name1']}与{r.get('name2','')} {r.get('old','')}→{r.get('new','')}",
-                            "relationship_change")
+                        self.memory.add_event(
+                            chapter_num,
+                            f"关系变化: {r['name1']}与{r.get('name2', '')} {r.get('old', '')}→{r.get('new', '')}",
+                            "relationship_change",
+                        )
                         changes += 1
 
             if data.get("items_gained"):
                 for item in data["items_gained"]:
                     if isinstance(item, dict) and item.get("name"):
-                        self.memory.add_event(chapter_num,
-                            f"获得物品: {item['name']} 获得 {item.get('item','')}",
-                            "item_gain")
+                        self.memory.add_event(
+                            chapter_num, f"获得物品: {item['name']} 获得 {item.get('item', '')}", "item_gain"
+                        )
 
             if data.get("items_lost"):
                 for item in data["items_lost"]:
                     if isinstance(item, dict) and item.get("name"):
-                        self.memory.add_event(chapter_num,
-                            f"失去物品: {item['name']} 失去 {item.get('item','')}",
-                            "item_loss")
+                        self.memory.add_event(
+                            chapter_num, f"失去物品: {item['name']} 失去 {item.get('item', '')}", "item_loss"
+                        )
 
             if data.get("new_allies"):
                 for name in data["new_allies"]:
                     if isinstance(name, str) and name:
-                        self.memory.add_event(chapter_num,
-                            f"新盟友: {name}", "new_ally")
+                        self.memory.add_event(chapter_num, f"新盟友: {name}", "new_ally")
 
             if data.get("new_enemies"):
                 for name in data["new_enemies"]:
                     if isinstance(name, str) and name:
-                        self.memory.add_event(chapter_num,
-                            f"新敌人: {name}", "new_enemy")
+                        self.memory.add_event(chapter_num, f"新敌人: {name}", "new_enemy")
 
             if data.get("deaths"):
                 for name in data["deaths"]:
                     if isinstance(name, str) and name:
-                        self.memory.add_event(chapter_num,
-                            f"角色死亡: {name}", "character_death")
+                        self.memory.add_event(chapter_num, f"角色死亡: {name}", "character_death")
                         self.memory.update_character(name, {"status": "死亡", "death_chapter": chapter_num})
 
             # 统计日志
             summary_parts = []
-            if changes: summary_parts.append(f"{changes}个成长")
-            if data.get("items_gained"): summary_parts.append(f"{len(data['items_gained'])}个获得")
-            if data.get("items_lost"): summary_parts.append(f"{len(data['items_lost'])}个失去")
-            if data.get("skills_learned"): summary_parts.append(f"{len(data['skills_learned'])}个技能")
-            if data.get("relationship_changes"): summary_parts.append(f"{len(data['relationship_changes'])}个关系")
-            if data.get("deaths"): summary_parts.append(f"{len(data['deaths'])}个死亡")
-            if data.get("new_allies"): summary_parts.append(f"{len(data['new_allies'])}个新盟友")
-            if data.get("new_enemies"): summary_parts.append(f"{len(data['new_enemies'])}个新敌人")
+            if changes:
+                summary_parts.append(f"{changes}个成长")
+            if data.get("items_gained"):
+                summary_parts.append(f"{len(data['items_gained'])}个获得")
+            if data.get("items_lost"):
+                summary_parts.append(f"{len(data['items_lost'])}个失去")
+            if data.get("skills_learned"):
+                summary_parts.append(f"{len(data['skills_learned'])}个技能")
+            if data.get("relationship_changes"):
+                summary_parts.append(f"{len(data['relationship_changes'])}个关系")
+            if data.get("deaths"):
+                summary_parts.append(f"{len(data['deaths'])}个死亡")
+            if data.get("new_allies"):
+                summary_parts.append(f"{len(data['new_allies'])}个新盟友")
+            if data.get("new_enemies"):
+                summary_parts.append(f"{len(data['new_enemies'])}个新敌人")
 
             if summary_parts:
                 self.log(f"[角色成长] 第{chapter_num}章: {', '.join(summary_parts)}")
@@ -1821,7 +2037,7 @@ class NovelAgent:
         """融合多个作者的风格生成文本"""
         styles_desc = ""
         for i, style in enumerate(styles):
-            author = style.get("author", f"风格{i+1}")
+            author = style.get("author", f"风格{i + 1}")
             styles_desc += f"\n--- {author} ---\n"
             styles_desc += f"句式: {style.get('sentence_style', '')}\n"
             styles_desc += f"用词: {style.get('word_choice', '')}\n"
@@ -1870,7 +2086,9 @@ class NovelAgent:
         """
         return parse_json_response(response, default, is_list=is_list)
 
-    def _generate_long_chapter(self, chapter_num, chapter_title, chapter_outline, word_count, context, prev_ending="") -> str:
+    def _generate_long_chapter(
+        self, chapter_num, chapter_title, chapter_outline, word_count, context, prev_ending=""
+    ) -> str:
         """分段生成长章节 - 确保每章结尾完整自然"""
         seg_size = 2000
         part_count = max((word_count + seg_size - 1) // seg_size, 1)
@@ -1886,15 +2104,16 @@ class NovelAgent:
 
         parts = []
         for i in range(part_count):
-            is_last = (i == part_count - 1)
-            self.log(f"[Writer] 第{chapter_num}章 第{i+1}/{part_count}段...")
+            is_last = i == part_count - 1
+            self.log(f"[Writer] 第{chapter_num}章 第{i + 1}/{part_count}段...")
 
-            prev_text = ''.join(parts)
+            prev_text = "".join(parts)
             if i == 0:
                 # 第一段：使用传入的前一章结尾（未被压缩）
                 if not prev_ending and context and "【前一章" in str(context):
                     import re as _re
-                    m = _re.search(r'【前一章·第\d+章结尾.*?】\n(.+?)(?:\n【|\Z)', str(context), _re.DOTALL)
+
+                    m = _re.search(r"【前一章·第\d+章结尾.*?】\n(.+?)(?:\n【|\Z)", str(context), _re.DOTALL)
                     if m:
                         prev_ending = m.group(1).strip()[-800:]
                 if prev_ending:
@@ -1917,25 +2136,27 @@ class NovelAgent:
                     response = self.ai.chat(
                         [{"role": "user", "content": part_prompt}],
                         system=f"严密续写，绝不重复。每段给出自然结尾。禁止Markdown格式。{protagonist_hint}\n{context[:1500] if context else ''}",
-                        max_tokens=4096
+                        max_tokens=4096,
                     )
                     if response and len(response) > 100:
                         # 去除AI生成的标题
-                        lines = response.split('\n', 2)
+                        lines = response.split("\n", 2)
                         clean = []
                         for line in lines:
                             stripped = line.strip()
-                            if (stripped.startswith('#') or (stripped.startswith('第') and '章' in stripped[:10])) and not clean:
+                            if (
+                                stripped.startswith("#") or (stripped.startswith("第") and "章" in stripped[:10])
+                            ) and not clean:
                                 continue
                             clean.append(line)
-                        response = '\n'.join(clean)
+                        response = "\n".join(clean)
                         parts.append(response)
                         break
                 except Exception as e:
                     # 认证错误不重试
                     if "401" in str(e) or "Authorization" in str(e) or "API Key" in str(e):
                         raise
-                    self.log(f"[Writer] 第{chapter_num}章第{i+1}段 重试{attempt+1}: {e}")
+                    self.log(f"[Writer] 第{chapter_num}章第{i + 1}段 重试{attempt + 1}: {e}")
                     if attempt == 2:
                         return title_line + ("\n\n".join(parts) if parts else "（生成失败）")
 
@@ -1946,19 +2167,24 @@ class NovelAgent:
             # 扩大检测范围：检查最后200字符，去除空白后判断
             last_text = result[-200:].strip()
             # 移除尾部空白、换行、引号等非实质字符
-            last_meaningful = last_text.rstrip('\n\r \t\'\"》）」】')
+            last_meaningful = last_text.rstrip("\n\r \t'\"》）」】")
             if last_meaningful:
                 last_char = last_meaningful[-1]
-                endings = {'。', '！', '？', '…', '"', '」', '】', '—', '.', '!', '?', '~', '…'}
+                endings = {"。", "！", "？", "…", '"', "」", "】", "—", ".", "!", "?", "~", "…"}
                 if last_char not in endings:
                     self.log(f"[Writer] 第{chapter_num}章末段不完整，尝试补全...")
                     try:
                         # 取最后500字作为上下文，让AI更好地理解语境
                         last_paragraph = result[-500:]
                         completion = self.ai.chat(
-                            [{"role": "user", "content": f"以下是一段未完成的小说段落，请补充一个自然的收尾（20-60字）：\n{last_paragraph}"}],
+                            [
+                                {
+                                    "role": "user",
+                                    "content": f"以下是一段未完成的小说段落，请补充一个自然的收尾（20-60字）：\n{last_paragraph}",
+                                }
+                            ],
                             system="你是作家。续写上面的段落，补充一个自然的收尾。只输出补全文字，不要重复已有内容。",
-                            max_tokens=1000
+                            max_tokens=1000,
                         )
                         if completion and len(completion) > 5:
                             # 去重：检查补全内容是否与已有内容重复

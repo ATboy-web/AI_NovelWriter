@@ -225,6 +225,7 @@ class TestCalcFreshness:
 
     def test_freshness_recent(self, tmp_path):
         from datetime import datetime
+
         mm = MemoryManager(tmp_path)
         recent = datetime.now().isoformat()
         freshness = mm._calc_freshness(recent)
@@ -232,6 +233,7 @@ class TestCalcFreshness:
 
     def test_freshness_old(self, tmp_path):
         from datetime import datetime, timedelta
+
         mm = MemoryManager(tmp_path)
         old = (datetime.now() - timedelta(days=30)).isoformat()
         freshness = mm._calc_freshness(old)

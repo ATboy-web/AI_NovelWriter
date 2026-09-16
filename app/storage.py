@@ -87,6 +87,7 @@ def safe_filename(name: str, max_length: int = _MAX_NAME_LENGTH) -> str:
         safe = safe[: max_length - 9] + "_" + digest
     return safe
 
+
 # 状态常量：read_json_with_backup 的第二个返回值
 STATUS_OK = "ok"
 STATUS_MISSING = "missing"

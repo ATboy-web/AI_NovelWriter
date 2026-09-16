@@ -1,4 +1,5 @@
 """桥段库面板混入"""
+
 import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
@@ -18,7 +19,9 @@ class BridgesPanelMixin:
         ttk.Label(cat_frame, text="桥段类型:").pack(side=tk.LEFT)
         self.bridge_cat_var = tk.StringVar()
         cats = [c["name"] for c in self.bridge_lib.get_categories()]
-        ttk.Combobox(cat_frame, textvariable=self.bridge_cat_var, values=cats, state="readonly", width=20).pack(side=tk.LEFT, padx=5)
+        ttk.Combobox(cat_frame, textvariable=self.bridge_cat_var, values=cats, state="readonly", width=20).pack(
+            side=tk.LEFT, padx=5
+        )
 
         ttk.Label(f, text="场景设定:").pack(anchor=tk.W, pady=2)
         self.bridge_setting = ttk.Entry(f, width=60)
@@ -68,8 +71,7 @@ class BridgesPanelMixin:
         def run():
             try:
                 result = self.bridge_lib.generate_bridge(
-                    self.ai_client, self.bridge_cat_var.get(),
-                    characters, self.bridge_setting.get()
+                    self.ai_client, self.bridge_cat_var.get(), characters, self.bridge_setting.get()
                 )
                 self.root.after(0, lambda: self._show_tool_result(self.bridge_result, result))
             except Exception as e:

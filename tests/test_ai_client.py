@@ -127,5 +127,5 @@ class TestIsTransientError:
         assert _is_transient_error(ValueError("x")) is False
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

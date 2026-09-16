@@ -58,10 +58,7 @@ class OpenAICompatAdapter(ProviderAdapter):
     def parse_response(self, data: dict) -> ChatResult:
         choices = data.get("choices") or []
         if not choices:
-            raise Exception(
-                f"{self.label}返回无choices: "
-                f"{json.dumps(data, ensure_ascii=False)[:200]}"
-            )
+            raise Exception(f"{self.label}返回无choices: {json.dumps(data, ensure_ascii=False)[:200]}")
 
         message = choices[0].get("message", {}) or {}
         return ChatResult(

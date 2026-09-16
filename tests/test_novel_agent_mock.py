@@ -18,7 +18,7 @@ def create_mock_agent():
     agent.ai = MagicMock()
     agent.memory = MagicMock()
     agent.log = lambda msg: None
-    agent._log_lock = __import__('threading').Lock()
+    agent._log_lock = __import__("threading").Lock()
     agent._conversation_log = []
     agent._revision_memory = []
     agent.tools = MagicMock()
@@ -62,7 +62,7 @@ class TestPlotDesignerAnalyze:
 
     def test_ai_returns_invalid_json(self):
         agent = create_mock_agent()
-        agent.ai.chat.return_value = 'invalid json'
+        agent.ai.chat.return_value = "invalid json"
         result = agent._plot_designer_analyze(1, "标题", "这是一个详细的大纲内容")
         assert result["type"] == "writing"
 
@@ -84,9 +84,7 @@ class TestWorldBuilderBuild:
 
     def test_with_settings(self):
         agent = create_mock_agent()
-        agent.memory.get_settings.return_value = {
-            "world": {"已知区域": ["区域1", "区域2", "区域3"]}
-        }
+        agent.memory.get_settings.return_value = {"world": {"已知区域": ["区域1", "区域2", "区域3"]}}
         result = agent._world_builder_build(1, {"type": "writing"})
         assert "区域1" in result
 
@@ -188,7 +186,7 @@ class TestReviewerEvaluate:
 
     def test_ai_returns_invalid_json(self):
         agent = create_mock_agent()
-        agent.ai.chat.return_value = 'invalid json'
+        agent.ai.chat.return_value = "invalid json"
         agent._build_context = MagicMock(return_value="上下文")
 
         result = agent._reviewer_evaluate(1, "章节内容")
@@ -230,7 +228,9 @@ class TestGenerateWithCollaboration:
         agent._call_anti_slop_check = MagicMock(return_value=[])
         agent._record_conversation = MagicMock()
 
-        result = agent.generate_with_collaboration(1, "标题", "大纲", 1000, prev_context="【前一章·第0章结尾】\n前文内容")
+        result = agent.generate_with_collaboration(
+            1, "标题", "大纲", 1000, prev_context="【前一章·第0章结尾】\n前文内容"
+        )
         assert result == "章节内容"
 
     def test_low_quality_triggers_revision(self):
@@ -240,7 +240,9 @@ class TestGenerateWithCollaboration:
         agent._world_builder_build = MagicMock(return_value="场景")
         agent._writer_generate = MagicMock(return_value="初稿")
         agent._writer_revise = MagicMock(return_value="修订稿")
-        agent._reviewer_evaluate = MagicMock(return_value={"overall_score": 40, "issues": ["问题1"], "suggestions": ["建议1"]})
+        agent._reviewer_evaluate = MagicMock(
+            return_value={"overall_score": 40, "issues": ["问题1"], "suggestions": ["建议1"]}
+        )
         agent._call_anti_slop_check = MagicMock(return_value=[])
         agent._record_conversation = MagicMock()
 
@@ -300,7 +302,7 @@ class TestParseJsonResponse:
         assert result == {"default": True}
 
     def test_valid_list(self):
-        result = NovelAgent._parse_json_response('[1, 2, 3]', [], is_list=True)
+        result = NovelAgent._parse_json_response("[1, 2, 3]", [], is_list=True)
         assert result == [1, 2, 3]
 
     def test_invalid_list_returns_default(self):

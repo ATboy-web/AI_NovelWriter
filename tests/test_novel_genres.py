@@ -18,9 +18,21 @@ from app.novel_agent import NovelAgent
 
 # 支持的15种小说类型
 SUPPORTED_GENRES = [
-    "科幻", "悬疑", "言情", "奇幻", "都市",
-    "历史", "武侠", "仙侠", "恐怖", "军事",
-    "游戏", "体育", "穿越", "系统流", "末日"
+    "科幻",
+    "悬疑",
+    "言情",
+    "奇幻",
+    "都市",
+    "历史",
+    "武侠",
+    "仙侠",
+    "恐怖",
+    "军事",
+    "游戏",
+    "体育",
+    "穿越",
+    "系统流",
+    "末日",
 ]
 
 
@@ -174,12 +186,12 @@ class TestGenreValidation:
         """测试类型名称格式"""
         for genre in SUPPORTED_GENRES:
             # 类型名称应该是中文
-            assert all('\u4e00' <= c <= '\u9fff' for c in genre)
+            assert all("\u4e00" <= c <= "\u9fff" for c in genre)
 
     def test_no_duplicate_genres(self):
         """测试没有重复的类型"""
         assert len(SUPPORTED_GENRES) == len(set(SUPPORTED_GENRES))
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

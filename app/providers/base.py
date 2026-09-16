@@ -71,16 +71,16 @@ def join_url(base_url: str, path: str, base_includes_v1: bool = False) -> str:
     if not base:
         return path
     if base_includes_v1 and path.startswith("/v1/"):
-        path = path[len("/v1"):]
+        path = path[len("/v1") :]
     return base + path
 
 
 class AuthStyle:
     """鉴权头的构造方式。"""
 
-    BEARER = "bearer"          # Authorization: Bearer <key>
-    X_API_KEY = "x-api-key"    # Anthropic 风格
-    NONE = "none"              # 本地模型（ollama）
+    BEARER = "bearer"  # Authorization: Bearer <key>
+    X_API_KEY = "x-api-key"  # Anthropic 风格
+    NONE = "none"  # 本地模型（ollama）
 
 
 class Capabilities:
@@ -127,10 +127,22 @@ class ProviderSpec:
     """
 
     __slots__ = (
-        "key", "name", "base_url", "default_model", "models", "auth",
-        "chat_path", "base_url_includes_v1", "supports", "default_headers",
-        "extra_body", "thinking_style", "canonical_order", "note",
-        "timeout", "connect_timeout",
+        "key",
+        "name",
+        "base_url",
+        "default_model",
+        "models",
+        "auth",
+        "chat_path",
+        "base_url_includes_v1",
+        "supports",
+        "default_headers",
+        "extra_body",
+        "thinking_style",
+        "canonical_order",
+        "note",
+        "timeout",
+        "connect_timeout",
     )
 
     def __init__(
@@ -175,9 +187,7 @@ class ProviderSpec:
 
     def resolved_url(self, api_base: str = "") -> str:
         """返回最终请求 URL（配置为空则用默认 base）。"""
-        return join_url(
-            api_base or self.base_url, self.chat_path, self.base_url_includes_v1
-        )
+        return join_url(api_base or self.base_url, self.chat_path, self.base_url_includes_v1)
 
     def as_dict(self) -> dict:
         return {
@@ -202,8 +212,15 @@ class ChatRequest:
     """一次对话请求的**统一**参数（各 adapter 负责翻译成自家字段名）。"""
 
     __slots__ = (
-        "model", "messages", "system", "max_tokens", "temperature",
-        "thinking_enabled", "reasoning_effort", "stream", "extra",
+        "model",
+        "messages",
+        "system",
+        "max_tokens",
+        "temperature",
+        "thinking_enabled",
+        "reasoning_effort",
+        "stream",
+        "extra",
     )
 
     def __init__(
@@ -238,8 +255,15 @@ class ChatRequest:
 
     def with_stream(self, stream: bool) -> "ChatRequest":
         clone = ChatRequest(
-            self.model, self.messages, self.system, self.max_tokens, self.temperature,
-            self.thinking_enabled, self.reasoning_effort, stream, self.extra,
+            self.model,
+            self.messages,
+            self.system,
+            self.max_tokens,
+            self.temperature,
+            self.thinking_enabled,
+            self.reasoning_effort,
+            stream,
+            self.extra,
         )
         return clone
 
@@ -278,8 +302,7 @@ class UsageData:
     UI 必须区分"实测"与"估算"，成本计算也要对估算值加提示。
     """
 
-    __slots__ = ("prompt_tokens", "completion_tokens", "total_tokens",
-                 "cached_tokens", "estimated")
+    __slots__ = ("prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "estimated")
 
     def __init__(
         self,
@@ -291,9 +314,7 @@ class UsageData:
     ):
         self.prompt_tokens = int(prompt_tokens or 0)
         self.completion_tokens = int(completion_tokens or 0)
-        self.total_tokens = int(total_tokens or 0) or (
-            self.prompt_tokens + self.completion_tokens
-        )
+        self.total_tokens = int(total_tokens or 0) or (self.prompt_tokens + self.completion_tokens)
         self.cached_tokens = int(cached_tokens or 0)
         self.estimated = estimated
 
@@ -346,8 +367,7 @@ class StreamDelta:
 
     __slots__ = ("text", "reasoning", "usage", "done")
 
-    def __init__(self, text: str = "", reasoning: str = "", usage: UsageData = None,
-                 done: bool = False):
+    def __init__(self, text: str = "", reasoning: str = "", usage: UsageData = None, done: bool = False):
         self.text = text or ""
         self.reasoning = reasoning or ""
         self.usage = usage

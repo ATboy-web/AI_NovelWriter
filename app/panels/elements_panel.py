@@ -1,4 +1,5 @@
 """元素库面板混入"""
+
 import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
@@ -68,15 +69,11 @@ class ElementsPanelMixin:
         for idx in sel:
             if idx < len(items):
                 item = items[idx]
-                name = item.get('name', '（无名称）')
-                template = item.get('template', '（无模板）')
-                tags = item.get('tags', [])
-                tags_str = '、'.join(tags) if tags else '（无标签）'
-                parts.append(
-                    f"【{name}】\n"
-                    f"模板: {template}\n"
-                    f"标签: {tags_str}"
-                )
+                name = item.get("name", "（无名称）")
+                template = item.get("template", "（无模板）")
+                tags = item.get("tags", [])
+                tags_str = "、".join(tags) if tags else "（无标签）"
+                parts.append(f"【{name}】\n模板: {template}\n标签: {tags_str}")
         self.elem_result.insert("1.0", "\n\n".join(parts))
 
     def _gen_background_from_elements(self):
@@ -95,8 +92,7 @@ class ElementsPanelMixin:
         def run():
             try:
                 result = self.element_lib.generate_background(
-                    self.ai_client, selected,
-                    self.genre_var.get(), self.title_var.get() or "未命名"
+                    self.ai_client, selected, self.genre_var.get(), self.title_var.get() or "未命名"
                 )
                 self.root.after(0, lambda: self._show_tool_result(self.elem_result, result))
             except Exception as e:

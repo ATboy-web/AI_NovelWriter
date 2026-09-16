@@ -26,10 +26,10 @@ class TestCharacterProfile(unittest.TestCase):
     def test_has_attributes(self):
         char = CharacterProfile(name="张三")
         # 检查基本属性存在
-        self.assertTrue(hasattr(char, 'name'))
-        self.assertTrue(hasattr(char, 'level'))
-        self.assertTrue(hasattr(char, 'hp'))
-        self.assertTrue(hasattr(char, 'mp'))
+        self.assertTrue(hasattr(char, "name"))
+        self.assertTrue(hasattr(char, "level"))
+        self.assertTrue(hasattr(char, "hp"))
+        self.assertTrue(hasattr(char, "mp"))
 
 
 class TestCharacterSystem(unittest.TestCase):
@@ -50,5 +50,5 @@ class TestCharacterSystem(unittest.TestCase):
         self.assertEqual(self.cs.character.name, "张三")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

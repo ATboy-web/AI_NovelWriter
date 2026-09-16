@@ -90,9 +90,7 @@ class TestDegradedReadBlocksBlindWrite:
         mm.save_characters(make_chars(286))
         # 破坏主文件，同时破坏备份（模拟"无可用备份"）
         mm.characters_file.write_text("{截断", encoding="utf-8")
-        (mm.characters_file.parent / (mm.characters_file.name + ".bak")).write_text(
-            "{也坏了", encoding="utf-8"
-        )
+        (mm.characters_file.parent / (mm.characters_file.name + ".bak")).write_text("{也坏了", encoding="utf-8")
 
         assert mm.get_characters() == {}
         with pytest.raises(CharacterDataGuardError):
@@ -164,16 +162,12 @@ class TestAutoDetectUsesLockedMutation:
     """V3：章节生成自动建角色必须走锁内读-改-写。"""
 
     def test_auto_detect_uses_mutate_characters(self):
-        body = _method_body("app/character_ui.py", "def _auto_detect_characters",
-                            "def _sync_characters_to_system")
+        body = _method_body("app/character_ui.py", "def _auto_detect_characters", "def _sync_characters_to_system")
         assert "mutate_characters" in body
-        assert "self.memory.save_characters(" not in body, (
-            "自动建角色不得直接整体覆盖角色库（底座为空时会清库）"
-        )
+        assert "self.memory.save_characters(" not in body, "自动建角色不得直接整体覆盖角色库（底座为空时会清库）"
 
     def test_auto_detect_surfaces_guard_trip_to_the_user(self):
-        body = _method_body("app/character_ui.py", "def _auto_detect_characters",
-                            "def _sync_characters_to_system")
+        body = _method_body("app/character_ui.py", "def _auto_detect_characters", "def _sync_characters_to_system")
         assert "CharacterDataGuardError" in body
         assert "已阻止一次可能清空角色库的写入" in body
 
@@ -336,8 +330,7 @@ class TestSecureConfigNoSilentOverwrite:
         import app.secure_config as sc_mod
 
         fixed_key = Fernet.generate_key()
-        monkeypatch.setattr(sc_mod.SecureConfig, "_init_encryption",
-                            lambda self: Fernet(fixed_key))
+        monkeypatch.setattr(sc_mod.SecureConfig, "_init_encryption", lambda self: Fernet(fixed_key))
         monkeypatch.setattr(sc_mod.SecureConfig, "_load", lambda self: {})
 
         created = []
@@ -412,18 +405,14 @@ class TestBiographyInputValidation:
         必须先 ``_strip_noise``：函数上方的修复注释里本身就写了一句
         `word_dialog.destroy()`，不过滤会命中的是注释而非真实调用点。
         """
-        body = _strip_noise(
-            _method_body("app/character_ui.py", "def start_generate", "def run(")
-        )
+        body = _strip_noise(_method_body("app/character_ui.py", "def start_generate", "def run("))
         guard = body.index("except (TypeError, ValueError):")
         destroy = body.index("word_dialog.destroy()")
         assert guard < destroy, "校验失败分支必须早于 destroy"
 
         # 解析失败分支与越界分支都要先 return，否则对话框会被关掉
         error_path = body[guard:destroy]
-        assert error_path.count("return") >= 2, (
-            "解析失败与越界两条分支都必须 return，不能继续执行 destroy()"
-        )
+        assert error_path.count("return") >= 2, "解析失败与越界两条分支都必须 return，不能继续执行 destroy()"
 
     def test_max_tokens_is_clamped(self):
         src = _read("app/character_ui.py")
@@ -589,8 +578,7 @@ class TestDockerComposeHardening:
         public = {
             name
             for name, svc in compose["services"].items()
-            if any(str(p).split(":")[0] not in ("127.0.0.1", "localhost")
-                   for p in svc.get("ports", []))
+            if any(str(p).split(":")[0] not in ("127.0.0.1", "localhost") for p in svc.get("ports", []))
         }
         assert public == {"frontend", "nginx"}
 
@@ -619,6 +607,6 @@ class TestProductionConfigValidationBlocksStartup:
 
     def test_validate_settings_raises_in_production(self):
         src = _read("backend/ai-service/app/core/config.py")
-        body = src[src.index("def validate_settings"):]
+        body = src[src.index("def validate_settings") :]
         assert "raise ValueError" in body
         assert "is_production" in body

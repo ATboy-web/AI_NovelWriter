@@ -96,14 +96,14 @@ class UsagePanelMixin:
         """
         try:
             usage_tracker.set_novel_dir(novel_dir)
-        except Exception as exc:                        # noqa: BLE001 - 统计不影响主流程
+        except Exception as exc:  # noqa: BLE001 - 统计不影响主流程
             self._log(f"[用量] 切换统计目录失败：{exc}")
 
     def _usage_status_text(self) -> str:
         """状态栏用的短文本（由 `shell_ui._update_status` 拼接）。"""
         try:
             return summarize_rows(usage_tracker.summary())
-        except Exception as exc:                        # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             return f"用量统计不可用（{type(exc).__name__}）"
 
     def _subscribe_usage_events(self) -> None:
@@ -123,14 +123,14 @@ class UsagePanelMixin:
             return
         try:
             self.usage_summary_var.set(summarize_rows(usage_tracker.summary()))
-        except Exception as exc:                        # noqa: BLE001 - 刷新失败不该冒泡
+        except Exception as exc:  # noqa: BLE001 - 刷新失败不该冒泡
             self.usage_summary_var.set(f"读取用量失败：{type(exc).__name__}: {exc}")
 
     def _chapter_token_badges(self) -> dict:
         """`{章号: token}` —— 章节列表徽标用。异常时返回空表，不打断列表渲染。"""
         try:
             return usage_tracker.chapter_tokens()
-        except Exception as exc:                        # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             self._log(f"[用量] 读取章节用量失败：{exc}")
             return {}
 
@@ -140,58 +140,82 @@ class UsagePanelMixin:
         """构建面板（`shell_ui` 在 notebook 里调用一次）。"""
         C = UIStyle.COLORS
 
-        head = tk.Frame(parent, bg=C['bg_dark'])
+        head = tk.Frame(parent, bg=C["bg_dark"])
         head.pack(fill=tk.X, padx=15, pady=(12, 4))
 
         self.usage_summary_var = tk.StringVar(value="（暂无用量记录）")
-        tk.Label(head, textvariable=self.usage_summary_var, font=('微软雅黑', 10, 'bold'),
-                 bg=C['bg_dark'], fg=C['accent_light'], anchor=tk.W, justify=tk.LEFT
-                 ).pack(fill=tk.X)
+        tk.Label(
+            head,
+            textvariable=self.usage_summary_var,
+            font=("微软雅黑", 10, "bold"),
+            bg=C["bg_dark"],
+            fg=C["accent_light"],
+            anchor=tk.W,
+            justify=tk.LEFT,
+        ).pack(fill=tk.X)
 
         self.usage_hint_var = tk.StringVar(value="")
-        tk.Label(head, textvariable=self.usage_hint_var, font=('微软雅黑', 8),
-                 bg=C['bg_dark'], fg=C['text_secondary'], anchor=tk.W, justify=tk.LEFT
-                 ).pack(fill=tk.X, pady=(2, 0))
+        tk.Label(
+            head,
+            textvariable=self.usage_hint_var,
+            font=("微软雅黑", 8),
+            bg=C["bg_dark"],
+            fg=C["text_secondary"],
+            anchor=tk.W,
+            justify=tk.LEFT,
+        ).pack(fill=tk.X, pady=(2, 0))
 
-        buttons = tk.Frame(parent, bg=C['bg_dark'])
+        buttons = tk.Frame(parent, bg=C["bg_dark"])
         buttons.pack(fill=tk.X, padx=15, pady=(2, 6))
-        self._usage_button(buttons, "🔄 刷新", self._refresh_usage_panel, C['accent'])
-        self._usage_button(buttons, "📤 导出 CSV", self._export_usage_csv, C['bg_light'])
-        self._usage_button(buttons, "💰 查询余额", self._query_balance_async, C['success'])
-        self._usage_button(buttons, "📂 打开目录", self._open_usage_dir, C['bg_light'])
-        self._usage_button(buttons, "📋 复制概览", self._copy_usage_summary, C['bg_light'])
+        self._usage_button(buttons, "🔄 刷新", self._refresh_usage_panel, C["accent"])
+        self._usage_button(buttons, "📤 导出 CSV", self._export_usage_csv, C["bg_light"])
+        self._usage_button(buttons, "💰 查询余额", self._query_balance_async, C["success"])
+        self._usage_button(buttons, "📂 打开目录", self._open_usage_dir, C["bg_light"])
+        self._usage_button(buttons, "📋 复制概览", self._copy_usage_summary, C["bg_light"])
 
-        balance_row = tk.Frame(parent, bg=C['bg_dark'])
+        balance_row = tk.Frame(parent, bg=C["bg_dark"])
         balance_row.pack(fill=tk.X, padx=15, pady=(0, 6))
         self.usage_balance_var = tk.StringVar(value="余额：未查询")
-        tk.Label(balance_row, textvariable=self.usage_balance_var, font=('微软雅黑', 9),
-                 bg=C['bg_dark'], fg=C['text_primary'], anchor=tk.W, justify=tk.LEFT,
-                 wraplength=900).pack(fill=tk.X)
+        tk.Label(
+            balance_row,
+            textvariable=self.usage_balance_var,
+            font=("微软雅黑", 9),
+            bg=C["bg_dark"],
+            fg=C["text_primary"],
+            anchor=tk.W,
+            justify=tk.LEFT,
+            wraplength=900,
+        ).pack(fill=tk.X)
 
-        sub = ttk.Notebook(parent, style='Dark.TNotebook')
+        sub = ttk.Notebook(parent, style="Dark.TNotebook")
         sub.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 12))
         self.usage_chapter_tree = self._build_usage_table(
-            sub, " 按章 ",
+            sub,
+            " 按章 ",
             ("章号", "调用", "输入", "输出", "合计", "实测/估算", "耗时(秒)", "成本"),
             (70, 60, 90, 90, 100, 120, 90, 170),
         )
         self.usage_provider_tree = self._build_usage_table(
-            sub, " 按服务 ",
+            sub,
+            " 按服务 ",
             ("服务", "调用", "输入", "输出", "合计", "成本", "余额能力"),
             (150, 60, 90, 90, 100, 170, 300),
         )
         self.usage_task_tree = self._build_usage_table(
-            sub, " 按任务 ",
+            sub,
+            " 按任务 ",
             ("任务", "调用", "合计", "占比", "成本"),
             (140, 60, 110, 90, 170),
         )
         self.usage_model_tree = self._build_usage_table(
-            sub, " 按模型 ",
+            sub,
+            " 按模型 ",
             ("模型", "调用", "合计", "耗时(秒)", "成本"),
             (300, 60, 110, 90, 170),
         )
         self.usage_price_tree = self._build_usage_table(
-            sub, " 价目表 ",
+            sub,
+            " 价目表 ",
             ("服务", "模型", "区域", "币种", "输入/百万", "输出/百万", "缓存价", "置信度", "查证日期"),
             (120, 260, 100, 60, 100, 100, 90, 90, 100),
         )
@@ -201,24 +225,34 @@ class UsagePanelMixin:
 
     def _usage_button(self, parent, text: str, command, bg: str) -> tk.Button:
         color = UIStyle.COLORS
-        button = tk.Button(parent, text=text, font=('微软雅黑', 9), bg=bg,
-                           fg='white' if bg in (color['accent'], color['success'])
-                           else color['text_primary'],
-                           relief=tk.FLAT, padx=10, pady=3, cursor='hand2',
-                           command=command)
+        button = tk.Button(
+            parent,
+            text=text,
+            font=("微软雅黑", 9),
+            bg=bg,
+            fg="white" if bg in (color["accent"], color["success"]) else color["text_primary"],
+            relief=tk.FLAT,
+            padx=10,
+            pady=3,
+            cursor="hand2",
+            command=command,
+        )
         button.pack(side=tk.LEFT, padx=3)
         return button
 
     def _build_usage_table(self, notebook, title: str, columns, widths):
         C = UIStyle.COLORS
-        frame = tk.Frame(notebook, bg=C['bg_dark'])
+        frame = tk.Frame(notebook, bg=C["bg_dark"])
         notebook.add(frame, text=title)
 
-        tree = ttk.Treeview(frame, columns=columns, show='headings', height=14)
+        tree = ttk.Treeview(frame, columns=columns, show="headings", height=14)
         for column, width in zip(columns, widths):
             tree.heading(column, text=column)
-            tree.column(column, width=width, anchor=tk.CENTER if column not in
-                        ("服务", "模型", "任务", "余额能力", "成本", "区域") else tk.W)
+            tree.column(
+                column,
+                width=width,
+                anchor=tk.CENTER if column not in ("服务", "模型", "任务", "余额能力", "成本", "区域") else tk.W,
+            )
         scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
         tree.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -231,7 +265,7 @@ class UsagePanelMixin:
         """重算并刷新全部子页。异常只提示，不弹栈。"""
         try:
             summary = usage_tracker.summary()
-        except Exception as exc:                        # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             self.usage_summary_var.set(f"读取用量失败：{type(exc).__name__}: {exc}")
             return
 
@@ -241,8 +275,11 @@ class UsagePanelMixin:
         rows = usage_tracker.chapter_rows()
         self._fill_chapters(self.usage_chapter_tree, rows)
         self._fill_provider(self.usage_provider_tree, summary.get("by_provider") or {})
-        self._fill_task(self.usage_task_tree, summary.get("by_task") or {},
-                        int((summary.get("totals") or {}).get("total_tokens") or 0))
+        self._fill_task(
+            self.usage_task_tree,
+            summary.get("by_task") or {},
+            int((summary.get("totals") or {}).get("total_tokens") or 0),
+        )
         self._fill_model(self.usage_model_tree, summary.get("by_model") or {})
         self._fill_prices(self.usage_price_tree)
 
@@ -253,8 +290,10 @@ class UsagePanelMixin:
         if target is None:
             return "当前未打开小说：仅显示本次会话的内存统计（重启即清空）"
         detail = target / "usage" / "usage.jsonl"
-        return (f"数据源：{detail}（重启不丢）· 带「≈」的行为估算值"
-                f"（provider 未返回 usage）· 价目查证于 {PRICE_TABLE_VERIFIED_AT}")
+        return (
+            f"数据源：{detail}（重启不丢）· 带「≈」的行为估算值"
+            f"（provider 未返回 usage）· 价目查证于 {PRICE_TABLE_VERIFIED_AT}"
+        )
 
     def _clear_tree(self, tree) -> None:
         for item in tree.get_children():
@@ -265,74 +304,92 @@ class UsagePanelMixin:
         for row in rows:
             estimated = int(row.get("estimated_calls") or 0)
             calls = int(row.get("calls") or 0)
-            tree.insert("", tk.END, values=(
-                row.get("chapter"),
-                calls,
-                format_tokens(row.get("prompt_tokens")),
-                format_tokens(row.get("completion_tokens")),
-                format_tokens(row.get("total_tokens")),
-                f"{calls - estimated} / {estimated}" + (" ≈" if estimated else ""),
-                f"{float(row.get('latency_ms') or 0.0) / 1000.0:.1f}",
-                format_cost_cell(row),
-            ))
+            tree.insert(
+                "",
+                tk.END,
+                values=(
+                    row.get("chapter"),
+                    calls,
+                    format_tokens(row.get("prompt_tokens")),
+                    format_tokens(row.get("completion_tokens")),
+                    format_tokens(row.get("total_tokens")),
+                    f"{calls - estimated} / {estimated}" + (" ≈" if estimated else ""),
+                    f"{float(row.get('latency_ms') or 0.0) / 1000.0:.1f}",
+                    format_cost_cell(row),
+                ),
+            )
 
     def _fill_provider(self, tree, buckets) -> None:
         self._clear_tree(tree)
         for provider in sorted(buckets):
             bucket = buckets[provider]
-            tree.insert("", tk.END, values=(
-                provider,
-                bucket.get("calls"),
-                format_tokens(bucket.get("prompt_tokens")),
-                format_tokens(bucket.get("completion_tokens")),
-                format_tokens(bucket.get("total_tokens")),
-                format_cost_cell(bucket),
-                self._balance_capability_text(provider),
-            ))
+            tree.insert(
+                "",
+                tk.END,
+                values=(
+                    provider,
+                    bucket.get("calls"),
+                    format_tokens(bucket.get("prompt_tokens")),
+                    format_tokens(bucket.get("completion_tokens")),
+                    format_tokens(bucket.get("total_tokens")),
+                    format_cost_cell(bucket),
+                    self._balance_capability_text(provider),
+                ),
+            )
 
     def _fill_task(self, tree, buckets, grand_total) -> None:
         self._clear_tree(tree)
-        for task in sorted(buckets, key=lambda key: -int(
-                (buckets[key] or {}).get("total_tokens") or 0)):
+        for task in sorted(buckets, key=lambda key: -int((buckets[key] or {}).get("total_tokens") or 0)):
             bucket = buckets[task]
             total = int(bucket.get("total_tokens") or 0)
             share = f"{total / grand_total * 100:.1f}%" if grand_total else "—"
-            tree.insert("", tk.END, values=(
-                TASK_LABELS.get(task, task or "未分类"),
-                bucket.get("calls"),
-                format_tokens(total),
-                share,
-                format_cost_cell(bucket),
-            ))
+            tree.insert(
+                "",
+                tk.END,
+                values=(
+                    TASK_LABELS.get(task, task or "未分类"),
+                    bucket.get("calls"),
+                    format_tokens(total),
+                    share,
+                    format_cost_cell(bucket),
+                ),
+            )
 
     def _fill_model(self, tree, buckets) -> None:
         self._clear_tree(tree)
-        for model in sorted(buckets, key=lambda key: -int(
-                (buckets[key] or {}).get("total_tokens") or 0)):
+        for model in sorted(buckets, key=lambda key: -int((buckets[key] or {}).get("total_tokens") or 0)):
             bucket = buckets[model]
-            tree.insert("", tk.END, values=(
-                model,
-                bucket.get("calls"),
-                format_tokens(bucket.get("total_tokens")),
-                f"{float(bucket.get('latency_ms') or 0.0) / 1000.0:.1f}",
-                format_cost_cell(bucket),
-            ))
+            tree.insert(
+                "",
+                tk.END,
+                values=(
+                    model,
+                    bucket.get("calls"),
+                    format_tokens(bucket.get("total_tokens")),
+                    f"{float(bucket.get('latency_ms') or 0.0) / 1000.0:.1f}",
+                    format_cost_cell(bucket),
+                ),
+            )
 
     def _fill_prices(self, tree) -> None:
         self._clear_tree(tree)
         for price in all_prices():
             tier_note = f"（{len(price.tiers)} 档阶梯）" if price.tiers else ""
-            tree.insert("", tk.END, values=(
-                price.provider,
-                price.model + tier_note,
-                price.region,
-                price.currency,
-                f"{price.input:g}",
-                f"{price.output:g}",
-                "-" if price.cached_input is None else f"{price.cached_input:g}",
-                price.confidence,
-                price.verified_at,
-            ))
+            tree.insert(
+                "",
+                tk.END,
+                values=(
+                    price.provider,
+                    price.model + tier_note,
+                    price.region,
+                    price.currency,
+                    f"{price.input:g}",
+                    f"{price.output:g}",
+                    "-" if price.cached_input is None else f"{price.cached_input:g}",
+                    price.confidence,
+                    price.verified_at,
+                ),
+            )
 
     @staticmethod
     def _balance_capability_text(provider: str) -> str:
@@ -349,8 +406,10 @@ class UsagePanelMixin:
         target = usage_tracker.novel_dir
         initial = Path(target) if target else Path.home()
         path = filedialog.asksaveasfilename(
-            title="导出用量明细", defaultextension=".csv",
-            initialdir=str(initial), initialfile="usage.csv",
+            title="导出用量明细",
+            defaultextension=".csv",
+            initialdir=str(initial),
+            initialfile="usage.csv",
             filetypes=[("CSV 文件", "*.csv"), ("全部文件", "*.*")],
         )
         if not path:
@@ -372,7 +431,8 @@ class UsagePanelMixin:
         path.mkdir(parents=True, exist_ok=True)
         try:
             import os
-            os.startfile(str(path))                     # noqa: S606 - 打开资源管理器
+
+            os.startfile(str(path))  # noqa: S606 - 打开资源管理器
         except (AttributeError, OSError) as exc:
             messagebox.showinfo("用量目录", f"{path}\n（无法自动打开：{exc}）")
 
@@ -400,9 +460,7 @@ class UsagePanelMixin:
             self._log(f"[余额] {provider}: {result.format_total()}")
 
         def failed(exc):
-            self.usage_balance_var.set(
-                f"余额：查询失败 {type(exc).__name__}: {exc}（不影响其他功能）"
-            )
+            self.usage_balance_var.set(f"余额：查询失败 {type(exc).__name__}: {exc}（不影响其他功能）")
             self._log(f"[余额] 查询失败：{exc}")
 
         runner.submit(work, on_success=done, on_error=failed, name="anw-balance")

@@ -81,7 +81,7 @@ DEFAULT_CONFIG = {
 }
 
 #: 需要加密落盘的字段（单一来源：SecureConfig 与本模块共用，避免两处定义漂移）
-SENSITIVE_CONFIG_FIELDS = ('api_key', 'img_api_key', 'secret_key')
+SENSITIVE_CONFIG_FIELDS = ("api_key", "img_api_key", "secret_key")
 
 # ============================================================ 多 Profile 常量
 
@@ -112,9 +112,7 @@ AI_PROFILE_FIELDS = (
 _AI_PROFILE_FIELD_SET = frozenset(AI_PROFILE_FIELDS)
 
 #: Profile 字段的默认值（单一来源：直接取自 DEFAULT_CONFIG，避免两处定义漂移）
-AI_PROFILE_DEFAULTS: Dict[str, Any] = {
-    field: DEFAULT_CONFIG[field] for field in AI_PROFILE_FIELDS
-}
+AI_PROFILE_DEFAULTS: Dict[str, Any] = {field: DEFAULT_CONFIG[field] for field in AI_PROFILE_FIELDS}
 
 #: 供设置页生成表单用的中文标签
 AI_PROFILE_LABELS: Dict[str, str] = {
@@ -163,7 +161,10 @@ def _safe_coerce(key: str, value: Any) -> Any:
         fallback = AI_PROFILE_DEFAULTS.get(key)
         logger.warning(
             "配置字段 %s 取值非法（%r：%s），已回退为默认值 %r",
-            key, value, exc, fallback,
+            key,
+            value,
+            exc,
+            fallback,
         )
         return fallback
 
@@ -248,6 +249,7 @@ class AppConfig:
         self._secure_config = None
         try:
             from .secure_config import SecureConfig
+
             self._secure_config = SecureConfig()
         except Exception:
             self._secure_config = None
@@ -259,7 +261,7 @@ class AppConfig:
     def _load(self) -> dict:
         file_existed = self.config_file.exists()
         if file_existed:
-            with open(self.config_file, 'r', encoding='utf-8') as f:
+            with open(self.config_file, "r", encoding="utf-8") as f:
                 config = json.load(f)
         else:
             config = DEFAULT_CONFIG.copy()
@@ -283,7 +285,8 @@ class AppConfig:
         if migrated:
             logger.info(
                 "配置已升级为多 Profile 结构（schema_version=%s，active_profile=%s）",
-                PROFILES_SCHEMA_VERSION, config[PROFILES_SECTION]["active_profile"],
+                PROFILES_SCHEMA_VERSION,
+                config[PROFILES_SECTION]["active_profile"],
             )
         return config
 
@@ -310,9 +313,7 @@ class AppConfig:
         default_profile = profiles[DEFAULT_PROFILE_NAME]
         for field in AI_PROFILE_FIELDS:
             if field not in default_profile:
-                default_profile[field] = _safe_coerce(
-                    field, config.get(field, AI_PROFILE_DEFAULTS[field])
-                )
+                default_profile[field] = _safe_coerce(field, config.get(field, AI_PROFILE_DEFAULTS[field]))
 
         # 其它 Profile 也补齐缺项（以 default 为模板），保证每个 Profile 自洽
         for name, prof in profiles.items():
@@ -393,7 +394,7 @@ class AppConfig:
         try:
             if not self.config_file.exists():
                 return None
-            with open(self.config_file, 'r', encoding='utf-8') as f:
+            with open(self.config_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             return data if isinstance(data, dict) else None
         except (OSError, ValueError):
@@ -602,17 +603,15 @@ class AppConfig:
         if self._secure_config:
             self._secure_config.set_ai_key(name, value)
         elif name != DEFAULT_PROFILE_NAME:
-            raise RuntimeError(
-                "加密组件不可用，拒绝以明文保存非默认 Profile 的密钥"
-            )
+            raise RuntimeError("加密组件不可用，拒绝以明文保存非默认 Profile 的密钥")
         if name == DEFAULT_PROFILE_NAME:
-            self.config['api_key'] = value
+            self.config["api_key"] = value
 
     # ------------------------------------------------------------ 读写（扁平键兼容）
 
     def get(self, key: str, default=None):
         with self._lock:
-            if key == 'api_key':
+            if key == "api_key":
                 value = self.profile_api_key()
                 if value:
                     return value
@@ -634,7 +633,7 @@ class AppConfig:
 
     def set(self, key: str, value):
         with self._lock:
-            if key == 'api_key':
+            if key == "api_key":
                 self._set_active_api_key(value)
                 self.save()
                 return

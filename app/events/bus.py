@@ -192,9 +192,7 @@ class EventBus:
         是为了让"没人订阅"与"改道了"这两件事在调用方眼里可区分。
         """
         if threading.get_ident() != self._owner:
-            logger.warning(
-                f"[{self._name}] publish('{topic}') 在非主线程被调用，已改道 publish_threadsafe 排队派发"
-            )
+            logger.warning(f"[{self._name}] publish('{topic}') 在非主线程被调用，已改道 publish_threadsafe 排队派发")
             self.publish_threadsafe(topic, payload)
             return -1
         return self._dispatch(topic, payload)

@@ -33,7 +33,7 @@ SAMPLES = [
     '{"a"：1，"b"：2}',
     '{"a": 1,}',
     '{"a" "b"}',
-    '{“a”: “b”}',
+    "{“a”: “b”}",
     '{"a": "正文,}"}',
     '{"a": "时间 12::30"}',
     '{"a": "含 } 的正文", "b": 2}',
@@ -44,18 +44,18 @@ SAMPLES = [
     '{"goal": ["a", "b"]}',
     '{"nested": {"key": "value"}}',
     '{"value": null}',
-    '{}',
-    'invalid json',
-    '',
+    "{}",
+    "invalid json",
+    "",
 ]
 
 LIST_SAMPLES = [
-    '[1, 2, 3]',
-    '```json\n[1, 2, 3]\n```',
-    'prefix [1, 2, 3] suffix',
-    '[1, 2, 3',
-    'invalid json',
-    '[]',
+    "[1, 2, 3]",
+    "```json\n[1, 2, 3]\n```",
+    "prefix [1, 2, 3] suffix",
+    "[1, 2, 3",
+    "invalid json",
+    "[]",
     '{"a": 1}',
 ]
 
@@ -85,10 +85,10 @@ class TestIsListSemantics:
     """`is_list=True` 只接受 list —— 否则 `for item in outline` 会遍历到键名。"""
 
     def test_returns_list_for_array(self):
-        assert NovelAgent._parse_json_response('[1, 2, 3]', [], is_list=True) == [1, 2, 3]
+        assert NovelAgent._parse_json_response("[1, 2, 3]", [], is_list=True) == [1, 2, 3]
 
     def test_empty_list(self):
-        assert NovelAgent._parse_json_response('[]', [], is_list=True) == []
+        assert NovelAgent._parse_json_response("[]", [], is_list=True) == []
 
     def test_object_is_rejected_in_list_mode(self):
         """期望列表时解析出对象 → 回退默认值，而不是把 dict 返回给调用方。"""
@@ -112,7 +112,7 @@ class TestCharacterExtractionConverged:
             '{"张三": {"personality": "勇敢"}}',
             '```json\n{"张三": {"personality": "勇敢"}}\n```',
             '{"张三"：{"personality"："勇敢"}}',
-            '{“张三”: {“personality”: “勇敢”}}',
+            "{“张三”: {“personality”: “勇敢”}}",
             '{"张三": {"goal": ["a", "b"]}}',
             '{"张三": {"personality": "勇敢", "weapon": {"name": "剑"',
             "没有 JSON",
@@ -200,9 +200,7 @@ class TestDuplicateImplementationStaysDeleted:
 
     def test_old_skip_tuple_is_gone(self):
         """旧的 `('raw', 'weapon', 'attributes', 'skill_suggestions')` 剔除表必须消失。"""
-        source = _strip_comments_and_docstrings(
-            inspect.getsource(novel_agent_module)
-        )
+        source = _strip_comments_and_docstrings(inspect.getsource(novel_agent_module))
         assert "('raw', 'weapon', 'attributes', 'skill_suggestions')" not in source
         assert '("raw", "weapon"' not in source
 

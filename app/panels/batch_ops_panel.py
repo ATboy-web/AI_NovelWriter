@@ -1,4 +1,5 @@
 """批量操作面板混入"""
+
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -15,21 +16,25 @@ class BatchOpsPanelMixin:
         C = UIStyle.COLORS
         f = self.tool_content_frame
 
-        tk.Label(f, text="批量操作", font=("", 11, "bold"),
-                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=5)
+        tk.Label(f, text="批量操作", font=("", 11, "bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+            anchor=tk.W, pady=5
+        )
 
         if not self.current_novel_dir:
-            tk.Label(f, text="请先新建或打开小说", font=("", 10),
-                    bg=C['bg_dark'], fg=C['text_muted']).pack(pady=20)
+            tk.Label(f, text="请先新建或打开小说", font=("", 10), bg=C["bg_dark"], fg=C["text_muted"]).pack(pady=20)
             return
 
         # 批量导入
-        import_frame = tk.LabelFrame(f, text="批量导入", padx=10, pady=10,
-                                     bg=C['bg_dark'], fg=C['text_primary'])
+        import_frame = tk.LabelFrame(f, text="批量导入", padx=10, pady=10, bg=C["bg_dark"], fg=C["text_primary"])
         import_frame.pack(fill=tk.X, pady=5)
 
-        tk.Label(import_frame, text="从文件夹批量导入章节文件（支持txt/md格式）",
-                font=("微软雅黑", 9), bg=C['bg_dark'], fg=C['text_secondary']).pack(anchor=tk.W)
+        tk.Label(
+            import_frame,
+            text="从文件夹批量导入章节文件（支持txt/md格式）",
+            font=("微软雅黑", 9),
+            bg=C["bg_dark"],
+            fg=C["text_secondary"],
+        ).pack(anchor=tk.W)
 
         def batch_import():
             folder = filedialog.askdirectory(title="选择包含章节文件的文件夹")
@@ -49,31 +54,37 @@ class BatchOpsPanelMixin:
             imported = 0
             for src in text_files:
                 try:
-                    content = src.read_text(encoding='utf-8')
+                    content = src.read_text(encoding="utf-8")
                 except (OSError, UnicodeDecodeError):
                     try:
-                        content = src.read_text(encoding='gbk')
+                        content = src.read_text(encoding="gbk")
                     except Exception:
                         continue
                 dest = chapters_dir / f"chapter_{next_num:05d}.txt"
-                dest.write_text(content, encoding='utf-8')
+                dest.write_text(content, encoding="utf-8")
                 next_num += 1
                 imported += 1
 
             self._log(f"批量导入 {imported} 个章节文件")
             messagebox.showinfo("成功", f"已导入 {imported} 个章节文件")
 
-        tk.Button(import_frame, text="选择文件夹批量导入", font=('微软雅黑', 9),
-                 bg=C['accent'], fg='white', relief=tk.FLAT,
-                 command=batch_import).pack(anchor=tk.W, pady=5)
+        tk.Button(
+            import_frame,
+            text="选择文件夹批量导入",
+            font=("微软雅黑", 9),
+            bg=C["accent"],
+            fg="white",
+            relief=tk.FLAT,
+            command=batch_import,
+        ).pack(anchor=tk.W, pady=5)
 
         # 批量导出
-        export_frame = tk.LabelFrame(f, text="批量导出", padx=10, pady=10,
-                                     bg=C['bg_dark'], fg=C['text_primary'])
+        export_frame = tk.LabelFrame(f, text="批量导出", padx=10, pady=10, bg=C["bg_dark"], fg=C["text_primary"])
         export_frame.pack(fill=tk.X, pady=5)
 
-        tk.Label(export_frame, text="导出所有章节到指定文件夹",
-                font=("微软雅黑", 9), bg=C['bg_dark'], fg=C['text_secondary']).pack(anchor=tk.W)
+        tk.Label(
+            export_frame, text="导出所有章节到指定文件夹", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_secondary"]
+        ).pack(anchor=tk.W)
 
         def batch_export():
             if not self.current_novel_dir:
@@ -91,23 +102,33 @@ class BatchOpsPanelMixin:
             exported = 0
             for cf in chapter_files:
                 dest = Path(folder) / cf.name
-                dest.write_text(cf.read_text(encoding='utf-8'), encoding='utf-8')
+                dest.write_text(cf.read_text(encoding="utf-8"), encoding="utf-8")
                 exported += 1
 
             self._log(f"批量导出 {exported} 个章节文件")
             messagebox.showinfo("成功", f"已导出 {exported} 个章节文件到 {folder}")
 
-        tk.Button(export_frame, text="导出所有章节", font=('微软雅黑', 9),
-                 bg=C['success'], fg='white', relief=tk.FLAT,
-                 command=batch_export).pack(anchor=tk.W, pady=5)
+        tk.Button(
+            export_frame,
+            text="导出所有章节",
+            font=("微软雅黑", 9),
+            bg=C["success"],
+            fg="white",
+            relief=tk.FLAT,
+            command=batch_export,
+        ).pack(anchor=tk.W, pady=5)
 
         # 批量生成摘要
-        summary_frame = tk.LabelFrame(f, text="批量生成摘要", padx=10, pady=10,
-                                      bg=C['bg_dark'], fg=C['text_primary'])
+        summary_frame = tk.LabelFrame(f, text="批量生成摘要", padx=10, pady=10, bg=C["bg_dark"], fg=C["text_primary"])
         summary_frame.pack(fill=tk.X, pady=5)
 
-        tk.Label(summary_frame, text="为所有卷自动生成摘要（需AI配置）",
-                font=("微软雅黑", 9), bg=C['bg_dark'], fg=C['text_secondary']).pack(anchor=tk.W)
+        tk.Label(
+            summary_frame,
+            text="为所有卷自动生成摘要（需AI配置）",
+            font=("微软雅黑", 9),
+            bg=C["bg_dark"],
+            fg=C["text_secondary"],
+        ).pack(anchor=tk.W)
 
         def batch_summary():
             if not self.ai_client.is_configured():
@@ -129,6 +150,12 @@ class BatchOpsPanelMixin:
 
             threading.Thread(target=run, daemon=True).start()
 
-        tk.Button(summary_frame, text="批量生成卷级摘要", font=('微软雅黑', 9),
-                 bg=C['warning'], fg='white', relief=tk.FLAT,
-                 command=batch_summary).pack(anchor=tk.W, pady=5)
+        tk.Button(
+            summary_frame,
+            text="批量生成卷级摘要",
+            font=("微软雅黑", 9),
+            bg=C["warning"],
+            fg="white",
+            relief=tk.FLAT,
+            command=batch_summary,
+        ).pack(anchor=tk.W, pady=5)

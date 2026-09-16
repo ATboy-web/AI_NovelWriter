@@ -29,12 +29,7 @@ class TestWritingStyleConfig:
     def test_custom_values(self):
         """测试自定义值"""
         config = WritingStyleConfig(
-            descriptiveness=9,
-            dialogue_ratio=8,
-            pacing=3,
-            emotional_depth=10,
-            action_intensity=2,
-            genre_style="言情"
+            descriptiveness=9, dialogue_ratio=8, pacing=3, emotional_depth=10, action_intensity=2, genre_style="言情"
         )
 
         assert config.descriptiveness == 9
@@ -47,11 +42,7 @@ class TestWritingStyleConfig:
     def test_to_prompt_high_values(self):
         """测试高值的提示词"""
         config = WritingStyleConfig(
-            descriptiveness=9,
-            dialogue_ratio=8,
-            pacing=9,
-            emotional_depth=9,
-            action_intensity=9
+            descriptiveness=9, dialogue_ratio=8, pacing=9, emotional_depth=9, action_intensity=9
         )
 
         prompt = config.to_prompt()
@@ -65,11 +56,7 @@ class TestWritingStyleConfig:
     def test_to_prompt_low_values(self):
         """测试低值的提示词"""
         config = WritingStyleConfig(
-            descriptiveness=2,
-            dialogue_ratio=2,
-            pacing=2,
-            emotional_depth=2,
-            action_intensity=2
+            descriptiveness=2, dialogue_ratio=2, pacing=2, emotional_depth=2, action_intensity=2
         )
 
         prompt = config.to_prompt()
@@ -83,11 +70,7 @@ class TestWritingStyleConfig:
     def test_to_prompt_medium_values(self):
         """测试中等值的提示词"""
         config = WritingStyleConfig(
-            descriptiveness=5,
-            dialogue_ratio=5,
-            pacing=5,
-            emotional_depth=5,
-            action_intensity=5
+            descriptiveness=5, dialogue_ratio=5, pacing=5, emotional_depth=5, action_intensity=5
         )
 
         prompt = config.to_prompt()
@@ -145,5 +128,5 @@ class TestAntiSlopRules:
                     assert isinstance(item, str), f"{key} 中的项目应该是字符串"
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

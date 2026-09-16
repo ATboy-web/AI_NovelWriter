@@ -92,13 +92,21 @@ class TestApiCall:
 
     def test_with_response_data_openai(self, tmp_path):
         logger = DiagnosticLogger(log_dir=tmp_path / "logs")
-        logger.api_call("openai", "chat", {"model": "gpt-4o", "messages_count": 1},
-                       response_data={"choices": [{"message": {"content": "hello"}}], "usage": {"total_tokens": 100}})
+        logger.api_call(
+            "openai",
+            "chat",
+            {"model": "gpt-4o", "messages_count": 1},
+            response_data={"choices": [{"message": {"content": "hello"}}], "usage": {"total_tokens": 100}},
+        )
 
     def test_with_response_data_simple(self, tmp_path):
         logger = DiagnosticLogger(log_dir=tmp_path / "logs")
-        logger.api_call("openai", "chat", {"model": "gpt-4o", "messages_count": 1},
-                       response_data={"status": "success", "result_len": 100, "content_preview": "hello"})
+        logger.api_call(
+            "openai",
+            "chat",
+            {"model": "gpt-4o", "messages_count": 1},
+            response_data={"status": "success", "result_len": 100, "content_preview": "hello"},
+        )
 
     def test_with_error(self, tmp_path):
         logger = DiagnosticLogger(log_dir=tmp_path / "logs")
@@ -191,6 +199,7 @@ class TestTraceApi:
     def test_trace_api_success(self, tmp_path):
         # Reset singleton
         import app.diagnostic_logger as dl
+
         dl._logger_instance = None
 
         @trace_api
@@ -202,6 +211,7 @@ class TestTraceApi:
 
     def test_trace_api_failure(self, tmp_path):
         import app.diagnostic_logger as dl
+
         dl._logger_instance = None
 
         @trace_api
@@ -229,6 +239,7 @@ class TestSingleton:
 
     def test_get_logger_singleton(self):
         import app.diagnostic_logger as dl
+
         dl._logger_instance = None
         logger1 = get_logger()
         logger2 = get_logger()

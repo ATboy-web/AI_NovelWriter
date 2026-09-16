@@ -52,7 +52,7 @@ class TestImageGeneratorDeep:
         result = ig.generate("test prompt")
         assert result is None
 
-    @patch('app.image_generator.httpx')
+    @patch("app.image_generator.httpx")
     def test_generate_comfyui_success(self, mock_httpx):
         config = MagicMock()
         config.get.side_effect = lambda key, default=None: {
@@ -80,7 +80,7 @@ class TestImageGeneratorDeep:
         except Exception:
             pass  # Expected since we can't fully mock the async flow
 
-    @patch('app.image_generator.httpx')
+    @patch("app.image_generator.httpx")
     def test_generate_sdapi_success(self, mock_httpx):
         config = MagicMock()
         config.get.side_effect = lambda key, default=None: {

@@ -142,7 +142,7 @@ class BackgroundRunner:
         def _target():
             try:
                 result = work(*args, **kwargs)
-            except BaseException as exc:                  # noqa: BLE001 - 兜底是职责
+            except BaseException as exc:  # noqa: BLE001 - 兜底是职责
                 runner._handle_error(exc, log_errors, on_error, name)
             else:
                 runner.dispatch(on_success, result)
@@ -152,9 +152,7 @@ class BackgroundRunner:
         # 关键：**在父线程**把上下文快照交给子线程执行。
         # （`threading.Thread` 不继承 contextvars；若在子线程里 copy_context()
         #  就会拷到子线程自己那份空上下文，等于没做。见 `context_runner`。）
-        thread = threading.Thread(
-            target=context_runner(_target), name=name, daemon=daemon
-        )
+        thread = threading.Thread(target=context_runner(_target), name=name, daemon=daemon)
         self._threads.append(thread)
         with _ISSUED_LOCK:
             # 顺手清掉已结束的登记，5000 章长跑下这个列表才不会无限增长
@@ -184,10 +182,12 @@ class BackgroundRunner:
 
         延迟 import：本模块要能在无 Tk 的服务器/单测环境被导入。
         """
+
         def _show(exc):
             from tkinter import messagebox
 
             messagebox.showerror(title, f"{type(exc).__name__}: {exc}", parent=parent)
+
         return _show
 
     # ------------------------------------------------------------ 生命周期

@@ -86,7 +86,7 @@ class TestUsageContext:
     def test_reset_with_stale_token_is_safe(self):
         token = set_usage_context(chapter=1)
         reset_usage_context(token)
-        reset_usage_context(token)          # 二次重置不得抛异常
+        reset_usage_context(token)  # 二次重置不得抛异常
 
     def test_context_is_copy_not_reference(self):
         set_usage_context(chapter=1)
@@ -133,7 +133,11 @@ class TestTaskTrackerDecorator:
         assert generate_outline.__name__ == "generate_outline"
         assert generate_outline.__doc__ == "原文档字符串"
         assert list(inspect.signature(generate_outline).parameters) == [
-            "self", "genre", "title", "chapter_count", "concept",
+            "self",
+            "genre",
+            "title",
+            "chapter_count",
+            "concept",
         ]
 
     def test_context_restored_after_call(self):
@@ -162,8 +166,12 @@ class TestTaskTrackerDecorator:
 
     def test_applied_to_novel_agent_methods(self):
         code = _scan.code_only("app/novel_agent.py")
-        for marker in ('@task_tracker("chapter"', '@task_tracker("outline")',
-                       '@task_tracker("review"', '@task_tracker("characters")'):
+        for marker in (
+            '@task_tracker("chapter"',
+            '@task_tracker("outline")',
+            '@task_tracker("review"',
+            '@task_tracker("characters")',
+        ):
             assert marker in code
 
 
@@ -172,15 +180,13 @@ class TestTaskTrackerDecorator:
 
 class TestRecordAndSummary:
     def test_memory_only_without_novel_dir(self, tracker):
-        record = tracker.record(provider="deepseek", model="deepseek-v4-flash",
-                                prompt_tokens=100, completion_tokens=50)
+        record = tracker.record(provider="deepseek", model="deepseek-v4-flash", prompt_tokens=100, completion_tokens=50)
         assert record["total_tokens"] == 150
         assert tracker.summary()["totals"]["calls"] == 1
 
     def test_writes_jsonl_and_summary(self, tracker, tmp_path):
         tracker.set_novel_dir(tmp_path)
-        tracker.record(provider="deepseek", model="deepseek-v4-flash",
-                       prompt_tokens=1000, completion_tokens=500)
+        tracker.record(provider="deepseek", model="deepseek-v4-flash", prompt_tokens=1000, completion_tokens=500)
 
         detail = tmp_path / "usage" / "usage.jsonl"
         summary = tmp_path / "usage" / "summary.json"
@@ -199,16 +205,14 @@ class TestRecordAndSummary:
     def test_jsonl_is_append_only(self, tracker, tmp_path):
         tracker.set_novel_dir(tmp_path)
         for i in range(3):
-            tracker.record(provider="glm", model="glm-5.3",
-                           prompt_tokens=10, completion_tokens=i)
+            tracker.record(provider="glm", model="glm-5.3", prompt_tokens=10, completion_tokens=i)
         detail = tmp_path / "usage" / "usage.jsonl"
         assert len(detail.read_text(encoding="utf-8").strip().splitlines()) == 3
 
     def test_attribution_from_context(self, tracker, tmp_path):
         tracker.set_novel_dir(tmp_path)
         with usage_context(chapter=42, task="chapter"):
-            record = tracker.record(provider="glm", model="glm-5.3",
-                                    prompt_tokens=10, completion_tokens=5)
+            record = tracker.record(provider="glm", model="glm-5.3", prompt_tokens=10, completion_tokens=5)
         assert record["chapter"] == 42
         assert record["task"] == "chapter"
         assert tracker.chapter_rows()[0]["chapter"] == 42
@@ -222,11 +226,9 @@ class TestRecordAndSummary:
     def test_groupings(self, tracker, tmp_path):
         tracker.set_novel_dir(tmp_path)
         with usage_context(chapter=1, task="chapter"):
-            tracker.record(provider="deepseek", model="deepseek-v4-flash",
-                           prompt_tokens=100, completion_tokens=50)
+            tracker.record(provider="deepseek", model="deepseek-v4-flash", prompt_tokens=100, completion_tokens=50)
         with usage_context(chapter=2, task="outline"):
-            tracker.record(provider="glm", model="glm-5.3",
-                           prompt_tokens=200, completion_tokens=100)
+            tracker.record(provider="glm", model="glm-5.3", prompt_tokens=200, completion_tokens=100)
 
         summary = tracker.summary()
         assert set(summary["by_chapter"]) == {"1", "2"}
@@ -237,8 +239,7 @@ class TestRecordAndSummary:
     def test_chapter_tokens_map(self, tracker, tmp_path):
         tracker.set_novel_dir(tmp_path)
         with usage_context(chapter=3):
-            tracker.record(provider="glm", model="glm-5.3",
-                           prompt_tokens=10, completion_tokens=20)
+            tracker.record(provider="glm", model="glm-5.3", prompt_tokens=10, completion_tokens=20)
         assert tracker.chapter_tokens() == {3: 30}
 
     def test_chapter_rows_sorted_numerically(self, tracker, tmp_path):
@@ -250,10 +251,8 @@ class TestRecordAndSummary:
 
     def test_estimated_calls_counted(self, tracker, tmp_path):
         tracker.set_novel_dir(tmp_path)
-        tracker.record(provider="glm", model="glm-5.3", prompt_tokens=10,
-                       completion_tokens=5, estimated=True)
-        tracker.record(provider="glm", model="glm-5.3", prompt_tokens=10,
-                       completion_tokens=5)
+        tracker.record(provider="glm", model="glm-5.3", prompt_tokens=10, completion_tokens=5, estimated=True)
+        tracker.record(provider="glm", model="glm-5.3", prompt_tokens=10, completion_tokens=5)
         assert tracker.summary()["totals"]["estimated_calls"] == 1
 
     def test_errors_counted(self, tracker, tmp_path):
@@ -272,8 +271,7 @@ class TestPersistence:
     def test_survives_restart_by_rebuild_from_detail(self, tracker, tmp_path):
         """summary.json 丢失时**必须**能从 usage.jsonl 重建，而不是显示空聚合。"""
         tracker.set_novel_dir(tmp_path)
-        tracker.record(provider="deepseek", model="deepseek-v4-flash",
-                       prompt_tokens=100, completion_tokens=100)
+        tracker.record(provider="deepseek", model="deepseek-v4-flash", prompt_tokens=100, completion_tokens=100)
         (tmp_path / "usage" / "summary.json").unlink()
 
         fresh = UsageTracker()
@@ -330,8 +328,7 @@ class TestPersistence:
 
     def test_export_csv(self, tracker, tmp_path):
         tracker.set_novel_dir(tmp_path)
-        tracker.record(provider="glm", model="glm-5.3", prompt_tokens=10,
-                       completion_tokens=5)
+        tracker.record(provider="glm", model="glm-5.3", prompt_tokens=10, completion_tokens=5)
         out = tracker.export_csv(tmp_path / "out" / "usage.csv")
         text = out.read_text(encoding="utf-8-sig")
         assert "prompt_tokens" in text.splitlines()[0]
@@ -342,39 +339,35 @@ class TestCosts:
     def test_currency_separation(self, tracker, tmp_path):
         """CNY 与 USD 绝不相加（§9.9 第 3 条）。"""
         tracker.set_novel_dir(tmp_path)
-        tracker.record(provider="deepseek", model="deepseek-v4-flash",
-                       prompt_tokens=1_000_000, completion_tokens=0)
-        tracker.record(provider="groq", model="openai/gpt-oss-120b",
-                       prompt_tokens=1_000_000, completion_tokens=0)
+        tracker.record(provider="deepseek", model="deepseek-v4-flash", prompt_tokens=1_000_000, completion_tokens=0)
+        tracker.record(provider="groq", model="openai/gpt-oss-120b", prompt_tokens=1_000_000, completion_tokens=0)
         costs = tracker.summary()["totals"]["costs"]
         assert set(costs) == {"CNY", "USD"}
 
     def test_known_price_produces_cost(self, tracker, tmp_path):
         tracker.set_novel_dir(tmp_path)
-        record = tracker.record(provider="deepseek", model="deepseek-v4-flash",
-                                prompt_tokens=1_000_000, completion_tokens=0)
+        record = tracker.record(
+            provider="deepseek", model="deepseek-v4-flash", prompt_tokens=1_000_000, completion_tokens=0
+        )
         assert record["cost_currency"] == "CNY"
         assert record["cost"] == pytest.approx(1.0)
 
     def test_unknown_model_is_zero_and_unpriced(self, tracker, tmp_path):
         """未定价必须留下 `cost_currency=""` 的空标记，UI 才不会显示成 ¥0。"""
         tracker.set_novel_dir(tmp_path)
-        record = tracker.record(provider="nope", model="whatever",
-                                prompt_tokens=1000, completion_tokens=1000)
+        record = tracker.record(provider="nope", model="whatever", prompt_tokens=1000, completion_tokens=1000)
         assert record["cost"] == 0.0
         assert record["cost_currency"] == ""
         assert record["cost_reliable"] is False
 
     def test_estimated_usage_marks_cost_unreliable(self, tracker, tmp_path):
         tracker.set_novel_dir(tmp_path)
-        record = tracker.record(provider="deepseek", model="deepseek-v4-flash",
-                                prompt_tokens=1000, estimated=True)
+        record = tracker.record(provider="deepseek", model="deepseek-v4-flash", prompt_tokens=1000, estimated=True)
         assert record["cost_reliable"] is False
 
     def test_free_local_model_is_zero_but_priced(self, tracker, tmp_path):
         tracker.set_novel_dir(tmp_path)
-        record = tracker.record(provider="ollama", model="qwen2.5:14b",
-                                prompt_tokens=1000, completion_tokens=1000)
+        record = tracker.record(provider="ollama", model="qwen2.5:14b", prompt_tokens=1000, completion_tokens=1000)
         assert record["cost"] == 0.0
         assert record["cost_currency"] == "CNY"
 

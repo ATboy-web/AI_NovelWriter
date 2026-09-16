@@ -1,4 +1,5 @@
 """章节分析面板混入"""
+
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
@@ -14,67 +15,136 @@ class ChapterAnalysisPanelMixin:
         C = UIStyle.COLORS
         f = self.tool_content_frame
 
-        tk.Label(f, text="章节文件分析 - 浏览章节并推荐适用工具", font=("", 11, "bold"),
-                bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=5)
+        tk.Label(
+            f,
+            text="章节文件分析 - 浏览章节并推荐适用工具",
+            font=("", 11, "bold"),
+            bg=C["bg_dark"],
+            fg=C["text_primary"],
+        ).pack(anchor=tk.W, pady=5)
 
         if not self.current_novel_dir:
-            tk.Label(f, text="请先新建或打开小说", font=("", 10),
-                    bg=C['bg_dark'], fg=C['text_muted']).pack(pady=20)
+            tk.Label(f, text="请先新建或打开小说", font=("", 10), bg=C["bg_dark"], fg=C["text_muted"]).pack(pady=20)
             return
 
-
         # 章节文件列表
-        list_frame = tk.Frame(f, bg=C['bg_dark'])
+        list_frame = tk.Frame(f, bg=C["bg_dark"])
         list_frame.pack(fill=tk.X, pady=5)
 
-        tk.Label(list_frame, text="章节文件:", font=('微软雅黑', 9, 'bold'),
-                bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W)
+        tk.Label(
+            list_frame, text="章节文件:", font=("微软雅黑", 9, "bold"), bg=C["bg_dark"], fg=C["accent_light"]
+        ).pack(anchor=tk.W)
 
-        self.ch_file_listbox = tk.Listbox(list_frame, bg=C['bg_card'], fg=C['text_secondary'],
-                                          font=('微软雅黑', 9), height=8,
-                                          selectbackground=C['accent'], relief=tk.FLAT)
+        self.ch_file_listbox = tk.Listbox(
+            list_frame,
+            bg=C["bg_card"],
+            fg=C["text_secondary"],
+            font=("微软雅黑", 9),
+            height=8,
+            selectbackground=C["accent"],
+            relief=tk.FLAT,
+        )
         self.ch_file_listbox.pack(fill=tk.X, pady=3)
-        self.ch_file_listbox.bind('<<ListboxSelect>>', self._on_chapter_file_select)
+        self.ch_file_listbox.bind("<<ListboxSelect>>", self._on_chapter_file_select)
 
         # 刷新章节列表
         self._refresh_chapter_files()
 
         # 章节内容预览
-        tk.Label(f, text="章节内容预览:", font=('微软雅黑', 9, 'bold'),
-                bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W, pady=(10, 3))
+        tk.Label(f, text="章节内容预览:", font=("微软雅黑", 9, "bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
+            anchor=tk.W, pady=(10, 3)
+        )
 
-        self.ch_preview = tk.Text(f, height=6, wrap=tk.WORD, font=('微软雅黑', 9),
-                                 bg=C['bg_card'], fg=C['text_primary'],
-                                 relief=tk.FLAT, padx=10, pady=10, state=tk.DISABLED)
+        self.ch_preview = tk.Text(
+            f,
+            height=6,
+            wrap=tk.WORD,
+            font=("微软雅黑", 9),
+            bg=C["bg_card"],
+            fg=C["text_primary"],
+            relief=tk.FLAT,
+            padx=10,
+            pady=10,
+            state=tk.DISABLED,
+        )
         self.ch_preview.pack(fill=tk.X, pady=3)
 
         # 智能推荐区
-        tk.Label(f, text="智能推荐 - 本章适用的创作工具:", font=('微软雅黑', 9, 'bold'),
-                bg=C['bg_dark'], fg=C['accent_light']).pack(anchor=tk.W, pady=(10, 3))
+        tk.Label(
+            f,
+            text="智能推荐 - 本章适用的创作工具:",
+            font=("微软雅黑", 9, "bold"),
+            bg=C["bg_dark"],
+            fg=C["accent_light"],
+        ).pack(anchor=tk.W, pady=(10, 3))
 
-        self.ch_recommend = tk.Text(f, height=10, wrap=tk.WORD, font=('微软雅黑', 9),
-                                   bg=C['bg_card'], fg=C['text_primary'],
-                                   relief=tk.FLAT, padx=10, pady=10, state=tk.DISABLED)
+        self.ch_recommend = tk.Text(
+            f,
+            height=10,
+            wrap=tk.WORD,
+            font=("微软雅黑", 9),
+            bg=C["bg_card"],
+            fg=C["text_primary"],
+            relief=tk.FLAT,
+            padx=10,
+            pady=10,
+            state=tk.DISABLED,
+        )
         self.ch_recommend.pack(fill=tk.BOTH, expand=True, pady=3)
 
         # 操作按钮
-        btn_frame = tk.Frame(f, bg=C['bg_dark'])
+        btn_frame = tk.Frame(f, bg=C["bg_dark"])
         btn_frame.pack(fill=tk.X, pady=5)
-        tk.Button(btn_frame, text="刷新列表", font=('微软雅黑', 9),
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=10,
-                 command=self._refresh_chapter_files).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="导入章节文件", font=('微软雅黑', 9),
-                 bg=C['warning'], fg='white', relief=tk.FLAT, padx=10,
-                 command=self._import_chapter_files).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="选择文件夹", font=('微软雅黑', 9),
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT, padx=10,
-                 command=self._browse_chapter_folder).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="分析当前章节", font=('微软雅黑', 9),
-                 bg=C['accent'], fg='white', relief=tk.FLAT, padx=10,
-                 command=self._analyze_current_chapter).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="加载到编辑区", font=('微软雅黑', 9),
-                 bg=C['success'], fg='white', relief=tk.FLAT, padx=10,
-                 command=self._load_chapter_to_editor).pack(side=tk.RIGHT, padx=5)
+        tk.Button(
+            btn_frame,
+            text="刷新列表",
+            font=("微软雅黑", 9),
+            bg=C["bg_light"],
+            fg=C["text_primary"],
+            relief=tk.FLAT,
+            padx=10,
+            command=self._refresh_chapter_files,
+        ).pack(side=tk.LEFT, padx=5)
+        tk.Button(
+            btn_frame,
+            text="导入章节文件",
+            font=("微软雅黑", 9),
+            bg=C["warning"],
+            fg="white",
+            relief=tk.FLAT,
+            padx=10,
+            command=self._import_chapter_files,
+        ).pack(side=tk.LEFT, padx=5)
+        tk.Button(
+            btn_frame,
+            text="选择文件夹",
+            font=("微软雅黑", 9),
+            bg=C["bg_light"],
+            fg=C["text_primary"],
+            relief=tk.FLAT,
+            padx=10,
+            command=self._browse_chapter_folder,
+        ).pack(side=tk.LEFT, padx=5)
+        tk.Button(
+            btn_frame,
+            text="分析当前章节",
+            font=("微软雅黑", 9),
+            bg=C["accent"],
+            fg="white",
+            relief=tk.FLAT,
+            padx=10,
+            command=self._analyze_current_chapter,
+        ).pack(side=tk.LEFT, padx=5)
+        tk.Button(
+            btn_frame,
+            text="加载到编辑区",
+            font=("微软雅黑", 9),
+            bg=C["success"],
+            fg="white",
+            relief=tk.FLAT,
+            padx=10,
+            command=self._load_chapter_to_editor,
+        ).pack(side=tk.RIGHT, padx=5)
 
     def _refresh_chapter_files(self):
         """刷新章节文件列表"""
@@ -100,12 +170,7 @@ class ChapterAnalysisPanelMixin:
             return
 
         file_paths = filedialog.askopenfilenames(
-            title="选择章节文件",
-            filetypes=[
-                ("文本文件", "*.txt"),
-                ("Markdown文件", "*.md"),
-                ("所有文件", "*.*")
-            ]
+            title="选择章节文件", filetypes=[("文本文件", "*.txt"), ("Markdown文件", "*.md"), ("所有文件", "*.*")]
         )
 
         if not file_paths:
@@ -123,11 +188,11 @@ class ChapterAnalysisPanelMixin:
             src_path = Path(src)
             # 读取源文件
             try:
-                with open(src_path, 'r', encoding='utf-8') as f:
+                with open(src_path, "r", encoding="utf-8") as f:
                     content = f.read()
             except UnicodeDecodeError:
                 try:
-                    with open(src_path, 'r', encoding='gbk') as f:
+                    with open(src_path, "r", encoding="gbk") as f:
                         content = f.read()
                 except (OSError, UnicodeDecodeError):
                     self._log(f"无法读取文件: {src_path.name}")
@@ -135,7 +200,7 @@ class ChapterAnalysisPanelMixin:
 
             # 保存到章节目录
             dest = chapters_dir / f"chapter_{next_num:04d}.txt"
-            with open(dest, 'w', encoding='utf-8') as f:
+            with open(dest, "w", encoding="utf-8") as f:
                 f.write(content)
 
             next_num += 1
@@ -156,7 +221,7 @@ class ChapterAnalysisPanelMixin:
 
         # 扫描文件夹中的文本文件
         text_files = []
-        for ext in ['*.txt', '*.md']:
+        for ext in ["*.txt", "*.md"]:
             text_files.extend(folder.glob(ext))
 
         if not text_files:
@@ -173,11 +238,10 @@ class ChapterAnalysisPanelMixin:
         dialog.transient(self.root)
         dialog.grab_set()
 
-        tk.Label(dialog, text=f"找到 {len(text_files)} 个文本文件:",
-                font=('微软雅黑', 10, 'bold')).pack(pady=10)
+        tk.Label(dialog, text=f"找到 {len(text_files)} 个文本文件:", font=("微软雅黑", 10, "bold")).pack(pady=10)
 
         # 文件列表（可多选）
-        listbox = tk.Listbox(dialog, selectmode=tk.MULTIPLE, font=('微软雅黑', 9))
+        listbox = tk.Listbox(dialog, selectmode=tk.MULTIPLE, font=("微软雅黑", 9))
         listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         for f in text_files:
@@ -205,17 +269,17 @@ class ChapterAnalysisPanelMixin:
             for idx in selected:
                 src_path = text_files[idx]
                 try:
-                    with open(src_path, 'r', encoding='utf-8') as f:
+                    with open(src_path, "r", encoding="utf-8") as f:
                         content = f.read()
                 except UnicodeDecodeError:
                     try:
-                        with open(src_path, 'r', encoding='gbk') as f:
+                        with open(src_path, "r", encoding="gbk") as f:
                             content = f.read()
                     except Exception:
                         continue
 
                 dest = chapters_dir / f"chapter_{next_num:04d}.txt"
-                with open(dest, 'w', encoding='utf-8') as f:
+                with open(dest, "w", encoding="utf-8") as f:
                     f.write(content)
 
                 next_num += 1
@@ -229,7 +293,9 @@ class ChapterAnalysisPanelMixin:
         btn_frame = tk.Frame(dialog)
         btn_frame.pack(pady=10)
         tk.Button(btn_frame, text="全选", command=lambda: listbox.select_set(0, tk.END)).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="导入选中", command=import_selected, bg='#10b981', fg='white').pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="导入选中", command=import_selected, bg="#10b981", fg="white").pack(
+            side=tk.LEFT, padx=5
+        )
         tk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     def _on_chapter_file_select(self, event=None):
@@ -245,7 +311,7 @@ class ChapterAnalysisPanelMixin:
         if idx < len(chapter_files):
             filepath = chapter_files[idx]
             try:
-                with open(filepath, 'r', encoding='utf-8') as f:
+                with open(filepath, "r", encoding="utf-8") as f:
                     content = f.read()
 
                 # 显示预览（前500字）
@@ -297,7 +363,7 @@ class ChapterAnalysisPanelMixin:
             recommendations.append("【桥段库 → 角色登场/退场】检测到角色出场或离场，可使用对应桥段模板。")
 
         # 对话检测
-        dialogue_count = content.count('"') + content.count('"') + content.count('「') + content.count('」')
+        dialogue_count = content.count('"') + content.count('"') + content.count("「") + content.count("」")
         if dialogue_count >= 10:
             recommendations.append("【对话推演】本章对话较多，可使用「情景对话推演」继续扩展对话。")
 
@@ -305,7 +371,9 @@ class ChapterAnalysisPanelMixin:
         scene_keywords = ["山", "水", "城", "宫", "殿", "天空", "大地", "森林", "海洋", "星空"]
         scene_count = sum(1 for kw in scene_keywords if kw in content)
         if scene_count >= 3:
-            recommendations.append("【描写库 → 自然景观/建筑描写】检测到场景描写，可使用「自然景观」或「建筑描写」增强氛围。")
+            recommendations.append(
+                "【描写库 → 自然景观/建筑描写】检测到场景描写，可使用「自然景观」或「建筑描写」增强氛围。"
+            )
 
         # 角色外貌检测
         appearance_keywords = ["容貌", "美貌", "英俊", "潇洒", "绝美", "倾城", "飘逸", "冷峻"]
@@ -322,9 +390,13 @@ class ChapterAnalysisPanelMixin:
         # 风格建议
         word_count = len(content)
         if word_count < 1500:
-            recommendations.append("【风格转换】本章较短（{0}字），可使用「AI扩写」或「风格转换」丰富内容。".format(word_count))
+            recommendations.append(
+                "【风格转换】本章较短（{0}字），可使用「AI扩写」或「风格转换」丰富内容。".format(word_count)
+            )
         elif word_count > 5000:
-            recommendations.append("【智能改编】本章较长（{0}字），可使用「AI简写」精简或「智能改编」优化节奏。".format(word_count))
+            recommendations.append(
+                "【智能改编】本章较长（{0}字），可使用「AI简写」精简或「智能改编」优化节奏。".format(word_count)
+            )
 
         # 热点改编建议
         if "搞笑" in content or "幽默" in content or "哈哈" in content:
@@ -366,7 +438,7 @@ class ChapterAnalysisPanelMixin:
         if idx < len(chapter_files):
             filepath = chapter_files[idx]
             try:
-                with open(filepath, 'r', encoding='utf-8') as f:
+                with open(filepath, "r", encoding="utf-8") as f:
                     content = f.read()
 
                 self.content_text.delete("1.0", tk.END)

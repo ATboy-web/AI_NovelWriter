@@ -41,7 +41,7 @@ def sample_novel_data():
         "concept": "一个关于AI的故事",
         "protagonist": "张三",
         "total_chapters": 10,
-        "word_count_per_chapter": 3000
+        "word_count_per_chapter": 3000,
     }
 
 
@@ -52,7 +52,7 @@ def sample_chapter():
         "chapter_num": 1,
         "title": "第一章：觉醒",
         "content": "张三睁开眼睛，发现自己躺在一个陌生的房间里。" * 10,
-        "summary": "张三在一个陌生房间醒来"
+        "summary": "张三在一个陌生房间醒来",
     }
 
 
@@ -60,20 +60,8 @@ def sample_chapter():
 def sample_characters():
     """示例角色数据"""
     return {
-        "张三": {
-            "name": "张三",
-            "role": "主角",
-            "age": 25,
-            "personality": "勇敢、聪明",
-            "background": "普通大学生"
-        },
-        "李四": {
-            "name": "李四",
-            "role": "配角",
-            "age": 30,
-            "personality": "稳重、可靠",
-            "background": "资深研究员"
-        }
+        "张三": {"name": "张三", "role": "主角", "age": 25, "personality": "勇敢、聪明", "background": "普通大学生"},
+        "李四": {"name": "李四", "role": "配角", "age": 30, "personality": "稳重、可靠", "background": "资深研究员"},
     }
 
 

@@ -18,7 +18,7 @@ def create_mock_agent():
     agent.ai = MagicMock()
     agent.memory = MagicMock()
     agent.log = lambda msg: None
-    agent._log_lock = __import__('threading').Lock()
+    agent._log_lock = __import__("threading").Lock()
     agent._conversation_log = []
     agent._revision_memory = []
     agent.tools = MagicMock()
@@ -106,10 +106,12 @@ class TestGenerateChapter:
     def test_with_repetition_retry(self):
         agent = create_mock_agent()
         agent.generate_with_collaboration = MagicMock(return_value="章节内容")
-        agent._has_excessive_repetition = MagicMock(side_effect=[
-            (True, 500),  # First call: has repetition
-            (False, 1000)  # Second call: no repetition
-        ])
+        agent._has_excessive_repetition = MagicMock(
+            side_effect=[
+                (True, 500),  # First call: has repetition
+                (False, 1000),  # Second call: no repetition
+            ]
+        )
         agent.ai.chat.return_value = "修订后的内容"
 
         result = agent.generate_chapter(1, "标题", "大纲", 1000)
@@ -190,7 +192,7 @@ class TestGenerateCharacters:
         agent.memory.save_characters = MagicMock()
         agent.memory.novel_dir = Path("/tmp/test")
 
-        with patch('pathlib.Path.mkdir'):
+        with patch("pathlib.Path.mkdir"):
             result = agent.generate_characters("玄幻", "测试小说", 2)
             assert isinstance(result, dict)
 
@@ -202,7 +204,7 @@ class TestGenerateCharacters:
         agent.memory.save_characters = MagicMock()
         agent.memory.novel_dir = Path("/tmp/test")
 
-        with patch('pathlib.Path.mkdir'):
+        with patch("pathlib.Path.mkdir"):
             result = agent.generate_characters("玄幻", "测试小说", 2)
             assert isinstance(result, dict)
 
@@ -256,17 +258,13 @@ class TestWorldBuilderBuildExtended:
 
     def test_with_multiple_regions(self):
         agent = create_mock_agent()
-        agent.memory.get_settings.return_value = {
-            "world": {"已知区域": ["区域1", "区域2", "区域3", "区域4", "区域5"]}
-        }
+        agent.memory.get_settings.return_value = {"world": {"已知区域": ["区域1", "区域2", "区域3", "区域4", "区域5"]}}
         result = agent._world_builder_build(1, {"type": "writing"})
         assert "区域1" in result
 
     def test_with_empty_regions(self):
         agent = create_mock_agent()
-        agent.memory.get_settings.return_value = {
-            "world": {"已知区域": []}
-        }
+        agent.memory.get_settings.return_value = {"world": {"已知区域": []}}
         result = agent._world_builder_build(1, {"type": "writing"})
         assert result == ""
 

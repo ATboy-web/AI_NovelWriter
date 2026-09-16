@@ -20,7 +20,7 @@ _lock = threading.Lock()
 
 class DiagnosticLogger:
     """结构化诊断日志记录器
-    
+
     输出格式: 每行一个 JSON 对象（JSON Lines）
     记录内容: 完整请求/响应、错误栈、函数调用链、性能计时、系统状态
     """
@@ -38,12 +38,16 @@ class DiagnosticLogger:
         self._session_id = self._generate_session_id()
 
         # 启动日志
-        self.log("SYSTEM", "startup", {
-            "python_version": sys.version,
-            "platform": sys.platform,
-            "pid": os.getpid(),
-            "session_id": self._session_id
-        })
+        self.log(
+            "SYSTEM",
+            "startup",
+            {
+                "python_version": sys.version,
+                "platform": sys.platform,
+                "pid": os.getpid(),
+                "session_id": self._session_id,
+            },
+        )
 
     def _generate_session_id(self) -> str:
         return datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + str(os.getpid())
@@ -57,7 +61,7 @@ class DiagnosticLogger:
         if base.exists() and base.stat().st_size > self.MAX_FILE_SIZE:
             for i in range(self.MAX_BACKUP_FILES - 1, 0, -1):
                 old = self.log_dir / f"diagnostic-{today}.{i}.jsonl"
-                new = self.log_dir / f"diagnostic-{today}.{i+1}.jsonl"
+                new = self.log_dir / f"diagnostic-{today}.{i + 1}.jsonl"
                 if old.exists():
                     if new.exists():
                         new.unlink()
@@ -67,10 +71,11 @@ class DiagnosticLogger:
 
         return base
 
-    def log(self, category: str, event: str, data: Dict[str, Any] = None,
-            error: Exception = None, duration_ms: float = None):
+    def log(
+        self, category: str, event: str, data: Dict[str, Any] = None, error: Exception = None, duration_ms: float = None
+    ):
         """记录一条诊断日志
-        
+
         Args:
             category: 类别 (API_CALL, FUNC_ENTRY, FUNC_EXIT, ERROR, SYSTEM, CHAPTER)
             event: 事件名称
@@ -98,7 +103,7 @@ class DiagnosticLogger:
                 entry["error"] = {
                     "type": type(error).__name__,
                     "message": str(error)[:500],
-                    "traceback": traceback.format_exc()[-2000:]  # 最后2000字符（核心栈）
+                    "traceback": traceback.format_exc()[-2000:],  # 最后2000字符（核心栈）
                 }
 
             if duration_ms is not None:
@@ -109,8 +114,8 @@ class DiagnosticLogger:
                 if self._current_file.exists() and self._current_file.stat().st_size > self.MAX_FILE_SIZE:
                     self._current_file = self._get_log_file()
 
-                with open(self._current_file, 'a', encoding='utf-8') as f:
-                    f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+                with open(self._current_file, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
                     f.flush()
             except Exception:
                 pass  # 日志写入失败不能影响主流程
@@ -136,9 +141,15 @@ class DiagnosticLogger:
 
     # ── 便捷方法 ─────────────────────────────────────
 
-    def api_call(self, provider: str, endpoint: str, request_data: dict,
-                 response_data: dict = None, error: Exception = None,
-                 duration_ms: float = None):
+    def api_call(
+        self,
+        provider: str,
+        endpoint: str,
+        request_data: dict,
+        response_data: dict = None,
+        error: Exception = None,
+        duration_ms: float = None,
+    ):
         """记录 AI API 调用"""
         # 兼容两种response_data格式
         resp_info = None
@@ -149,8 +160,11 @@ class DiagnosticLogger:
                     "status": "success",
                     "choices_count": len(response_data.get("choices", [])),
                     "usage": response_data.get("usage", {}),
-                    "content_preview": str(response_data.get("choices", [{}])[0].get("message", {}).get("content", ""))[:300]
-                        if response_data.get("choices") else "",
+                    "content_preview": str(response_data.get("choices", [{}])[0].get("message", {}).get("content", ""))[
+                        :300
+                    ]
+                    if response_data.get("choices")
+                    else "",
                 }
             else:
                 # 简化格式 (from ai_client.py)
@@ -160,16 +174,24 @@ class DiagnosticLogger:
                     "content_preview": str(response_data.get("content_preview", ""))[:300],
                 }
 
-        self.log("API_CALL", f"{provider}::{endpoint}", {
-            "provider": provider,
-            "endpoint": endpoint,
-            "request": {
-                "model": request_data.get("model", "unknown"),
-                "messages_count": len(request_data.get("messages", [])) if "messages" in request_data else request_data.get("messages_count", 0),
-                "max_tokens": request_data.get("max_tokens", 0),
+        self.log(
+            "API_CALL",
+            f"{provider}::{endpoint}",
+            {
+                "provider": provider,
+                "endpoint": endpoint,
+                "request": {
+                    "model": request_data.get("model", "unknown"),
+                    "messages_count": len(request_data.get("messages", []))
+                    if "messages" in request_data
+                    else request_data.get("messages_count", 0),
+                    "max_tokens": request_data.get("max_tokens", 0),
+                },
+                "response": resp_info,
             },
-            "response": resp_info,
-        }, error=error, duration_ms=duration_ms)
+            error=error,
+            duration_ms=duration_ms,
+        )
 
     def func_entry(self, func_name: str, params: dict = None):
         """记录函数入口"""
@@ -186,30 +208,28 @@ class DiagnosticLogger:
 
     def func_exit(self, func_name: str, result_summary: str = None, duration_ms: float = None):
         """记录函数退出"""
-        self.log("FUNC_EXIT", func_name,
-                 {"result": result_summary} if result_summary else {},
-                 duration_ms=duration_ms)
+        self.log("FUNC_EXIT", func_name, {"result": result_summary} if result_summary else {}, duration_ms=duration_ms)
 
     def chapter_event(self, chapter_num: int, event: str, data: dict = None):
         """记录章节相关事件"""
-        self.log("CHAPTER", f"ch{chapter_num:04d}/{event}",
-                 {"chapter": chapter_num, **(data or {})})
+        self.log("CHAPTER", f"ch{chapter_num:04d}/{event}", {"chapter": chapter_num, **(data or {})})
 
     def character_event(self, char_name: str, event: str, data: dict = None):
         """记录角色相关事件"""
-        self.log("CHARACTER", f"{char_name}/{event}",
-                 {"character": char_name, **(data or {})})
+        self.log("CHARACTER", f"{char_name}/{event}", {"character": char_name, **(data or {})})
 
     def memory_event(self, event: str, data: dict = None):
         """记录记忆系统事件"""
         self.log("MEMORY", event, data or {})
 
-    def generation_event(self, genre: str, chapter_num: int, event: str,
-                         data: dict = None, duration_ms: float = None):
+    def generation_event(self, genre: str, chapter_num: int, event: str, data: dict = None, duration_ms: float = None):
         """记录生成事件"""
-        self.log("GENERATION", f"{genre}/ch{chapter_num:04d}/{event}",
-                 {"genre": genre, "chapter": chapter_num, **(data or {})},
-                 duration_ms=duration_ms)
+        self.log(
+            "GENERATION",
+            f"{genre}/ch{chapter_num:04d}/{event}",
+            {"genre": genre, "chapter": chapter_num, **(data or {})},
+            duration_ms=duration_ms,
+        )
 
     # ── 导出 ─────────────────────────────────────────
 
@@ -218,7 +238,7 @@ class DiagnosticLogger:
         try:
             # 用Python原生方式读取最后N行（跨平台兼容）
             lines = []
-            with open(self._current_file, 'r', encoding='utf-8') as f:
+            with open(self._current_file, "r", encoding="utf-8") as f:
                 for line in f:
                     lines.append(line.strip())
             lines = lines[-count:]  # 取最后count行
@@ -251,9 +271,9 @@ class DiagnosticLogger:
                 report.append(f"\n❌ [{ts}] {cat}/{evt}")
                 if entry.get("error"):
                     report.append(f"   错误: {entry['error'].get('message', '')}")
-                    tb = entry['error'].get('traceback', '')
+                    tb = entry["error"].get("traceback", "")
                     if tb:
-                        for line in tb.split('\n')[-5:]:  # 最后5行关键栈
+                        for line in tb.split("\n")[-5:]:  # 最后5行关键栈
                             if line.strip():
                                 report.append(f"   {line.strip()}")
             elif cat == "API_CALL":
@@ -274,7 +294,7 @@ class DiagnosticLogger:
         report.append(f"统计: {len(lines)}条日志 | {api_count}次API | {error_count}个错误")
         report.append("═" * 60)
 
-        return '\n'.join(report)
+        return "\n".join(report)
 
     def get_log_dir(self) -> Path:
         return self.log_dir
@@ -291,9 +311,11 @@ def get_logger(log_dir: Path = None) -> DiagnosticLogger:
 
 # ── 装饰器 ──────────────────────────────────────────
 
+
 def trace_api(func):
     """装饰器: 自动记录 API 调用"""
     import functools
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         logger = get_logger()
@@ -301,7 +323,7 @@ def trace_api(func):
 
         # 从 self 提取信息
         provider = "unknown"
-        if args and hasattr(args[0], '__class__'):
+        if args and hasattr(args[0], "__class__"):
             provider = args[0].__class__.__name__
 
         t0 = time.time()
@@ -314,7 +336,7 @@ def trace_api(func):
                 endpoint=func_name,
                 request_data={"kwargs": {k: str(v)[:200] for k, v in kwargs.items()}},
                 response_data={"result_type": type(result).__name__, "result_len": len(str(result)) if result else 0},
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
             )
             return result
         except Exception as e:
@@ -324,7 +346,8 @@ def trace_api(func):
                 endpoint=func_name,
                 request_data={"kwargs": {k: str(v)[:200] for k, v in kwargs.items()}},
                 error=e,
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
             )
             raise
+
     return wrapper

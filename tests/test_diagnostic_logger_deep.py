@@ -55,7 +55,7 @@ class TestDiagnosticLoggerDeep:
 
     def test_session_id_format(self, tmp_path):
         logger = DiagnosticLogger(log_dir=tmp_path / "logs")
-        parts = logger._session_id.split('-')
+        parts = logger._session_id.split("-")
         assert len(parts) >= 3
 
     def test_log_json_lines_format(self, tmp_path):
@@ -64,7 +64,7 @@ class TestDiagnosticLoggerDeep:
         logger.log("TEST", "event2", {"b": 2})
 
         log_files = list((tmp_path / "logs").glob("*.jsonl"))
-        lines = log_files[0].read_text(encoding="utf-8").strip().split('\n')
+        lines = log_files[0].read_text(encoding="utf-8").strip().split("\n")
 
         for line in lines:
             data = json.loads(line)
@@ -75,7 +75,7 @@ class TestDiagnosticLoggerDeep:
         logger.log("TEST", "test_event", {"key": "value"})
 
         log_files = list((tmp_path / "logs").glob("*.jsonl"))
-        lines = log_files[0].read_text(encoding="utf-8").strip().split('\n')
+        lines = log_files[0].read_text(encoding="utf-8").strip().split("\n")
 
         data = json.loads(lines[-1])
         assert "timestamp" in data or "ts" in data or "time" in data
@@ -90,6 +90,7 @@ class TestDiagnosticLoggerDeep:
 
     def test_thread_safety(self, tmp_path):
         import threading
+
         logger = DiagnosticLogger(log_dir=tmp_path / "logs")
         initial = logger._sequence
 

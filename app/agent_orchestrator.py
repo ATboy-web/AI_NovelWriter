@@ -36,9 +36,7 @@ class AgentOrchestrator:
         futures = {}
 
         for task in tasks:
-            future = self._executor.submit(
-                self._execute_task, task
-            )
+            future = self._executor.submit(self._execute_task, task)
             futures[future] = task.get("name", "unknown")
 
         for future in as_completed(futures):
@@ -57,9 +55,7 @@ class AgentOrchestrator:
         system = task.get("system", "")
         prompt = task.get("prompt", "")
         return self.ai.chat(
-            [{"role": "user", "content": prompt}],
-            system=system,
-            max_tokens=task.get("max_tokens", 2048)
+            [{"role": "user", "content": prompt}], system=system, max_tokens=task.get("max_tokens", 2048)
         )
 
     def get_metrics(self) -> dict:
@@ -106,9 +102,9 @@ class ContextOptimizer:
         # 智能截断：尽量在段落边界截断
         truncated = text[:budget]
         # 尝试在最后一个段落边界截断
-        last_para = max(truncated.rfind('\n\n'), truncated.rfind('。'), truncated.rfind('！'), truncated.rfind('？'))
+        last_para = max(truncated.rfind("\n\n"), truncated.rfind("。"), truncated.rfind("！"), truncated.rfind("？"))
         if last_para > budget * 0.8:  # 如果找到的边界在80%之后，就用这个边界
-            truncated = truncated[:last_para + 1]
+            truncated = truncated[: last_para + 1]
         return truncated + "\n...(已压缩)"
 
 
@@ -116,8 +112,7 @@ class PromptOptimizer:
     """提示词优化器"""
 
     @classmethod
-    def optimize_prompt(cls, base_prompt: str, context: str,
-                       max_tokens: int = 4000) -> str:
+    def optimize_prompt(cls, base_prompt: str, context: str, max_tokens: int = 4000) -> str:
         """优化提示词 - 控制长度和结构
 
         v3 §3.5(3)：这里原来是 `len(x) // 2`（注释写"中文约 2 字符/token"）。

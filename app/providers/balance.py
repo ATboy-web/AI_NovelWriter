@@ -78,8 +78,15 @@ class BalanceProbe:
     """
 
     __slots__ = (
-        "key", "path", "currency_path", "total_path", "granted_path",
-        "topped_up_path", "configured", "source_url", "note",
+        "key",
+        "path",
+        "currency_path",
+        "total_path",
+        "granted_path",
+        "topped_up_path",
+        "configured",
+        "source_url",
+        "note",
     )
 
     def __init__(
@@ -155,8 +162,17 @@ class BalanceResult:
     """
 
     __slots__ = (
-        "provider", "supported", "currency", "total", "granted",
-        "topped_up", "fetched_at", "cached", "raw", "error", "message",
+        "provider",
+        "supported",
+        "currency",
+        "total",
+        "granted",
+        "topped_up",
+        "fetched_at",
+        "cached",
+        "raw",
+        "error",
+        "message",
     )
 
     def __init__(
@@ -198,8 +214,7 @@ class BalanceResult:
     @classmethod
     def failed(cls, provider: str, error: str) -> "BalanceResult":
         """查询本身失败（网络/鉴权/接口变更）—— 与"不支持"分开表达。"""
-        return cls(provider=provider, supported=True, error=error,
-                   message=f"余额查询失败：{error}")
+        return cls(provider=provider, supported=True, error=error, message=f"余额查询失败：{error}")
 
     # ------------------------------------------------------------ 展示
 
@@ -258,8 +273,7 @@ class BalanceCache:
     def _key(provider: str, base_url: str, forced_url: str = "") -> tuple:
         return (provider, base_url or "", forced_url or "")
 
-    def get(self, provider: str, base_url: str, forced_url: str = "",
-            now: float | None = None) -> BalanceResult | None:
+    def get(self, provider: str, base_url: str, forced_url: str = "", now: float | None = None) -> BalanceResult | None:
         entry = self._store.get(self._key(provider, base_url, forced_url))
         if not entry:
             return None
@@ -272,8 +286,9 @@ class BalanceCache:
         copy.cached = True
         return copy
 
-    def put(self, provider: str, base_url: str, result: BalanceResult,
-            forced_url: str = "", now: float | None = None) -> None:
+    def put(
+        self, provider: str, base_url: str, result: BalanceResult, forced_url: str = "", now: float | None = None
+    ) -> None:
         # 失败结果不缓存 —— 否则一次网络抖动会让用户 60s 内看到同一个错误
         if result.error or not result.supported:
             return
@@ -323,8 +338,9 @@ def probe_for(provider: str, override_url: str = "", override_paths: dict = None
         return probe, override_url
 
     if base is None:
-        return BalanceProbe(key=provider, configured=False,
-                            note=_NO_BALANCE_NOTE.get(provider, "该服务未提供余额接口")), ""
+        return BalanceProbe(
+            key=provider, configured=False, note=_NO_BALANCE_NOTE.get(provider, "该服务未提供余额接口")
+        ), ""
     return base, base.path
 
 
@@ -356,9 +372,7 @@ def fetch_balance(
     probe, probe_path = probe_for(provider, override_url, override_paths)
 
     if not probe.configured:
-        return BalanceResult.not_supported(
-            provider, probe.note or _NO_BALANCE_NOTE.get(provider, "")
-        )
+        return BalanceResult.not_supported(provider, probe.note or _NO_BALANCE_NOTE.get(provider, ""))
 
     if cache is not None:
         hit = cache.get(provider, effective_base, probe_path, now=now)
@@ -375,7 +389,7 @@ def fetch_balance(
 
     try:
         response = http_get(url, headers, getattr(spec, "timeout", 30.0))
-    except Exception as exc:                      # noqa: BLE001 - 需要把任何异常转成可展示状态
+    except Exception as exc:  # noqa: BLE001 - 需要把任何异常转成可展示状态
         return BalanceResult.failed(provider, f"{type(exc).__name__}: {exc}")
 
     status = getattr(response, "status_code", 0)
@@ -384,7 +398,7 @@ def fetch_balance(
 
     try:
         data = response.json()
-    except Exception as exc:                      # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         return BalanceResult.failed(provider, f"响应不是合法 JSON：{exc}")
 
     result = BalanceResult(

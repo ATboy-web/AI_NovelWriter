@@ -167,9 +167,7 @@ class TestGenericJson:
         store.write_json("outlines/created/later.json", {"x": 1})
         assert (store.novel_dir / "outlines" / "created" / "later.json").is_file()
 
-    @pytest.mark.parametrize(
-        "rel", ["characters.json", "memory/characters.json", "memory\\characters.json"]
-    )
+    @pytest.mark.parametrize("rel", ["characters.json", "memory/characters.json", "memory\\characters.json"])
     def test_characters_json_write_is_refused(self, store, rel):
         """⚠️ 硬护栏：角色数据必须走 mutate_characters 的三道闸门，不得绕过。"""
         with pytest.raises(ValueError, match="mutate_characters"):

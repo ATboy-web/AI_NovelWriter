@@ -159,12 +159,15 @@ class TestReadJsonWithBackup:
 
 
 class TestSafeFilename:
-    @pytest.mark.parametrize("raw,expected", [
-        ("林风", "林风"),
-        ('a<b>c:d"e/f\\g|h?i*j', "a_b_c_d_e_f_g_h_i_j"),
-        ("", "unnamed"),
-        ("   ", "unnamed"),
-    ])
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("林风", "林风"),
+            ('a<b>c:d"e/f\\g|h?i*j', "a_b_c_d_e_f_g_h_i_j"),
+            ("", "unnamed"),
+            ("   ", "unnamed"),
+        ],
+    )
     def test_sanitizes(self, raw, expected):
         assert safe_filename(raw) == expected
 
@@ -181,7 +184,7 @@ class TestSafeFilename:
         """两处调用点必须共用同一实现（避免再次漂移）。"""
         from app.character_system import CharacterSystem
 
-        assert CharacterSystem._sanitize_name('../../x') == safe_filename('../../x')
+        assert CharacterSystem._sanitize_name("../../x") == safe_filename("../../x")
 
 
 class TestNoDuplicateImplementations:

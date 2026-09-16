@@ -79,14 +79,24 @@ def ask_text(
     result: dict = {"value": None}
 
     tk.Label(
-        win, text=prompt, bg=_C["bg_dark"], fg=_C["text_primary"],
-        font=(_F["family"], _F["size_base"]), justify=tk.LEFT, wraplength=380,
+        win,
+        text=prompt,
+        bg=_C["bg_dark"],
+        fg=_C["text_primary"],
+        font=(_F["family"], _F["size_base"]),
+        justify=tk.LEFT,
+        wraplength=380,
     ).pack(padx=20, pady=(16, 8), anchor=tk.W)
 
     if height > 1:
         body = tk.Text(
-            win, width=width, height=height, bg=_C["bg_medium"], fg=_C["text_primary"],
-            insertbackground=_C["text_primary"], relief=tk.FLAT,
+            win,
+            width=width,
+            height=height,
+            bg=_C["bg_medium"],
+            fg=_C["text_primary"],
+            insertbackground=_C["text_primary"],
+            relief=tk.FLAT,
             font=(_F["family"], _F["size_base"]),
         )
         body.pack(padx=20, pady=4)
@@ -95,8 +105,13 @@ def ask_text(
     else:
         var = tk.StringVar(value=initial)
         entry = tk.Entry(
-            win, textvariable=var, width=width, bg=_C["bg_medium"], fg=_C["text_primary"],
-            insertbackground=_C["text_primary"], relief=tk.FLAT,
+            win,
+            textvariable=var,
+            width=width,
+            bg=_C["bg_medium"],
+            fg=_C["text_primary"],
+            insertbackground=_C["text_primary"],
+            relief=tk.FLAT,
             font=(_F["family"], _F["size_base"]),
         )
         entry.pack(padx=20, pady=4, ipady=6)
@@ -104,8 +119,13 @@ def ask_text(
         body = None
 
     error_label = tk.Label(
-        win, text="", bg=_C["bg_dark"], fg=_C["error"],
-        font=(_F["family"], _F["size_sm"]), wraplength=380, justify=tk.LEFT,
+        win,
+        text="",
+        bg=_C["bg_dark"],
+        fg=_C["error"],
+        font=(_F["family"], _F["size_sm"]),
+        wraplength=380,
+        justify=tk.LEFT,
     )
     error_label.pack(padx=20, pady=(0, 4), anchor=tk.W)
 
@@ -125,13 +145,27 @@ def ask_text(
     buttons = tk.Frame(win, bg=_C["bg_dark"])
     buttons.pack(padx=20, pady=(6, 16), anchor=tk.E)
     tk.Button(
-        buttons, text=ok_text, command=submit, bg=_C["accent"], fg="white",
-        relief=tk.FLAT, padx=18, pady=5, cursor="hand2",
+        buttons,
+        text=ok_text,
+        command=submit,
+        bg=_C["accent"],
+        fg="white",
+        relief=tk.FLAT,
+        padx=18,
+        pady=5,
+        cursor="hand2",
         font=(_F["family"], _F["size_base"]),
     ).pack(side=tk.LEFT, padx=4)
     tk.Button(
-        buttons, text="取消", command=win.destroy, bg=_C["bg_light"], fg=_C["text_primary"],
-        relief=tk.FLAT, padx=18, pady=5, cursor="hand2",
+        buttons,
+        text="取消",
+        command=win.destroy,
+        bg=_C["bg_light"],
+        fg=_C["text_primary"],
+        relief=tk.FLAT,
+        padx=18,
+        pady=5,
+        cursor="hand2",
         font=(_F["family"], _F["size_base"]),
     ).pack(side=tk.LEFT, padx=4)
 
@@ -163,18 +197,28 @@ def edit_items(
 
     if hint:
         tk.Label(
-            win, text=hint, bg=_C["bg_dark"], fg=_C["text_muted"],
-            font=(_F["family"], _F["size_sm"]), wraplength=420, justify=tk.LEFT,
+            win,
+            text=hint,
+            bg=_C["bg_dark"],
+            fg=_C["text_muted"],
+            font=(_F["family"], _F["size_sm"]),
+            wraplength=420,
+            justify=tk.LEFT,
         ).pack(padx=16, pady=(12, 4), anchor=tk.W)
 
     list_frame = tk.Frame(win, bg=_C["bg_dark"])
     list_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=4)
 
     listbox = tk.Listbox(
-        list_frame, bg=_C["bg_card"], fg=_C["text_primary"],
-        selectbackground=_C["accent"], selectforeground="white",
-        relief=tk.FLAT, font=(_F["family"], _F["size_base"]),
-        highlightthickness=0, activestyle="none",
+        list_frame,
+        bg=_C["bg_card"],
+        fg=_C["text_primary"],
+        selectbackground=_C["accent"],
+        selectforeground="white",
+        relief=tk.FLAT,
+        font=(_F["family"], _F["size_base"]),
+        highlightthickness=0,
+        activestyle="none",
     )
     scrollbar = tk.Scrollbar(list_frame, command=listbox.yview)
     listbox.configure(yscrollcommand=scrollbar.set)
@@ -230,17 +274,30 @@ def edit_items(
     operations = tk.Frame(win, bg=_C["bg_dark"])
     operations.pack(fill=tk.X, padx=16, pady=4)
     for label, command in (
-        ("新增", add_item), ("编辑", edit_selected), ("删除", remove_selected),
-        ("上移", lambda: move(-1)), ("下移", lambda: move(1)),
+        ("新增", add_item),
+        ("编辑", edit_selected),
+        ("删除", remove_selected),
+        ("上移", lambda: move(-1)),
+        ("下移", lambda: move(1)),
     ):
         tk.Button(
-            operations, text=label, command=command, bg=_C["bg_light"], fg=_C["text_primary"],
-            relief=tk.FLAT, padx=10, pady=3, cursor="hand2",
+            operations,
+            text=label,
+            command=command,
+            bg=_C["bg_light"],
+            fg=_C["text_primary"],
+            relief=tk.FLAT,
+            padx=10,
+            pady=3,
+            cursor="hand2",
             font=(_F["family"], _F["size_sm"]),
         ).pack(side=tk.LEFT, padx=3)
 
     error_label = tk.Label(
-        win, text="", bg=_C["bg_dark"], fg=_C["error"],
+        win,
+        text="",
+        bg=_C["bg_dark"],
+        fg=_C["error"],
         font=(_F["family"], _F["size_sm"]),
     )
     error_label.pack(padx=16, anchor=tk.W)
@@ -255,13 +312,27 @@ def edit_items(
     buttons = tk.Frame(win, bg=_C["bg_dark"])
     buttons.pack(padx=16, pady=(4, 14), anchor=tk.E)
     tk.Button(
-        buttons, text="保存", command=submit, bg=_C["accent"], fg="white",
-        relief=tk.FLAT, padx=18, pady=5, cursor="hand2",
+        buttons,
+        text="保存",
+        command=submit,
+        bg=_C["accent"],
+        fg="white",
+        relief=tk.FLAT,
+        padx=18,
+        pady=5,
+        cursor="hand2",
         font=(_F["family"], _F["size_base"]),
     ).pack(side=tk.LEFT, padx=4)
     tk.Button(
-        buttons, text="取消", command=win.destroy, bg=_C["bg_light"], fg=_C["text_primary"],
-        relief=tk.FLAT, padx=18, pady=5, cursor="hand2",
+        buttons,
+        text="取消",
+        command=win.destroy,
+        bg=_C["bg_light"],
+        fg=_C["text_primary"],
+        relief=tk.FLAT,
+        padx=18,
+        pady=5,
+        cursor="hand2",
         font=(_F["family"], _F["size_base"]),
     ).pack(side=tk.LEFT, padx=4)
 
@@ -296,9 +367,15 @@ def show_text(
     text_frame.pack(fill=tk.BOTH, expand=True, padx=14, pady=(14, 6))
 
     body = tk.Text(
-        text_frame, wrap=tk.WORD, bg=_C["bg_card"], fg=_C["text_primary"],
-        insertbackground=_C["text_primary"], relief=tk.FLAT,
-        font=(_F["family"], _F["size_base"]), padx=12, pady=10,
+        text_frame,
+        wrap=tk.WORD,
+        bg=_C["bg_card"],
+        fg=_C["text_primary"],
+        insertbackground=_C["text_primary"],
+        relief=tk.FLAT,
+        font=(_F["family"], _F["size_base"]),
+        padx=12,
+        pady=10,
     )
     scrollbar = tk.Scrollbar(text_frame, command=body.yview)
     body.configure(yscrollcommand=scrollbar.set)
@@ -324,13 +401,27 @@ def show_text(
 
     if copyable:
         tk.Button(
-            buttons, text="复制全部", command=copy_all, bg=_C["bg_light"], fg=_C["text_primary"],
-            relief=tk.FLAT, padx=14, pady=5, cursor="hand2",
+            buttons,
+            text="复制全部",
+            command=copy_all,
+            bg=_C["bg_light"],
+            fg=_C["text_primary"],
+            relief=tk.FLAT,
+            padx=14,
+            pady=5,
+            cursor="hand2",
             font=(_F["family"], _F["size_sm"]),
         ).pack(side=tk.LEFT)
     tk.Button(
-        buttons, text="关闭", command=win.destroy, bg=_C["accent"], fg="white",
-        relief=tk.FLAT, padx=18, pady=5, cursor="hand2",
+        buttons,
+        text="关闭",
+        command=win.destroy,
+        bg=_C["accent"],
+        fg="white",
+        relief=tk.FLAT,
+        padx=18,
+        pady=5,
+        cursor="hand2",
         font=(_F["family"], _F["size_base"]),
     ).pack(side=tk.RIGHT)
 

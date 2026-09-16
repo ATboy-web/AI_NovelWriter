@@ -19,7 +19,7 @@ def create_mock_agent():
     agent.ai = MagicMock()
     agent.memory = MagicMock()
     agent.log = lambda msg: None
-    agent._log_lock = __import__('threading').Lock()
+    agent._log_lock = __import__("threading").Lock()
     agent._conversation_log = []
     agent._revision_memory = []
     agent.tools = MagicMock()
@@ -35,7 +35,9 @@ class TestExtractCharactersFromRawEdgeCases:
     """_extract_characters_from_raw 边缘情况测试"""
 
     def test_with_nested_json_objects(self):
-        text = '{"张三": {"personality": "勇敢", "weapon": {"name": "剑", "quality": "稀有"}, "attributes": {"力量": 80}}}'
+        text = (
+            '{"张三": {"personality": "勇敢", "weapon": {"name": "剑", "quality": "稀有"}, "attributes": {"力量": 80}}}'
+        )
         result = NovelAgent._extract_characters_from_raw(text)
         assert isinstance(result, dict)
 
@@ -94,16 +96,20 @@ class TestUpdateCharacterProgressionEdgeCases:
 
     def test_with_all_change_types(self):
         agent = create_mock_agent()
-        agent.ai.chat.return_value = json.dumps({
-            "updates": [{"name": "张三", "change": "+力量+3", "reason": "战斗突破"}],
-            "skills_learned": [{"name": "张三", "skill": "剑法", "type": "攻击", "how": "战斗领悟"}],
-            "relationship_changes": [{"name1": "张三", "name2": "李四", "old": "朋友", "new": "敌人", "reason": "背叛"}],
-            "items_gained": [{"name": "张三", "item": "宝剑", "quality": "稀有", "from": "战斗获得"}],
-            "items_lost": [{"name": "张三", "item": "盾牌", "reason": "战斗毁坏"}],
-            "deaths": ["王五"],
-            "new_allies": ["赵六"],
-            "new_enemies": ["钱七"]
-        })
+        agent.ai.chat.return_value = json.dumps(
+            {
+                "updates": [{"name": "张三", "change": "+力量+3", "reason": "战斗突破"}],
+                "skills_learned": [{"name": "张三", "skill": "剑法", "type": "攻击", "how": "战斗领悟"}],
+                "relationship_changes": [
+                    {"name1": "张三", "name2": "李四", "old": "朋友", "new": "敌人", "reason": "背叛"}
+                ],
+                "items_gained": [{"name": "张三", "item": "宝剑", "quality": "稀有", "from": "战斗获得"}],
+                "items_lost": [{"name": "张三", "item": "盾牌", "reason": "战斗毁坏"}],
+                "deaths": ["王五"],
+                "new_allies": ["赵六"],
+                "new_enemies": ["钱七"],
+            }
+        )
         agent.memory.get_characters.return_value = {"张三": {"category": "主角"}, "李四": {"category": "配角"}}
         agent.memory.add_event = MagicMock()
         agent.memory.update_character = MagicMock()
@@ -128,7 +134,9 @@ class TestUpdateCharacterProgressionEdgeCases:
 
     def test_with_malformed_json_bracket_tracking(self):
         agent = create_mock_agent()
-        agent.ai.chat.return_value = 'Some text before {"updates": [{"name": "张三", "change": "+力量"}]} some text after'
+        agent.ai.chat.return_value = (
+            'Some text before {"updates": [{"name": "张三", "change": "+力量"}]} some text after'
+        )
         agent.memory.get_characters.return_value = {"张三": {"category": "主角"}}
         agent.memory.add_event = MagicMock()
 
@@ -180,7 +188,7 @@ class TestGenerateLongChapterEdgeCases:
         agent.ai.chat.side_effect = [
             "段落内容" * 200,  # Part 1
             "段落内容" * 200,  # Part 2
-            "段落内容没有结尾标点" * 50  # Last part - incomplete
+            "段落内容没有结尾标点" * 50,  # Last part - incomplete
         ]
         agent.memory.get_meta.return_value = ""
         agent._build_context = MagicMock(return_value="上下文")
@@ -254,7 +262,7 @@ class TestGenerateCharactersEdgeCases:
 
     def test_with_empty_chars_dict(self, tmp_path):
         agent = create_mock_agent()
-        agent.ai.chat.return_value = '{}'
+        agent.ai.chat.return_value = "{}"
         agent.memory.get_meta.return_value = 20
         agent.memory.get_settings.return_value = {}
         agent.memory.save_characters = MagicMock()
@@ -271,11 +279,15 @@ class TestGenerateOutlineEdgeCases:
     def test_with_progress_phases(self):
         agent = create_mock_agent()
         call_count = 0
+
         def mock_batch(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             start = args[3] if len(args) > 3 else 1
-            return [{"chapter": start + i, "title": f"标题{start + i}", "summary": f"概要{start + i}"} for i in range(15)]
+            return [
+                {"chapter": start + i, "title": f"标题{start + i}", "summary": f"概要{start + i}"} for i in range(15)
+            ]
+
         agent._generate_outline_batch = mock_batch
         agent._plan_story_arcs = MagicMock(return_value="弧线规划")
 
@@ -284,9 +296,13 @@ class TestGenerateOutlineEdgeCases:
 
     def test_with_arc_plan(self):
         agent = create_mock_agent()
+
         def mock_batch(*args, **kwargs):
             start = args[3] if len(args) > 3 else 1
-            return [{"chapter": start + i, "title": f"标题{start + i}", "summary": f"概要{start + i}"} for i in range(15)]
+            return [
+                {"chapter": start + i, "title": f"标题{start + i}", "summary": f"概要{start + i}"} for i in range(15)
+            ]
+
         agent._generate_outline_batch = mock_batch
         agent._plan_story_arcs = MagicMock(return_value="开端：引入主角\n发展：展开冲突\n高潮：最终决战\n结局：大团圆")
 
@@ -324,7 +340,7 @@ class TestFinalizeChapterEdgeCases:
         agent._update_character_progression = MagicMock()
         agent.memory.novel_dir = tmp_path
 
-        with patch('app.writing_skills.writing_skill_manager') as mock_wsm:
+        with patch("app.writing_skills.writing_skill_manager") as mock_wsm:
             mock_wsm.learn_from_chapter = MagicMock()
             mock_wsm.knowledge_graph = MagicMock()
             mock_wsm.knowledge_graph.entities = {}
@@ -522,7 +538,9 @@ class TestPlotDesignerAnalyzeEdgeCases:
 
     def test_with_nested_json(self):
         agent = create_mock_agent()
-        agent.ai.chat.return_value = '{"type": "dialogue", "pace": "slow", "foreshadowing": [], "extra": {"key": "value"}}'
+        agent.ai.chat.return_value = (
+            '{"type": "dialogue", "pace": "slow", "foreshadowing": [], "extra": {"key": "value"}}'
+        )
         result = agent._plot_designer_analyze(1, "标题", "这是一个详细的大纲内容")
         assert result["type"] == "dialogue"
 
@@ -552,7 +570,9 @@ class TestWriterGenerateEdgeCases:
         agent = create_mock_agent()
         agent.ai.chat.return_value = "章节内容"
         agent.memory.get_meta.return_value = ""
-        agent._build_context = MagicMock(return_value="【前一章·第0章结尾】\n前文内容在这里，需要被提取出来作为prev_ending")
+        agent._build_context = MagicMock(
+            return_value="【前一章·第0章结尾】\n前文内容在这里，需要被提取出来作为prev_ending"
+        )
         agent._get_writing_style_prompt = MagicMock(return_value="风格")
 
         result = agent._writer_generate(1, "标题", "大纲", 1000)
@@ -629,7 +649,9 @@ class TestGenerateWithCollaborationEdgeCases:
         agent._call_anti_slop_check = MagicMock(return_value=[])
         agent._record_conversation = MagicMock()
 
-        result = agent.generate_with_collaboration(1, "标题", "大纲", 1000, prev_context="【前一章·第0章结尾】\n前文内容")
+        result = agent.generate_with_collaboration(
+            1, "标题", "大纲", 1000, prev_context="【前一章·第0章结尾】\n前文内容"
+        )
         assert result == "章节内容"
 
     def test_with_world_context_injection(self):
@@ -652,10 +674,12 @@ class TestGenerateWithCollaborationEdgeCases:
         agent._world_builder_build = MagicMock(return_value="")
         agent._writer_generate = MagicMock(return_value="初稿")
         agent._writer_revise = MagicMock(return_value="修订稿")
-        agent._reviewer_evaluate = MagicMock(side_effect=[
-            {"overall_score": 40, "issues": ["问题1"], "suggestions": ["建议1"]},
-            {"overall_score": 80, "issues": [], "suggestions": []}
-        ])
+        agent._reviewer_evaluate = MagicMock(
+            side_effect=[
+                {"overall_score": 40, "issues": ["问题1"], "suggestions": ["建议1"]},
+                {"overall_score": 80, "issues": [], "suggestions": []},
+            ]
+        )
         agent._call_anti_slop_check = MagicMock(return_value=[])
         agent._record_conversation = MagicMock()
 
@@ -668,7 +692,7 @@ class TestRecordConversationEdgeCases:
 
     def test_all_agent_types(self):
         agent = create_mock_agent()
-        agent._log_lock = __import__('threading').Lock()
+        agent._log_lock = __import__("threading").Lock()
         agent._conversation_log = []
 
         for agent_name in ["PlotDesigner", "WorldBuilder", "Writer", "Reviewer", "Editor", "Unknown"]:
@@ -711,7 +735,7 @@ class TestGetWritingStylePromptEdgeCases:
 
     def test_with_high_values(self):
         agent = create_mock_agent()
-        with patch('app.writing_skills.writing_skill_manager') as mock_wsm:
+        with patch("app.writing_skills.writing_skill_manager") as mock_wsm:
             mock_wsm.style_config = MagicMock()
             mock_wsm.style_config.descriptiveness = 9
             mock_wsm.style_config.dialogue_ratio = 8
@@ -723,7 +747,7 @@ class TestGetWritingStylePromptEdgeCases:
 
     def test_with_low_values(self):
         agent = create_mock_agent()
-        with patch('app.writing_skills.writing_skill_manager') as mock_wsm:
+        with patch("app.writing_skills.writing_skill_manager") as mock_wsm:
             mock_wsm.style_config = MagicMock()
             mock_wsm.style_config.descriptiveness = 2
             mock_wsm.style_config.dialogue_ratio = 2
@@ -735,7 +759,7 @@ class TestGetWritingStylePromptEdgeCases:
 
     def test_with_medium_values(self):
         agent = create_mock_agent()
-        with patch('app.writing_skills.writing_skill_manager') as mock_wsm:
+        with patch("app.writing_skills.writing_skill_manager") as mock_wsm:
             mock_wsm.style_config = MagicMock()
             mock_wsm.style_config.descriptiveness = 5
             mock_wsm.style_config.dialogue_ratio = 5
@@ -765,21 +789,40 @@ class TestNovelAgentInitEdgeCases:
 
     def test_has_all_required_methods(self):
         methods = [
-            'generate_chapter', 'generate_outline', 'generate_characters',
-            'generate_settings', 'review_chapter', 'finalize_chapter',
-            'analyze_style', 'generate_with_style', 'blend_styles',
-            'generate_with_collaboration', 'generate_outline_continuation',
-            '_compress_text', '_compress_characters', '_compress_settings',
-            '_compress_active_characters', '_compress_recent_chapters',
-            '_build_context', '_record_conversation',
-            '_plot_designer_analyze', '_world_builder_build',
-            '_writer_generate', '_reviewer_evaluate', '_writer_revise',
-            '_get_writing_style_prompt', '_register_tools',
-            '_call_anti_slop_check', '_get_knowledge_graph_context',
-            '_extract_characters_from_raw', '_parse_json_response',
-            '_generate_long_chapter', '_has_excessive_repetition',
-            '_plan_story_arcs', '_generate_outline_batch',
-            '_update_character_progression',
+            "generate_chapter",
+            "generate_outline",
+            "generate_characters",
+            "generate_settings",
+            "review_chapter",
+            "finalize_chapter",
+            "analyze_style",
+            "generate_with_style",
+            "blend_styles",
+            "generate_with_collaboration",
+            "generate_outline_continuation",
+            "_compress_text",
+            "_compress_characters",
+            "_compress_settings",
+            "_compress_active_characters",
+            "_compress_recent_chapters",
+            "_build_context",
+            "_record_conversation",
+            "_plot_designer_analyze",
+            "_world_builder_build",
+            "_writer_generate",
+            "_reviewer_evaluate",
+            "_writer_revise",
+            "_get_writing_style_prompt",
+            "_register_tools",
+            "_call_anti_slop_check",
+            "_get_knowledge_graph_context",
+            "_extract_characters_from_raw",
+            "_parse_json_response",
+            "_generate_long_chapter",
+            "_has_excessive_repetition",
+            "_plan_story_arcs",
+            "_generate_outline_batch",
+            "_update_character_progression",
         ]
         for method in methods:
             assert hasattr(NovelAgent, method), f"缺少方法: {method}"

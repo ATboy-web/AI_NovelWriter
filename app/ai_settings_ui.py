@@ -39,7 +39,7 @@ def provider_choices() -> Tuple[List[str], Dict[str, str]]:
     mapping: Dict[str, str] = {}
     for spec in specs_for_ui():
         label = spec["name"]
-        if label in mapping:                     # 极端情况下重名，追加 key 消歧
+        if label in mapping:  # 极端情况下重名，追加 key 消歧
             label = f"{label} [{spec['key']}]"
         labels.append(label)
         mapping[label] = spec["key"]
@@ -92,8 +92,11 @@ class AISettingsMixin:
 
         active_var = tk.StringVar(value=cfg.active_profile)
         prof_combo = ttk.Combobox(
-            prof_row, textvariable=active_var, values=cfg.profile_names(),
-            state="readonly", width=18,
+            prof_row,
+            textvariable=active_var,
+            values=cfg.profile_names(),
+            state="readonly",
+            width=18,
         )
         prof_combo.pack(side=tk.LEFT)
 
@@ -162,11 +165,8 @@ class AISettingsMixin:
                 return
             self._reopen_settings(dialog, f"已删除档案《{name}》")
 
-        for text, command in (("切换", _switch), ("新建", _create),
-                              ("重命名", _rename), ("删除", _delete)):
-            ttk.Button(prof_row, text=text, command=command, width=6).pack(
-                side=tk.LEFT, padx=2
-            )
+        for text, command in (("切换", _switch), ("新建", _create), ("重命名", _rename), ("删除", _delete)):
+            ttk.Button(prof_row, text=text, command=command, width=6).pack(side=tk.LEFT, padx=2)
 
         # ============================================== 连接区
         conn_box = ttk.LabelFrame(parent, text="连接")
@@ -175,8 +175,11 @@ class AISettingsMixin:
         _label(conn_box, "AI 服务商")
         provider_var = tk.StringVar()
         provider_combo = ttk.Combobox(
-            conn_box, textvariable=provider_var, values=labels,
-            state="readonly", width=42,
+            conn_box,
+            textvariable=provider_var,
+            values=labels,
+            state="readonly",
+            width=42,
         )
         provider_combo.pack(anchor=tk.W, padx=20, pady=2)
 
@@ -196,11 +199,10 @@ class AISettingsMixin:
         def _toggle_key():
             key_entry.configure(show="" if show_key.get() else "*")
 
-        ttk.Checkbutton(key_row, text="显示", variable=show_key,
-                        command=_toggle_key).pack(side=tk.LEFT, padx=6)
-        tk.Label(conn_box,
-                 text="密钥加密后保存，不明文落盘；每个档案各存各的。",
-                 fg="#666", anchor=tk.W).pack(anchor=tk.W, padx=20)
+        ttk.Checkbutton(key_row, text="显示", variable=show_key, command=_toggle_key).pack(side=tk.LEFT, padx=6)
+        tk.Label(conn_box, text="密钥加密后保存，不明文落盘；每个档案各存各的。", fg="#666", anchor=tk.W).pack(
+            anchor=tk.W, padx=20
+        )
 
         # ============================================== 模型与采样
         model_box = ttk.LabelFrame(parent, text="模型与采样")
@@ -213,20 +215,22 @@ class AISettingsMixin:
 
         _label(model_box, "最大输出 token")
         max_tokens_var = tk.StringVar()
-        ttk.Entry(model_box, textvariable=max_tokens_var, width=12).pack(
-            anchor=tk.W, padx=20, pady=2
-        )
+        ttk.Entry(model_box, textvariable=max_tokens_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
 
         _label(model_box, "温度（0 ~ 2，越高越发散）")
         temp_var = tk.StringVar()
-        ttk.Spinbox(model_box, from_=0, to=2, increment=0.1,
-                    textvariable=temp_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
+        ttk.Spinbox(model_box, from_=0, to=2, increment=0.1, textvariable=temp_var, width=12).pack(
+            anchor=tk.W, padx=20, pady=2
+        )
 
         _label(model_box, "上下文窗口")
         ctx_var = tk.StringVar()
-        ttk.Combobox(model_box, textvariable=ctx_var, width=12,
-                     values=["8000", "16000", "32000", "64000", "128000", "200000"],
-                     ).pack(anchor=tk.W, padx=20, pady=2)
+        ttk.Combobox(
+            model_box,
+            textvariable=ctx_var,
+            width=12,
+            values=["8000", "16000", "32000", "64000", "128000", "200000"],
+        ).pack(anchor=tk.W, padx=20, pady=2)
 
         # ============================================== 思考模式
         think_box = ttk.LabelFrame(parent, text="深度思考")
@@ -234,7 +238,8 @@ class AISettingsMixin:
 
         think_var = tk.BooleanVar()
         think_check = tk.Checkbutton(
-            think_box, text="启用深度思考（reasoning / thinking 参数）",
+            think_box,
+            text="启用深度思考（reasoning / thinking 参数）",
             variable=think_var,
         )
         think_check.pack(anchor=tk.W, padx=20, pady=(6, 2))
@@ -242,12 +247,14 @@ class AISettingsMixin:
         _label(think_box, "思考强度")
         effort_var = tk.StringVar()
         effort_combo = ttk.Combobox(
-            think_box, textvariable=effort_var, values=list(REASONING_EFFORTS),
-            state="readonly", width=14,
+            think_box,
+            textvariable=effort_var,
+            values=list(REASONING_EFFORTS),
+            state="readonly",
+            width=14,
         )
         effort_combo.pack(anchor=tk.W, padx=20, pady=2)
-        think_note = tk.Label(think_box, text="", fg="#666", anchor=tk.W,
-                              justify=tk.LEFT, wraplength=520)
+        think_note = tk.Label(think_box, text="", fg="#666", anchor=tk.W, justify=tk.LEFT, wraplength=520)
         think_note.pack(anchor=tk.W, padx=20, pady=(0, 6))
 
         # ============================================== 网络与重试
@@ -256,29 +263,24 @@ class AISettingsMixin:
 
         _label(net_box, "读取超时（秒）—— 单次请求等待响应的上限")
         timeout_var = tk.StringVar()
-        ttk.Entry(net_box, textvariable=timeout_var, width=12).pack(
-            anchor=tk.W, padx=20, pady=2
-        )
+        ttk.Entry(net_box, textvariable=timeout_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
 
         _label(net_box, "连接超时（秒）—— 建连阶段的独立上限")
         connect_var = tk.StringVar()
-        ttk.Entry(net_box, textvariable=connect_var, width=12).pack(
-            anchor=tk.W, padx=20, pady=2
-        )
+        ttk.Entry(net_box, textvariable=connect_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
 
         _label(net_box, "瞬时故障重试次数（仅对 429 / 5xx / 网络错误生效）")
         retries_var = tk.StringVar()
-        ttk.Spinbox(net_box, from_=0, to=10, textvariable=retries_var, width=12).pack(
-            anchor=tk.W, padx=20, pady=2
-        )
+        ttk.Spinbox(net_box, from_=0, to=10, textvariable=retries_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
 
         # ============================================== 余额
         bal_box = ttk.LabelFrame(parent, text="余额查询")
         bal_box.pack(fill=tk.X, padx=20, pady=6)
 
         bal_state = tk.StringVar()
-        tk.Label(bal_box, textvariable=bal_state, fg="#666", anchor=tk.W,
-                 justify=tk.LEFT, wraplength=520).pack(anchor=tk.W, padx=20, pady=(6, 2))
+        tk.Label(bal_box, textvariable=bal_state, fg="#666", anchor=tk.W, justify=tk.LEFT, wraplength=520).pack(
+            anchor=tk.W, padx=20, pady=(6, 2)
+        )
 
         _label(bal_box, "余额接口地址（留空使用内置）")
         bal_url_entry = ttk.Entry(bal_box, width=52)
@@ -297,8 +299,9 @@ class AISettingsMixin:
         action_box.pack(fill=tk.X, padx=20, pady=(4, 12))
 
         result_var = tk.StringVar(value="")
-        result_label = tk.Label(action_box, textvariable=result_var, fg="#333",
-                                anchor=tk.W, justify=tk.LEFT, wraplength=560)
+        result_label = tk.Label(
+            action_box, textvariable=result_var, fg="#333", anchor=tk.W, justify=tk.LEFT, wraplength=560
+        )
         result_label.pack(anchor=tk.W, pady=(0, 6))
 
         def _current_provider() -> str:
@@ -319,10 +322,7 @@ class AISettingsMixin:
             spec = get_spec(spec_key)
             base = base_entry.get().strip() or spec.base_url
             preview = spec.resolved_url(base)
-            _show_result(
-                f"[URL 预览] {preview}\n"
-                f"（按表单当前填写的内容计算；服务商默认地址 {spec.base_url}）"
-            )
+            _show_result(f"[URL 预览] {preview}\n（按表单当前填写的内容计算；服务商默认地址 {spec.base_url}）")
 
         def _test_connection():
             spec_key = _current_provider()
@@ -352,9 +352,7 @@ class AISettingsMixin:
             )
 
         ttk.Button(action_box, text="请求 URL 预览", command=_show_url).pack(side=tk.LEFT)
-        ttk.Button(action_box, text="测试连接", command=_test_connection).pack(
-            side=tk.LEFT, padx=6
-        )
+        ttk.Button(action_box, text="测试连接", command=_test_connection).pack(side=tk.LEFT, padx=6)
         ttk.Button(action_box, text="查询余额", command=_query_balance).pack(side=tk.LEFT)
 
         # ============================================== 联动逻辑
@@ -375,12 +373,14 @@ class AISettingsMixin:
             timeout_var.set(str(prof.get("timeout", 600.0)))
             connect_var.set(str(prof.get("connect_timeout", 10.0)))
             retries_var.set(str(prof.get("max_retries", 3)))
-            for entry, key in ((bal_url_entry, "balance_url"),
-                               (bal_total_entry, "balance_total_path"),
-                               (bal_cur_entry, "balance_currency_path")):
+            for entry, key in (
+                (bal_url_entry, "balance_url"),
+                (bal_total_entry, "balance_total_path"),
+                (bal_cur_entry, "balance_currency_path"),
+            ):
                 entry.delete(0, tk.END)
                 entry.insert(0, str(prof.get(key, "")))
-            model_combo['values'] = models_for_provider(spec_key)
+            model_combo["values"] = models_for_provider(spec_key)
             _apply_capabilities()
 
         def _apply_capabilities(*_):
@@ -388,8 +388,7 @@ class AISettingsMixin:
             spec = get_spec(spec_key)
             caps = spec.supports.as_dict()
             base_hint.configure(
-                text=f"该服务商的默认地址：{spec.base_url}"
-                     + ("（已含 /v1）" if spec.base_url_includes_v1 else "")
+                text=f"该服务商的默认地址：{spec.base_url}" + ("（已含 /v1）" if spec.base_url_includes_v1 else "")
             )
             # 能力驱动显隐：不再靠 `if provider == "claude"` 之类的硬编码
             if caps.get("thinking"):
@@ -399,16 +398,11 @@ class AISettingsMixin:
             else:
                 think_check.configure(state="disabled")
                 effort_combo.configure(state="disabled")
-                think_note.configure(
-                    text="该服务商不支持思考模式参数，上面的开关不会发送任何额外字段。"
-                )
+                think_note.configure(text="该服务商不支持思考模式参数，上面的开关不会发送任何额外字段。")
             if caps.get("balance"):
                 bal_state.set(f"该服务商有余额接口（{spec.note}）。可直接点「查询余额」。")
             else:
-                bal_state.set(
-                    f"该服务商未提供余额接口（{spec.note}）。"
-                    "若你确知自建/代理端点，可在下面填写以启用查询。"
-                )
+                bal_state.set(f"该服务商未提供余额接口（{spec.note}）。若你确知自建/代理端点，可在下面填写以启用查询。")
 
         def _on_provider_change(*_):
             spec_key = _current_provider()
@@ -417,12 +411,12 @@ class AISettingsMixin:
             base_entry.delete(0, tk.END)
             base_entry.insert(0, spec.base_url)
             candidates = models_for_provider(spec_key)
-            model_combo['values'] = candidates
+            model_combo["values"] = candidates
             if candidates:
                 model_var.set(candidates[0])
             _apply_capabilities()
 
-        provider_combo.bind('<<ComboboxSelected>>', _on_provider_change)
+        provider_combo.bind("<<ComboboxSelected>>", _on_provider_change)
 
         # ============================================== 保存
         def save() -> None:
@@ -460,7 +454,7 @@ class AISettingsMixin:
                     return
 
         # 初始化：先把活跃 Profile 灌进表单（内含 provider 下拉与能力联动）
-        prof_combo.bind('<<ComboboxSelected>>', _switch)
+        prof_combo.bind("<<ComboboxSelected>>", _switch)
         refresh_key_state()
 
         return save
@@ -471,8 +465,9 @@ class AISettingsMixin:
         """配置变更后重建 AI 客户端与智能体，让新配置立刻生效。"""
         try:
             from .ai_client import AIClient
+
             self.ai_client = AIClient(self.config)
-        except Exception as exc:                        # noqa: BLE001 - 重建失败不该崩界面
+        except Exception as exc:  # noqa: BLE001 - 重建失败不该崩界面
             self._log(f"[警告] 重建 AI 客户端失败：{exc}")
 
     def _reopen_settings(self, dialog, message: str = "") -> None:
@@ -505,7 +500,10 @@ class AISettingsMixin:
                 on_done(result)
 
         BackgroundRunner(ui=dialog).submit(
-            work, on_success=_deliver, on_error=_deliver, name="anw-settings-probe",
+            work,
+            on_success=_deliver,
+            on_error=_deliver,
+            name="anw-settings-probe",
         )
 
 
@@ -513,9 +511,7 @@ class AISettingsMixin:
 
 
 def _label(parent, text: str) -> None:
-    ttk.Label(parent, text=text, font=('微软雅黑', 10, 'bold')).pack(
-        anchor=tk.W, padx=20, pady=(8, 2)
-    )
+    ttk.Label(parent, text=text, font=("微软雅黑", 10, "bold")).pack(anchor=tk.W, padx=20, pady=(8, 2))
 
 
 def _label_for(provider_key: str, labels: List[str], key_of: Dict[str, str]) -> str:
@@ -557,8 +553,8 @@ def _ask_text(dialog, title: str, prompt: str, initial: str = "") -> str:
     row.pack(pady=12)
     ttk.Button(row, text="确定", command=confirm).pack(side=tk.LEFT, padx=4)
     ttk.Button(row, text="取消", command=cancel).pack(side=tk.LEFT, padx=4)
-    win.bind('<Return>', confirm)
-    win.bind('<Escape>', cancel)
+    win.bind("<Return>", confirm)
+    win.bind("<Escape>", cancel)
     win.wait_window()
     return result["value"]
 
@@ -566,10 +562,11 @@ def _ask_text(dialog, title: str, prompt: str, initial: str = "") -> str:
 def _format_probe(provider_key: str, result: dict) -> str:
     """把 `probe_connection` 的返回值整理成一行给人看的文字。"""
     if not result.get("ok"):
-        return (f"[连接失败] {provider_key}\n"
-                f"请求地址：{result.get('url', '（未计算）')}\n"
-                f"原因：{result.get('reason', '未知')}")
+        return (
+            f"[连接失败] {provider_key}\n"
+            f"请求地址：{result.get('url', '（未计算）')}\n"
+            f"原因：{result.get('reason', '未知')}"
+        )
     sample = (result.get("sample") or "").strip()
     tail = f"，返回片段：{sample}" if sample else "（模型未返回文本，属正常）"
-    return (f"[连接成功] {provider_key} / {result.get('model', '')} "
-            f"(HTTP {result.get('status')}){tail}")
+    return f"[连接成功] {provider_key} / {result.get('model', '')} (HTTP {result.get('status')}){tail}"

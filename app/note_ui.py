@@ -10,7 +10,6 @@ from tkinter import messagebox
 class NoteUIMixin:
     """笔记层：笔记增删改查、便签发送到项目"""
 
-
     def _refresh_notes(self):
         """刷新笔记列表"""
         self.notes_list.delete(0, tk.END)
@@ -23,11 +22,12 @@ class NoteUIMixin:
         elif note_type == "doc":
             notes = self.note_manager.get_doc_notes(self.current_chapter)
             for n in notes:
-                self.notes_list.insert(tk.END, f"[位置{n.get('position',0)}] {n.get('content', '')[:30]}")
+                self.notes_list.insert(tk.END, f"[位置{n.get('position', 0)}] {n.get('content', '')[:30]}")
         elif note_type == "sticky":
             notes = self.note_manager.get_sticky_notes()
             for n in notes:
                 self.notes_list.insert(tk.END, f"{n.get('content', '')[:40]}")
+
     def _on_note_select(self, event):
         """笔记选中"""
         selection = self.notes_list.curselection()
@@ -47,6 +47,7 @@ class NoteUIMixin:
         if idx < len(notes):
             self.note_content.delete("1.0", tk.END)
             self.note_content.insert("1.0", notes[idx].get("content", ""))
+
     def _add_note(self):
         """新建笔记"""
         note_type = self.note_type_var.get()
@@ -60,6 +61,7 @@ class NoteUIMixin:
             self.note_manager.add_sticky_note(content)
 
         self._refresh_notes()
+
     def _save_note(self):
         """保存当前笔记"""
         selection = self.notes_list.curselection()
@@ -87,6 +89,7 @@ class NoteUIMixin:
                 self.note_manager.save_sticky_notes(notes)
 
         self._log("笔记已保存")
+
     def _delete_note(self):
         """删除笔记"""
         selection = self.notes_list.curselection()
@@ -114,6 +117,7 @@ class NoteUIMixin:
 
         self.note_content.delete("1.0", tk.END)
         self._refresh_notes()
+
     def _send_sticky_to_project(self):
         """将便笺发送到工程笔记"""
         selection = self.notes_list.curselection()

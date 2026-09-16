@@ -34,10 +34,7 @@ REAL_WORLD_CHARACTER_COUNT = 286
 
 
 def make_characters(n: int, prefix: str = "角色") -> dict:
-    return {
-        f"{prefix}{i:03d}": {"personality": f"性格{i}", "category": "配角", "faction": "中立"}
-        for i in range(n)
-    }
+    return {f"{prefix}{i:03d}": {"personality": f"性格{i}", "category": "配角", "faction": "中立"} for i in range(n)}
 
 
 @pytest.fixture
@@ -104,7 +101,9 @@ class TestCharactersWriteSafety:
 class TestCharactersReadSafety:
     def test_corrupt_primary_falls_back_to_backup(self, mm):
         mm.save_characters(make_characters(10, "旧"))
-        mm.save_characters(make_characters(12, "新"), )  # 生成 .bak = 10 个"旧"
+        mm.save_characters(
+            make_characters(12, "新"),
+        )  # 生成 .bak = 10 个"旧"
 
         mm.characters_file.write_text("{截断", encoding="utf-8")
         chars = mm.get_characters()
@@ -143,6 +142,7 @@ class TestConcurrentMutation:
         def worker(idx):
             def mutate(chars):
                 chars[f"新增{idx:02d}"] = {"personality": "并发写入"}
+
             try:
                 barrier.wait(timeout=10)
                 mm.mutate_characters(mutate)
@@ -226,7 +226,7 @@ class TestGenerateCharactersMerges:
 
         info = mm.get_characters()["林风"]
         assert info["weapon"] == {"name": "青锋剑"}  # 新数据并入
-        assert info["personality"] == "沉稳"          # 既有字段不丢
+        assert info["personality"] == "沉稳"  # 既有字段不丢
         assert info["age"] == 20
 
 
@@ -331,8 +331,11 @@ class TestNoCharacterDeletionEntryPoint:
         shell = (REPO_ROOT / "app" / "shell_ui.py").read_text(encoding="utf-8")
         assert "command=self._show_char_detail" in shell
         detail = (REPO_ROOT / "app" / "character_ui.py").read_text(encoding="utf-8")
-        for wired in ("self._rename_character(dialog)", "self._rest_character()",
-                      "self._edit_character_story(char.name)"):
+        for wired in (
+            "self._rename_character(dialog)",
+            "self._rest_character()",
+            "self._edit_character_story(char.name)",
+        ):
             assert wired in detail
 
 

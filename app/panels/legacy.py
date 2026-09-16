@@ -64,34 +64,87 @@ class LegacyPanelSpec:
 #: v2 的 12 个工具面板（原本散落在 `toolkit_ui` 的 elif 链与 `shell_ui` 的 Radiobutton 列表里）
 LEGACY_PANEL_SPECS: tuple[LegacyPanelSpec, ...] = (
     # ---- 创作素材（喂给 AI 的"原料"类工具）
-    LegacyPanelSpec("elements", "元素库", "创作素材", 10,
-                    "app.panels.elements_panel", "ElementsPanelMixin", "_build_elements_tool"),
-    LegacyPanelSpec("bridges", "桥段库", "创作素材", 20,
-                    "app.panels.bridges_panel", "BridgesPanelMixin", "_build_bridges_tool"),
-    LegacyPanelSpec("descriptions", "描写库", "创作素材", 30,
-                    "app.panels.descriptions_panel", "DescriptionsPanelMixin", "_build_descriptions_tool"),
-    LegacyPanelSpec("dialogue", "对话推演", "创作素材", 40,
-                    "app.panels.dialogue_panel", "DialoguePanelMixin", "_build_dialogue_tool"),
-    LegacyPanelSpec("style", "风格转换", "创作素材", 50,
-                    "app.panels.style_panel", "StylePanelMixin", "_build_style_tool"),
-    LegacyPanelSpec("adapt", "智能改编", "创作素材", 60,
-                    "app.panels.adapt_panel", "AdaptPanelMixin", "_build_adapt_tool"),
-    LegacyPanelSpec("websearch", "热点改编", "创作素材", 70,
-                    "app.panels.websearch_panel", "WebSearchPanelMixin", "_build_websearch_tool"),
+    LegacyPanelSpec(
+        "elements", "元素库", "创作素材", 10, "app.panels.elements_panel", "ElementsPanelMixin", "_build_elements_tool"
+    ),
+    LegacyPanelSpec(
+        "bridges", "桥段库", "创作素材", 20, "app.panels.bridges_panel", "BridgesPanelMixin", "_build_bridges_tool"
+    ),
+    LegacyPanelSpec(
+        "descriptions",
+        "描写库",
+        "创作素材",
+        30,
+        "app.panels.descriptions_panel",
+        "DescriptionsPanelMixin",
+        "_build_descriptions_tool",
+    ),
+    LegacyPanelSpec(
+        "dialogue",
+        "对话推演",
+        "创作素材",
+        40,
+        "app.panels.dialogue_panel",
+        "DialoguePanelMixin",
+        "_build_dialogue_tool",
+    ),
+    LegacyPanelSpec(
+        "style", "风格转换", "创作素材", 50, "app.panels.style_panel", "StylePanelMixin", "_build_style_tool"
+    ),
+    LegacyPanelSpec(
+        "adapt", "智能改编", "创作素材", 60, "app.panels.adapt_panel", "AdaptPanelMixin", "_build_adapt_tool"
+    ),
+    LegacyPanelSpec(
+        "websearch",
+        "热点改编",
+        "创作素材",
+        70,
+        "app.panels.websearch_panel",
+        "WebSearchPanelMixin",
+        "_build_websearch_tool",
+    ),
     # ---- 结构分析（读已有文本做诊断/推演）
-    LegacyPanelSpec("story_flow", "故事流", "结构分析", 10,
-                    "app.panels.story_flow_panel", "StoryFlowPanelMixin", "_build_story_flow_tool"),
-    LegacyPanelSpec("chapters", "章节分析", "结构分析", 20,
-                    "app.panels.chapter_analysis_panel", "ChapterAnalysisPanelMixin",
-                    "_build_chapter_analysis_tool"),
+    LegacyPanelSpec(
+        "story_flow",
+        "故事流",
+        "结构分析",
+        10,
+        "app.panels.story_flow_panel",
+        "StoryFlowPanelMixin",
+        "_build_story_flow_tool",
+    ),
+    LegacyPanelSpec(
+        "chapters",
+        "章节分析",
+        "结构分析",
+        20,
+        "app.panels.chapter_analysis_panel",
+        "ChapterAnalysisPanelMixin",
+        "_build_chapter_analysis_tool",
+    ),
     # ---- 记忆与摘要
-    LegacyPanelSpec("memory_viz", "记忆可视化", "记忆与摘要", 10,
-                    "app.panels.memory_viz_panel", "MemoryVizPanelMixin", "_build_memory_viz_tool"),
-    LegacyPanelSpec("summary_mgmt", "摘要管理", "记忆与摘要", 20,
-                    "app.panels.summary_mgmt_panel", "SummaryMgmtPanelMixin", "_build_summary_mgmt_tool"),
+    LegacyPanelSpec(
+        "memory_viz",
+        "记忆可视化",
+        "记忆与摘要",
+        10,
+        "app.panels.memory_viz_panel",
+        "MemoryVizPanelMixin",
+        "_build_memory_viz_tool",
+    ),
+    LegacyPanelSpec(
+        "summary_mgmt",
+        "摘要管理",
+        "记忆与摘要",
+        20,
+        "app.panels.summary_mgmt_panel",
+        "SummaryMgmtPanelMixin",
+        "_build_summary_mgmt_tool",
+    ),
     # ---- 运维
-    LegacyPanelSpec("batch_ops", "批量操作", "运维", 10,
-                    "app.panels.batch_ops_panel", "BatchOpsPanelMixin", "_build_batch_ops_tool"),
+    LegacyPanelSpec(
+        "batch_ops", "批量操作", "运维", 10, "app.panels.batch_ops_panel", "BatchOpsPanelMixin", "_build_batch_ops_tool"
+    ),
 )
 
 

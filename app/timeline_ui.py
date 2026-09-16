@@ -16,7 +16,6 @@ from app import UIStyle
 class TimelineMixin:
     """时间线/分支层：时间线可视化、分支故事与分支小说创作"""
 
-
     def _open_timeline(self):
         """世界线/时间线管理"""
         if not self.current_novel_dir:
@@ -29,11 +28,12 @@ class TimelineMixin:
         w, h = min(1000, sw - 60), int(sh * 0.78)
         x, y = (sw - w) // 2, (sh - h) // 2
         dialog.geometry(f"{w}x{h}+{x}+{y}")
-        dialog.configure(bg=UIStyle.COLORS['bg_dark'])
+        dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(dialog, text="🌐 世界线 / 时间线管理", font=('微软雅黑', 12, 'bold'),
-                bg=C['bg_dark'], fg=C['accent']).pack(pady=10)
+        tk.Label(
+            dialog, text="🌐 世界线 / 时间线管理", font=("微软雅黑", 12, "bold"), bg=C["bg_dark"], fg=C["accent"]
+        ).pack(pady=10)
 
         # 加载已有世界线
         timeline_dir = self.current_novel_dir / "timelines"
@@ -42,94 +42,114 @@ class TimelineMixin:
 
         if not main_file.exists():
             main_timeline = {"name": "主线", "events": [], "chapters": [], "branches": []}
-            main_file.write_text(json.dumps(main_timeline, indent=2, ensure_ascii=False), encoding='utf-8')
+            main_file.write_text(json.dumps(main_timeline, indent=2, ensure_ascii=False), encoding="utf-8")
 
         # 读取世界线列表
         timelines = []
         for f in sorted(timeline_dir.glob("*.json")):
             try:
-                data = json.loads(f.read_text(encoding='utf-8'))
+                data = json.loads(f.read_text(encoding="utf-8"))
                 data["_file"] = f.name
                 timelines.append(data)
             except Exception:
                 pass
 
         # 顶部工具栏
-        toolbar = tk.Frame(dialog, bg=C['bg_dark'])
+        toolbar = tk.Frame(dialog, bg=C["bg_dark"])
         toolbar.pack(fill=tk.X, padx=15, pady=5)
 
-        tk.Label(toolbar, text="选择世界线:", font=('微软雅黑', 10),
-                bg=C['bg_dark'], fg=C['text_primary']).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Label(toolbar, text="选择世界线:", font=("微软雅黑", 10), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+            side=tk.LEFT, padx=(0, 8)
+        )
 
         tl_var = tk.StringVar(value="主线")
         tl_names = [t.get("name", "未命名") for t in timelines]
-        tl_combo = ttk.Combobox(toolbar, textvariable=tl_var, values=tl_names,
-                                state="readonly", width=20, font=('微软雅黑', 10))
+        tl_combo = ttk.Combobox(
+            toolbar, textvariable=tl_var, values=tl_names, state="readonly", width=20, font=("微软雅黑", 10)
+        )
         tl_combo.pack(side=tk.LEFT, padx=(0, 15))
 
         # 统计信息
-        stats_label = tk.Label(toolbar, text="", font=('微软雅黑', 9),
-                              bg=C['bg_dark'], fg=C['text_muted'])
+        stats_label = tk.Label(toolbar, text="", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_muted"])
         stats_label.pack(side=tk.LEFT, padx=10)
 
         # 内容区域 - 主面板
-        main_paned = tk.PanedWindow(dialog, orient=tk.HORIZONTAL, bg=C['bg_dark'])
+        main_paned = tk.PanedWindow(dialog, orient=tk.HORIZONTAL, bg=C["bg_dark"])
         main_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         # === 左侧面板 - 决策点列表 ===
-        left_frame = tk.Frame(main_paned, bg=C['bg_card'])
-        main_paned.add(left_frame, width=w//3)
+        left_frame = tk.Frame(main_paned, bg=C["bg_card"])
+        main_paned.add(left_frame, width=w // 3)
 
-        tk.Label(left_frame, text="📋 决策点列表", font=('微软雅黑', 10, 'bold'),
-                bg=C['bg_card'], fg=C['accent']).pack(anchor=tk.W, padx=10, pady=(8, 2))
+        tk.Label(left_frame, text="📋 决策点列表", font=("微软雅黑", 10, "bold"), bg=C["bg_card"], fg=C["accent"]).pack(
+            anchor=tk.W, padx=10, pady=(8, 2)
+        )
 
         # 决策点列表使用Canvas+滚动
-        left_canvas = tk.Canvas(left_frame, bg=C['bg_card'], highlightthickness=0)
+        left_canvas = tk.Canvas(left_frame, bg=C["bg_card"], highlightthickness=0)
         left_scrollbar = tk.Scrollbar(left_frame, orient=tk.VERTICAL, command=left_canvas.yview)
-        left_inner = tk.Frame(left_canvas, bg=C['bg_card'])
+        left_inner = tk.Frame(left_canvas, bg=C["bg_card"])
         left_inner.bind("<Configure>", lambda e: left_canvas.configure(scrollregion=left_canvas.bbox("all")))
-        left_canvas.create_window((0, 0), window=left_inner, anchor=tk.NW, width=w//3-20)
+        left_canvas.create_window((0, 0), window=left_inner, anchor=tk.NW, width=w // 3 - 20)
         left_canvas.configure(yscrollcommand=left_scrollbar.set)
         left_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         left_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         # === 右侧面板 ===
-        right_frame = tk.Frame(main_paned, bg=C['bg_card'])
-        main_paned.add(right_frame, width=2*w//3)
+        right_frame = tk.Frame(main_paned, bg=C["bg_card"])
+        main_paned.add(right_frame, width=2 * w // 3)
 
         # 右侧使用Notebook多标签页
         right_notebook = ttk.Notebook(right_frame)
         right_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # 标签1: 详情
-        detail_frame = tk.Frame(right_notebook, bg=C['bg_card'])
+        detail_frame = tk.Frame(right_notebook, bg=C["bg_card"])
         right_notebook.add(detail_frame, text="📖 详情")
 
-        tk.Label(detail_frame, text="决策详情", font=('微软雅黑', 10, 'bold'),
-                bg=C['bg_card'], fg=C['warning']).pack(anchor=tk.W, padx=10, pady=5)
+        tk.Label(detail_frame, text="决策详情", font=("微软雅黑", 10, "bold"), bg=C["bg_card"], fg=C["warning"]).pack(
+            anchor=tk.W, padx=10, pady=5
+        )
 
-        detail_text = tk.Text(detail_frame, wrap=tk.WORD, font=('微软雅黑', 10),
-                              bg=C['bg_medium'], fg=C['text_primary'],
-                              height=12, relief=tk.FLAT, padx=12, pady=12)
+        detail_text = tk.Text(
+            detail_frame,
+            wrap=tk.WORD,
+            font=("微软雅黑", 10),
+            bg=C["bg_medium"],
+            fg=C["text_primary"],
+            height=12,
+            relief=tk.FLAT,
+            padx=12,
+            pady=12,
+        )
         detail_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=5)
 
         # 标签2: 影响分析
-        impact_frame = tk.Frame(right_notebook, bg=C['bg_card'])
+        impact_frame = tk.Frame(right_notebook, bg=C["bg_card"])
         right_notebook.add(impact_frame, text="🔍 影响分析")
 
-        tk.Label(impact_frame, text="决策影响分析", font=('微软雅黑', 10, 'bold'),
-                bg=C['bg_card'], fg=C['warning']).pack(anchor=tk.W, padx=10, pady=5)
+        tk.Label(
+            impact_frame, text="决策影响分析", font=("微软雅黑", 10, "bold"), bg=C["bg_card"], fg=C["warning"]
+        ).pack(anchor=tk.W, padx=10, pady=5)
 
-        impact_text = tk.Text(impact_frame, wrap=tk.WORD, font=('微软雅黑', 10),
-                              bg=C['bg_medium'], fg=C['text_primary'],
-                              height=12, relief=tk.FLAT, padx=12, pady=12)
+        impact_text = tk.Text(
+            impact_frame,
+            wrap=tk.WORD,
+            font=("微软雅黑", 10),
+            bg=C["bg_medium"],
+            fg=C["text_primary"],
+            height=12,
+            relief=tk.FLAT,
+            padx=12,
+            pady=12,
+        )
         impact_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=5)
 
         # 标签3: 时间线图
-        graph_frame = tk.Frame(right_notebook, bg=C['bg_card'])
+        graph_frame = tk.Frame(right_notebook, bg=C["bg_card"])
         right_notebook.add(graph_frame, text="📊 时间线")
 
-        timeline_canvas = tk.Canvas(graph_frame, bg=C['bg_medium'], highlightthickness=0)
+        timeline_canvas = tk.Canvas(graph_frame, bg=C["bg_medium"], highlightthickness=0)
         timeline_canvas.pack(fill=tk.BOTH, expand=True, padx=8, pady=5)
 
         # 存储数据
@@ -148,25 +168,25 @@ class TimelineMixin:
                 return
 
             # 虚线主线
-            timeline_canvas.create_line(60, 0, 60, ch, fill=C['accent'], width=2, dash=(4, 4))
+            timeline_canvas.create_line(60, 0, 60, ch, fill=C["accent"], width=2, dash=(4, 4))
 
             # 绘制节点
             step = max(60, (ch - 40) // max(len(all_branches), 1))
             for i, br in enumerate(all_branches):
                 y = 30 + i * step
                 # 节点圆
-                timeline_canvas.create_oval(52, y-4, 68, y+12, fill=C['accent'], outline='')
+                timeline_canvas.create_oval(52, y - 4, 68, y + 12, fill=C["accent"], outline="")
                 # 章节标签
                 ch_num = br.get("chapter", "?")
-                timeline_canvas.create_text(30, y+4, text=f"第{ch_num}章",
-                                           fill=C['text_muted'], font=('微软雅黑', 7))
+                timeline_canvas.create_text(30, y + 4, text=f"第{ch_num}章", fill=C["text_muted"], font=("微软雅黑", 7))
                 # 决策摘要
                 desc = br.get("decision", "")[:25]
-                timeline_canvas.create_text(140, y+4, text=desc, anchor=tk.W,
-                                           fill=C['text_primary'], font=('微软雅黑', 8))
+                timeline_canvas.create_text(
+                    140, y + 4, text=desc, anchor=tk.W, fill=C["text_primary"], font=("微软雅黑", 8)
+                )
                 # 分支线
-                timeline_canvas.create_line(60, y+4, 90, y+4-15, fill=C['warning'], width=1)
-                timeline_canvas.create_line(60, y+4, 90, y+4+20, fill=C['success'], width=1)
+                timeline_canvas.create_line(60, y + 4, 90, y + 4 - 15, fill=C["warning"], width=1)
+                timeline_canvas.create_line(60, y + 4, 90, y + 4 + 20, fill=C["success"], width=1)
 
         def show_branch_detail(idx):
             """显示决策点详情"""
@@ -178,10 +198,10 @@ class TimelineMixin:
             detail_text.delete("1.0", tk.END)
 
             # 标题
-            detail_text.insert(tk.END, f"📍 第{br.get('chapter','?')}章 决策点\n\n", "title")
-            detail_text.insert(tk.END, f"📝 决策情境:\n{br.get('decision','未知')}\n\n", "section")
-            detail_text.insert(tk.END, f"✅ 选择方案:\n{br.get('chosen','未知')}\n\n", "chosen")
-            detail_text.insert(tk.END, f"❓ 另一可能:\n{br.get('alternative','未知')}\n\n", "alternative")
+            detail_text.insert(tk.END, f"📍 第{br.get('chapter', '?')}章 决策点\n\n", "title")
+            detail_text.insert(tk.END, f"📝 决策情境:\n{br.get('decision', '未知')}\n\n", "section")
+            detail_text.insert(tk.END, f"✅ 选择方案:\n{br.get('chosen', '未知')}\n\n", "chosen")
+            detail_text.insert(tk.END, f"❓ 另一可能:\n{br.get('alternative', '未知')}\n\n", "alternative")
 
             story = br.get("story", "")
             if story:
@@ -190,12 +210,12 @@ class TimelineMixin:
                 detail_text.insert(tk.END, "(点击下方「生成此分支」查看更多what-if故事)", "hint")
 
             # 格式化文本
-            detail_text.tag_config("title", font=('微软雅黑', 12, 'bold'), foreground=C['accent'])
-            detail_text.tag_config("section", font=('微软雅黑', 10), foreground=C['text_primary'])
-            detail_text.tag_config("chosen", font=('微软雅黑', 10), foreground=C['success'])
-            detail_text.tag_config("alternative", font=('微软雅黑', 10), foreground=C['warning'])
-            detail_text.tag_config("story", font=('微软雅黑', 10), foreground=C['text_primary'])
-            detail_text.tag_config("hint", font=('微软雅黑', 9), foreground=C['text_muted'])
+            detail_text.tag_config("title", font=("微软雅黑", 12, "bold"), foreground=C["accent"])
+            detail_text.tag_config("section", font=("微软雅黑", 10), foreground=C["text_primary"])
+            detail_text.tag_config("chosen", font=("微软雅黑", 10), foreground=C["success"])
+            detail_text.tag_config("alternative", font=("微软雅黑", 10), foreground=C["warning"])
+            detail_text.tag_config("story", font=("微软雅黑", 10), foreground=C["text_primary"])
+            detail_text.tag_config("hint", font=("微软雅黑", 9), foreground=C["text_muted"])
 
             # 影响分析
             impact_text.delete("1.0", tk.END)
@@ -214,9 +234,9 @@ class TimelineMixin:
             impact_text.insert(tk.END, f"  • 影响范围: {estimate_scope(br)}\n")
             impact_text.insert(tk.END, f"  • 可逆性: {estimate_reversibility(br)}\n")
 
-            impact_text.tag_config("title", font=('微软雅黑', 12, 'bold'), foreground=C['accent'])
-            impact_text.tag_config("section", font=('微软雅黑', 10, 'bold'), foreground=C['text_primary'])
-            impact_text.tag_config("alt", font=('微软雅黑', 10, 'bold'), foreground=C['warning'])
+            impact_text.tag_config("title", font=("微软雅黑", 12, "bold"), foreground=C["accent"])
+            impact_text.tag_config("section", font=("微软雅黑", 10, "bold"), foreground=C["text_primary"])
+            impact_text.tag_config("alt", font=("微软雅黑", 10, "bold"), foreground=C["warning"])
 
             update_timeline_graph()
 
@@ -263,23 +283,33 @@ class TimelineMixin:
                     has_story = "📖" if br.get("story") else "  "
 
                     # 创建可点击的卡片
-                    card = tk.Frame(left_inner, bg=C['bg_medium'] if i % 2 == 0 else C['bg_card'],
-                                   cursor='hand2', padx=8, pady=5)
+                    card = tk.Frame(
+                        left_inner, bg=C["bg_medium"] if i % 2 == 0 else C["bg_card"], cursor="hand2", padx=8, pady=5
+                    )
                     card.pack(fill=tk.X, padx=3, pady=1)
 
                     # 章节标签
-                    chapter_lbl = tk.Label(card, text=f"第{ch}章", font=('微软雅黑', 8, 'bold'),
-                                          bg=C['accent'], fg='white', padx=4, pady=1)
+                    chapter_lbl = tk.Label(
+                        card, text=f"第{ch}章", font=("微软雅黑", 8, "bold"), bg=C["accent"], fg="white", padx=4, pady=1
+                    )
                     chapter_lbl.pack(side=tk.LEFT, padx=(0, 6))
 
                     # 决策描述
-                    desc_lbl = tk.Label(card, text=f"{has_story} {desc}", font=('微软雅黑', 9),
-                                       bg=card['bg'], fg=C['text_primary'], anchor=tk.W, justify=tk.LEFT)
+                    desc_lbl = tk.Label(
+                        card,
+                        text=f"{has_story} {desc}",
+                        font=("微软雅黑", 9),
+                        bg=card["bg"],
+                        fg=C["text_primary"],
+                        anchor=tk.W,
+                        justify=tk.LEFT,
+                    )
                     desc_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
                     # 选择标签
-                    chosen_lbl = tk.Label(card, text=f"✅{chosen}", font=('微软雅黑', 8),
-                                          bg=card['bg'], fg=C['success'], padx=4)
+                    chosen_lbl = tk.Label(
+                        card, text=f"✅{chosen}", font=("微软雅黑", 8), bg=card["bg"], fg=C["success"], padx=4
+                    )
                     chosen_lbl.pack(side=tk.RIGHT)
 
                     # 点击事件
@@ -290,54 +320,101 @@ class TimelineMixin:
 
                     # 悬停效果
                     def on_enter(e, c=card):
-                        c.configure(bg=C['bg_light'])
+                        c.configure(bg=C["bg_light"])
+
                     def on_leave(e, c=card, i=i):
-                        c.configure(bg=C['bg_medium'] if i % 2 == 0 else C['bg_card'])
+                        c.configure(bg=C["bg_medium"] if i % 2 == 0 else C["bg_card"])
+
                     for w in [card, chapter_lbl, desc_lbl, chosen_lbl]:
                         w.bind("<Enter>", on_enter)
                         w.bind("<Leave>", on_leave)
             else:
-                tk.Label(left_inner, text="暂未检测到决策点\n\n每章创作完成后会自动记录。",
-                        font=('微软雅黑', 9), bg=C['bg_card'], fg=C['text_muted']).pack(pady=20)
+                tk.Label(
+                    left_inner,
+                    text="暂未检测到决策点\n\n每章创作完成后会自动记录。",
+                    font=("微软雅黑", 9),
+                    bg=C["bg_card"],
+                    fg=C["text_muted"],
+                ).pack(pady=20)
 
             detail_text.delete("1.0", tk.END)
             detail_text.insert(tk.END, "👈 点击左侧决策点查看详情", "hint")
-            detail_text.tag_config("hint", font=('微软雅黑', 11), foreground=C['text_muted'], justify=tk.CENTER)
+            detail_text.tag_config("hint", font=("微软雅黑", 11), foreground=C["text_muted"], justify=tk.CENTER)
 
             impact_text.delete("1.0", tk.END)
             impact_text.insert(tk.END, "👈 点击左侧决策点查看影响分析", "hint")
-            impact_text.tag_config("hint", font=('微软雅黑', 11), foreground=C['text_muted'], justify=tk.CENTER)
+            impact_text.tag_config("hint", font=("微软雅黑", 11), foreground=C["text_muted"], justify=tk.CENTER)
 
             update_timeline_graph()
 
         refresh_timeline("主线")
 
         # 按钮区域
-        btn_frame = tk.Frame(dialog, bg=C['bg_dark'])
+        btn_frame = tk.Frame(dialog, bg=C["bg_dark"])
         btn_frame.pack(fill=tk.X, padx=15, pady=10)
 
         def on_select(event=None):
             refresh_timeline()
-        tl_combo.bind('<<ComboboxSelected>>', on_select)
+
+        tl_combo.bind("<<ComboboxSelected>>", on_select)
 
         # 左侧操作按钮
-        tk.Button(btn_frame, text="🔄 刷新", font=('微软雅黑', 9), padx=10,
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT,
-                 command=refresh_timeline).pack(side=tk.LEFT, padx=3)
+        tk.Button(
+            btn_frame,
+            text="🔄 刷新",
+            font=("微软雅黑", 9),
+            padx=10,
+            bg=C["bg_light"],
+            fg=C["text_primary"],
+            relief=tk.FLAT,
+            command=refresh_timeline,
+        ).pack(side=tk.LEFT, padx=3)
 
         # 右侧操作按钮
-        tk.Button(btn_frame, text="✏️ 编辑决策点", font=('微软雅黑', 9), padx=10,
-                 bg=C['bg_light'], fg=C['text_primary'], relief=tk.FLAT,
-                 command=lambda: self._edit_decision(dialog, all_branches, selected_idx, timelines, tl_var.get(), main_file, refresh_timeline)).pack(side=tk.LEFT, padx=3)
-        tk.Button(btn_frame, text="📖 生成此分支", font=('微软雅黑', 10), padx=12,
-                 bg=C['warning'], fg='white', relief=tk.FLAT,
-                 command=lambda: self._generate_branch_story(dialog, timeline_dir, timelines, all_branches, detail_text, refresh_timeline)).pack(side=tk.LEFT, padx=3)
-        tk.Button(btn_frame, text="🚀 开始分支创作", font=('微软雅黑', 10), padx=12,
-                 bg=C['accent'], fg='white', relief=tk.FLAT,
-                 command=lambda: self._start_branch_novel(dialog, timeline_dir, timelines, all_branches, refresh_timeline)).pack(side=tk.LEFT, padx=3)
-        tk.Button(btn_frame, text="关闭", font=('微软雅黑', 10), padx=20,
-                 bg=C['bg_light'], fg=C['text_primary'],
-                 command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        tk.Button(
+            btn_frame,
+            text="✏️ 编辑决策点",
+            font=("微软雅黑", 9),
+            padx=10,
+            bg=C["bg_light"],
+            fg=C["text_primary"],
+            relief=tk.FLAT,
+            command=lambda: self._edit_decision(
+                dialog, all_branches, selected_idx, timelines, tl_var.get(), main_file, refresh_timeline
+            ),
+        ).pack(side=tk.LEFT, padx=3)
+        tk.Button(
+            btn_frame,
+            text="📖 生成此分支",
+            font=("微软雅黑", 10),
+            padx=12,
+            bg=C["warning"],
+            fg="white",
+            relief=tk.FLAT,
+            command=lambda: self._generate_branch_story(
+                dialog, timeline_dir, timelines, all_branches, detail_text, refresh_timeline
+            ),
+        ).pack(side=tk.LEFT, padx=3)
+        tk.Button(
+            btn_frame,
+            text="🚀 开始分支创作",
+            font=("微软雅黑", 10),
+            padx=12,
+            bg=C["accent"],
+            fg="white",
+            relief=tk.FLAT,
+            command=lambda: self._start_branch_novel(dialog, timeline_dir, timelines, all_branches, refresh_timeline),
+        ).pack(side=tk.LEFT, padx=3)
+        tk.Button(
+            btn_frame,
+            text="关闭",
+            font=("微软雅黑", 10),
+            padx=20,
+            bg=C["bg_light"],
+            fg=C["text_primary"],
+            command=dialog.destroy,
+        ).pack(side=tk.RIGHT, padx=5)
+
     def _generate_branch_story(self, dialog, timeline_dir, timelines, all_branches, detail_text, refresh_callback):
         """为当前选中的决策点生成分支故事"""
         if not all_branches:
@@ -347,7 +424,7 @@ class TimelineMixin:
         # 从dialog的变量中获取selected_idx
         idx = -1
         for name in dir(dialog):
-            if 'selected_idx' in name:
+            if "selected_idx" in name:
                 continue
         # 遍历子widget找到selected_idx引用
         # 使用更简单的方法：从refresh_callback的闭包中获取
@@ -379,13 +456,11 @@ class TimelineMixin:
 
         def run():
             try:
-                content = chapter_file.read_text(encoding='utf-8')[:2000] if chapter_file.exists() else ""
+                content = chapter_file.read_text(encoding="utf-8")[:2000] if chapter_file.exists() else ""
                 system = "你是平行世界故事创作者。基于决策分支创作 what-if 故事。直接叙述故事，500-1000字。"
                 prompt = f"当时情况: {br['decision']}\n原选择: {br['chosen']}\n另一种选择: {br['alternative']}\n原文: {content[:500]}\n\n请创作如果主角选择了「{br['alternative']}」会发生什么。"
 
-                response = self.ai_client.chat(
-                    [{"role": "user", "content": prompt}], system=system, max_tokens=1000
-                )
+                response = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=1000)
                 if not response:
                     return
 
@@ -394,12 +469,12 @@ class TimelineMixin:
 
                 # 保存到 main.json
                 main_file = timeline_dir / "main.json"
-                main_data = json.loads(main_file.read_text(encoding='utf-8'))
+                main_data = json.loads(main_file.read_text(encoding="utf-8"))
                 for mb in main_data["branches"]:
                     if mb["chapter"] == br["chapter"] and mb["decision"] == br["decision"]:
                         mb["story"] = response
                         break
-                main_file.write_text(json.dumps(main_data, indent=2, ensure_ascii=False), encoding='utf-8')
+                main_file.write_text(json.dumps(main_data, indent=2, ensure_ascii=False), encoding="utf-8")
 
                 self._log("[世界线] 分支故事已生成")
                 self.root.after(0, lambda: refresh_callback())
@@ -407,6 +482,7 @@ class TimelineMixin:
                 self.root.after(0, lambda _exc=e: messagebox.showerror("失败", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
+
     def _start_branch_novel(self, dialog, timeline_dir, timelines, all_branches, refresh_callback):
         """基于决策点创建独立分支世界线，可连续创作"""
         if not all_branches:
@@ -417,26 +493,31 @@ class TimelineMixin:
         ask = tk.Toplevel(dialog)
         ask.title("开始分支世界线创作")
         ask.geometry("550x450")
-        ask.configure(bg=UIStyle.COLORS['bg_dark'])
+        ask.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(ask, text="选择决策点创建分支世界线:", font=('微软雅黑', 10, 'bold'),
-                bg=C['bg_dark'], fg=C['accent']).pack(pady=10)
+        tk.Label(
+            ask, text="选择决策点创建分支世界线:", font=("微软雅黑", 10, "bold"), bg=C["bg_dark"], fg=C["accent"]
+        ).pack(pady=10)
 
-        lb = tk.Listbox(ask, bg=C['bg_card'], fg=C['text_primary'], font=('微软雅黑', 9))
+        lb = tk.Listbox(ask, bg=C["bg_card"], fg=C["text_primary"], font=("微软雅黑", 9))
         lb.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
         for i, b in enumerate(all_branches):
             has_story = "📖" if b.get("story") else "  "
-            lb.insert(tk.END, f"{has_story} 第{b['chapter']}章: {b.get('alternative','')[:40]}")
+            lb.insert(tk.END, f"{has_story} 第{b['chapter']}章: {b.get('alternative', '')[:40]}")
 
-        tk.Label(ask, text="生成长度:", bg=C['bg_dark'], fg=C['text_primary'], font=('微软雅黑', 9)).pack(anchor=tk.W, padx=20, pady=(10,0))
-        count_frame = tk.Frame(ask, bg=C['bg_dark'])
+        tk.Label(ask, text="生成长度:", bg=C["bg_dark"], fg=C["text_primary"], font=("微软雅黑", 9)).pack(
+            anchor=tk.W, padx=20, pady=(10, 0)
+        )
+        count_frame = tk.Frame(ask, bg=C["bg_dark"])
         count_frame.pack(fill=tk.X, padx=20)
         chapter_count = tk.StringVar(value="10")
-        tk.Spinbox(count_frame, from_=1, to=500, textvariable=chapter_count, width=6,
-                  font=('微软雅黑', 9), bg=C['bg_card']).pack(side=tk.LEFT)
-        tk.Label(count_frame, text="章（从该决策点继续）", bg=C['bg_dark'], fg=C['text_secondary'],
-                font=('微软雅黑', 9)).pack(side=tk.LEFT, padx=5)
+        tk.Spinbox(
+            count_frame, from_=1, to=500, textvariable=chapter_count, width=6, font=("微软雅黑", 9), bg=C["bg_card"]
+        ).pack(side=tk.LEFT)
+        tk.Label(
+            count_frame, text="章（从该决策点继续）", bg=C["bg_dark"], fg=C["text_secondary"], font=("微软雅黑", 9)
+        ).pack(side=tk.LEFT, padx=5)
 
         def start():
             idx = lb.curselection()
@@ -448,9 +529,17 @@ class TimelineMixin:
 
             self._create_branch_novel(br, n_chapters)
 
-        tk.Button(ask, text="开始分支世界线创作", font=('微软雅黑', 10), padx=15,
-                 bg=C['accent'], fg='white', relief=tk.FLAT,
-                 command=start).pack(pady=10)
+        tk.Button(
+            ask,
+            text="开始分支世界线创作",
+            font=("微软雅黑", 10),
+            padx=15,
+            bg=C["accent"],
+            fg="white",
+            relief=tk.FLAT,
+            command=start,
+        ).pack(pady=10)
+
     def _create_branch_novel(self, decision_point: dict, n_chapters: int):
         """创建分支世界线独立创作项目"""
         br = decision_point
@@ -467,24 +556,25 @@ class TimelineMixin:
         branch_meta = {
             "name": f"分支: {br['alternative'][:30]}",
             "origin_chapter": origin_ch,
-            "original_decision": br['decision'],
-            "original_choice": br['chosen'],
-            "branch_choice": br['alternative'],
+            "original_decision": br["decision"],
+            "original_choice": br["chosen"],
+            "branch_choice": br["alternative"],
             "chapter_count": n_chapters,
             "created_at": datetime.now().isoformat(),
             "status": "pending",
         }
-        (branch_dir / "meta.json").write_text(json.dumps(branch_meta, indent=2, ensure_ascii=False), encoding='utf-8')
+        (branch_dir / "meta.json").write_text(json.dumps(branch_meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
         # 复制原章节内容作为起点上下文
         origin_file = self.current_novel_dir / "chapters" / f"chapter_{origin_ch:04d}.txt"
-        context_text = origin_file.read_text(encoding='utf-8')[:2000] if origin_file.exists() else ""
+        context_text = origin_file.read_text(encoding="utf-8")[:2000] if origin_file.exists() else ""
 
         # 复制角色系统到分支
         src_chars_dir = self.current_novel_dir / "characters"
         b_chars_dir = branch_dir / "characters"
         if src_chars_dir.exists():
             import shutil
+
             shutil.copytree(src_chars_dir, b_chars_dir, dirs_exist_ok=True)
 
         # 复制世界观
@@ -506,15 +596,13 @@ class TimelineMixin:
 输出JSON格式: {"outline": [{"title": "章节标题", "summary": "内容概要(50字)"}, ...]}
 章节数等于指定数量，从决策点开始新故事线。"""
 
-                prompt = f"""原文决策点: {br['decision']}
-原选择: {br['chosen']}
-新选择: {br['alternative']}
+                prompt = f"""原文决策点: {br["decision"]}
+原选择: {br["chosen"]}
+新选择: {br["alternative"]}
 原文上下文: {context_text[:1000]}
 请规划{n_chapters}章的独立故事线。"""
 
-                response = self.ai_client.chat(
-                    [{"role": "user", "content": prompt}], system=system, max_tokens=1500
-                )
+                response = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=1500)
                 if not response:
                     return
 
@@ -522,21 +610,22 @@ class TimelineMixin:
                 outline_data = None
 
                 # Strategy 1: 括号深度追踪
-                start = response.find('{')
+                start = response.find("{")
                 if start >= 0:
                     depth = 0
                     end_idx = -1
                     for i in range(start, len(response)):
-                        if response[i] == '{': depth += 1
-                        elif response[i] == '}':
+                        if response[i] == "{":
+                            depth += 1
+                        elif response[i] == "}":
                             depth -= 1
                             if depth == 0:
                                 end_idx = i + 1
                                 break
                     if end_idx > start:
                         json_str = response[start:end_idx]
-                        json_str = re.sub(r',\s*}', '}', json_str)
-                        json_str = re.sub(r',\s*]', ']', json_str)
+                        json_str = re.sub(r",\s*}", "}", json_str)
+                        json_str = re.sub(r",\s*]", "]", json_str)
                         try:
                             outline_data = json.loads(json_str)
                         except json.JSONDecodeError:
@@ -551,7 +640,7 @@ class TimelineMixin:
                         cleaned = cleaned[3:]
                     if cleaned.endswith("```"):
                         cleaned = cleaned[:-3]
-                    match = re.search(r'\{[\s\S]*\}', cleaned.strip())
+                    match = re.search(r"\{[\s\S]*\}", cleaned.strip())
                     if match:
                         try:
                             outline_data = json.loads(match.group())
@@ -568,17 +657,20 @@ class TimelineMixin:
                     return
 
                 (branch_dir / "outline.json").write_text(
-                    json.dumps(outline, indent=2, ensure_ascii=False), encoding='utf-8')
+                    json.dumps(outline, indent=2, ensure_ascii=False), encoding="utf-8"
+                )
 
                 self._log(f"[分支创作] 大纲生成完成: {len(outline)}章")
 
                 # 初始化分支的CharacterSystem
                 from app.character_system import CharacterSystem
+
                 branch_chars = CharacterSystem(branch_dir)
                 branch_chars.load()
 
                 # 初始化分支MemoryManager
                 from app.memory_manager import MemoryManager
+
                 branch_mem = MemoryManager(branch_dir)
 
                 meta = self._get_meta()
@@ -587,13 +679,13 @@ class TimelineMixin:
 
                 for i, ch in enumerate(outline):
                     ch_num = origin_ch + i
-                    title = ch.get("title", f"分支第{i+1}章")
+                    title = ch.get("title", f"分支第{i + 1}章")
                     ch_summary = ch.get("summary", "")
 
                     self._log(f"[分支创作] 第{ch_num}章: {title}")
 
                     ch_prompt = f"""基于决策分支继续创作。
-分支选择: {br['alternative']}
+分支选择: {br["alternative"]}
 原文: {context_text[:800]}
 章节大纲: {title}: {ch_summary}
 请创作约{word_count}字的小说正文。"""
@@ -601,24 +693,26 @@ class TimelineMixin:
                     content = self.ai_client.chat(
                         [{"role": "user", "content": ch_prompt}],
                         system=f"你是专业小说作家。从决策分支点继续故事。\n类型: {genre}",
-                        max_tokens=4096
+                        max_tokens=4096,
                     )
                     if not content:
                         content = f"（第{ch_num}章生成失败）"
 
                     ch_file = branch_dir / "chapters" / f"chapter_{ch_num:04d}.txt"
-                    ch_file.write_text(f"# 分支第{i+1}章: {title}\n\n{content}", encoding='utf-8')
+                    ch_file.write_text(f"# 分支第{i + 1}章: {title}\n\n{content}", encoding="utf-8")
 
                     # 定稿流程：摘要 + 角色成长 + 角色检测
                     if self.agent:
                         try:
                             ch_summary_text = self.ai_client.chat(
                                 [{"role": "user", "content": f"请生成摘要(50-100字):\n{content[:1500]}"}],
-                                system="生成精简摘要。", max_tokens=1000
+                                system="生成精简摘要。",
+                                max_tokens=1000,
                             )
                             branch_mem.save_chapter_summary(ch_num, ch_summary_text or content[:200])
                             (branch_dir / "summaries" / f"chapter_{ch_num:04d}_summary.txt").write_text(
-                                f"分支第{i+1}章: {title}\n\n{ch_summary_text or content[:200]}", encoding='utf-8')
+                                f"分支第{i + 1}章: {title}\n\n{ch_summary_text or content[:200]}", encoding="utf-8"
+                            )
                         except Exception:
                             pass
 
@@ -627,7 +721,8 @@ class TimelineMixin:
                         ch_detect_system = """提取新角色名(逗号分隔)，无则输出"无":"""
                         ch_response = self.ai_client.chat(
                             [{"role": "user", "content": f"第{ch_num}章:\n{content[:2000]}"}],
-                            system=ch_detect_system, max_tokens=1000
+                            system=ch_detect_system,
+                            max_tokens=1000,
                         )
                         if ch_response and ch_response.strip() != "无":
                             names = [n.strip() for n in ch_response.split(",") if n.strip()]
@@ -649,11 +744,16 @@ class TimelineMixin:
 
                 branch_meta["status"] = "completed"
                 (branch_dir / "meta.json").write_text(
-                    json.dumps(branch_meta, indent=2, ensure_ascii=False), encoding='utf-8')
+                    json.dumps(branch_meta, indent=2, ensure_ascii=False), encoding="utf-8"
+                )
 
                 self._log(f"[分支创作] 分支世界线完成: {branch_dir.name}")
-                self.root.after(0, lambda: messagebox.showinfo("完成",
-                    f"分支世界线创作完成！\n{branch_dir.name}/\n共{n_chapters}章\n\n角色系统/摘要均已生成"))
+                self.root.after(
+                    0,
+                    lambda: messagebox.showinfo(
+                        "完成", f"分支世界线创作完成！\n{branch_dir.name}/\n共{n_chapters}章\n\n角色系统/摘要均已生成"
+                    ),
+                )
 
             except Exception as e:
                 self._log(f"[分支创作] 失败: {e}")

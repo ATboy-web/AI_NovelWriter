@@ -60,8 +60,11 @@ select = ["E", "F", "I", "W"]
 # 豁免项及理由（均为"无功能影响"的存量风格问题，不阻断 CI）：
 #   E501 行长度      —— 由 formatter 处理，不作为硬性门禁
 #   E701/E702 一行多语句 —— `if x: return` 类紧凑写法，属可读性偏好而非缺陷
-#   W291/W293 行尾/空行含空白 —— 无功能影响；且剩余少数位于多行字符串内
-#                        （prompt 模板/对齐文本），改动会改变字符串内容
+#   W291/W293 行尾/空行含空白 —— 无功能影响。2026-09-16 全量 `ruff format` 后实测：
+#       W293 已清零，仅剩 **10 处 W291**，且全部位于**字符串字面量内部**
+#       （`app/format_converter.py` 的 HTML/CSS 模板 9 处 + `app/novel_agent.py:1730` 1 处）。
+#       ruff 对这些也报 "No fixes available"（只能 `--unsafe-fixes`）——
+#       即：修它就会改变模板内容，故**保留豁免**而不是"修掉"。
 ignore = ["E501", "E701", "E702", "W291", "W293"]
 
 [tool.ruff.lint.per-file-ignores]

@@ -39,10 +39,7 @@ def _make_novel(root: Path, name: str, character_count: int, chapter_files: int 
     (novel / "memory").mkdir(parents=True, exist_ok=True)
     (novel / "characters").mkdir(parents=True, exist_ok=True)
 
-    characters = {
-        f"角色{i:03d}": {"personality": f"性格{i}", "category": "配角"}
-        for i in range(character_count)
-    }
+    characters = {f"角色{i:03d}": {"personality": f"性格{i}", "category": "配角"} for i in range(character_count)}
     (novel / "memory" / "characters.json").write_text(
         json.dumps(characters, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -88,9 +85,7 @@ class TestNovelDataSummary:
     def test_corrupt_file_is_reported_not_silently_zero(self, tmp_path):
         """解析失败必须标记为 -1，不能伪装成"0 个角色"（否则会掩盖数据损坏）。"""
         novel = _make_novel(tmp_path, "测试书_1", character_count=2)
-        (novel / "memory" / "characters.json").write_text(
-            '{"角色000": {"personality": "截断', encoding="utf-8"
-        )
+        (novel / "memory" / "characters.json").write_text('{"角色000": {"personality": "截断', encoding="utf-8")
         summary = summarize_novel(novel)
         assert summary.character_count == -1
         assert summary.characters_bytes > 0

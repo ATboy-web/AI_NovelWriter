@@ -28,7 +28,6 @@ class PersistenceMixin:
             raise RuntimeError("未打开小说，无法访问数据文件")
         return NovelStore(self.current_novel_dir, events=getattr(self, "events", None))
 
-
     def _backup_novel(self, label: str = "auto"):
         """创建小说数据备份（带时间戳）"""
         if not self.current_novel_dir:
@@ -79,6 +78,7 @@ class PersistenceMixin:
         except Exception as e:
             self._log(f"[备份] 备份失败: {e}")
             return None
+
     def _save_checkpoint(self, chapter_num: int, status: str = "generating"):
         """保存生成检查点（用于断电恢复）"""
         if not self.current_novel_dir:
@@ -88,12 +88,13 @@ class PersistenceMixin:
                 "chapter": chapter_num,
                 "status": status,
                 "timestamp": datetime.now().isoformat(),
-                "outline_count": len(self.outline) if self.outline else 0
+                "outline_count": len(self.outline) if self.outline else 0,
             }
             cp_file = self.current_novel_dir / "checkpoint.json"
             atomic_write_json(cp_file, checkpoint)
         except OSError as e:
             self._log(f"[检查点] 写入失败（不影响创作，仅断电恢复能力下降）: {e}")
+
     def _clear_checkpoint(self):
         """清除检查点（生成完成）"""
         if not self.current_novel_dir:
@@ -104,6 +105,7 @@ class PersistenceMixin:
                 cp_file.unlink()
         except OSError as e:
             self._log(f"[检查点] 清除失败: {e}")
+
     def _check_recovery(self):
         """检查是否有未完成的生成任务（断电恢复）"""
         if not self.current_novel_dir:
@@ -112,7 +114,7 @@ class PersistenceMixin:
         if not cp_file.exists():
             return
         try:
-            with open(cp_file, 'r', encoding='utf-8') as f:
+            with open(cp_file, "r", encoding="utf-8") as f:
                 cp = json.load(f)
             ch = cp.get("chapter", 0)
             ts = cp.get("timestamp", "未知")
@@ -125,7 +127,8 @@ class PersistenceMixin:
                 self._clear_checkpoint()
         except (OSError, json.JSONDecodeError) as e:
             self._log(f"[恢复] 检查点不可读（已忽略）: {e}")
-    def _atomic_write(self, filepath: Path, content: str, encoding: str = 'utf-8'):
+
+    def _atomic_write(self, filepath: Path, content: str, encoding: str = "utf-8"):
         """原子写入文件（委托 app.storage 的统一实现）。
 
         统一后不再使用 `with_suffix('.tmp')`：那样会让同目录下的

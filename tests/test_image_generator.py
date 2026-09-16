@@ -56,14 +56,14 @@ class TestImageGenerator:
         result = generator.generate("test prompt")
         assert result is None
 
-    @patch('app.image_generator.httpx')
+    @patch("app.image_generator.httpx")
     def test_generate_comfyui_success(self, mock_httpx, generator, mock_config):
         """测试ComfyUI生成成功"""
         # 配置mock
         mock_config.get.side_effect = lambda key, default=None: {
             "img_provider": "comfyui",
             "img_api_base": "http://127.0.0.1:8188",
-            "img_model": "sd_xl_base_1.0.safetensors"
+            "img_model": "sd_xl_base_1.0.safetensors",
         }.get(key, default)
 
         # 模拟HTTP响应
@@ -77,14 +77,14 @@ class TestImageGenerator:
         # result = generator.generate("test prompt")
         # assert result is not None
 
-    @patch('app.image_generator.httpx')
+    @patch("app.image_generator.httpx")
     def test_generate_comfyui_failure(self, mock_httpx, generator, mock_config):
         """测试ComfyUI生成失败"""
         # 配置mock
         mock_config.get.side_effect = lambda key, default=None: {
             "img_provider": "comfyui",
             "img_api_base": "http://127.0.0.1:8188",
-            "img_model": "sd_xl_base_1.0.safetensors"
+            "img_model": "sd_xl_base_1.0.safetensors",
         }.get(key, default)
 
         # 模拟HTTP错误
@@ -116,5 +116,5 @@ class TestImageGeneratorConfig:
         assert len(model) > 0
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

@@ -1,4 +1,5 @@
 """智能改编面板混入"""
+
 import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
@@ -72,7 +73,7 @@ class AdaptPanelMixin:
                 results = self.adapt_engine.random_adapt(current_text, 2)
                 text = ""
                 for i, r in enumerate(results):
-                    text += f"=== 片段{i+1} (匹配率: {r['match_rate']}%) ===\n"
+                    text += f"=== 片段{i + 1} (匹配率: {r['match_rate']}%) ===\n"
                     text += f"{r['adapted']}\n\n"
                 self.root.after(0, lambda: self._show_tool_result(self.adapt_result, text))
             except Exception as e:

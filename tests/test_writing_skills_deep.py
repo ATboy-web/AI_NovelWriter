@@ -77,7 +77,23 @@ class TestAntiSlopProcessor:
 
     def test_get_writing_tips_all_genres(self):
         p = AntiSlopProcessor()
-        genres = ["玄幻", "仙侠", "都市", "历史", "科幻", "悬疑", "游戏", "军事", "武侠", "体育", "轻小说", "二次元", "言情", "恐怖", "末日"]
+        genres = [
+            "玄幻",
+            "仙侠",
+            "都市",
+            "历史",
+            "科幻",
+            "悬疑",
+            "游戏",
+            "军事",
+            "武侠",
+            "体育",
+            "轻小说",
+            "二次元",
+            "言情",
+            "恐怖",
+            "末日",
+        ]
         for genre in genres:
             tips = p.get_writing_tips(genre)
             assert isinstance(tips, str)

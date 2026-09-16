@@ -83,9 +83,11 @@ class TestTokenStatsDeep:
 
     def test_thread_safety(self):
         s = TokenStats()
+
         def record_many():
             for _ in range(100):
                 s.record(10, 5)
+
         threads = [threading.Thread(target=record_many) for _ in range(10)]
         for t in threads:
             t.start()
@@ -150,7 +152,7 @@ class TestPromptManagerDeep:
     """PromptManager 深度测试"""
 
     def test_novel_prompts_exist(self):
-        assert hasattr(PromptManager, 'NOVEL_PROMPTS')
+        assert hasattr(PromptManager, "NOVEL_PROMPTS")
         assert isinstance(PromptManager.NOVEL_PROMPTS, dict)
 
     def test_writer_prompt(self):
@@ -188,30 +190,22 @@ class TestIsTransientErrorDeep:
     def test_rate_limit_is_transient(self):
         req = httpx.Request("POST", "https://api.deepseek.com/chat")
         resp = httpx.Response(429, request=req)
-        assert _is_transient_error(
-            httpx.HTTPStatusError("429", request=req, response=resp)
-        ) is True
+        assert _is_transient_error(httpx.HTTPStatusError("429", request=req, response=resp)) is True
 
     def test_server_error_is_transient(self):
         req = httpx.Request("POST", "https://api.deepseek.com/chat")
         resp = httpx.Response(503, request=req)
-        assert _is_transient_error(
-            httpx.HTTPStatusError("503", request=req, response=resp)
-        ) is True
+        assert _is_transient_error(httpx.HTTPStatusError("503", request=req, response=resp)) is True
 
     def test_auth_error_is_not_transient(self):
         req = httpx.Request("POST", "https://api.deepseek.com/chat")
         resp = httpx.Response(401, request=req)
-        assert _is_transient_error(
-            httpx.HTTPStatusError("401", request=req, response=resp)
-        ) is False
+        assert _is_transient_error(httpx.HTTPStatusError("401", request=req, response=resp)) is False
 
     def test_bad_request_is_not_transient(self):
         req = httpx.Request("POST", "https://api.deepseek.com/chat")
         resp = httpx.Response(400, request=req)
-        assert _is_transient_error(
-            httpx.HTTPStatusError("400", request=req, response=resp)
-        ) is False
+        assert _is_transient_error(httpx.HTTPStatusError("400", request=req, response=resp)) is False
 
     def test_generic_exception_is_not_transient(self):
         assert _is_transient_error(RuntimeError("boom")) is False

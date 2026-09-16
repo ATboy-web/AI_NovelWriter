@@ -25,26 +25,26 @@ class TestReadingManagerSimple:
         """测试支持的格式"""
         formats = ReadingManager.SUPPORTED_FORMATS
 
-        assert '.txt' in formats
-        assert '.epub' in formats
-        assert '.pdf' in formats
-        assert '.docx' in formats
-        assert '.md' in formats
+        assert ".txt" in formats
+        assert ".epub" in formats
+        assert ".pdf" in formats
+        assert ".docx" in formats
+        assert ".md" in formats
 
     def test_format_descriptions(self):
         """测试格式描述"""
         formats = ReadingManager.SUPPORTED_FORMATS
 
-        assert formats['.txt'] == 'TXT文本文件'
-        assert formats['.epub'] == 'EPUB电子书'
-        assert formats['.pdf'] == 'PDF文档'
-        assert formats['.docx'] == 'Word文档'
-        assert formats['.md'] == 'Markdown文件'
+        assert formats[".txt"] == "TXT文本文件"
+        assert formats[".epub"] == "EPUB电子书"
+        assert formats[".pdf"] == "PDF文档"
+        assert formats[".docx"] == "Word文档"
+        assert formats[".md"] == "Markdown文件"
 
     def test_has_methods(self):
         """测试方法存在"""
-        assert hasattr(ReadingManager, 'get_supported_formats')
-        assert hasattr(ReadingManager, 'import_book')
+        assert hasattr(ReadingManager, "get_supported_formats")
+        assert hasattr(ReadingManager, "import_book")
 
     def test_init_parameters(self):
         """测试初始化参数"""
@@ -53,6 +53,7 @@ class TestReadingManagerSimple:
 
         # 创建临时目录
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_config.config_dir = Path(tmpdir)
             manager = ReadingManager(mock_config)
@@ -63,5 +64,5 @@ class TestReadingManagerSimple:
             assert manager.theme == "light"
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

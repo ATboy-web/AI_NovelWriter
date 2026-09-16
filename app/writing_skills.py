@@ -19,6 +19,7 @@ from typing import Dict, List, Tuple
 @dataclass
 class WritingStyleConfig:
     """写作风格配置 - 借鉴taste-skill的旋钮概念"""
+
     # 风格旋钮 (1-10)
     descriptiveness: int = 7  # 描写细腻度：1=简洁，10=华丽
     dialogue_ratio: int = 5  # 对话比例：1=叙述为主，10=对话为主
@@ -32,11 +33,11 @@ class WritingStyleConfig:
     def to_prompt(self) -> str:
         """转换为AI提示词"""
         return f"""写作风格要求：
-- 描写细腻度: {self.descriptiveness}/10 {'华丽细腻' if self.descriptiveness > 7 else '简洁有力' if self.descriptiveness < 4 else '适中'}
-- 对话比例: {self.dialogue_ratio}/10 {'对话驱动' if self.dialogue_ratio > 7 else '叙述为主' if self.dialogue_ratio < 4 else '平衡'}
-- 节奏: {self.pacing}/10 {'快节奏' if self.pacing > 7 else '慢节奏铺垫' if self.pacing < 4 else '张弛有度'}
-- 情感深度: {self.emotional_depth}/10 {'深入内心' if self.emotional_depth > 7 else '表面描写' if self.emotional_depth < 4 else '适度'}
-- 动作强度: {self.action_intensity}/10 {'激烈热血' if self.action_intensity > 7 else '平淡克制' if self.action_intensity < 4 else '适度'}"""
+- 描写细腻度: {self.descriptiveness}/10 {"华丽细腻" if self.descriptiveness > 7 else "简洁有力" if self.descriptiveness < 4 else "适中"}
+- 对话比例: {self.dialogue_ratio}/10 {"对话驱动" if self.dialogue_ratio > 7 else "叙述为主" if self.dialogue_ratio < 4 else "平衡"}
+- 节奏: {self.pacing}/10 {"快节奏" if self.pacing > 7 else "慢节奏铺垫" if self.pacing < 4 else "张弛有度"}
+- 情感深度: {self.emotional_depth}/10 {"深入内心" if self.emotional_depth > 7 else "表面描写" if self.emotional_depth < 4 else "适度"}
+- 动作强度: {self.action_intensity}/10 {"激烈热血" if self.action_intensity > 7 else "平淡克制" if self.action_intensity < 4 else "适度"}"""
 
 
 # 去AI味规则 - 借鉴stop-slop项目
@@ -54,7 +55,6 @@ ANTI_SLOP_RULES = {
         "显然",
         "显然易见",
     ],
-
     # 禁止的过渡词
     "forbidden_transitions": [
         "然而",
@@ -70,7 +70,6 @@ ANTI_SLOP_RULES = {
         "归根结底",
         "说到底",
     ],
-
     # 禁止的结尾模式
     "forbidden_endings": [
         "这一切，才刚刚开始",
@@ -80,7 +79,6 @@ ANTI_SLOP_RULES = {
         "而这，只是个开始",
         "未来，还有更多的挑战等待着他",
     ],
-
     # 禁止的形容词堆砌
     "forbidden_adjective_clusters": [
         r"美丽.*?动人.*?可爱",
@@ -88,7 +86,6 @@ ANTI_SLOP_RULES = {
         r"聪明.*?机智.*?智慧",
         r"温柔.*?善良.*?体贴",
     ],
-
     # 推荐的写作技巧
     "recommended_techniques": {
         "show_dont_tell": "用动作和细节展示，而非直接告诉读者",
@@ -96,7 +93,7 @@ ANTI_SLOP_RULES = {
         "specific_verbs": "使用具体动词替代模糊动词",
         "varied_sentence_length": "长短句交替，创造节奏感",
         "subtext": "对话要有潜台词，不要直白表达",
-    }
+    },
 }
 
 
@@ -109,9 +106,7 @@ class AntiSlopProcessor:
 
     def _compile_patterns(self) -> Dict[str, List[re.Pattern]]:
         """预编译正则表达式"""
-        patterns = {
-            "adjective_clusters": [re.compile(p) for p in self.rules["forbidden_adjective_clusters"]]
-        }
+        patterns = {"adjective_clusters": [re.compile(p) for p in self.rules["forbidden_adjective_clusters"]]}
         return patterns
 
     def check_text(self, text: str) -> Dict[str, List[str]]:
@@ -121,10 +116,10 @@ class AntiSlopProcessor:
             "forbidden_transitions": [],
             "forbidden_endings": [],
             "adjective_clusters": [],
-            "suggestions": []
+            "suggestions": [],
         }
 
-        lines = text.split('\n')
+        lines = text.split("\n")
 
         # 检查开头
         for line in lines[:5]:
@@ -136,7 +131,7 @@ class AntiSlopProcessor:
         for i, line in enumerate(lines):
             for transition in self.rules["forbidden_transitions"]:
                 if transition in line:
-                    issues["forbidden_transitions"].append(f"第{i+1}行: 过度使用过渡词 '{transition}'")
+                    issues["forbidden_transitions"].append(f"第{i + 1}行: 过度使用过渡词 '{transition}'")
 
         # 检查结尾
         for line in lines[-5:]:
@@ -148,7 +143,7 @@ class AntiSlopProcessor:
         for i, line in enumerate(lines):
             for pattern in self._compiled_patterns["adjective_clusters"]:
                 if pattern.search(line):
-                    issues["adjective_clusters"].append(f"第{i+1}行: 形容词堆砌")
+                    issues["adjective_clusters"].append(f"第{i + 1}行: 形容词堆砌")
 
         # 生成建议
         if len(issues["forbidden_transitions"]) > 3:
@@ -185,7 +180,7 @@ class AntiSlopProcessor:
     def get_writing_tips(self, genre: str = "玄幻") -> str:
         """获取写作技巧提示 - 支持所有小说类型"""
         # 提取主类型（如"玄幻-东方玄幻" -> "玄幻"）
-        main_genre = genre.split('-')[0] if '-' in genre else genre
+        main_genre = genre.split("-")[0] if "-" in genre else genre
 
         tips = {
             "玄幻": """
@@ -405,28 +400,32 @@ class KnowledgeGraph:
             "type": entity_type,
             "attributes": attributes or {},
             "first_appearance": datetime.now().isoformat(),
-            "mentions": 0
+            "mentions": 0,
         }
 
     def add_relation(self, entity1: str, entity2: str, relation_type: str, details: str = ""):
         """添加关系"""
-        self.relations.append({
-            "entity1": entity1,
-            "entity2": entity2,
-            "type": relation_type,
-            "details": details,
-            "created_at": datetime.now().isoformat()
-        })
+        self.relations.append(
+            {
+                "entity1": entity1,
+                "entity2": entity2,
+                "type": relation_type,
+                "details": details,
+                "created_at": datetime.now().isoformat(),
+            }
+        )
 
     def add_event(self, event_type: str, description: str, participants: List[str], chapter: int):
         """添加事件"""
-        self.events.append({
-            "type": event_type,
-            "description": description,
-            "participants": participants,
-            "chapter": chapter,
-            "timestamp": datetime.now().isoformat()
-        })
+        self.events.append(
+            {
+                "type": event_type,
+                "description": description,
+                "participants": participants,
+                "chapter": chapter,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
     def get_character_relations(self, character: str) -> List[Dict]:
         """获取角色的所有关系"""
@@ -476,8 +475,8 @@ class KnowledgeGraph:
             if character in self.entities:
                 entity = self.entities[character]
                 context_parts.append(f"【{character}】类型: {entity['type']}")
-                if entity['attributes']:
-                    for k, v in entity['attributes'].items():
+                if entity["attributes"]:
+                    for k, v in entity["attributes"].items():
                         context_parts.append(f"  {k}: {v}")
 
             # 角色关系
@@ -496,29 +495,27 @@ class KnowledgeGraph:
                     context_parts.append(f"  - 第{event['chapter']}章: {event['description']}")
         else:
             # 全局上下文
-            context_parts.append(f"【世界观】共{len(self.entities)}个实体，{len(self.relations)}个关系，{len(self.events)}个事件")
+            context_parts.append(
+                f"【世界观】共{len(self.entities)}个实体，{len(self.relations)}个关系，{len(self.events)}个事件"
+            )
 
             # 主要角色
             characters = [name for name, e in self.entities.items() if e["type"] == "character"]
             if characters:
                 context_parts.append(f"【主要角色】{', '.join(characters[:10])}")
 
-        return '\n'.join(context_parts)
+        return "\n".join(context_parts)
 
     def save(self, filepath: str):
         """保存到文件"""
-        data = {
-            "entities": self.entities,
-            "relations": self.relations,
-            "events": self.events
-        }
-        with open(filepath, 'w', encoding='utf-8') as f:
+        data = {"entities": self.entities, "relations": self.relations, "events": self.events}
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     def load(self, filepath: str):
         """从文件加载"""
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
             self.entities = data.get("entities", {})
             self.relations = data.get("relations", [])
@@ -535,8 +532,9 @@ class TimeAwareMemory:
         self.max_memories = max_memories
         self.importance_threshold = 0.3  # 重要性阈值
 
-    def add_memory(self, content: str, memory_type: str, importance: float = 0.5,
-                   chapter: int = 0, tags: List[str] = None):
+    def add_memory(
+        self, content: str, memory_type: str, importance: float = 0.5, chapter: int = 0, tags: List[str] = None
+    ):
         """添加记忆"""
         memory = {
             "content": content,
@@ -547,7 +545,7 @@ class TimeAwareMemory:
             "created_at": datetime.now().isoformat(),
             "last_accessed": datetime.now().isoformat(),
             "access_count": 0,
-            "decay_factor": 1.0  # 衰减因子
+            "decay_factor": 1.0,  # 衰减因子
         }
         self.memories.append(memory)
 
@@ -576,10 +574,11 @@ class TimeAwareMemory:
 
         # 排序并保留高分记忆
         scored_memories.sort(key=lambda x: x[0], reverse=True)
-        self.memories = [m for _, m in scored_memories[:self.max_memories]]
+        self.memories = [m for _, m in scored_memories[: self.max_memories]]
 
-    def query(self, query_text: str = None, memory_type: str = None,
-              tags: List[str] = None, limit: int = 10) -> List[Dict]:
+    def query(
+        self, query_text: str = None, memory_type: str = None, tags: List[str] = None, limit: int = 10
+    ) -> List[Dict]:
         """查询记忆"""
         results = []
 
@@ -622,17 +621,17 @@ class TimeAwareMemory:
         for memory in memories:
             context_parts.append(f"- [{memory['type']}] {memory['content'][:100]}")
 
-        return '\n'.join(context_parts)
+        return "\n".join(context_parts)
 
     def save(self, filepath: str):
         """保存到文件"""
-        with open(filepath, 'w', encoding='utf-8') as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(self.memories, f, ensure_ascii=False, indent=2)
 
     def load(self, filepath: str):
         """从文件加载"""
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
             if isinstance(data, list):
                 self.memories = data
@@ -687,17 +686,17 @@ class WritingSkillManager:
         if memory_context:
             context_parts.append(f"\n{memory_context}")
 
-        return '\n'.join(context_parts)
+        return "\n".join(context_parts)
 
-    def learn_from_chapter(self, chapter_content: str, chapter_num: int,
-                          characters: List[str], success: bool = True,
-                          novel_dir: str = None):
+    def learn_from_chapter(
+        self, chapter_content: str, chapter_num: int, characters: List[str], success: bool = True, novel_dir: str = None
+    ):
         """从章节学习，创建写作技能"""
         if success:
             # 提取成功的写作模式
             # 分析对话比例
-            dialogue_lines = [line for line in chapter_content.split('\n') if '"' in line or '"' in line]
-            dialogue_ratio = len(dialogue_lines) / max(1, len(chapter_content.split('\n')))
+            dialogue_lines = [line for line in chapter_content.split("\n") if '"' in line or '"' in line]
+            dialogue_ratio = len(dialogue_lines) / max(1, len(chapter_content.split("\n")))
 
             # 记录到记忆
             self.time_memory.add_memory(
@@ -705,20 +704,22 @@ class WritingSkillManager:
                 memory_type="success_pattern",
                 importance=0.6,
                 chapter=chapter_num,
-                tags=["success", "dialogue"]
+                tags=["success", "dialogue"],
             )
 
             # 更新角色关系
             for char in characters:
                 if char not in self.knowledge_graph.entities:
                     self.knowledge_graph.add_entity(char, "character")
-                self.knowledge_graph.entities[char]["mentions"] = \
+                self.knowledge_graph.entities[char]["mentions"] = (
                     self.knowledge_graph.entities[char].get("mentions", 0) + 1
+                )
 
             # 自动保存到磁盘
             if novel_dir:
                 try:
                     import os
+
                     skills_dir = os.path.join(novel_dir, "writing_skills")
                     os.makedirs(skills_dir, exist_ok=True)
 
@@ -730,21 +731,27 @@ class WritingSkillManager:
     def save_all(self, base_dir: str):
         """保存所有数据"""
         import os
+
         os.makedirs(base_dir, exist_ok=True)
 
         self.knowledge_graph.save(os.path.join(base_dir, "knowledge_graph.json"))
         self.time_memory.save(os.path.join(base_dir, "time_memory.json"))
 
         # 保存风格配置
-        with open(os.path.join(base_dir, "style_config.json"), 'w', encoding='utf-8') as f:
-            json.dump({
-                "descriptiveness": self.style_config.descriptiveness,
-                "dialogue_ratio": self.style_config.dialogue_ratio,
-                "pacing": self.style_config.pacing,
-                "emotional_depth": self.style_config.emotional_depth,
-                "action_intensity": self.style_config.action_intensity,
-                "genre_style": self.style_config.genre_style
-            }, f, ensure_ascii=False, indent=2)
+        with open(os.path.join(base_dir, "style_config.json"), "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "descriptiveness": self.style_config.descriptiveness,
+                    "dialogue_ratio": self.style_config.dialogue_ratio,
+                    "pacing": self.style_config.pacing,
+                    "emotional_depth": self.style_config.emotional_depth,
+                    "action_intensity": self.style_config.action_intensity,
+                    "genre_style": self.style_config.genre_style,
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
 
     def load_all(self, base_dir: str):
         """加载所有数据"""
@@ -761,7 +768,7 @@ class WritingSkillManager:
         sc_path = os.path.join(base_dir, "style_config.json")
         if os.path.exists(sc_path):
             try:
-                with open(sc_path, 'r', encoding='utf-8') as f:
+                with open(sc_path, "r", encoding="utf-8") as f:
                     config = json.load(f)
                 if isinstance(config, dict):
                     self.style_config.descriptiveness = config.get("descriptiveness", 7)

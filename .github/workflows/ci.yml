@@ -45,10 +45,15 @@ jobs:
       - name: Ruff check
         run: ruff check app/ tests/ backend/ scripts/ --output-format=github
 
+      # 2026-09-16 起为**阻断式**：全仓已完成一次 `ruff format`（143 文件全部达标），
+      # 之后任何未格式化的改动都会在这里失败 —— 这条门禁才真正有意义。
       - name: Ruff format check
         run: ruff format --check app/ tests/
-        continue-on-error: true
 
+      # ⚠️ 暂为**非阻断**：存量还有约 100 条类型错误，集中在
+      # app/providers/*、app/ai_client.py、app/memory_manager.py、app/novel_toolkit.py、
+      # app/diagnostic_logger.py、app/writing_skills.py。
+      # 待分批收敛后与 format 一样转为阻断；新增代码应保持 0 错误。
       - name: Mypy type check
         run: mypy app/ --ignore-missing-imports --no-error-summary
         continue-on-error: true

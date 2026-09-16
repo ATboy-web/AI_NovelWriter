@@ -71,7 +71,7 @@ DEFAULT_SPECS: tuple[ProviderSpec, ...] = (
         base_url="http://localhost:11434",
         default_model="qwen2.5:14b",
         models=_OLLAMA_MODELS,
-        auth=AuthStyle.NONE,                 # 本地服务，无鉴权
+        auth=AuthStyle.NONE,  # 本地服务，无鉴权
         chat_path="/api/chat",
         supports=_caps(thinking=False, balance=False, json_mode=True, local=True),
         canonical_order=0,
@@ -184,7 +184,7 @@ DEFAULT_SPECS: tuple[ProviderSpec, ...] = (
         base_url="https://api.anthropic.com",
         default_model="claude-sonnet-5",
         models=("claude-sonnet-5", "claude-opus-5", "claude-sonnet-4-6", "claude-haiku-4-5"),
-        auth=AuthStyle.X_API_KEY,             # x-api-key，不是 Bearer
+        auth=AuthStyle.X_API_KEY,  # x-api-key，不是 Bearer
         chat_path="/v1/messages",
         # path 自带 /v1，而 base 不带 —— 由 join_url 直接拼接
         base_url_includes_v1=False,
@@ -248,7 +248,7 @@ DEFAULT_SPECS: tuple[ProviderSpec, ...] = (
     ProviderSpec(
         key="custom",
         name="自定义 API",
-        base_url="",                          # 必须由用户填写
+        base_url="",  # 必须由用户填写
         default_model="",
         models=(),
         auth=AuthStyle.BEARER,
@@ -402,13 +402,15 @@ def specs_for_ui(registry: ProviderRegistry | None = None) -> list[dict]:
     reg = registry or default_registry()
     out = []
     for spec in reg.specs():
-        out.append({
-            "key": spec.key,
-            "name": f"{spec.name} ({spec.key})" if spec.key not in spec.name else spec.name,
-            "base_url": spec.base_url,
-            "models": list(spec.models),
-            "default_model": spec.default_model,
-            "supports": spec.supports.as_dict(),
-            "note": spec.note,
-        })
+        out.append(
+            {
+                "key": spec.key,
+                "name": f"{spec.name} ({spec.key})" if spec.key not in spec.name else spec.name,
+                "base_url": spec.base_url,
+                "models": list(spec.models),
+                "default_model": spec.default_model,
+                "supports": spec.supports.as_dict(),
+                "note": spec.note,
+            }
+        )
     return out

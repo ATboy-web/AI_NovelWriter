@@ -209,5 +209,5 @@ class TestMemoryManagerEdgeCases(unittest.TestCase):
         self.assertEqual(result, summary)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

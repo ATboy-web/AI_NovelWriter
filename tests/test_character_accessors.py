@@ -65,9 +65,14 @@ class TestGetAllCharacters:
     def test_family_completeness(self, system):
         """集合查询族七元齐备（此前缺 `get_all_characters` 一环）。"""
         for method in (
-            "get_all_characters", "get_character_names", "get_characters_by_category",
-            "get_alive_characters", "get_dead_characters", "get_characters_by_faction",
-            "get_character", "set_active",
+            "get_all_characters",
+            "get_character_names",
+            "get_characters_by_category",
+            "get_alive_characters",
+            "get_dead_characters",
+            "get_characters_by_faction",
+            "get_character",
+            "set_active",
         ):
             assert callable(getattr(system, method, None)), method
 

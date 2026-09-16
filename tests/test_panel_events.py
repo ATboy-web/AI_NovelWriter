@@ -82,7 +82,7 @@ class TestMemoryManagerEvents:
         _topic, payload = sink.events[0]
         assert payload["chapter"] == 3
         assert payload["characters"] == ["张三"]
-        assert Path(payload["page_file"]).exists()      # 广播的一定是已落盘的事实
+        assert Path(payload["page_file"]).exists()  # 广播的一定是已落盘的事实
 
     def test_save_characters_broadcasts_character_changed(self, tmp_path):
         memory = MemoryManager(tmp_path)
@@ -122,16 +122,16 @@ class TestMemoryManagerEvents:
         """默认不广播：本类在单测、CLI 与后端服务里必须零副作用。"""
         memory = MemoryManager(tmp_path)
         assert memory.event_sink is None
-        memory.add_event(1, "无事发生")              # 不应抛异常
+        memory.add_event(1, "无事发生")  # 不应抛异常
 
     def test_broken_sink_does_not_break_writes(self, tmp_path):
         memory = MemoryManager(tmp_path)
         memory.set_event_sink(BrokenSink())
 
-        memory.add_event(1, "事件")                  # 广播失败不影响写盘
+        memory.add_event(1, "事件")  # 广播失败不影响写盘
         memory.save_characters({"张三": {"name": "张三"}})
 
-        assert memory.get_characters()                # 数据确实写进去了
+        assert memory.get_characters()  # 数据确实写进去了
 
     def test_bus_sink_is_a_valid_duck_typed_sink(self, tmp_path):
         """`EventBus.sink()` 必须满足 `publish(topic, payload)` 的注入约定。"""
@@ -201,17 +201,20 @@ class TestUsageEvents:
         isolated_tracker.set_event_sink(sink)
 
         record = isolated_tracker.record(
-            provider="openai", model="gpt-4o-mini",
-            prompt_tokens=100, completion_tokens=50, task="chapter",
+            provider="openai",
+            model="gpt-4o-mini",
+            prompt_tokens=100,
+            completion_tokens=50,
+            task="chapter",
         )
 
         assert sink.topics() == [TOPIC_AI_USAGE]
-        assert sink.events[0][1] is record          # 广播的就是落盘的那条记录
+        assert sink.events[0][1] is record  # 广播的就是落盘的那条记录
         assert sink.events[0][1]["total_tokens"] == 150
 
     def test_no_sink_means_silent(self, isolated_tracker):
         isolated_tracker.set_event_sink(None)
-        isolated_tracker.record(provider="openai", prompt_tokens=1)   # 不应抛异常
+        isolated_tracker.record(provider="openai", prompt_tokens=1)  # 不应抛异常
 
     def test_broken_sink_does_not_break_accounting(self, isolated_tracker):
         isolated_tracker.set_event_sink(BrokenSink())
@@ -311,7 +314,7 @@ class TestWiringSites:
 
     def test_closed_is_emitted_before_opened(self):
         code = _scan.read("app/lifecycle_ui.py")
-        body = code[code.index("def _announce_novel_opened"):]
+        body = code[code.index("def _announce_novel_opened") :]
         body = body[: body.index("def _new_novel")]
         assert body.index("TOPIC_NOVEL_CLOSED") < body.index("TOPIC_NOVEL_OPENED")
 
@@ -321,8 +324,9 @@ class TestWiringSites:
         assert "TOPIC_CHAPTER_SAVED" in code
 
     def test_settings_save_broadcasts_config_changed(self):
-        code = _scan.read("app/lifecycle_ui.py")
-        assert code.count("self._publish_event(TOPIC_CONFIG_CHANGED") == 1
+        """用 `count_normalized`：`ruff format` 会把长调用拆行，裸 `str.count` 会假红。"""
+        code = _scan.code_only("app/lifecycle_ui.py")
+        assert _scan.count_normalized(code, "self._publish_event(TOPIC_CONFIG_CHANGED") == 1
         assert "TOPIC_CONFIG_CHANGED" in code
 
     def test_publish_event_is_the_single_outlet(self):

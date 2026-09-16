@@ -81,7 +81,9 @@ class TestToolDeep:
         assert tool.category == "plot"
 
     def test_execute_success(self):
-        def add(a, b): return a + b
+        def add(a, b):
+            return a + b
+
         tool = Tool("add", "加法", add)
         result = tool.execute(a=1, b=2)
         assert result["success"] is True
@@ -89,7 +91,9 @@ class TestToolDeep:
         assert result["tool"] == "add"
 
     def test_execute_failure(self):
-        def fail(): raise ValueError("error")
+        def fail():
+            raise ValueError("error")
+
         tool = Tool("fail", "失败", fail)
         result = tool.execute()
         assert result["success"] is False
@@ -151,7 +155,7 @@ class TestToolRegistryDeep:
 
     def test_call_error(self):
         registry = ToolRegistry()
-        registry.register(Tool("fail", "失败", lambda: 1/0))
+        registry.register(Tool("fail", "失败", lambda: 1 / 0))
         result = registry.call("fail")
         assert result["success"] is False
 
@@ -168,7 +172,7 @@ class TestNovelAgentParseJson:
         assert result == {"default": True}
 
     def test_valid_list(self):
-        result = NovelAgent._parse_json_response('[1, 2, 3]', [], is_list=True)
+        result = NovelAgent._parse_json_response("[1, 2, 3]", [], is_list=True)
         assert result == [1, 2, 3]
 
     def test_invalid_list_returns_default(self):
@@ -176,7 +180,7 @@ class TestNovelAgentParseJson:
         assert result == [0]
 
     def test_empty_string(self):
-        result = NovelAgent._parse_json_response('', {})
+        result = NovelAgent._parse_json_response("", {})
         assert result == {}
 
     def test_nested(self):
@@ -196,11 +200,11 @@ class TestNovelAgentParseJson:
         assert result == {"value": None}
 
     def test_empty_dict(self):
-        result = NovelAgent._parse_json_response('{}', {})
+        result = NovelAgent._parse_json_response("{}", {})
         assert result == {}
 
     def test_empty_list(self):
-        result = NovelAgent._parse_json_response('[]', [], is_list=True)
+        result = NovelAgent._parse_json_response("[]", [], is_list=True)
         assert result == []
 
 
@@ -209,27 +213,46 @@ class TestNovelAgentInit:
 
     def test_has_required_methods(self):
         methods = [
-            'generate_chapter', 'generate_outline', 'generate_characters',
-            'generate_settings', 'review_chapter', 'finalize_chapter',
-            'analyze_style', 'generate_with_style', 'blend_styles',
-            'generate_with_collaboration', 'generate_outline_continuation',
+            "generate_chapter",
+            "generate_outline",
+            "generate_characters",
+            "generate_settings",
+            "review_chapter",
+            "finalize_chapter",
+            "analyze_style",
+            "generate_with_style",
+            "blend_styles",
+            "generate_with_collaboration",
+            "generate_outline_continuation",
         ]
         for method in methods:
             assert hasattr(NovelAgent, method), f"缺少方法: {method}"
 
     def test_has_internal_methods(self):
         methods = [
-            '_compress_text', '_compress_characters', '_compress_settings',
-            '_compress_active_characters', '_compress_recent_chapters',
-            '_build_context', '_record_conversation',
-            '_plot_designer_analyze', '_world_builder_build',
-            '_writer_generate', '_reviewer_evaluate', '_writer_revise',
-            '_get_writing_style_prompt', '_register_tools',
-            '_call_anti_slop_check', '_get_knowledge_graph_context',
-            '_extract_characters_from_raw', '_parse_json_response',
-            '_generate_long_chapter', '_has_excessive_repetition',
-            '_plan_story_arcs', '_generate_outline_batch',
-            '_update_character_progression',
+            "_compress_text",
+            "_compress_characters",
+            "_compress_settings",
+            "_compress_active_characters",
+            "_compress_recent_chapters",
+            "_build_context",
+            "_record_conversation",
+            "_plot_designer_analyze",
+            "_world_builder_build",
+            "_writer_generate",
+            "_reviewer_evaluate",
+            "_writer_revise",
+            "_get_writing_style_prompt",
+            "_register_tools",
+            "_call_anti_slop_check",
+            "_get_knowledge_graph_context",
+            "_extract_characters_from_raw",
+            "_parse_json_response",
+            "_generate_long_chapter",
+            "_has_excessive_repetition",
+            "_plan_story_arcs",
+            "_generate_outline_batch",
+            "_update_character_progression",
         ]
         for method in methods:
             assert hasattr(NovelAgent, method), f"缺少方法: {method}"

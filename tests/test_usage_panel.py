@@ -93,10 +93,15 @@ class TestSummarizeRows:
         assert "0" in text
 
     def test_measured_and_estimated_split(self):
-        summary = {"totals": {
-            "calls": 3, "total_tokens": 1200, "estimated_calls": 1,
-            "errors": 0, "costs": {"CNY": 0.5},
-        }}
+        summary = {
+            "totals": {
+                "calls": 3,
+                "total_tokens": 1200,
+                "estimated_calls": 1,
+                "errors": 0,
+                "costs": {"CNY": 0.5},
+            }
+        }
         text = summarize_rows(summary)
         assert "1.2K" in text
         assert "实测 2 次 / 估算 1 次" in text
@@ -157,20 +162,30 @@ class TestBalanceCapabilityText:
 class TestChapterRows:
     def test_renders_estimated_split(self, panel, tracker):
         with usage_context(chapter=1):
-            tracker.record(provider="deepseek", model="deepseek-v4-flash",
-                           prompt_tokens=1000, completion_tokens=500, latency_ms=2000)
+            tracker.record(
+                provider="deepseek",
+                model="deepseek-v4-flash",
+                prompt_tokens=1000,
+                completion_tokens=500,
+                latency_ms=2000,
+            )
         with usage_context(chapter=1):
-            tracker.record(provider="deepseek", model="deepseek-v4-flash",
-                           prompt_tokens=10, completion_tokens=5,
-                           estimated=True, latency_ms=1000)
+            tracker.record(
+                provider="deepseek",
+                model="deepseek-v4-flash",
+                prompt_tokens=10,
+                completion_tokens=5,
+                estimated=True,
+                latency_ms=1000,
+            )
 
         tree = FakeTree()
         panel._fill_chapters(tree, tracker.chapter_rows())
         row = tree.rows[0]
         assert row[0] == 1
-        assert row[1] == 2                        # 调用数
-        assert row[5] == "1 / 1 ≈"                # 实测/估算
-        assert row[6] == "3.0"                    # 耗时秒
+        assert row[1] == 2  # 调用数
+        assert row[5] == "1 / 1 ≈"  # 实测/估算
+        assert row[6] == "3.0"  # 耗时秒
         assert row[7].startswith("¥")
 
     def test_empty(self, panel):
@@ -235,8 +250,7 @@ class TestTaskRows:
 
 class TestModelAndPriceRows:
     def test_model_rows(self, panel, tracker):
-        tracker.record(provider="glm", model="glm-5.3", prompt_tokens=100,
-                       completion_tokens=100, latency_ms=500)
+        tracker.record(provider="glm", model="glm-5.3", prompt_tokens=100, completion_tokens=100, latency_ms=500)
         tree = FakeTree()
         panel._fill_model(tree, tracker.summary()["by_model"])
         assert tree.rows[0][0] == "glm-5.3"
@@ -284,7 +298,7 @@ class TestChapterTokenBadge:
     def test_badge_does_not_pollute_chapter_combobox(self):
         """徽标只能进列表项，不能进章号下拉框（否则跳章逻辑会被污染）。"""
         code = _scan.read("app/outline_ui.py")
-        assert "chapters.append(f\"第{ch}章\")" in code
+        assert 'chapters.append(f"第{ch}章")' in code
 
 
 class TestIntegrationPoints:
@@ -300,6 +314,7 @@ class TestIntegrationPoints:
 
     def test_bind_usage_novel_swallows_errors(self, panel, monkeypatch):
         """统计目录切不过去也不能影响"打开小说"这条主流程。"""
+
         def boom(_dir):
             raise OSError("disk gone")
 
@@ -367,9 +382,19 @@ class TestTabStructure:
     def test_five_sub_tabs_and_column_headers(self):
         """面板必须覆盖 §3.5(5) 要求的维度，且列头不能被改动到丢信息。"""
         source = _scan.read("app/usage_ui.py")
-        for header in ('"章号"', '"调用"', '"输入"', '"输出"', '"合计"',
-                       '"实测/估算"', '"耗时(秒)"', '"成本"', '"余额能力"',
-                       '"置信度"', '"查证日期"'):
+        for header in (
+            '"章号"',
+            '"调用"',
+            '"输入"',
+            '"输出"',
+            '"合计"',
+            '"实测/估算"',
+            '"耗时(秒)"',
+            '"成本"',
+            '"余额能力"',
+            '"置信度"',
+            '"查证日期"',
+        ):
             assert header in source
 
     def test_estimated_marker_documented(self):

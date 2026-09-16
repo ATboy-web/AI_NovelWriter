@@ -28,17 +28,20 @@ import _source_scan as _scan  # noqa: E402
 
 
 class TestCountHan:
-    @pytest.mark.parametrize("text,expected", [
-        ("", 0),
-        (None, 0),
-        ("abc123", 0),
-        ("你好", 2),
-        ("你好，世界！", 6),          # 全角标点也计入汉字
-        ("中文abc混合", 4),
-        ("あいう", 3),               # 假名
-        ("한글", 2),                 # 谚文
-        ("（全角括号）", 6),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("", 0),
+            (None, 0),
+            ("abc123", 0),
+            ("你好", 2),
+            ("你好，世界！", 6),  # 全角标点也计入汉字
+            ("中文abc混合", 4),
+            ("あいう", 3),  # 假名
+            ("한글", 2),  # 谚文
+            ("（全角括号）", 6),
+        ],
+    )
     def test_counts(self, text, expected):
         assert count_han(text) == expected
 
@@ -80,16 +83,19 @@ class TestEstimateMessages:
 
     def test_includes_per_message_overhead(self):
         messages = [{"role": "user", "content": "内容"}]
-        expected = (
-            estimate_tokens("内容") + estimate_tokens("user") + MESSAGE_OVERHEAD_TOKENS
-        )
+        expected = estimate_tokens("内容") + estimate_tokens("user") + MESSAGE_OVERHEAD_TOKENS
         assert estimate_messages_tokens(messages) == expected
 
     def test_multimodal_content_counts_text(self):
-        messages = [{"role": "user", "content": [
-            {"type": "text", "text": "描述"},
-            {"type": "image_url", "image_url": {"url": "http://x/y.png"}},
-        ]}]
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "描述"},
+                    {"type": "image_url", "image_url": {"url": "http://x/y.png"}},
+                ],
+            }
+        ]
         assert estimate_messages_tokens(messages) > estimate_tokens("描述")
 
     def test_non_dict_message_falls_back(self):
@@ -117,15 +123,18 @@ class TestCharBudget:
 
 
 class TestFormatTokens:
-    @pytest.mark.parametrize("value,expected", [
-        (0, "0"),
-        (999, "999"),
-        (1000, "1.0K"),
-        (12345, "12.3K"),
-        (1_500_000, "1.5M"),
-        (None, "0"),
-        ("bad", "0"),
-    ])
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            (0, "0"),
+            (999, "999"),
+            (1000, "1.0K"),
+            (12345, "12.3K"),
+            (1_500_000, "1.5M"),
+            (None, "0"),
+            ("bad", "0"),
+        ],
+    )
     def test_format(self, value, expected):
         assert format_tokens(value) == expected
 

@@ -1,4 +1,5 @@
 """风格转换面板混入"""
+
 import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
@@ -20,7 +21,9 @@ class StylePanelMixin:
         ttk.Label(style_frame, text="目标风格:").pack(side=tk.LEFT)
         self.style_var = tk.StringVar(value="热血爽文")
         styles = list(StyleTransferEngine.STYLES.keys())
-        ttk.Combobox(style_frame, textvariable=self.style_var, values=styles, state="readonly", width=15).pack(side=tk.LEFT, padx=5)
+        ttk.Combobox(style_frame, textvariable=self.style_var, values=styles, state="readonly", width=15).pack(
+            side=tk.LEFT, padx=5
+        )
         ttk.Button(style_frame, text="转换当前章节风格", command=self._convert_style).pack(side=tk.LEFT, padx=10)
 
         self.style_result = scrolledtext.ScrolledText(f, height=12, wrap=tk.WORD, font=("微软雅黑", 10))

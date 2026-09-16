@@ -27,19 +27,19 @@ class TestAppConfig:
     def app_config(self, config_dir, monkeypatch):
         """创建AppConfig实例，使用临时目录"""
         # Mock Path.home() 返回临时目录
-        monkeypatch.setattr('pathlib.Path.home', lambda: config_dir.parent)
+        monkeypatch.setattr("pathlib.Path.home", lambda: config_dir.parent)
         return AppConfig()
 
     def test_init_creates_directory(self, config_dir, monkeypatch):
         """测试初始化时创建配置目录"""
-        monkeypatch.setattr('pathlib.Path.home', lambda: config_dir.parent)
+        monkeypatch.setattr("pathlib.Path.home", lambda: config_dir.parent)
         assert not config_dir.exists()
         AppConfig()
         assert config_dir.exists()
 
     def test_init_creates_novels_directory(self, config_dir, monkeypatch):
         """测试初始化时创建小说目录"""
-        monkeypatch.setattr('pathlib.Path.home', lambda: config_dir.parent)
+        monkeypatch.setattr("pathlib.Path.home", lambda: config_dir.parent)
         AppConfig()
         assert (config_dir / "novels").exists()
 
@@ -82,7 +82,7 @@ class TestAppConfig:
 
     def test_save_persists(self, config_dir, monkeypatch):
         """测试保存持久化"""
-        monkeypatch.setattr('pathlib.Path.home', lambda: config_dir.parent)
+        monkeypatch.setattr("pathlib.Path.home", lambda: config_dir.parent)
 
         # 创建并保存配置（使用非敏感字段测试持久化）
         config1 = AppConfig()
@@ -96,17 +96,13 @@ class TestAppConfig:
 
     def test_load_existing_config(self, config_dir, monkeypatch):
         """测试加载已存在的配置（明文敏感字段被安全清空）"""
-        monkeypatch.setattr('pathlib.Path.home', lambda: config_dir.parent)
+        monkeypatch.setattr("pathlib.Path.home", lambda: config_dir.parent)
 
         # 创建配置文件
         config_dir.mkdir(parents=True, exist_ok=True)
         config_file = config_dir / "config.json"
-        existing_config = {
-            "api_provider": "openai",
-            "api_key": "sk-existing-key",
-            "model": "gpt-4"
-        }
-        config_file.write_text(json.dumps(existing_config, indent=2), encoding='utf-8')
+        existing_config = {"api_provider": "openai", "api_key": "sk-existing-key", "model": "gpt-4"}
+        config_file.write_text(json.dumps(existing_config, indent=2), encoding="utf-8")
 
         # 加载配置
         config = AppConfig()
@@ -117,16 +113,13 @@ class TestAppConfig:
 
     def test_load_preserves_extra_keys(self, config_dir, monkeypatch):
         """测试加载保留额外的键"""
-        monkeypatch.setattr('pathlib.Path.home', lambda: config_dir.parent)
+        monkeypatch.setattr("pathlib.Path.home", lambda: config_dir.parent)
 
         # 创建配置文件，包含额外的键
         config_dir.mkdir(parents=True, exist_ok=True)
         config_file = config_dir / "config.json"
-        existing_config = {
-            "api_provider": "openai",
-            "custom_key": "custom_value"
-        }
-        config_file.write_text(json.dumps(existing_config, indent=2), encoding='utf-8')
+        existing_config = {"api_provider": "openai", "custom_key": "custom_value"}
+        config_file.write_text(json.dumps(existing_config, indent=2), encoding="utf-8")
 
         # 加载配置
         config = AppConfig()
@@ -149,12 +142,12 @@ class TestAppConfigEdgeCases:
     def test_invalid_json_file(self, tmp_path, monkeypatch):
         """测试无效的JSON文件"""
         config_dir = tmp_path / ".ai_novel_writer"
-        monkeypatch.setattr('pathlib.Path.home', lambda: tmp_path)
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
 
         # 创建无效的JSON文件
         config_dir.mkdir(parents=True, exist_ok=True)
         config_file = config_dir / "config.json"
-        config_file.write_text("这不是有效的JSON{", encoding='utf-8')
+        config_file.write_text("这不是有效的JSON{", encoding="utf-8")
 
         # 应该抛出异常
         with pytest.raises(json.JSONDecodeError):
@@ -163,12 +156,12 @@ class TestAppConfigEdgeCases:
     def test_read_only_config_file(self, tmp_path, monkeypatch):
         """测试只读配置文件"""
         config_dir = tmp_path / ".ai_novel_writer"
-        monkeypatch.setattr('pathlib.Path.home', lambda: tmp_path)
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
 
         # 创建配置文件
         config_dir.mkdir(parents=True, exist_ok=True)
         config_file = config_dir / "config.json"
-        config_file.write_text('{"key": "value"}', encoding='utf-8')
+        config_file.write_text('{"key": "value"}', encoding="utf-8")
 
         # 设置只读（Windows上可能不生效）
         try:
@@ -183,15 +176,15 @@ class TestAppConfigEdgeCases:
     def test_config_dir_is_file(self, tmp_path, monkeypatch):
         """测试配置目录是文件的情况"""
         config_dir = tmp_path / ".ai_novel_writer"
-        monkeypatch.setattr('pathlib.Path.home', lambda: tmp_path)
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
 
         # 创建一个文件而不是目录
-        config_dir.write_text("这是文件", encoding='utf-8')
+        config_dir.write_text("这是文件", encoding="utf-8")
 
         # 应该抛出异常
         with pytest.raises(Exception):
             AppConfig()
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

@@ -14,7 +14,7 @@ class TestReadBook:
     """read_book 深度测试"""
 
     def test_read_txt(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         test_file = tmp_path / "test.txt"
         test_file.write_text("第一行\n第二行\n第三行", encoding="utf-8")
@@ -23,7 +23,7 @@ class TestReadBook:
         assert "第一行" in content
 
     def test_read_md(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         test_file = tmp_path / "test.md"
         test_file.write_text("# 标题\n\n内容", encoding="utf-8")
@@ -32,13 +32,13 @@ class TestReadBook:
         assert "标题" in content
 
     def test_read_nonexistent(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         content = rm.read_book("/nonexistent/file.txt")
         assert content is None
 
     def test_read_unsupported_format(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         test_file = tmp_path / "test.xyz"
         test_file.write_text("content", encoding="utf-8")
@@ -46,7 +46,7 @@ class TestReadBook:
         assert content is None
 
     def test_read_empty_txt(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         test_file = tmp_path / "empty.txt"
         test_file.write_text("", encoding="utf-8")
@@ -54,7 +54,7 @@ class TestReadBook:
         assert content is not None
 
     def test_read_unicode_txt(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         test_file = tmp_path / "unicode.txt"
         test_file.write_text("中文内容 🎮📚", encoding="utf-8")
@@ -67,7 +67,7 @@ class TestImportBookMetadata:
     """import_book 元数据测试"""
 
     def test_import_txt_has_metadata(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         test_file = tmp_path / "test.txt"
         test_file.write_text("第一章 开始\n\n内容", encoding="utf-8")
@@ -78,7 +78,7 @@ class TestImportBookMetadata:
         assert "size" in result
 
     def test_import_md_has_metadata(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         test_file = tmp_path / "test.md"
         test_file.write_text("# 标题\n\n内容", encoding="utf-8")
@@ -87,13 +87,13 @@ class TestImportBookMetadata:
         assert "title" in result
 
     def test_import_nonexistent(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         result = rm.import_book("/nonexistent/file.txt")
         assert result is None
 
     def test_import_has_format(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         test_file = tmp_path / "test.txt"
         test_file.write_text("content", encoding="utf-8")
@@ -102,7 +102,7 @@ class TestImportBookMetadata:
         assert result["format"] == ".txt"
 
     def test_import_has_size(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         test_file = tmp_path / "test.txt"
         test_file.write_text("12345", encoding="utf-8")
@@ -115,7 +115,7 @@ class TestImportBookExtended:
     """import_book 扩展测试"""
 
     def test_import_txt_creates_metadata(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         test_file = tmp_path / "test.txt"
         test_file.write_text("内容", encoding="utf-8")
@@ -126,7 +126,7 @@ class TestImportBookExtended:
         assert "size" in result
 
     def test_import_md(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         test_file = tmp_path / "test.md"
         test_file.write_text("# 标题", encoding="utf-8")
@@ -134,7 +134,7 @@ class TestImportBookExtended:
         assert result is not None
 
     def test_import_unsupported(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         test_file = tmp_path / "test.xyz"
         test_file.write_text("content", encoding="utf-8")
@@ -146,27 +146,27 @@ class TestReadingSettings:
     """阅读设置测试"""
 
     def test_default_font_size(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         assert rm.font_size == 16
 
     def test_default_font_family(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         assert rm.font_family == "微软雅黑"
 
     def test_default_line_spacing(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         assert rm.line_spacing == 1.5
 
     def test_default_theme(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         assert rm.theme == "light"
 
     def test_modify_settings(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         rm.font_size = 20
         rm.font_family = "宋体"
@@ -197,7 +197,7 @@ class TestSupportedFormats:
         assert ReadingManager.SUPPORTED_FORMATS[".md"] == "Markdown文件"
 
     def test_get_supported_formats(self, tmp_path):
-        mock_config = type('Config', (), {'config_dir': tmp_path})()
+        mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         formats = rm.get_supported_formats()
         assert len(formats) == 5

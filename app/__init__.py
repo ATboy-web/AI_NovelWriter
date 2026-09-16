@@ -2,6 +2,7 @@
 AI_NovelWriter 应用包
 从 novel_app.py 拆分出的独立模块
 """
+
 import importlib
 from pathlib import Path as _Path
 
@@ -13,11 +14,13 @@ _FALLBACK_VERSION = "2.16.0"
 def _load_version() -> str:
     try:
         from importlib.metadata import version as _v
+
         return _v("ai-novel-writer")
     except Exception:
         pass
     try:
         import tomllib
+
         _pyproject = _Path(__file__).resolve().parent.parent / "pyproject.toml"
         with open(_pyproject, "rb") as _f:
             return tomllib.load(_f)["project"]["version"]
@@ -31,12 +34,12 @@ __version__ = _load_version()
 
 class _ImportStub:
     """安全导入占位类 - 在实例化时抛出明确的 ImportError"""
+
     _import_error = ""
 
     def __init__(self, *args, **kwargs):
         raise ImportError(
-            f"Module not available (import failed: {self._import_error}). "
-            "Please install missing dependencies."
+            f"Module not available (import failed: {self._import_error}). Please install missing dependencies."
         )
 
 
@@ -48,9 +51,11 @@ def _safe_import(module_name: str, class_name: str):
         return getattr(mod, class_name)
     except (ImportError, AttributeError) as e:
         import warnings
+
         warnings.warn(f"Failed to import {class_name} from {module_name}: {e}")
         # 创建占位类型，实例化时报错而非静默失败
         return type(class_name, (_ImportStub,), {"_import_error": str(e)})
+
 
 # 核心模块（必须可用）
 from .ai_client import AIClient, token_stats

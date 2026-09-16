@@ -27,9 +27,9 @@ class TestDiagnosticLoggerSimple:
 
     def test_has_methods(self):
         """测试方法存在"""
-        assert hasattr(DiagnosticLogger, 'log')
-        assert hasattr(DiagnosticLogger, '_generate_session_id')
-        assert hasattr(DiagnosticLogger, '_get_log_file')
+        assert hasattr(DiagnosticLogger, "log")
+        assert hasattr(DiagnosticLogger, "_generate_session_id")
+        assert hasattr(DiagnosticLogger, "_get_log_file")
 
     def test_get_logger(self):
         """测试get_logger函数"""
@@ -52,7 +52,7 @@ class TestDiagnosticLoggerSimple:
 
         session_id = logger._session_id
         # 格式应该是 YYYYMMDD-HHMMSS-PID
-        parts = session_id.split('-')
+        parts = session_id.split("-")
         assert len(parts) >= 3
 
     def test_log_method(self, tmp_path):
@@ -79,5 +79,5 @@ class TestDiagnosticLoggerSimple:
         assert logger._sequence == initial + 2
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

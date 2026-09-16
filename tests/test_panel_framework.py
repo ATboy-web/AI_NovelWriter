@@ -93,10 +93,10 @@ class FakeMixin:
     """冒充 v2 面板 Mixin：构建时写控件属性、读宿主状态。"""
 
     def _build_fake_tool(self):
-        frame = self.tool_content_frame          # 必须解析到**本面板自己的**容器
-        frame.children.append(FakeWidget())      # 模拟"往容器里画了一个控件"
-        self.fake_result = ("widget", frame)     # 写入 → 应落到宿主
-        self.read_back = self.ai_client          # 读取 → 走宿主代理
+        frame = self.tool_content_frame  # 必须解析到**本面板自己的**容器
+        frame.children.append(FakeWidget())  # 模拟"往容器里画了一个控件"
+        self.fake_result = ("widget", frame)  # 写入 → 应落到宿主
+        self.read_back = self.ai_client  # 读取 → 走宿主代理
         # ⚠️ `self.x += 1` 会先读 `x`：读取走代理（面板 → 宿主），
         # 宿主没有就 AttributeError —— 与 v2 完全一致（见 legacy.py 模块文档）。
         self.build_count = getattr(self, "build_count", 0) + 1
@@ -145,7 +145,7 @@ class TestRegistry:
         registered = {spec.key for spec in loaded.all_panels() if spec.legacy}
         expected = {spec.key for spec in LEGACY_PANEL_SPECS}
         assert registered == expected
-        assert len(expected) == 12            # v2 的 12 个工具面板一个不少
+        assert len(expected) == 12  # v2 的 12 个工具面板一个不少
 
     def test_panel_metadata_is_complete(self, loaded):
         for spec in loaded.all_panels():
@@ -165,7 +165,7 @@ class TestRegistry:
 
     def test_default_key_is_the_first_panel(self, loaded):
         assert loaded.default_key() == loaded.all_panels()[0].key
-        assert loaded.default_key() == "elements"      # 与 v2 的默认工具页一致
+        assert loaded.default_key() == "elements"  # 与 v2 的默认工具页一致
 
     def test_duplicate_key_is_rejected(self):
         class First(BasePanel):
@@ -383,8 +383,8 @@ class TestAdapterRendering:
 
         panel.on_show()
 
-        assert first_child.destroyed == 1            # 旧内容被清掉
-        assert len(frame.winfo_children()) == 1      # 又画了一份
+        assert first_child.destroyed == 1  # 旧内容被清掉
+        assert len(frame.winfo_children()) == 1  # 又画了一份
         assert frame.winfo_children()[0] is not first_child
         assert app.build_count == 2
         assert app.fake_result[1] is frame
@@ -400,7 +400,7 @@ class TestAdapterRendering:
         app = FakeApp()
         panel = _make_fake_adapter(app)
         panel.mark_built()
-        panel.on_show()      # 不应抛异常
+        panel.on_show()  # 不应抛异常
 
     def test_read_of_attribute_missing_everywhere_raises_like_v2(self):
         """`self.x += 1` 这类"先读后写"要求宿主持有 `x` —— 与 v2 语义一致。
@@ -413,10 +413,10 @@ class TestAdapterRendering:
         panel = _make_fake_adapter(app)
 
         with pytest.raises(AttributeError):
-            panel.never_defined_anywhere          # noqa: B018 - 就是要它抛
+            panel.never_defined_anywhere  # noqa: B018 - 就是要它抛
 
         app.predefined_engine = None
-        assert panel.predefined_engine is None    # 宿主预置过的就能正常读写
+        assert panel.predefined_engine is None  # 宿主预置过的就能正常读写
 
 
 # ============================================================ 事件订阅（显式声明）
@@ -461,7 +461,7 @@ class TestPanelEventSubscription:
             assert len(handles) == 1
 
             bus.publish(TOPIC_CHAPTER_SAVED, {"chapter": 1})
-            bus.publish(TOPIC_NOVEL_OPENED, {"novel_dir": "x"})   # 未声明 → 不收
+            bus.publish(TOPIC_NOVEL_OPENED, {"novel_dir": "x"})  # 未声明 → 不收
 
             assert panel.seen == [(TOPIC_CHAPTER_SAVED, {"chapter": 1})]
         finally:
@@ -478,7 +478,7 @@ class TestPanelEventSubscription:
         try:
             bus = EventBus(name="t")
             handles = Everything(FakeApp()).attach_events(bus)
-            assert len(handles) == 1          # 通配已覆盖，不重复订阅
+            assert len(handles) == 1  # 通配已覆盖，不重复订阅
             assert bus.subscriber_count(WILDCARD) == 1
         finally:
             _drop("everything-probe")
@@ -548,7 +548,7 @@ class TestPanelHost:
         assert [c[0] for c in panel.calls] == ["build"]
         assert host.current_key == "host-recording-probe"
 
-        host.refresh()                        # 重建：先清 built 标记再 build
+        host.refresh()  # 重建：先清 built 标记再 build
         assert [c[0] for c in panel.calls] == ["build", "build"]
 
         host.select("host-recording-probe")
@@ -597,7 +597,7 @@ class TestPanelHost:
         host.select("host-recording-probe")
         panel = host.panel("host-recording-probe")
         panel.on_show = lambda: 1 / 0
-        host.select("host-recording-probe")      # 不应抛异常
+        host.select("host-recording-probe")  # 不应抛异常
 
     def test_panels_subscribe_through_host(self, host_env):
         from app.events import EventBus
@@ -632,7 +632,7 @@ class TestPanelHost:
 
         bus.publish(TOPIC_NOVEL_OPENED, {"novel_dir": "x"})
 
-        assert len(panel.calls) > before          # 换书 → 重建当前面板
+        assert len(panel.calls) > before  # 换书 → 重建当前面板
 
     def test_detach_all_unsubscribes_and_releases(self, host_env):
         from app.events import EventBus
@@ -672,7 +672,7 @@ class TestDispatchLayerHasNoHardcodedPanels:
         allowed = {
             "app/panels/registry.py",
             "app/panels/legacy.py",
-            "app/panels/__init__.py",   # 只做转出，不新增清单
+            "app/panels/__init__.py",  # 只做转出，不新增清单
         }
         pattern = re.compile(r"['\"]app\.panels\.[a-z_]+_panel['\"]")
         offenders = []

@@ -93,6 +93,13 @@ class ReasoningAdapter(OpenAICompatAdapter):
 
 def _clone_with_thinking(req: ChatRequest, thinking: bool) -> ChatRequest:
     return ChatRequest(
-        req.model, req.messages, req.system, req.max_tokens, req.temperature,
-        thinking, req.reasoning_effort, req.stream, req.extra,
+        req.model,
+        req.messages,
+        req.system,
+        req.max_tokens,
+        req.temperature,
+        thinking,
+        req.reasoning_effort,
+        req.stream,
+        req.extra,
     )

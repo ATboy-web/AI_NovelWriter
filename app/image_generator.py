@@ -10,6 +10,7 @@ try:
     from loguru import logger
 except ImportError:
     import logging
+
     logger = logging.getLogger(__name__)
 
 import httpx
@@ -27,7 +28,9 @@ class ImageGenerator:
         provider = self.config.get("img_provider", "disabled")
         return provider != "disabled"
 
-    def generate(self, prompt: str, negative_prompt: str = "", width: int = 1024, height: int = 1024) -> Optional[bytes]:
+    def generate(
+        self, prompt: str, negative_prompt: str = "", width: int = 1024, height: int = 1024
+    ) -> Optional[bytes]:
         """生成图片，返回图片字节数据"""
         provider = self.config.get("img_provider", "comfyui")
 
@@ -58,32 +61,17 @@ class ImageGenerator:
                         "positive": ["6", 0],
                         "negative": ["7", 0],
                         "latent_image": ["5", 0],
-                    }
+                    },
                 },
-                "4": {
-                    "class_type": "CheckpointLoaderSimple",
-                    "inputs": {"ckpt_name": model}
-                },
-                "5": {
-                    "class_type": "EmptyLatentImage",
-                    "inputs": {"width": width, "height": height, "batch_size": 1}
-                },
-                "6": {
-                    "class_type": "CLIPTextEncode",
-                    "inputs": {"text": prompt, "clip": ["4", 1]}
-                },
+                "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": model}},
+                "5": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
+                "6": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["4", 1]}},
                 "7": {
                     "class_type": "CLIPTextEncode",
-                    "inputs": {"text": negative_prompt or "low quality, blurry, deformed", "clip": ["4", 1]}
+                    "inputs": {"text": negative_prompt or "low quality, blurry, deformed", "clip": ["4", 1]},
                 },
-                "8": {
-                    "class_type": "VAEDecode",
-                    "inputs": {"samples": ["3", 0], "vae": ["4", 2]}
-                },
-                "9": {
-                    "class_type": "SaveImage",
-                    "inputs": {"filename_prefix": "novel_img", "images": ["8", 0]}
-                },
+                "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
+                "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "novel_img", "images": ["8", 0]}},
             }
 
             # 提交工作流
@@ -103,8 +91,12 @@ class ImageGenerator:
                             img_info = outputs["9"]["images"][0]
                             img_resp = httpx.get(
                                 f"{api_base}/view",
-                                params={"filename": img_info["filename"], "subfolder": img_info.get("subfolder", ""), "type": img_info["type"]},
-                                timeout=10
+                                params={
+                                    "filename": img_info["filename"],
+                                    "subfolder": img_info.get("subfolder", ""),
+                                    "type": img_info["type"],
+                                },
+                                timeout=10,
                             )
                             return img_resp.content
 
@@ -117,17 +109,22 @@ class ImageGenerator:
         """通过Stable Diffusion WebUI API生成图片"""
         try:
             import base64
+
             api_base = self.config.get("img_api_base", "http://127.0.0.1:7860")
 
-            resp = httpx.post(f"{api_base}/sdapi/v1/txt2img", json={
-                "prompt": prompt,
-                "negative_prompt": negative_prompt or "low quality, blurry",
-                "width": width,
-                "height": height,
-                "steps": 25,
-                "cfg_scale": 7.0,
-                "sampler_name": "Euler a",
-            }, timeout=120)
+            resp = httpx.post(
+                f"{api_base}/sdapi/v1/txt2img",
+                json={
+                    "prompt": prompt,
+                    "negative_prompt": negative_prompt or "low quality, blurry",
+                    "width": width,
+                    "height": height,
+                    "steps": 25,
+                    "cfg_scale": 7.0,
+                    "sampler_name": "Euler a",
+                },
+                timeout=120,
+            )
             resp.raise_for_status()
 
             images = resp.json().get("images", [])
@@ -143,6 +140,6 @@ class ImageGenerator:
         img_dir = save_dir / "images"
         img_dir.mkdir(exist_ok=True)
         filepath = img_dir / f"{name}.png"
-        with open(filepath, 'wb') as f:
+        with open(filepath, "wb") as f:
             f.write(img_data)
         return filepath

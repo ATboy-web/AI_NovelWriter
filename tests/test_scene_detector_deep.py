@@ -410,6 +410,7 @@ class TestSceneDetectorDetectForVolume:
 
     def test_detect_for_volume_with_ai_client(self):
         from unittest.mock import MagicMock
+
         chapters = ["大战" * 20 + "。"] * 20
         ai_client = MagicMock()
         ai_client.chat.return_value = "[1,2,3,4,5,6,7,8,9,10]"
@@ -418,6 +419,7 @@ class TestSceneDetectorDetectForVolume:
 
     def test_detect_for_volume_ai_failure(self):
         from unittest.mock import MagicMock
+
         chapters = ["大战" * 20 + "。"] * 20
         ai_client = MagicMock()
         ai_client.chat.side_effect = Exception("API error")

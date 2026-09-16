@@ -36,12 +36,12 @@ class NoteManager:
 
     def get_sticky_notes(self) -> List[Dict]:
         if self.sticky_file.exists():
-            with open(self.sticky_file, 'r', encoding='utf-8') as f:
+            with open(self.sticky_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         return []
 
     def save_sticky_notes(self, notes: List[Dict]):
-        with open(self.sticky_file, 'w', encoding='utf-8') as f:
+        with open(self.sticky_file, "w", encoding="utf-8") as f:
             json.dump(notes, f, indent=2, ensure_ascii=False)
 
     def add_sticky_note(self, content: str, tags: List[str] = None) -> Dict:
@@ -67,14 +67,14 @@ class NoteManager:
         if not self.novel_dir:
             return []
         if self.project_note_file.exists():
-            with open(self.project_note_file, 'r', encoding='utf-8') as f:
+            with open(self.project_note_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         return []
 
     def save_project_notes(self, notes: List[Dict]):
         if not self.novel_dir:
             return
-        with open(self.project_note_file, 'w', encoding='utf-8') as f:
+        with open(self.project_note_file, "w", encoding="utf-8") as f:
             json.dump(notes, f, indent=2, ensure_ascii=False)
 
     def add_project_note(self, title: str, content: str) -> Dict:
@@ -114,7 +114,7 @@ class NoteManager:
             return []
         note_file = self.doc_notes_dir / f"chapter_{chapter_num:04d}.json"
         if note_file.exists():
-            with open(note_file, 'r', encoding='utf-8') as f:
+            with open(note_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         return []
 
@@ -122,7 +122,7 @@ class NoteManager:
         if not self.novel_dir:
             return
         note_file = self.doc_notes_dir / f"chapter_{chapter_num:04d}.json"
-        with open(note_file, 'w', encoding='utf-8') as f:
+        with open(note_file, "w", encoding="utf-8") as f:
             json.dump(notes, f, indent=2, ensure_ascii=False)
 
     def add_doc_note(self, chapter_num: int, content: str, position: int = 0) -> Dict:
@@ -153,7 +153,4 @@ class NoteManager:
                 note = n
                 break
         if note and self.novel_dir:
-            self.add_project_note(
-                title=f"来自便笺 - {note['content'][:20]}",
-                content=note["content"]
-            )
+            self.add_project_note(title=f"来自便笺 - {note['content'][:20]}", content=note["content"])

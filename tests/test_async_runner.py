@@ -106,8 +106,7 @@ class TestSubmit:
     def test_thread_name_is_used(self):
         names = []
         runner = BackgroundRunner()
-        runner.submit(lambda: names.append(threading.current_thread().name),
-                      name="anw-test").join()
+        runner.submit(lambda: names.append(threading.current_thread().name), name="anw-test").join()
         assert names == ["anw-test"]
         assert DEFAULT_THREAD_NAME == "anw-worker"
 
@@ -120,9 +119,7 @@ class TestSubmit:
     def test_finally_callback_runs_on_success(self):
         ui = FakeUi()
         calls = []
-        BackgroundRunner(ui=ui).submit(
-            lambda: "ok", on_finally=lambda: calls.append("finally")
-        ).join()
+        BackgroundRunner(ui=ui).submit(lambda: "ok", on_finally=lambda: calls.append("finally")).join()
         ui.flush()
         assert calls == ["finally"]
 
@@ -155,9 +152,7 @@ class TestErrorHandling:
         """
         ui = FakeUi()
         messages = []
-        BackgroundRunner(ui=ui, log=messages.append).submit(
-            lambda: (_ for _ in ()).throw(RuntimeError("lost"))
-        ).join()
+        BackgroundRunner(ui=ui, log=messages.append).submit(lambda: (_ for _ in ()).throw(RuntimeError("lost"))).join()
         ui.flush()
         assert messages and "Traceback" in messages[0]
         assert "lost" in messages[0]
@@ -168,7 +163,8 @@ class TestErrorHandling:
         messages = []
         BackgroundRunner(ui=ui, log=messages.append).submit(
             lambda: (_ for _ in ()).throw(RuntimeError("x")),
-            on_error=seen.append, log_errors=True,
+            on_error=seen.append,
+            log_errors=True,
         ).join()
         ui.flush()
         assert len(seen) == 1
@@ -179,7 +175,8 @@ class TestErrorHandling:
         calls = []
         BackgroundRunner(ui=ui).submit(
             lambda: (_ for _ in ()).throw(RuntimeError("x")),
-            on_error=lambda _exc: None, on_finally=lambda: calls.append("f"),
+            on_error=lambda _exc: None,
+            on_finally=lambda: calls.append("f"),
         ).join()
         ui.flush()
         assert calls == ["f"]
@@ -188,9 +185,7 @@ class TestErrorHandling:
         """`BaseException`（如任务被中断）也必须走统一出口，不能静默消失。"""
         ui = FakeUi()
         seen = []
-        BackgroundRunner(ui=ui).submit(
-            lambda: (_ for _ in ()).throw(KeyboardInterrupt()), on_error=seen.append
-        ).join()
+        BackgroundRunner(ui=ui).submit(lambda: (_ for _ in ()).throw(KeyboardInterrupt()), on_error=seen.append).join()
         ui.flush()
         assert isinstance(seen[0], KeyboardInterrupt)
 
@@ -205,7 +200,7 @@ class TestDispatch:
         ui = FakeUi()
         seen = []
         BackgroundRunner(ui=ui).dispatch(seen.append, 2)
-        assert seen == []              # 还没 flush
+        assert seen == []  # 还没 flush
         ui.flush()
         assert seen == [2]
 

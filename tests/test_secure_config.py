@@ -56,7 +56,8 @@ class TestSecureConfig:
 
         # 读取原始文件，确认API密钥已加密
         import json
-        with open(secure_config.config_file, 'r') as f:
+
+        with open(secure_config.config_file, "r") as f:
             raw_config = json.load(f)
 
         # 原始文件中的API密钥应该是加密的
@@ -102,7 +103,7 @@ class TestSecureConfig:
         old_config = {
             "api_provider": "openai",
             "api_key": "sk-old-plain-key",  # 未加密
-            "model": "gpt-3.5-turbo"
+            "model": "gpt-3.5-turbo",
         }
         config_file = config_dir / "config.json"
         config_file.write_text(json.dumps(old_config, indent=2))
@@ -154,5 +155,5 @@ class TestSecureConfigEdgeCases:
         assert config.get("api_provider") == "ollama"
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

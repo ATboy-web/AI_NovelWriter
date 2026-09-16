@@ -48,7 +48,7 @@ __all__ = [
 HAN_RATIO = 1.6
 
 #: 非汉字字符（ASCII 字母/数字/空白/半角标点）每字符折算的 token 数。
-OTHER_RATIO = 0.25            # 即 4 字符 / token
+OTHER_RATIO = 0.25  # 即 4 字符 / token
 
 #: 每条消息的角色/分隔符开销（对齐 OpenAI 的 "每消息 +4 tokens" 经验值）。
 MESSAGE_OVERHEAD_TOKENS = 4
@@ -72,16 +72,7 @@ CONTEXT_SAFETY_DIVISOR = 3.0
 #   U+AC00-U+D7AF  谚文音节
 #   U+FF00-U+FFEF  全角形式（全角字母/数字/标点）
 _HAN_RE = re.compile(
-    "["
-    "\u2e80-\u303f"
-    "\u3040-\u30ff"
-    "\u3130-\u318f"
-    "\u3400-\u4dbf"
-    "\u4e00-\u9fff"
-    "\uf900-\ufaff"
-    "\uac00-\ud7af"
-    "\uff00-\uffef"
-    "]"
+    "[\u2e80-\u303f\u3040-\u30ff\u3130-\u318f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af\uff00-\uffef]"
 )
 
 
@@ -195,4 +186,3 @@ def truncate_to_tokens(text, tokens) -> str:
     if limit <= 0:
         return ""
     return text[:limit]
-

@@ -105,4 +105,3 @@ def method_body(rel: str, start_marker: str, end_marker: str) -> str:
     start = src.index(start_marker)
     end = src.index(end_marker, start)
     return src[start:end]
-

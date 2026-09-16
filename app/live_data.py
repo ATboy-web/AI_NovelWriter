@@ -77,22 +77,38 @@ def characters_sha256(novel_dir: Path) -> str:
     return hashlib.sha256(data).hexdigest().upper()
 
 
-def _count_json_files(directory: Path, recursive: bool = False) -> int:
+def _count_files(directory: Path, pattern: str = "*.json") -> int:
+    """统计目录下匹配 `pattern` 的文件数（目录不存在返回 0）。
+
+    章节是 `chapters/chapter_0001.txt`（**txt**），角色文件是 `characters/<名>.json`（json）——
+    两者扩展名不同，所以这里必须能传 pattern。
+    """
     if not directory.is_dir():
         return 0
-    pattern = "**/*.json" if recursive else "*.json"
     return sum(1 for p in directory.glob(pattern) if p.is_file())
 
 
 @dataclass(frozen=True)
 class NovelDataSummary:
-    """一次数据快照（用于改造前后比对）。"""
+    """一次数据快照（用于改造前后比对）。
+
+    ⚠️ 两个容易混淆的计数字段（2026-09-16 修正）：
+
+    - `chapter_count` —— **真正的章节数**：`chapters/chapter_*.txt` 的文件数。
+    - `character_file_count` —— `characters/<名>.json` 的文件数。
+
+    修正前 `chapter_count` 统计的是**后者**，于是基线报告里出现
+    `character_count: 286 / chapter_count: 286` 这种两个数字相同、
+    且"章节数"其实是角色文件数的假象；**真章数（线上 1094）从未被采集**，
+    导致 `--verify` 完全无法发现"章节被删"。这里把两者分开并各自诚实命名。
+    """
 
     root: str
     characters_sha256: str
     characters_bytes: int
     character_count: int
     chapter_count: int
+    character_file_count: int
     characters_mtime: str
 
     def as_dict(self) -> dict:
@@ -102,17 +118,19 @@ class NovelDataSummary:
             "characters_bytes": self.characters_bytes,
             "character_count": self.character_count,
             "chapter_count": self.chapter_count,
+            "character_file_count": self.character_file_count,
             "characters_mtime": self.characters_mtime,
         }
 
     def format_text(self) -> str:
         return (
-            f"root        : {self.root}\n"
-            f"sha256      : {self.characters_sha256}\n"
-            f"bytes       : {self.characters_bytes}\n"
-            f"characters  : {self.character_count}\n"
-            f"chapters    : {self.chapter_count}\n"
-            f"mtime       : {self.characters_mtime}\n"
+            f"root         : {self.root}\n"
+            f"sha256       : {self.characters_sha256}\n"
+            f"bytes        : {self.characters_bytes}\n"
+            f"characters   : {self.character_count}\n"
+            f"chapters     : {self.chapter_count}\n"
+            f"char files   : {self.character_file_count}\n"
+            f"mtime        : {self.characters_mtime}\n"
         )
 
 
@@ -138,7 +156,9 @@ def summarize_novel(novel_dir: Path) -> NovelDataSummary:
         characters_sha256=hashlib.sha256(raw).hexdigest().upper(),
         characters_bytes=len(raw),
         character_count=characters,
-        chapter_count=_count_json_files(novel_dir / "characters"),
+        # 真章数：`chapters/chapter_*.txt`（此前误统计 characters/ 的 JSON，见类文档）
+        chapter_count=_count_files(novel_dir / "chapters", "*.txt"),
+        character_file_count=_count_files(novel_dir / "characters", "*.json"),
         characters_mtime=_format_mtime(char_file),
     )
 

@@ -4,10 +4,14 @@
 用途：改造每一期前后各跑一次，**用同一把尺子**证明「角色数据零改动」。
 
     python scripts/baseline_check.py            # 采集并打印当前快照
-    python scripts/baseline_check.py --record   # 记录为基线文件
+    python scripts/baseline_check.py --record   # 记录为基线文件（含 ruff + 全量 pytest）
     python scripts/baseline_check.py --verify   # 与基线文件比对（不等则 exit 1）
+    python scripts/baseline_check.py --record --no-tests   # 只记数据/仓库，不跑测试
 
 只读脚本：不写业务数据；`--record` 只写一个基线 JSON 到 `docs/`。
+
+⚠️ `--record` 默认会跑**全量 pytest**（数十秒到数分钟）。在受限沙箱里整套测试会触发
+批量删除守卫、拿不到可信结果，此时用 `--no-tests` 只记数据与仓库状态。
 """
 
 import argparse
@@ -27,9 +31,7 @@ BASELINE_FILE = REPO_ROOT / "docs" / "v3_baseline.json"
 def _run(cmd: list) -> tuple:
     """执行命令并返回 (exit_code, 合并输出)。"""
     try:
-        proc = subprocess.run(
-            cmd, cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=1800
-        )
+        proc = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=1800)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 1, f"<执行失败: {exc}>"
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
@@ -70,7 +72,13 @@ def collect(with_tests: bool = False) -> dict:
     snapshot["repo"]["head"] = out.strip().splitlines()[-1] if code == 0 else "unknown"
 
     code, out = _run(["git", "status", "--porcelain"])
-    snapshot["repo"]["dirty"] = out.strip().splitlines() if code == 0 else None
+    if code == 0:
+        # 把**基线文件自身**从 dirty 里剔除：否则 `--record` 会把"我改了基线"记进去，
+        # 导致同一个状态连续两次 record 得到不同内容（不幂等），也无法作为"提交前的干净度"证据。
+        baseline_rel = BASELINE_FILE.relative_to(REPO_ROOT).as_posix()
+        snapshot["repo"]["dirty"] = [line for line in out.strip().splitlines() if baseline_rel not in line]
+    else:
+        snapshot["repo"]["dirty"] = None
 
     novel = find_novel_dir()
     if novel is not None:
@@ -80,8 +88,7 @@ def collect(with_tests: bool = False) -> dict:
         code, out = _run([sys.executable, "-m", "ruff", "check", "app/", "tests/"])
         snapshot["ruff_clean"] = code == 0
 
-        code, out = _run([sys.executable, "-m", "pytest", "-q", "--no-header",
-                          f"--basetemp={_pytest_basetemp()}"])
+        code, out = _run([sys.executable, "-m", "pytest", "-q", "--no-header", f"--basetemp={_pytest_basetemp()}"])
         summary = _parse_pytest_summary(out)
         snapshot["tests"] = summary
         if summary["passed"] < 0:
@@ -110,9 +117,15 @@ def main() -> int:
     group.add_argument("--record", action="store_true", help="把当前快照写为基线")
     group.add_argument("--verify", action="store_true", help="与既有基线比对")
     parser.add_argument("--full", action="store_true", help="同时跑 ruff 与 pytest")
+    parser.add_argument(
+        "--no-tests",
+        action="store_true",
+        help="即使 record/full 也跳过 ruff 与 pytest（受限环境下用：整套测试会触发"
+        "批量删除守卫，记下来只会是 tests.passed=-1 的噪声）",
+    )
     args = parser.parse_args()
 
-    snapshot = collect(with_tests=args.full or args.record)
+    snapshot = collect(with_tests=(args.full or args.record) and not args.no_tests)
 
     print("=" * 62)
     print("v3 基线快照")
@@ -129,7 +142,8 @@ def main() -> int:
         print(f"  sha256     : {live['characters_sha256']}")
         print(f"  bytes      : {live['characters_bytes']}")
         print(f"  characters : {live['character_count']}")
-        print(f"  chapters   : {live['chapter_count']}")
+        print(f"  chapters   : {live['chapter_count']}   ← chapters/*.txt（真章数）")
+        print(f"  char files : {live.get('character_file_count', '?')}   ← characters/*.json")
         print(f"  mtime      : {live['characters_mtime']}")
     else:
         print("-" * 62)
@@ -143,9 +157,7 @@ def main() -> int:
 
     if args.record:
         BASELINE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        BASELINE_FILE.write_text(
-            json.dumps(snapshot, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        BASELINE_FILE.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False), encoding="utf-8")
         print("-" * 62)
         print(f"已写入基线文件: {BASELINE_FILE.relative_to(REPO_ROOT)}")
         return 0
@@ -161,7 +173,13 @@ def main() -> int:
 
 
 def _verify(previous: dict, current: dict) -> int:
-    """逐项比对，打印差异；数据哈希不一致直接判失败。"""
+    """逐项比对，打印差异；数据哈希不一致直接判失败。
+
+    ⚠️ **本工具的契约**：假设两次运行之间**没有正常的数据写活动**
+    （即改造前采一次、改造后立刻采一次）。因此"多了新章节/新角色"也会被报成差异 ——
+    那是**预期内的**，不是回归；判断回归要看 `characters_sha256` 是否在
+    **没有写操作**的情况下变化。
+    """
     failures = []
 
     prev_live = previous.get("live_data") or {}
@@ -171,8 +189,13 @@ def _verify(previous: dict, current: dict) -> int:
             ("characters_sha256", "角色数据 sha256"),
             ("characters_bytes", "角色数据字节数"),
             ("character_count", "角色数量"),
-            ("chapter_count", "角色文件数"),
+            ("chapter_count", "章节数（chapters/*.txt）"),
+            ("character_file_count", "角色文件数（characters/*.json）"),
         ):
+            if key not in prev_live:
+                # 基线文件是旧 schema —— 跳过而不是误报失败
+                print(f"· {label}: 本次 {cur_live.get(key)}（旧基线无此字段，跳过比对）")
+                continue
             if prev_live.get(key) != cur_live.get(key):
                 failures.append(f"{label} 变了: {prev_live.get(key)} → {cur_live.get(key)}")
             else:
@@ -184,9 +207,7 @@ def _verify(previous: dict, current: dict) -> int:
     cur_tests = current.get("tests") or {}
     if prev_tests and cur_tests and cur_tests.get("failed", 0) >= 0:
         if cur_tests.get("failed", 0) > prev_tests.get("failed", 0):
-            failures.append(
-                f"测试回归: failed {prev_tests.get('failed')} → {cur_tests.get('failed')}"
-            )
+            failures.append(f"测试回归: failed {prev_tests.get('failed')} → {cur_tests.get('failed')}")
 
     print("-" * 62)
     if failures:

@@ -337,34 +337,73 @@ class ProviderAdapter(ABC):
 
 ### 3.3 配置项完善（分层 + 多 Profile）
 
+**实施状态：✅ 已完成（P2-4 / P2-5）** —— 下面是最终落地的结构，与本节最初的
+草案有两处**有意偏离**，原因写在结构后面。
+
 ```jsonc
 {
+  // 顶层扁平键 = 活跃 Profile 的镜像，v2 的 50+ 处 config.get("model") 零改动
+  "api_provider": "deepseek", "model": "deepseek-v4-flash", "temperature": 0.8,
+  "timeout": 600.0, "connect_timeout": 10.0, "max_retries": 3,
+  "thinking_enabled": true, "reasoning_effort": "high",
+  "theme": "light",                       // 与 AI 无关的键照旧扁平存放
+
   "ai": {
-    "active_profile": "deepseek",
+    "schema_version": 2,
+    "active_profile": "default",
     "profiles": {
-      "deepseek": {
-        "api_key": "<Fernet 密文>", "api_base": "https://api.deepseek.com",
-        "model": "deepseek-chat", "max_tokens": 4096, "temperature": 0.8,
-        "timeout": 60, "max_retries": 3, "connect_timeout": 10,
-        "thinking_enabled": true, "reasoning_effort": "medium",
-        "extra_headers": {}, "extra_body": {}
-      }
-    },
-    "context_window": 32000, "usage_tracking": true
-  }
+      "default": {                        // ← 迁移时由旧扁平键填充
+        "api_provider": "deepseek", "api_base": "https://api.deepseek.com",
+        "model": "deepseek-v4-flash", "max_tokens": 4096, "temperature": 0.8,
+        "context_window": 32000, "timeout": 600.0, "connect_timeout": 10.0,
+        "max_retries": 3, "thinking_enabled": true, "reasoning_effort": "high",
+        "balance_url": "", "balance_total_path": "", "balance_currency_path": ""
+      },
+      "work": { "api_provider": "openai", "api_base": "https://api.openai.com/v1" }
+    }
+  },
+
+  "ai_keys": { "work": "<Fernet 密文>" }  // 非默认 Profile 的密钥容器（默认档复用顶层 api_key）
 }
 ```
 
-- **修 P9/P10**：补齐 `timeout / max_retries / connect_timeout / thinking_enabled / reasoning_effort`；
-  每个 provider 独立保存密钥与模型（切 provider 不再重填）
-- **修 P5**：设置页 provider 下拉**从注册表自动生成**；表单按 `spec.supports` 显隐
-  （ollama 隐藏 api_key 与余额按钮；claude 提示 `max_tokens` 必填）
-- 新增三个按钮：**测试连接** / **查询余额** / **请求 URL 预览**（预览直接消除 P2 那类配置困惑）
-- 顺手修 P11（删重复的温度控件）
-- **迁移必须幂等 + 先备份**：旧扁平字段 → 生成 `profiles[旧provider]` → 写回；
-  旧键**保留只读**一段时间以便回滚
-- 密钥继续走 `secure_config`（Fernet + DPAPI，字段级加密 `secure_config.py:251-278`），
-  但加密字段白名单需支持 `ai.profiles.*.api_key` 通配 → **必须加「落盘无明文」断言测试**
+**偏离一：Profile 里不放 `api_key`，密钥另存 `ai_keys.<profile>`。**
+草案要求给 `secure_config` 的加密白名单加 `ai.profiles.*.api_key` 通配。落地时发现
+有更省事也更安全的分法：Profile 只存**连接参数**，于是整个 `ai.profiles` 段落可以
+安心明文落盘（用户能手改、能 diff、能贴给别人排查），而密钥走两条既有路径 ——
+
+- 默认 Profile 复用旧的顶层 `api_key` 字段 → **老用户密钥零迁移**，不存在"迁移把 key 弄丢"的风险；
+- 其余 Profile 存于加密容器 `ai_keys.<profile>`（逐项 Fernet 加密）。
+
+好处是不再需要通配白名单（少一类"匹配写错就漏加密"的风险），并能加一条更强的断言：
+**`ai.profiles` 下任何一层都不允许出现 `api_key` 字段**（见 `tests/test_config_profiles.py`）。
+
+**偏离二：Profile 用「用户命名」而不是「provider 名」。**
+以 provider 命名时，同一个 DeepSeek 的两套账号（个人 / 公司）无法并存 —— 而这恰恰是
+多 Profile 最常见的用途。现在 Profile 名由用户起（`default` / `work` / `备用-中转`），
+provider 只是 Profile 里的一个字段。
+
+**实施要点**
+
+- **修 P9/P10**：`timeout / connect_timeout / max_retries / thinking_enabled /
+  reasoning_effort` 全部落地为配置项并有范围校验；`max_tokens` / `temperature`
+  此前"设置页能改、ai_client 硬编码 4096/0.8 从不读"，现已接通（两个入口都读配置）。
+  读超时与连接超时**分设**：连接阶段不再吃 600s，域名解析失败不会让界面假死十分钟。
+- **修 P5**：设置页 provider 下拉 / 默认地址 / 模型候选**全部由注册表生成**，
+  并新增 `ai_settings_ui.py` 承载整页；表单按 `spec.supports` 显隐（ollama 提示无需密钥、
+  不支持思考模式的 provider 直接禁用相关控件）。
+- 新增三个按钮：**测试连接**（`AIClient.probe_connection`，1 token 的 ping，
+  按**表单里刚填的值**测试而不是已保存的值）/ **查询余额** / **请求 URL 预览**
+  （由 `ProviderSpec.resolved_url` 直接计算，消除 P2 那类"到底要不要补 /v1"的困惑）。
+- 顺手修 P11（删掉重复的温度控件）。
+- **迁移幂等 + 先备份**：首次落盘前把旧文件另存为 `config.pre-v3-profiles-<时间戳>.json`；
+  顶层扁平键**保留不删**，换回旧版本程序照样能跑。构造 `AppConfig` 本身**不写盘**
+  （否则单测会污染开发机上的真实配置），落盘由 `ensure_profiles_persisted()` 在启动时触发。
+- **共写一个文件的相互覆盖**（顺手修的隐患）：`AppConfig` 与 `SecureConfig` 同写
+  `config.json`，旧实现各自整份回写内存快照 —— 于是"先改主题、再改 API Key"这个
+  极常见的操作序列，第二步会把主题连同别的新键一起退回旧值。现在两边都改成
+  **先读盘、只覆盖自己负责的键**（`SecureConfig` 只认敏感字段与 `ai_keys`，
+  `AppConfig` 只认扁平键与 `ai` 段，`ai_keys` 以磁盘为准透传）。
 
 ### 3.4 余额查询（需求 3）—— 必须诚实：**不是每家都有余额接口**
 

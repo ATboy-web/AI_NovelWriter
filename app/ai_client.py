@@ -12,7 +12,6 @@ AI客户端模块 v3.0 - 生产级AI服务接口
 - 多模型深度思考模式 (DeepSeek/GLM/Qwen/Kimi)
 """
 
-import json
 import threading
 import time
 from dataclasses import dataclass, field
@@ -22,6 +21,22 @@ from urllib.parse import urlparse
 import httpx
 
 from .config import AppConfig
+from .providers import (
+    AuthStyle,
+    BalanceCache,
+    ChatRequest,
+    OpenAICompatAdapter,
+    ProviderAdapter,
+    ProviderRegistry,
+    ProviderSpec,
+    UsageData,
+    default_registry,
+    is_transient_error,
+)
+
+#: `_parse_thinking_response` 用的解析器缓存（模块级：该方法会被
+#: `AIClient.__new__(AIClient)` 方式的单测调用，实例属性此时并不存在）
+_LABEL_ADAPTERS: Dict[str, OpenAICompatAdapter] = {}
 
 # AI诊断日志
 try:
@@ -77,13 +92,13 @@ def _is_transient_error(exc: BaseException) -> bool:
     M1: 原 `retry_with_backoff` 装饰器**无差别重试一切异常**（包括 401 鉴权
     失败、400 参数错误），既放大配额消耗又拖长用户等待；且全仓生产代码零调用
     （仅单测引用），属于会误导后来者的死代码，故整体删除。
-    真正的重试逻辑只有 `_dispatch_with_retry` 一处，这里保留判定标准供其复用。
+
+    P3（v3）：这个判据**本身也曾是死代码** —— 真实重试逻辑只看 `status == 429`，
+    5xx 与网络错误从未重试过，与这里写好的判据直接矛盾。现在判据的唯一实现是
+    `app/providers/base.is_transient_error`，并被 `AIClient._invoke_adapter`
+    真正调用；本函数保留为转发，既消灭重复实现，也不破坏既有引用面。
     """
-    if isinstance(exc, httpx.TransportError):
-        # httpx 中 TimeoutException / ConnectError / ReadError 等均继承 TransportError
-        return True
-    status = getattr(getattr(exc, "response", None), "status_code", None)
-    return bool(status and (status == 429 or status >= 500))
+    return is_transient_error(exc)
 
 
 class AIMetrics:
@@ -402,40 +417,84 @@ class PromptManager:
 
 
 class AIClient:
-    """统一AI客户端 v2.0 - 生产级接口"""
+    """统一AI客户端 v3.0 - 生产级接口（Provider 注册表 + 适配器）
 
-    PROVIDERS = {
-        "ollama": {"name": "Ollama (本地)", "base_url": "http://localhost:11434", "models": ["qwen2.5:14b", "qwen2.5:7b"]},
-        "openai": {"name": "OpenAI", "base_url": "https://api.openai.com/v1", "models": ["gpt-4o", "gpt-4o-mini"]},
-        "deepseek": {"name": "DeepSeek", "base_url": "https://api.deepseek.com", "models": ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat"]},
-        "claude": {"name": "Claude", "base_url": "https://api.anthropic.com", "models": ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022"]},
-        "mimo": {"name": "小米 MiMo", "base_url": "https://api.xiaomimimo.com/v1", "models": ["mimo-v2.5-pro"]},
-        "kimi": {"name": "Kimi", "base_url": "https://api.moonshot.cn/v1", "models": ["kimi-k2.6", "moonshot-v1-128k"]},
-        "custom": {"name": "自定义API", "base_url": "", "models": []},
-    }
+    **对外契约不变**：`chat()` / `chat_stream()` 的签名、返回类型与异常语义与 v2
+    完全一致 —— 全仓 53 个调用点无需改动，这是硬约束。
 
+    变化全在内部（v3 §3.2 / §4）：
+
+    | v2 | v3 |
+    |---|---|
+    | `_dispatch_chat` 的 8 路 elif | 查注册表 → 取该 provider 的 adapter |
+    | 7 个 `_chat_*` 各自拼请求体 | `adapter.build_request()` |
+    | 2 套 `_stream_*` 各自解析 SSE | `adapter.parse_stream_chunk()` |
+    | 只有 2 条路径解析 usage | 每个 adapter 各自解析（含 ollama / claude / 流式） |
+    | 重试只认 429 | `adapter.is_transient()` 真正生效（含 5xx 与网络错误） |
+
+    **新增一家 OpenAI 兼容 API**：只改 `app/providers/registry.py` 一处。
+    v2 时代要同时改 elif 链、`_chat_*`、UI 下拉、`API_PRESETS` 四个地方。
+    """
+
+    #: 旧版引用面：provider → 显示信息。**由注册表派生**，不再手工维护第二份。
+    PROVIDERS = dict(default_registry().as_providers_dict())
+
+    #: 模型降级链。v3 刷新（§9.10）：移除已退役世代，补上当前在售模型；
+    #: 旧世代名**保留映射**，让老配置仍能降级到在售模型而不是直接失败。
     FALLBACK_CHAIN = {
+        # --- OpenAI
         "gpt-4o": "gpt-4o-mini",
         "gpt-4-turbo": "gpt-4o-mini",
-        "claude-sonnet-4-20250514": "claude-3-5-sonnet-20241022",
-        "claude-3-5-sonnet-20241022": "claude-3-5-haiku-20241022",
+        "gpt-4.1": "gpt-4o-mini",
+        "o4-mini": "gpt-4o-mini",
+        # --- Anthropic（当前在售）
+        "claude-opus-5": "claude-sonnet-5",
+        "claude-sonnet-5": "claude-haiku-4-5",
+        "claude-sonnet-4-6": "claude-haiku-4-5",
+        "claude-haiku-4-5": None,
+        # 已退役世代 → 给出迁移去向，而不是让它彻底失效
+        "claude-sonnet-4-20250514": "claude-sonnet-5",
+        "claude-3-5-sonnet-20241022": "claude-sonnet-5",
+        "claude-3-5-haiku-20241022": "claude-haiku-4-5",
+        # --- DeepSeek
         "deepseek-v4-pro": "deepseek-v4-flash",
-        "deepseek-chat": "deepseek-v4-flash",
-        "mimo-v2.5-pro": None,
-        "kimi-k2.6": "moonshot-v1-128k",
-        # P1-7: 补齐 GLM / Qwen 系列降级映射
+        "deepseek-chat": "deepseek-v4-flash",       # 2026-07-24 已弃用
+        "deepseek-reasoner": "deepseek-v4-pro",
+        # --- 智谱 GLM
+        "glm-5.3": "glm-5.3-flash",
+        "glm-5.2": "glm-5.3-flash",
+        "glm-5.1": "glm-5.3-flash",
+        "glm-4.7": "glm-4.7-flash",
         "glm-4-plus": "glm-4-flash",
         "glm-4": "glm-4-flash",
         "glm-4-air": "glm-4-flash",
-        "qwen-max": "qwen-plus",
+        # --- 通义千问
+        "qwen3.7-max": "qwen3-max",
+        "qwen3.6-max-preview": "qwen3-max",
+        "qwen3-max": "qwen-plus",
+        "qwq-plus": "qwen-plus",
         "qwen-plus": "qwen-turbo",
+        "qwen-max": "qwen-plus",
+        # --- Kimi
+        "kimi-k3": "kimi-k2.6",
+        "kimi-k2.7-code": "kimi-k2.6",
+        "kimi-k2.6": "kimi-k2.5",
+        # --- 小米 MiMo
+        "mimo-v2.5-pro": "mimo-v2.5",
+        "mimo-v2.5": None,
     }
 
     def __init__(self, config: AppConfig):
         self.config = config
+        #: 进程级内置注册表（只读使用）
+        self.registry: ProviderRegistry = default_registry()
         self.client = None
         self.metrics = AIMetrics()
+        #: 余额结果缓存（60s），避免频繁请求触发限流
+        self._balance_cache = BalanceCache()
         self._init_client()
+
+    # ============================================================ 日志
 
     def _log(self, msg: str):
         """日志记录（静默模式，不影响主流程）"""
@@ -444,6 +503,39 @@ class AIClient:
             logger.info(f"[AI] {msg}")
         except Exception as _silent_e:
             logger.debug(f"[ai_client] 捕获异常: {_silent_e}")
+
+    # ============================================================ 配置读取
+
+    # 说明：`self.config` 既可能是 AppConfig，也可能是普通 dict，单测里还可能是
+    # MagicMock（对任何 key 都返回 ""）。因此所有非字符串配置一律经下面三个
+    # 容错读取器，避免把 "" 塞进 float()/int() 而在构造阶段炸掉。
+
+    @staticmethod
+    def _as_bool(value, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None or value == "":
+            return bool(default)
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "on")
+        return bool(value)
+
+    def _cfg_float(self, key: str, default: float) -> float:
+        try:
+            value = self.config.get(key, default)
+        except Exception:                             # noqa: BLE001
+            return float(default)
+        if value is None or value == "":
+            return float(default)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float(default)
+
+    def _cfg_int(self, key: str, default: int) -> int:
+        return int(self._cfg_float(key, default))
+
+    # ============================================================ S7 端点校验
 
     # S7: 允许使用明文 http 的本机地址（本地模型服务 ollama/llama.cpp 等）
     _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0", "[::1]"})
@@ -472,44 +564,120 @@ class AIClient:
             )
         return url
 
+    # ============================================================ 端点解析
+
+    def _adapter_for(self, spec: ProviderSpec) -> ProviderAdapter:
+        """取 spec 对应的 adapter（注册表内已缓存实例）。"""
+        return self.registry.adapter(spec.key)
+
+    def _resolve_endpoint(self, configured: str, model: str, api_base: str):
+        """决定「这次请求实际发给谁、发到哪个地址」。
+
+        返回 `(detected_provider, spec, adapter, base_url)`。
+
+        **修 P4**：`_detect_provider` 会按模型名把请求判给 glm/qwen/kimi 等，
+        v2 里这些是「伪 provider」—— 有专属参数却没有默认 base_url，
+        于是 `enable_thinking` 之类的参数被发到了**别家地址**。
+        现在检测到哪家就用哪家的 base_url。
+
+        规则：检测结果与用户配置一致时**尊重用户的 api_base**（代理/中转照常可用）；
+        不一致时改用被检测 provider 的默认地址，并留下日志说明原因。
+        """
+        detected = self._detect_provider(configured, model)
+        spec = self.registry.resolve(detected)
+        adapter = self._adapter_for(spec)
+
+        if detected == configured:
+            base = api_base or spec.base_url
+        else:
+            base = spec.base_url
+            self._log(
+                f"模型 {model!r} 判定属于 provider={detected!r}（配置为 {configured!r}），"
+                f"本次请求改发该 provider 的默认地址 {base!r}"
+                "（避免把该家的专属参数发到别家）"
+            )
+
+        # S7: 端点必须校验 —— 校验的是**真正要用的地址**
+        base = self._validate_api_base(base)
+        return detected, spec, adapter, base
+
+    @staticmethod
+    def _merged_headers(adapter: ProviderAdapter, spec: ProviderSpec,
+                        api_key: str, prepared=None) -> dict:
+        """请求头 = spec 默认头 + adapter 产出头 + 鉴权头。"""
+        headers = dict(getattr(spec, "default_headers", {}) or {})
+        if prepared is not None:
+            headers.update(prepared.headers or {})
+        headers.update(adapter.auth_headers(api_key))
+        return headers
+
+    # ============================================================ HTTP 客户端
+
     def _init_client(self):
         provider = self.config.get("api_provider", "ollama")
-        api_key = self.config.get("api_key", "")
-        api_base = self.config.get("api_base", "")
+        api_key = self.config.get("api_key", "") or ""
+        api_base = self.config.get("api_base", "") or ""
 
-        base_url = api_base or self.PROVIDERS.get(provider, {}).get("base_url", "")
+        spec = self.registry.resolve(provider)
+        adapter = self._adapter_for(spec)
+
+        base_url = api_base or spec.base_url
 
         # S7: 端点必须校验 —— 此前 api_base 完全取自配置、不校验 scheme，
         # 一旦被写成 http://（手误、共享配置被改、第三方预设），
         # `Authorization: Bearer <key>` 会以明文 HTTP 发出。
         base_url = self._validate_api_base(base_url)
 
-        if provider == "claude" and api_key:
-            # Claude 使用 httpx 直接调用 Anthropic API（无需 anthropic SDK）
-            self.client = httpx.Client(
-                base_url="https://api.anthropic.com",
-                headers={
-                    "x-api-key": api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json"
-                },
-                timeout=600.0,  # 10分钟，支持大请求
-            )
-        elif provider == "ollama":
-            self.client = httpx.Client(base_url=base_url, timeout=300.0)
-        elif api_key:
+        # 能力驱动：是否需要密钥由 spec.auth 声明（修 P4 里"按 provider 名硬编码"的做法）
+        no_auth_needed = spec.auth == AuthStyle.NONE
+        configured = bool(no_auth_needed or api_key)
+
+        if not configured:
+            self.client = None
+        else:
+            headers = self._merged_headers(adapter, spec, api_key)
+            headers.setdefault("Content-Type", "application/json")
             self.client = httpx.Client(
                 base_url=base_url,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                timeout=600.0,  # 10分钟，支持大请求（如50章大纲生成）
+                headers=headers,
+                timeout=self._httpx_timeout(spec),
             )
-        else:
-            self.client = None
 
-        # M9: 记录本次构建依据的配置指纹，供 refresh_if_needed 检测变更
+        # M9: 记录本次构建依据的配置指纹，供 refresh_if_needed 检测变更。
+        # 注：单测断言 `client.client.headers` 里的 Authorization 必须随 api_key
+        # 变化 —— 所以客户端级鉴权头必须保留（不能只走 per-request header）。
         self._client_fingerprint = (
-            provider, api_key, api_base, self.config.get("model", ""),
+            provider, api_key, api_base,
+            self.config.get("model", ""),
+            self._timeout_pair(spec),
         )
+
+    def _timeout_for(self, spec: ProviderSpec) -> float:
+        """读超时：用户配置优先，否则用 spec 声明值（修 P9）。
+
+        v2 把 600.0 / 300.0 硬编码在 `_init_client` 里，用户无法调整；
+        现在 timeout / connect_timeout 都是配置项。
+        """
+        return self._cfg_float("timeout", spec.timeout)
+
+    def _connect_timeout_for(self, spec: ProviderSpec) -> float:
+        """连接超时（修 P10）：与读超时分设。
+
+        此前 connect 阶段也吃 600s 的读超时：目标域名解析不了或端口没人监听时，
+        界面要卡到十分钟才报错。连接阶段单独用一个短超时才是对的。
+        """
+        return self._cfg_float("connect_timeout", spec.connect_timeout)
+
+    def _timeout_pair(self, spec: ProviderSpec) -> tuple:
+        return (self._timeout_for(spec), self._connect_timeout_for(spec))
+
+    def _httpx_timeout(self, spec: ProviderSpec):
+        """组装 httpx 的分阶段超时对象。"""
+        read, connect = self._timeout_pair(spec)
+        try:
+            return httpx.Timeout(read, connect=connect)
+        except (TypeError, ValueError):
+            return read
 
     def refresh_if_needed(self) -> None:
         """M9: 运行中改完 API Key / 端点后立即生效，无需重启应用。
@@ -517,11 +685,14 @@ class AIClient:
         此前 `_init_client` 只在 `__init__` 里调用一次，用户在设置里换了 Key
         之后 `self.client` 的默认请求头仍是旧 Key，表现为"改了没生效"。
         """
+        provider = self.config.get("api_provider", "ollama")
+        spec = self.registry.resolve(provider)
         fingerprint = (
-            self.config.get("api_provider", "ollama"),
-            self.config.get("api_key", ""),
-            self.config.get("api_base", ""),
+            provider,
+            self.config.get("api_key", "") or "",
+            self.config.get("api_base", "") or "",
             self.config.get("model", ""),
+            self._timeout_pair(spec),
         )
         if fingerprint != getattr(self, "_client_fingerprint", None):
             self._init_client()
@@ -538,6 +709,151 @@ class AIClient:
         except Exception:
             return []
 
+    # ============================================================ 能力与预览
+
+    def capabilities(self, provider: str = "") -> dict:
+        """当前（或指定）provider 的能力，供 UI 显隐控件。"""
+        key = provider or self.config.get("api_provider", "ollama")
+        return self.registry.resolve(key).supports.as_dict()
+
+    def preview_url(self, provider: str = "", model: str = "") -> str:
+        """预览本次请求实际会发到的 URL（设置页「请求 URL 预览」按钮）。
+
+        这个功能存在的唯一目的就是消除 P2 那类「路径到底怎么拼」的困惑 ——
+        与其写文档解释 `/v1` 要不要补，不如把最终结果直接显示出来。
+        """
+        provider = provider or self.config.get("api_provider", "ollama")
+        model = model or self.config.get("model", "")
+        api_base = self.config.get("api_base", "") or ""
+        try:
+            _detected, spec, _adapter, base = self._resolve_endpoint(provider, model, api_base)
+        except ValueError as exc:
+            return f"配置有误：{exc}"
+        if not base:
+            return "（未配置 API 地址）"
+        return spec.resolved_url(base)
+
+    def query_balance(self, provider: str = "", use_cache: bool = True):
+        """查询余额（设置页「查询余额」按钮）。
+
+        **诚实设计**：没有余额接口的 provider 返回 `supported=False` 的明确结果，
+        由 UI 显示「该服务未提供余额接口」，而不是抛异常或显示空白 ——
+        后者会让用户误以为功能坏了。
+        """
+        provider = provider or self.config.get("api_provider", "ollama")
+        spec = self.registry.resolve(provider)
+        adapter = self._adapter_for(spec)
+        api_key = self.config.get("api_key", "") or ""
+        api_base = self.config.get("api_base", "") or ""
+        base = api_base or spec.base_url
+
+        return adapter.query_balance(
+            self._http_get,
+            api_key=api_key,
+            base_url=base,
+            override_url=self.config.get("balance_url", "") or "",
+            override_paths={
+                "total": self.config.get("balance_total_path", "") or "",
+                "currency": self.config.get("balance_currency_path", "") or "",
+            },
+            cache=self._balance_cache if use_cache else None,
+        )
+
+    @staticmethod
+    def _http_get(url: str, headers: dict, timeout: float):
+        """注入给余额适配器的 HTTP GET（独立出来便于单测替换）。"""
+        return httpx.get(url, headers=headers, timeout=timeout)
+
+    def probe_connection(self, provider: str = "", api_base: str = "",
+                         api_key: str = "", model: str = "",
+                         timeout: float = 30.0) -> dict:
+        """用一次**最小请求**验证「端点 + 鉴权 + 模型名」是否真的可用。
+
+        设置页「测试连接」按钮用它。设计要点：
+
+        - 只发 1 个 token 的 ping，成本可忽略；
+        - 参数全部可由调用方传入 —— 界面上刚改完还没保存的值也必须能被测试，
+          否则用户只能"先保存再试，错了再改"，体验极差；
+        - **返回结构化结果而不是抛异常**：失败原因（未填密钥 / DNS 失败 /
+          401 / 404 / 响应格式不对）要能显示在同一行文字里，界面不该弹栈。
+        """
+        provider = provider or self.config.get("api_provider", "ollama")
+        model = model or self.config.get("model", "")
+        api_key = self.config.get("api_key", "") or "" if api_key is None else api_key
+
+        spec = self.registry.resolve(provider)
+        adapter = self._adapter_for(spec)
+
+        try:
+            base = self._validate_api_base(api_base or spec.base_url)
+        except ValueError as exc:
+            return {"ok": False, "url": api_base or spec.base_url, "reason": str(exc)}
+
+        url = spec.resolved_url(base)
+        if spec.auth != AuthStyle.NONE and not api_key:
+            return {"ok": False, "url": url, "reason": "未填写 API Key"}
+
+        request = ChatRequest(
+            model=model or spec.default_model,
+            messages=[{"role": "user", "content": "ping"}],
+            system="",
+            max_tokens=1,
+            temperature=0.0,
+            stream=False,
+        )
+        try:
+            prepared = adapter.build_request(request)
+            headers = self._merged_headers(adapter, spec, api_key, prepared)
+        except Exception as exc:                        # noqa: BLE001 - 需原样回报
+            return {"ok": False, "url": url, "reason": f"请求构造失败：{exc}"}
+
+        try:
+            response = httpx.post(
+                url, json=prepared.json_body, headers=headers, timeout=timeout
+            )
+        except Exception as exc:                        # noqa: BLE001 - 需原样回报
+            return {
+                "ok": False, "url": url,
+                "reason": f"无法连接：{type(exc).__name__}: {exc}",
+            }
+
+        if response.status_code >= 400:
+            # 只截前 200 字符：错误体里可能回显请求内容，不宜整段展示或落盘
+            detail = (response.text or "")[:200]
+            return {
+                "ok": False, "url": url, "status": response.status_code,
+                "reason": self._explain_status(response.status_code, detail),
+            }
+
+        try:
+            result = adapter.parse_response(response.json())
+        except Exception as exc:                        # noqa: BLE001
+            return {
+                "ok": False, "url": url, "status": response.status_code,
+                "reason": f"响应格式无法解析（{type(exc).__name__}）：{exc}",
+            }
+
+        return {
+            "ok": True, "url": url, "status": response.status_code,
+            "model": request.model, "label": adapter.label,
+            "sample": result.text.strip()[:60],
+        }
+
+    @staticmethod
+    def _explain_status(status: int, detail: str) -> str:
+        """把 HTTP 状态码翻译成用户能照做的说明。"""
+        hints = {
+            400: "请求被拒绝（400）：模型名可能不存在，或该模型不支持当前参数",
+            401: "鉴权失败（401）：API Key 无效或已过期",
+            403: "无权限（403）：该 Key 没有访问此模型的权限",
+            404: "地址或路径不存在（404）：检查 API 地址是否需要 /v1，或模型名拼写",
+            429: "请求过于频繁（429）：稍后重试，或检查配额",
+        }
+        hint = hints.get(status) or (f"服务端错误（{status}）" if status >= 500 else f"HTTP {status}")
+        return f"{hint}；响应：{detail}" if detail else hint
+
+    # ============================================================ 主入口: chat
+
     def chat(self, messages: List[Dict], system: str = "", **kwargs) -> str:
         """发送聊天请求 - 带模型降级"""
         # M9: 配置在运行中被改动时重建客户端（否则仍用旧 API Key）
@@ -547,19 +863,28 @@ class AIClient:
 
         provider = self.config.get("api_provider", "ollama")
         model = self.config.get("model", "qwen2.5:14b")
-        max_tokens = kwargs.get("max_tokens", 4096)
-        temperature = kwargs.get("temperature", 0.8)
+        # 修 P9 同类缺陷：这两项设置页一直在写、配置里也一直有，但 v2 的两个入口
+        # 都把它们硬编码成 4096 / 0.8 —— 用户"改了温度和输出上限却毫无变化"。
+        max_tokens = kwargs.get("max_tokens", self._cfg_int("max_tokens", 4096))
+        temperature = kwargs.get("temperature", self._cfg_float("temperature", 0.8))
 
-        # DeepSeek思考模式参数
-        thinking_enabled = kwargs.get("thinking_enabled", self.config.get("thinking_enabled", True))
-        reasoning_effort = kwargs.get("reasoning_effort", self.config.get("reasoning_effort", "high"))
+        # 思考模式参数（修 P9：v2 里这两项从配置读取，但配置层从未定义过它们，
+        # 于是永远落到硬编码默认值；现在 config.DEFAULT_CONFIG 已补齐）
+        thinking_enabled = kwargs.get(
+            "thinking_enabled",
+            self._as_bool(self.config.get("thinking_enabled", True), True),
+        )
+        reasoning_effort = kwargs.get(
+            "reasoning_effort", self.config.get("reasoning_effort", "high")
+        )
 
         # 自动检测模型类型，选择正确的provider
         detected_provider = self._detect_provider(provider, model)
 
         # 前置检查：API Key有效性
-        api_key = self.config.get("api_key", "")
-        if detected_provider != "ollama" and (not api_key or len(api_key.strip()) < 8):
+        api_key = self.config.get("api_key", "") or ""
+        spec = self.registry.resolve(detected_provider)
+        if spec.auth != AuthStyle.NONE and (not api_key or len(api_key.strip()) < 8):
             msg = (f"API Key未配置或无效 (provider={detected_provider}, "
                    f"key_len={len(api_key)}). 请在设置中填写有效的API Key。")
             self._log(f"[错误] {msg}")
@@ -582,9 +907,11 @@ class AIClient:
             )
 
         try:
-            result = self._dispatch_with_retry(detected_provider, messages, system, model,
-                                               max_tokens, temperature, thinking_enabled,
-                                               reasoning_effort)
+            result = self._invoke_chat(
+                provider, messages, system, model, max_tokens, temperature,
+                thinking_enabled, reasoning_effort,
+                api_key=api_key, api_base=self.config.get("api_base", "") or "",
+            )
 
             latency = time.time() - start
             self.metrics.record(latency)
@@ -643,13 +970,14 @@ class AIClient:
                 self._log(f"模型降级: {model} -> {fallback_model}")
                 # 不修改持久化配置，只在本次请求中使用降级模型
                 model = fallback_model
-                # 重新检测降级后的provider
-                fallback_provider = self._detect_provider(provider, model)
-                # 重试时不递归，直接调用对应方法
+                # 降级只做一次，不递归。provider 仍传用户配置值，
+                # 由 _resolve_endpoint 按降级后的模型名重新判定归属。
                 try:
-                    result = self._dispatch_chat(fallback_provider, messages, system, model,
-                                                 max_tokens, temperature, thinking_enabled,
-                                                 reasoning_effort)
+                    result = self._invoke_chat(
+                        provider, messages, system, model, max_tokens, temperature,
+                        thinking_enabled, reasoning_effort,
+                        api_key=api_key, api_base=self.config.get("api_base", "") or "",
+                    )
                     latency = time.time() - start
                     self.metrics.record(latency)
                     return result
@@ -661,205 +989,204 @@ class AIClient:
 
             raise
 
+    def _invoke_chat(self, configured: str, messages, system, model, max_tokens,
+                     temperature, thinking_enabled, reasoning_effort,
+                     api_key: str, api_base: str) -> str:
+        """统一执行层：构造请求 → 发送（含重试）→ 解析 → 收尾。
+
+        这是 v2 里 `_dispatch_chat` + 7 个 `_chat_*` + `_dispatch_with_retry`
+        三者合并后的唯一入口。
+
+        `configured` 是**用户配置的** provider（不是检测结果）——
+        由 `_resolve_endpoint` 结合模型名做最终判定。
+        """
+        _detected, spec, adapter, base = self._resolve_endpoint(
+            configured, model, api_base
+        )
+        if not base:
+            raise Exception(
+                f"provider={configured!r} 未配置 API 地址（api_base 为空）。请在设置中填写。"
+            )
+
+        request = ChatRequest(
+            model=model,
+            messages=messages,
+            system=system or "",
+            max_tokens=max_tokens,
+            temperature=temperature,
+            thinking_enabled=thinking_enabled,
+            reasoning_effort=reasoning_effort,
+            stream=False,
+        )
+
+        result = self._send(adapter, spec, base, request, api_key)
+        self._record_usage(result.usage, spec.key, model)
+        if result.reasoning:
+            self._log_thinking(result.reasoning)
+        return self._finalize_text(result, adapter.label, model)
+
+    def _send(self, adapter: ProviderAdapter, spec: ProviderSpec, base: str,
+              request: ChatRequest, api_key: str):
+        """发送请求并对**瞬时故障**做指数退避重试（修 P3）。
+
+        v2 的重试只判 `status == 429`，与 `_is_transient_error` 里写好的判据
+        直接矛盾 —— 5xx 与网络错误从未重试过。现在"哪些错误值得重试"由
+        adapter 决定（默认即全局判据），并且真正生效。
+        """
+        url = spec.resolved_url(base)
+        max_retries = max(0, self._cfg_int("max_retries", 3))
+        delay = 2.0
+
+        for attempt in range(max_retries + 1):
+            try:
+                prepared = adapter.build_request(request)
+                headers = self._merged_headers(adapter, spec, api_key, prepared)
+                response = self.client.post(
+                    url,
+                    json=prepared.json_body,
+                    headers=headers,
+                    timeout=self._httpx_timeout(spec),
+                )
+                response.raise_for_status()
+                return adapter.parse_response(response.json())
+            except Exception as exc:                   # noqa: BLE001 - 需按类型分流
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if attempt < max_retries and adapter.is_transient(exc):
+                    detail = f", HTTP {status}" if status else ""
+                    self._log(
+                        f"[重试] 瞬时故障（{type(exc).__name__}{detail}），"
+                        f"{delay:.0f}s 后重试 ({attempt + 1}/{max_retries})"
+                    )
+                    time.sleep(delay)
+                    delay = min(delay * 2, 30.0)
+                    continue
+                raise
+
+    def _finalize_text(self, result, label: str, model: str) -> str:
+        """从 ChatResult 取最终文本，并保留 v2 的两条关键兜底语义。
+
+        1. 思考模式把 token 预算耗尽时，`content` 为空而 `reasoning_content` 里
+           有完整分析 —— 这时**返回 reasoning 比报错有用**（v2 已有行为，必须保留）。
+        2. 其余空响应仍要显式失败，不能静默返回空串（否则上层会写出空章节）。
+        """
+        if result.text and result.text.strip():
+            return result.text
+        if result.finish_reason == "length" and len(result.reasoning.strip()) > 10:
+            self._log(
+                f"[提示] {label}思考模式耗尽token (reasoning_len={len(result.reasoning)})，"
+                "使用 reasoning_content 作为结果"
+            )
+            return result.reasoning
+        raise Exception(
+            f"{label}返回空内容 (reasoning_len={len(result.reasoning)}, "
+            f"finish={result.finish_reason})"
+        )
+
+    def _record_usage(self, usage: UsageData, provider: str, model: str) -> None:
+        """把 token 用量计入全局统计（修 P6）。
+
+        v2 只有 openai 与 `_parse_thinking_response` 两条路径记录，
+        ollama / claude / 全部流式路径**从不记录**；现在每个 adapter 都会解析
+        usage，这里统一入账。仅在 provider 真的返回了用量时才记账，
+        避免把"没数据"记成"用了 0 个 token"并虚增调用次数。
+        """
+        if usage is None or usage.total_tokens <= 0:
+            return
+        cache_note = f", 缓存命中:{usage.cached_tokens}" if usage.cached_tokens else ""
+        est_note = ", 估算" if usage.estimated else ""
+        token_stats.record(usage.prompt_tokens, usage.completion_tokens)
+        self._log(
+            f"[Token] provider={provider} model={model} "
+            f"本次: {usage.total_tokens} "
+            f"(输入:{usage.prompt_tokens} 输出:{usage.completion_tokens}"
+            f"{cache_note}{est_note}) | 累计: {token_stats.total_tokens}"
+        )
+
+    # ============================================================ 主入口: 流式
+
     def chat_stream(self, messages: List[Dict], system: str = "",
                     callback: Optional[Callable[[str], None]] = None, **kwargs) -> str:
-        """流式聊天 - 实时输出"""
+        """流式聊天 - 实时输出（签名与 v2 一致）。"""
+        self.refresh_if_needed()
+        if not self.is_configured():
+            raise Exception("AI API未配置")
+
         provider = self.config.get("api_provider", "ollama")
         model = self.config.get("model", "qwen2.5:14b")
+        api_key = self.config.get("api_key", "") or ""
+        api_base = self.config.get("api_base", "") or ""
 
-        full_messages = [{"role": "system", "content": system}] if system else []
-        full_messages.extend(messages)
+        _detected, spec, adapter, base = self._resolve_endpoint(provider, model, api_base)
+        if not base:
+            raise Exception(
+                f"provider={provider!r} 未配置 API 地址（api_base 为空）。请在设置中填写。"
+            )
 
-        if provider == "ollama":
-            return self._stream_ollama(full_messages, model, callback, kwargs)
-        else:
-            return self._stream_openai(full_messages, model, callback, kwargs)
+        request = ChatRequest(
+            model=model,
+            messages=messages,
+            system=system or "",
+            max_tokens=kwargs.get("max_tokens", self._cfg_int("max_tokens", 4096)),
+            temperature=kwargs.get("temperature", self._cfg_float("temperature", 0.8)),
+            thinking_enabled=self._as_bool(
+                kwargs.get("thinking_enabled", self.config.get("thinking_enabled", True)), True
+            ),
+            reasoning_effort=kwargs.get(
+                "reasoning_effort", self.config.get("reasoning_effort", "high")
+            ),
+            stream=True,
+        )
+        return self._stream(adapter, spec, base, request, api_key, callback)
 
-    def _stream_ollama(self, messages, model, callback, kwargs) -> str:
-        result = []
-        with self.client.stream("POST", "/api/chat", json={
-            "model": model, "messages": messages, "stream": True,
-            "options": {"temperature": kwargs.get("temperature", 0.8), "num_predict": kwargs.get("max_tokens", 4096)}
-        }) as response:
+    def _stream(self, adapter: ProviderAdapter, spec: ProviderSpec, base: str,
+                request: ChatRequest, api_key: str,
+                callback: Optional[Callable[[str], None]]) -> str:
+        """流式执行层：分片循环统一，**分片格式由 adapter 解析**（需求 4 的落点）。
+
+        v2 的两套 `_stream_*` 各自硬编码：ollama 读裸 JSON 行、openai 读 `data: `
+        前缀。现在 `adapter.parse_stream_chunk()` 负责这个差异，
+        Anthropic 的 `event:` / `content_block_delta` 格式也因此能直接接入。
+        """
+        url = spec.resolved_url(base)
+        prepared = adapter.build_request(request)
+        headers = self._merged_headers(adapter, spec, api_key, prepared)
+
+        pieces: list = []
+        usage: Optional[UsageData] = None
+
+        with self.client.stream(
+            prepared.method, url,
+            json=prepared.json_body,
+            headers=headers,
+            timeout=self._httpx_timeout(spec),
+        ) as response:
             response.raise_for_status()
             for line in response.iter_lines():
-                if line:
-                    try:
-                        chunk = json.loads(line)
-                        token = chunk.get("message", {}).get("content", "")
-                        if token:
-                            result.append(token)
-                            if callback:
-                                callback(token)
-                    except json.JSONDecodeError as _silent_e:
-                        if _diag_logger:
-                            _diag_logger.log("API_CALL", "stream_chunk_parse_error", error=_silent_e)
-        return "".join(result)
+                if not line:
+                    continue
+                try:
+                    delta = adapter.parse_stream_chunk(line)
+                except Exception as exc:               # noqa: BLE001
+                    if _diag_logger:
+                        _diag_logger.log("API_CALL", "stream_chunk_parse_error", error=exc)
+                    continue
+                if delta is None:
+                    continue
+                if delta.text:
+                    pieces.append(delta.text)
+                    if callback:
+                        callback(delta.text)
+                if delta.usage is not None and delta.usage.total_tokens > 0:
+                    usage = delta.usage
+                if delta.done:
+                    break
 
-    def _stream_openai(self, messages, model, callback, kwargs) -> str:
-        result = []
-        with self.client.stream("POST", "/chat/completions", json={
-            "model": model, "messages": messages, "stream": True,
-            "max_tokens": kwargs.get("max_tokens", 4096),
-            "temperature": kwargs.get("temperature", 0.8)
-        }) as response:
-            response.raise_for_status()
-            for line in response.iter_lines():
-                if line.startswith("data: ") and line != "data: [DONE]":
-                    try:
-                        chunk = json.loads(line[6:])
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        token = delta.get("content", "")
-                        if token:
-                            result.append(token)
-                            if callback:
-                                callback(token)
-                    except json.JSONDecodeError as _silent_e:
-                        if _diag_logger:
-                            _diag_logger.log("API_CALL", "stream_chunk_parse_error", error=_silent_e)
-        return "".join(result)
+        text = "".join(pieces)
+        if usage is not None:
+            self._record_usage(usage, spec.key, request.model)
+        return text
 
-    def _chat_openai(self, messages, system, model, max_tokens, temperature) -> str:
-        full_messages = [{"role": "system", "content": system}] if system else []
-        full_messages.extend(messages)
-        response = self.client.post("/chat/completions", json={
-            "model": model, "messages": full_messages, "max_tokens": max_tokens, "temperature": temperature
-        })
-        response.raise_for_status()
-        result = response.json()
-        choices = result.get("choices", [])
-        if not choices:
-            raise Exception(f"OpenAI兼容API返回无choices: {json.dumps(result, ensure_ascii=False)[:200]}")
-
-        message = choices[0].get("message", {})
-        content = message.get("content", "")
-        reasoning = message.get("reasoning_content", "")
-        finish_reason = choices[0].get("finish_reason", "")
-
-        # 记录Token使用量
-        usage = result.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-        total_tokens = usage.get("total_tokens", 0)
-        if total_tokens > 0:
-            token_stats.record(prompt_tokens, completion_tokens)
-            self._log(f"[Token] 本次: {total_tokens} (输入:{prompt_tokens} 输出:{completion_tokens}) | 累计: {token_stats.total_tokens}")
-
-        # 如果有思考内容，记录到日志
-        if reasoning:
-            self._log_thinking(reasoning)
-
-        # content为空时的处理
-        if not content or len(content.strip()) == 0:
-            # 如果finish_reason是"length"且有reasoning_content，说明思考模式用完了token
-            # 此时reasoning_content包含有用的分析结果，可以作为降级返回
-            if finish_reason == "length" and reasoning and len(reasoning.strip()) > 10:
-                self._log(f"[提示] 思考模式耗尽token (reasoning_len={len(reasoning)})，使用reasoning_content作为结果")
-                return reasoning
-            raise Exception(f"OpenAI兼容API返回空内容 (reasoning_len={len(reasoning)}, finish={finish_reason}): {json.dumps(result, ensure_ascii=False)[:200]}")
-
-        return content
-
-    def _chat_ollama(self, messages, system, model, max_tokens, temperature) -> str:
-        full_messages = [{"role": "system", "content": system}] if system else []
-        full_messages.extend(messages)
-        response = self.client.post("/api/chat", json={
-            "model": model, "messages": full_messages, "stream": False,
-            "options": {"temperature": temperature, "num_predict": max_tokens}
-        })
-        response.raise_for_status()
-        result = response.json()
-        message = result.get("message", {})
-        content = message.get("content", "")
-        if not content:
-            raise Exception(f"Ollama返回空内容: {json.dumps(result, ensure_ascii=False)[:200]}")
-        return content
-
-    def _chat_claude(self, messages, system, model, max_tokens, temperature) -> str:
-        """Anthropic Claude API调用 (通过httpx直接调用)"""
-        # 构建Anthropic格式的请求
-        anthropic_messages = []
-        for msg in messages:
-            anthropic_messages.append({"role": msg["role"], "content": msg["content"]})
-
-        payload = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "system": system or "",
-            "messages": anthropic_messages,
-            "temperature": temperature
-        }
-
-        response = self.client.post("/v1/messages", json=payload)
-        response.raise_for_status()
-        result = response.json()
-        content_blocks = result.get("content", [])
-        if not content_blocks:
-            raise Exception(f"Claude返回无内容: {json.dumps(result, ensure_ascii=False)[:200]}")
-        return content_blocks[0].get("text", "")
-
-    def _chat_deepseek(self, messages, system, model, max_tokens, temperature,
-                       thinking_enabled=False, reasoning_effort="high") -> str:
-        """DeepSeek API调用 - 支持思考模式"""
-        full_messages = [{"role": "system", "content": system}] if system else []
-        full_messages.extend(messages)
-
-        # 小请求禁用思考模式（避免token被思考过程耗尽）
-        if max_tokens < 1000:
-            thinking_enabled = False
-
-        payload = {
-            "model": model,
-            "messages": full_messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature
-        }
-
-        # 添加思考模式参数（直接展开到payload顶层）
-        if thinking_enabled:
-            payload["thinking"] = {"type": "enabled"}
-            payload["reasoning_effort"] = reasoning_effort
-            # 思考模式下不支持temperature
-            payload.pop("temperature", None)
-
-        response = self.client.post("/chat/completions", json=payload)
-        response.raise_for_status()
-
-        result = response.json()
-
-        # 防御性解析
-        choices = result.get("choices", [])
-        if not choices:
-            raise Exception(f"DeepSeek返回无choices: {json.dumps(result, ensure_ascii=False)[:200]}")
-
-        message = choices[0].get("message", {})
-        content = message.get("content", "")
-        reasoning = message.get("reasoning_content", "")
-        finish_reason = choices[0].get("finish_reason", "")
-
-        # 如果有思考内容，记录到日志
-        if reasoning:
-            self._log_thinking(reasoning)
-
-        # content为空时的处理
-        if not content or len(content.strip()) == 0:
-            # 如果finish_reason是"length"且有reasoning_content，说明思考模式用完了token
-            if finish_reason == "length" and reasoning and len(reasoning.strip()) > 10:
-                self._log("[提示] 思考模式耗尽token，使用reasoning_content作为结果")
-                return reasoning
-            raise Exception(f"DeepSeek返回空内容 (reasoning_len={len(reasoning)}, finish={finish_reason})")
-
-        return content
-
-    def _log_thinking(self, reasoning: str):
-        """记录思考过程"""
-        if _diag_logger:
-            _diag_logger.log("THINKING", "reasoning_content", {
-                "preview": reasoning[:500],
-                "length": len(reasoning)
-            })
-
-    # ==================== 模型自动检测 ====================
+    # ============================================================ 模型自动检测
 
     def _detect_provider(self, provider: str, model: str) -> str:
         """根据模型名称自动检测provider，避免用户手动配置错误"""
@@ -888,205 +1215,49 @@ class AIClient:
         # 回退到用户配置的provider
         return provider
 
-    # ==================== 请求分发与限流重试 ====================
+    def _log_thinking(self, reasoning: str):
+        """记录思考过程"""
+        if _diag_logger:
+            _diag_logger.log("THINKING", "reasoning_content", {
+                "preview": reasoning[:500],
+                "length": len(reasoning)
+            })
 
-    def _dispatch_chat(self, provider: str, messages, system, model, max_tokens,
-                       temperature, thinking_enabled=False, reasoning_effort="medium") -> str:
-        """按 provider 路由到对应的底层调用（统一入口）。
-        
-        P1-7: 主调用与降级调用共用此方法，避免两处分支漂移；
-        此前降级分支缺 glm/qwen/kimi，会错误回落到 _chat_openai。
-        """
-        if provider == "ollama":
-            return self._chat_ollama(messages, system, model, max_tokens, temperature)
-        if provider == "claude":
-            return self._chat_claude(messages, system, model, max_tokens, temperature)
-        if provider == "deepseek":
-            return self._chat_deepseek(messages, system, model, max_tokens, temperature,
-                                       thinking_enabled, reasoning_effort)
-        if provider == "glm":
-            return self._chat_glm(messages, system, model, max_tokens, temperature,
-                                  thinking_enabled, reasoning_effort)
-        if provider == "qwen":
-            return self._chat_qwen(messages, system, model, max_tokens, temperature,
-                                   thinking_enabled)
-        if provider == "kimi":
-            return self._chat_kimi(messages, system, model, max_tokens, temperature,
-                                   thinking_enabled)
-        return self._chat_openai(messages, system, model, max_tokens, temperature)
-
-    def _dispatch_with_retry(self, provider: str, messages, system, model, max_tokens,
-                             temperature, thinking_enabled=False, reasoning_effort="medium",
-                             max_retries: int = 3) -> str:
-        """调用底层并针对 429 限流做指数退避重试（P1-7）。
-        
-        仅对 429（请求过于频繁）重试；其他错误（401/403/5xx/网络）直接抛出，
-        交由外层处理（认证错误不降级，其他错误走模型降级）。
-        """
-        delay = 2.0
-        for attempt in range(max_retries + 1):
-            try:
-                return self._dispatch_chat(provider, messages, system, model, max_tokens,
-                                           temperature, thinking_enabled, reasoning_effort)
-            except Exception as e:
-                status = getattr(getattr(e, "response", None), "status_code", None)
-                if status == 429 and attempt < max_retries:
-                    self._log(f"[限流] 429 请求过于频繁，{delay:.0f}s 后重试 "
-                              f"({attempt + 1}/{max_retries})")
-                    time.sleep(delay)
-                    delay = min(delay * 2, 30.0)
-                    continue
-                raise
-
-    # ==================== 智谱GLM深度思考 ====================
-
-    def _chat_glm(self, messages, system, model, max_tokens, temperature,
-                   thinking_enabled=True, reasoning_effort="max") -> str:
-        """智谱GLM API调用 - 支持深度思考模式
-        
-        支持模型: GLM-5.2, GLM-5.1, GLM-5, GLM-5-Turbo, GLM-4.7, GLM-4.6, GLM-4.5
-        参数:
-        - thinking.type: "enabled"(默认)/"disabled"
-        - reasoning_effort: "max"/"xhigh"/"high"/"medium"/"low"/"minimal"/"none" (仅GLM-5.2+)
-        """
-        full_messages = [{"role": "system", "content": system}] if system else []
-        full_messages.extend(messages)
-
-        # 小请求禁用思考模式
-        if max_tokens < 1000:
-            thinking_enabled = False
-
-        payload = {
-            "model": model,
-            "messages": full_messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature
-        }
-
-        # 添加深度思考参数
-        if thinking_enabled:
-            payload["thinking"] = {"type": "enabled"}
-            # GLM-5.2及以上支持reasoning_effort
-            model_lower = model.lower()
-            if any(v in model_lower for v in ["5.2", "5.1"]):
-                payload["reasoning_effort"] = reasoning_effort
-            # 思考模式下temperature必须为1.0
-            payload["temperature"] = 1.0
-
-        response = self.client.post("/chat/completions", json=payload)
-        response.raise_for_status()
-
-        return self._parse_thinking_response(response.json(), "GLM")
-
-    # ==================== 通义千问Qwen深度思考 ====================
-
-    def _chat_qwen(self, messages, system, model, max_tokens, temperature,
-                    thinking_enabled=True) -> str:
-        """通义千问Qwen API调用 - 支持深度思考模式
-        
-        支持模型: qwen3.7-max, qwen3.6-max-preview, qwen3-max, qwen-plus, qwq-plus等
-        参数:
-        - enable_thinking: true/false
-        - thinking_budget: 思考token上限
-        """
-        full_messages = [{"role": "system", "content": system}] if system else []
-        full_messages.extend(messages)
-
-        # 小请求禁用思考模式
-        if max_tokens < 1000:
-            thinking_enabled = False
-
-        payload = {
-            "model": model,
-            "messages": full_messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature
-        }
-
-        # Qwen思考模式参数（通过extra_body或顶层传递）
-        if thinking_enabled:
-            payload["enable_thinking"] = True
-            # 设置思考token预算为max_tokens的50%
-            payload["thinking_budget"] = max_tokens // 2
-
-        response = self.client.post("/chat/completions", json=payload)
-        response.raise_for_status()
-
-        return self._parse_thinking_response(response.json(), "Qwen")
-
-    # ==================== Kimi深度思考 ====================
-
-    def _chat_kimi(self, messages, system, model, max_tokens, temperature,
-                    thinking_enabled=True) -> str:
-        """Kimi API调用 - 支持深度思考模式
-        
-        支持模型: kimi-k2.7-code(始终思考), kimi-k2.6, kimi-k2.5
-        参数:
-        - thinking.type: "enabled"(默认)/"disabled"
-        - thinking.keep: "all"(保留历史思考)/null(不保留)
-        """
-        full_messages = [{"role": "system", "content": system}] if system else []
-        full_messages.extend(messages)
-
-        # kimi-k2.7-code始终开启思考，不接受thinking参数
-        model_lower = model.lower()
-        is_k27 = "k2.7" in model_lower
-
-        payload = {
-            "model": model,
-            "messages": full_messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature
-        }
-
-        # kimi思考模型不支持temperature参数
-        if not is_k27 and thinking_enabled:
-            payload["thinking"] = {"type": "enabled", "keep": "all"}
-            payload.pop("temperature", None)  # 思考模式下移除temperature
-
-        response = self.client.post("/chat/completions", json=payload)
-        response.raise_for_status()
-
-        return self._parse_thinking_response(response.json(), "Kimi")
-
-    # ==================== 统一响应解析 ====================
+    # ============================================================ 兼容层
 
     def _parse_thinking_response(self, result: dict, provider_name: str) -> str:
-        """统一解析支持思考模式的API响应
-        
-        所有支持思考模式的模型（DeepSeek/GLM/Qwen/Kimi）都使用相同的响应格式：
-        - message.content: 最终回答
-        - message.reasoning_content: 思考过程
+        """统一解析支持思考模式的API响应。
+
+        **保留原因**：该方法被 8 个单测直接调用，属既有引用面。
+        v3 把它的实现改为「走 OpenAI 兼容 adapter」—— 不再与各 `_chat_*`
+        各自维护一份重复的解析+兜底逻辑（那正是 P1 要消灭的重复），
+        同时保住它原有三条可观测行为：无 choices 报错、usage 记账、
+        空 content 但 reasoning 可用时降级返回 reasoning。
         """
-        choices = result.get("choices", [])
-        if not choices:
-            raise Exception(f"{provider_name}返回无choices: {json.dumps(result, ensure_ascii=False)[:200]}")
+        adapter = _label_adapter(provider_name)
+        chat_result = adapter.parse_response(result)
+        self._record_usage(chat_result.usage, provider_name, "")
+        if chat_result.reasoning:
+            self._log_thinking(chat_result.reasoning)
+        return self._finalize_text(chat_result, provider_name, "")
 
-        message = choices[0].get("message", {})
-        content = message.get("content", "")
-        reasoning = message.get("reasoning_content", "")
-        finish_reason = choices[0].get("finish_reason", "")
 
-        # 记录Token使用量
-        usage = result.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-        total_tokens = usage.get("total_tokens", 0)
-        if total_tokens > 0:
-            token_stats.record(prompt_tokens, completion_tokens)
-            self._log(f"[Token] 本次: {total_tokens} (输入:{prompt_tokens} 输出:{completion_tokens}) | 累计: {token_stats.total_tokens}")
+def _label_adapter(label: str) -> OpenAICompatAdapter:
+    """构造一个仅用于解析响应的 OpenAI 兼容 adapter（按 label 缓存）。
 
-        # 如果有思考内容，记录到日志
-        if reasoning:
-            self._log_thinking(reasoning)
-
-        # content为空时的处理
-        if not content or len(content.strip()) == 0:
-            # 如果finish_reason是"length"且有reasoning_content，说明思考模式用完了token
-            # 此时reasoning_content包含有用的分析结果，可以作为降级返回
-            if finish_reason == "length" and reasoning and len(reasoning.strip()) > 10:
-                self._log(f"[提示] {provider_name}思考模式耗尽token (reasoning_len={len(reasoning)})，使用reasoning_content作为结果")
-                return reasoning
-            raise Exception(f"{provider_name}返回空内容 (reasoning_len={len(reasoning)}, finish={finish_reason}): {json.dumps(result, ensure_ascii=False)[:200]}")
-
-        return content
+    缓存放在**模块级**：`_parse_thinking_response` 会被单测以
+    `AIClient.__new__(AIClient)`（跳过 `__init__`）的方式调用，
+    若缓存挂在实例上就会 AttributeError。
+    """
+    adapter = _LABEL_ADAPTERS.get(label)
+    if adapter is None:
+        spec = ProviderSpec(
+            key=f"__parse__:{label}",
+            name=label,
+            base_url="",
+            chat_path="/chat/completions",
+        )
+        adapter = OpenAICompatAdapter(spec)
+        adapter.label = label
+        _LABEL_ADAPTERS[label] = adapter
+    return adapter

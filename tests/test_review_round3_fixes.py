@@ -17,7 +17,7 @@
 """
 
 import json
-import re
+import sys
 import threading
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -29,8 +29,6 @@ from app.memory_manager import (
     MemoryManager,
 )
 
-REPO_ROOT = Path(__file__).parent.parent
-
 
 def make_chars(n: int, prefix: str = "角色") -> dict:
     return {f"{prefix}{i:03d}": {"personality": f"性格{i}"} for i in range(n)}
@@ -41,41 +39,20 @@ def mm(tmp_path):
     return MemoryManager(tmp_path)
 
 
-def _read(rel: str) -> str:
-    return (REPO_ROOT / rel).read_text(encoding="utf-8")
+# 源码扫描工具已收敛到 tests/_source_scan.py（此前在本文件与其它测试里各有一份）。
+# 显式把 tests/ 目录放进 sys.path 再按顶层模块名导入：`pytest -q`（走 testpaths）
+# 与 `pytest tests/xxx.py` 两种调用方式下，包限定名 `tests.x` 的可见性并不一致。
+_TESTS_DIR = str(Path(__file__).resolve().parent)
+if _TESTS_DIR not in sys.path:
+    sys.path.insert(0, _TESTS_DIR)
 
+import _source_scan as _scan  # noqa: E402
 
-# 三引号字符串（=文档字符串）：修复说明常把"旧实现里的 `xxx`"写进 docstring，
-# 若不剔除，源码扫描型断言会被自己的说明文字推翻。
-_DOCSTRING_RE = re.compile(r'("""|\'\'\')(?:(?!\1).)*\1', re.DOTALL)
-
-
-def _strip_noise(src: str) -> str:
-    """去掉文档字符串与注释（含行内注释），只留可执行代码。
-
-    "某某写法不得再出现"这类断言必须排除说明文字，否则修复说明本身
-    （例如注释里的 ```word_dialog.destroy()```）就会把断言推翻。
-    """
-    src = _DOCSTRING_RE.sub("", src)
-    lines = []
-    for line in src.splitlines():
-        if line.lstrip().startswith("#"):
-            continue
-        lines.append(line.split("#", 1)[0])
-    return "\n".join(lines)
-
-
-def _code_only(rel: str) -> str:
-    """``_read`` 的"只留代码"版本，用于源码扫描型负向断言。"""
-    return _strip_noise(_read(rel))
-
-
-def _method_body(path: str, start_marker: str, end_marker: str) -> str:
-    src = _read(path)
-    start = src.index(start_marker)
-    end = src.index(end_marker, start)
-    return src[start:end]
-
+REPO_ROOT = _scan.REPO_ROOT
+_read = _scan.read
+_code_only = _scan.code_only
+_strip_noise = _scan.strip_noise
+_method_body = _scan.method_body
 
 # ===================================================================== V1 / V4
 

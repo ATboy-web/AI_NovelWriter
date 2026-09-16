@@ -4,6 +4,17 @@
 密钥托管策略：
 - Windows：使用 DPAPI（CryptProtectData）保护 Fernet 密钥，密钥不落明文磁盘
 - 其他平台：回退到文件权限（chmod 0600）
+
+与 `AppConfig` 的分工（v3 明确划分，此前是「两个类共写一个文件」的隐患）：
+
+- `config.json` 里**非敏感**的键归 AppConfig 所有，本模块只透传不覆盖；
+- 敏感字段（api_key / img_api_key / secret_key）与多 Profile 密钥容器
+  `ai_keys` 归本模块独有，永远以本实例的内存值为准；
+- 其余键在保存时**以磁盘现状为基准**，只回写「本次显式 set() 过的键」。
+
+最后一条是本次修复的核心：旧实现对整个内存快照做全量回写，而内存快照是
+进程启动时读的。于是「用户先改主题、再改 API Key」这个极常见的顺序，
+第二次保存会把主题连同 `ai.profiles` 一起退回旧值 —— 静默丢配置。
 """
 
 import ctypes
@@ -14,13 +25,17 @@ import sys
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 
 from cryptography.fernet import Fernet
 
+from .config import AI_KEYS_FIELD, DEFAULT_CONFIG, DEFAULT_PROFILE_NAME
 from .storage import atomic_write_json
 
 logger = logging.getLogger(__name__)
+
+#: 需要加密落盘的字段（与 AppConfig 共用同一定义）
+_SENSITIVE_FIELDS = ('api_key', 'img_api_key', 'secret_key')
 
 
 class _WindowsDPAPI:
@@ -110,6 +125,11 @@ class SecureConfig:
         # 把用户既有配置当作默认值/空值覆盖掉
         self._load_failed = False
         self._undecryptable: dict = {}
+        #: 各 Profile 中解不开的密钥密文，save 时原样写回
+        self._undecryptable_ai_keys: Dict[str, str] = {}
+        #: 本实例**显式 set() 过**的键。只有这些键才允许在保存时覆盖磁盘值，
+        #: 其余键一律以磁盘现状为准（否则陈旧快照会回退别的组件的改动）
+        self._dirty: set = set()
         self.fernet = self._init_encryption()
         self.config = self._load()
 
@@ -193,8 +213,7 @@ class SecureConfig:
             return self._default_config()
 
         # 解密敏感字段
-        sensitive_fields = ['api_key', 'img_api_key', 'secret_key']
-        for field in sensitive_fields:
+        for field in _SENSITIVE_FIELDS:
             if field in config and config[field]:
                 ciphertext = config[field]
                 plain = self._decrypt(ciphertext)
@@ -203,6 +222,17 @@ class SecureConfig:
                     # save() 时原样写回，避免「空值覆盖已加密密钥」
                     self._undecryptable[field] = ciphertext
                 config[field] = plain
+
+        # v3: 多 Profile 密钥容器（同样是密文，逐项解密）
+        ai_keys = config.get(AI_KEYS_FIELD)
+        if isinstance(ai_keys, dict):
+            decrypted: Dict[str, str] = {}
+            for name, ciphertext in ai_keys.items():
+                plain = self._decrypt(ciphertext) if isinstance(ciphertext, str) else ""
+                if plain == "" and isinstance(ciphertext, str) and ciphertext.startswith('gAAAAA'):
+                    self._undecryptable_ai_keys[str(name)] = ciphertext
+                decrypted[str(name)] = plain
+            config[AI_KEYS_FIELD] = decrypted
 
         return config
 
@@ -226,56 +256,97 @@ class SecureConfig:
             return None
 
     def _default_config(self) -> dict:
-        """默认配置"""
-        return {
-            "api_provider": "ollama",
-            "api_key": "",
-            "api_base": "http://localhost:11434",
-            "model": "qwen2.5:14b",
-            "max_tokens": 4096,
-            "temperature": 0.8,
-            "context_window": 32000,
-            "auto_save": True,
-            "theme": "light",
-            "adult_content": False,
-            "edge_content": False,
-            "img_provider": "comfyui",
-            "img_api_base": "http://127.0.0.1:8188",
-            "img_api_key": "",
-            "img_model": "sd_xl_base_1.0.safetensors",
-            "img_width": 1024,
-            "img_height": 1024,
-            "auto_detect_scene": True,
-        }
+        """默认配置。
 
-    def save(self):
-        """保存配置（加密敏感字段）
+        复用 `AppConfig.DEFAULT_CONFIG` 作为单一来源 —— 旧实现把 17 个默认值
+        在这里抄了第二份，两边一旦漂移就会出现「首启有值、恢复默认后没值」。
+        """
+        return {**DEFAULT_CONFIG, "img_api_key": ""}
 
-        L7 + 原子写：旧实现用 `open(...,'w')` + `json.dump` 非原子写，
-        写一半崩溃就留下截断的配置；且会把「解密失败返回的空值」当新值加密回写，
-        等于静默抹掉密钥。现在：
+    def save(self) -> bool:
+        """保存配置（加密敏感字段）。
+
+        保存策略（v3 重写）：
+
+        ============================  ==========================
+        键                            取值来源
+        ============================  ==========================
+        敏感字段 / `ai_keys` 容器     **内存**（本模块独占）
+        本次 `set()` 过的键           **内存**（`self._dirty`）
+        其余一切键                    **磁盘现状**（不碰）
+        ============================  ==========================
+
+        旧实现是「整份内存快照全量回写」，而内存快照取自进程启动时刻，
+        于是**同一次会话里**先改主题、再改 API Key，第二次保存就会把主题
+        退回旧值，并连带抹掉 AppConfig 刚写入的 `ai.profiles`。
+        现在的写法是先读盘再按键覆盖，两个组件可以安全地共用一个文件。
+
+        另外：
           - 用 `atomic_write_json`（临时文件 + `os.replace`），
             `mode=0o600` 在替换前施加，不存在"权限尚且宽松"的窗口期；
-          - 内存为空但原始密文仍在手上的字段，**原样写回密文**。
+          - 内存为空但原始密文仍在手上的字段，**原样写回密文**；
+          - 读盘曾失败时**拒绝写入** —— 宁可不保存，也不用残缺内容覆盖
+            磁盘上唯一一份可能还能人工救回的数据。
         """
         with self._lock:
-            config_to_save = self.config.copy()
+            if self._load_failed:
+                logger.error(
+                    "配置文件此前读取失败，本次保存已跳过：磁盘上的原始内容"
+                    "（已留档为 config.corrupt-*.json）不得被残缺内存覆盖。"
+                )
+                return False
 
-            sensitive_fields = ['api_key', 'img_api_key', 'secret_key']
-            for field in sensitive_fields:
-                if config_to_save.get(field):
-                    config_to_save[field] = self._encrypt(config_to_save[field])
+            config_to_save = dict(self._read_raw() or {})
+
+            # 1) 本实例显式改过的键：以内存为准
+            for key in self._dirty:
+                if key in self.config:
+                    config_to_save[key] = self.config[key]
+
+            # 2) 敏感字段：以内存为准，并明确清掉磁盘上的明文残留
+            for field in _SENSITIVE_FIELDS:
+                if self.config.get(field):
+                    config_to_save[field] = self._encrypt(self.config[field])
                 elif field in self._undecryptable:
                     # 无法解密 → 保留原密文（不做"空值覆盖"）
                     config_to_save[field] = self._undecryptable[field]
+                else:
+                    config_to_save[field] = ""
 
-            if self._load_failed:
-                logger.warning(
-                    "配置读取曾失败，本次保存基于默认值；原文件已留档为 "
-                    "config.corrupt-*.json，如需恢复请手动比对。"
-                )
+            # 3) ai_keys 容器：以内存为准（逐项加密）
+            ai_keys = self.config.get(AI_KEYS_FIELD)
+            if isinstance(ai_keys, dict):
+                config_to_save[AI_KEYS_FIELD] = self._encrypt_ai_keys(ai_keys)
+            else:
+                config_to_save.pop(AI_KEYS_FIELD, None)
 
             atomic_write_json(self.config_file, config_to_save, indent=2, mode=0o600)
+            self._dirty.clear()
+            return True
+
+    def _encrypt_ai_keys(self, mapping: dict) -> dict:
+        """加密各 Profile 的密钥；解不开的密文原样保留（与单字段同策略）。"""
+        result: Dict[str, str] = {}
+        for name, value in mapping.items():
+            name = str(name)
+            if isinstance(value, str) and value:
+                result[name] = self._encrypt(value)
+            elif name in self._undecryptable_ai_keys:
+                result[name] = self._undecryptable_ai_keys[name]
+            else:
+                result[name] = ""
+        return result
+
+    def _read_raw(self) -> Optional[dict]:
+        """读磁盘原始内容（不解密）。失败返回 None，绝不抛异常。"""
+        try:
+            if not self.config_file.exists():
+                return None
+            with open(self.config_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else None
+        except (OSError, ValueError):
+            return None
 
     def get(self, key: str, default=None):
         """获取配置值"""
@@ -286,6 +357,7 @@ class SecureConfig:
         """设置配置值"""
         with self._lock:
             self.config[key] = value
+            self._dirty.add(key)
             self.save()
 
     def get_api_key(self) -> str:
@@ -295,6 +367,87 @@ class SecureConfig:
     def set_api_key(self, api_key: str):
         """设置API密钥"""
         self.set("api_key", api_key)
+
+    # ======================================================== 多 Profile 密钥
+
+    def get_ai_key(self, profile: str = DEFAULT_PROFILE_NAME) -> str:
+        """取某 Profile 的明文密钥。
+
+        默认 Profile 直接复用旧的顶层 `api_key` 字段 —— 老用户的密钥
+        不需要任何迁移动作就能继续用（这是刻意保留的兼容路径）。
+        """
+        profile = str(profile or DEFAULT_PROFILE_NAME)
+        with self._lock:
+            if profile == DEFAULT_PROFILE_NAME:
+                return self.get("api_key", "") or ""
+            keys = self.config.get(AI_KEYS_FIELD)
+            if not isinstance(keys, dict):
+                return ""
+            value = keys.get(profile)
+            return value if isinstance(value, str) else ""
+
+    def set_ai_key(self, profile: str, value: str) -> None:
+        """写入某 Profile 的密钥（落盘为密文）。"""
+        profile = str(profile or DEFAULT_PROFILE_NAME)
+        value = value or ""
+        with self._lock:
+            if profile == DEFAULT_PROFILE_NAME:
+                self.set("api_key", value)
+                return
+            keys = self.config.get(AI_KEYS_FIELD)
+            keys = dict(keys) if isinstance(keys, dict) else {}
+            keys[profile] = value
+            self._undecryptable_ai_keys.pop(profile, None)
+            self.config[AI_KEYS_FIELD] = keys
+            self.save()
+
+    def delete_ai_key(self, profile: str) -> None:
+        """删除某 Profile 的密钥（删除 Profile 时调用）。"""
+        profile = str(profile or DEFAULT_PROFILE_NAME)
+        with self._lock:
+            if profile == DEFAULT_PROFILE_NAME:
+                self.set("api_key", "")
+                return
+            keys = self.config.get(AI_KEYS_FIELD)
+            if not isinstance(keys, dict) or profile not in keys:
+                return
+            keys = dict(keys)
+            del keys[profile]
+            self._undecryptable_ai_keys.pop(profile, None)
+            self.config[AI_KEYS_FIELD] = keys
+            self.save()
+
+    def rename_ai_key(self, old: str, new: str) -> None:
+        """Profile 改名时把密钥一起搬过去。"""
+        old = str(old or DEFAULT_PROFILE_NAME)
+        new = str(new or DEFAULT_PROFILE_NAME)
+        if not new or old == new:
+            return
+        with self._lock:
+            if old == DEFAULT_PROFILE_NAME:
+                self.set_ai_key(new, self.get_ai_key(DEFAULT_PROFILE_NAME))
+                self.set_ai_key(DEFAULT_PROFILE_NAME, "")
+                return
+            keys = self.config.get(AI_KEYS_FIELD)
+            keys = dict(keys) if isinstance(keys, dict) else {}
+            if old not in keys:
+                return
+            keys[new] = keys.pop(old)
+            if old in self._undecryptable_ai_keys:
+                self._undecryptable_ai_keys[new] = self._undecryptable_ai_keys.pop(old)
+            self.config[AI_KEYS_FIELD] = keys
+            self.save()
+
+    def has_ai_key(self, profile: str = DEFAULT_PROFILE_NAME) -> bool:
+        return bool(self.get_ai_key(profile))
+
+    def ai_key_profiles(self) -> List[str]:
+        """已单独存放过密钥的 Profile 名（不含默认 Profile）。"""
+        with self._lock:
+            keys = self.config.get(AI_KEYS_FIELD)
+            if not isinstance(keys, dict):
+                return []
+            return [str(name) for name, value in keys.items() if value]
 
 
 # 全局实例

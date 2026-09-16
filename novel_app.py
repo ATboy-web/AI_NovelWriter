@@ -55,6 +55,7 @@ from app.writing_skills_panel import WritingSkillsPanelMixin
 # ==================== P2-1 拆分出的功能域 Mixin ====================
 from app.shell_ui import ShellMixin
 from app.lifecycle_ui import NovelLifecycleMixin
+from app.ai_settings_ui import AISettingsMixin
 from app.generation_ui import GenerationMixin
 from app.character_ui import CharacterUIMixin
 from app.outline_ui import OutlineUIMixin
@@ -70,6 +71,7 @@ from app.note_ui import NoteUIMixin
 class NovelWriterApp(
     ShellMixin,
     NovelLifecycleMixin,
+    AISettingsMixin,
     GenerationMixin,
     CharacterUIMixin,
     OutlineUIMixin,
@@ -90,6 +92,14 @@ class NovelWriterApp(
 
     def __init__(self):
         self.config = AppConfig()
+        # v3: 首次启动把旧的扁平配置落盘为多 Profile 结构（含迁移前备份）。
+        # 放在这里而不是 AppConfig.__init__ 里，是为了让「构造配置对象」保持只读
+        # —— 单测会构造 AppConfig 指向真实用户目录，构造函数写盘会污染真实配置。
+        try:
+            if self.config.ensure_profiles_persisted():
+                logger.info("配置已升级为多 Profile 结构（旧文件已留档 config.pre-v3-profiles-*.json）")
+        except OSError as e:
+            logger.warning(f"配置结构落盘失败（不影响本次运行）: {e}")
         self.ai_client = AIClient(self.config)
         self.image_gen = ImageGenerator(self.config)
         self.note_manager = NoteManager(config=self.config)

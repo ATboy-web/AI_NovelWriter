@@ -14,12 +14,14 @@ README 的下载表指向旧版本、关于对话框写死 v2.0）。
 from __future__ import annotations
 
 import re
+import sys
 import tomllib
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).parent))  # 同目录的测试辅助模块（_app_authority）
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?$")
 
 #: 根目录允许存在的 Markdown 文档集合（与 `docs/README.md` 的说明保持一致）。
@@ -112,6 +114,60 @@ def test_version_falls_back_when_pyproject_is_unreadable(monkeypatch):
         importlib.metadata, "version", lambda _name: (_ for _ in ()).throw(importlib.metadata.PackageNotFoundError)
     )
     assert app._load_version() == app._FALLBACK_VERSION
+
+
+def test_root_app_wins_when_a_shadowing_app_package_is_ahead_on_sys_path(tmp_path):
+    """**复刻 v3.1.0 发布事故**：同名 `app` 包排在 `sys.path` 前面时，`app` 必须仍是仓库根那个。
+
+    CI 上真实的肇事者见 `backend/tests/test_generators.py`（把 `backend/novel-service`
+    插到 `sys.path[0]`，那里也有 `app/`）。这里用临时目录造一个等价影子包，
+    以便在**任何机器上都能复现**，而不是只在 CI 复现。
+    """
+    import _app_authority as authority
+
+    shadow = tmp_path / "novel-service" / "app"
+    shadow.mkdir(parents=True)
+    (shadow / "__init__.py").write_text('__version__ = "1.0.0"\n', encoding="utf-8")
+
+    saved_path = list(sys.path)
+    saved_modules = {name: mod for name, mod in sys.modules.items() if name == "app" or name.startswith("app.")}
+    try:
+        sys.path.insert(0, str(tmp_path / "novel-service"))
+        for name in [name for name in sys.modules if name == "app" or name.startswith("app.")]:
+            sys.modules.pop(name, None)
+
+        import app as hijacked
+
+        assert hijacked.__version__ == "1.0.0", "影子包没生效，这条复刻无效"
+        assert authority._is_root_app(hijacked) is False
+
+        fixed = authority.restore_root_app_authority()
+
+        assert fixed, "应报告修正了哪些项"
+        import app as restored
+
+        assert authority._is_root_app(restored), authority.describe_app_authority()
+        assert restored.__version__ == _pyproject_version()
+    finally:
+        for name in [name for name in list(sys.modules) if name == "app" or name.startswith("app.")]:
+            sys.modules.pop(name, None)
+        sys.modules.update(saved_modules)
+        sys.path[:] = saved_path
+
+
+def test_backend_service_packages_are_not_ahead_of_the_repo_root():
+    """`backend/*/app` 不得排在仓库根**前面**（那会劫持 `app` 这个名字）。
+
+    注意：它们**在** `sys.path` 上是合理的（`backend/tests` 需要），
+    错误的是顺序 —— `restore_root_app_authority()` 之后必须没有更靠前的影子目录。
+    """
+    import _app_authority as authority
+
+    authority.restore_root_app_authority()
+    assert authority.app_conflicts() == [], (
+        f"这些目录排在仓库根之前，会让 import app 指向后端：{authority.app_conflicts()}\n"
+        + authority.describe_app_authority()
+    )
 
 
 def test_single_source_of_truth(version):

@@ -162,9 +162,7 @@ class TestJWTManager:
         assert payload["sub"] == "u1"
 
     def test_expired_token_returns_none(self, manager):
-        token = manager.create_access_token(
-            {"sub": "u1"}, expires_delta=timedelta(seconds=-10)
-        )
+        token = manager.create_access_token({"sub": "u1"}, expires_delta=timedelta(seconds=-10))
         assert manager.verify_token(token) is None
 
     def test_tampered_token_returns_none(self, manager):
@@ -172,9 +170,7 @@ class TestJWTManager:
         assert manager.verify_token(token + "x") is None
 
     def test_token_signed_with_other_key_rejected(self, manager):
-        other = JWTManager(
-            JWTConfig(secret_key="another-secret-key-0123456789abcdefghij")
-        )
+        other = JWTManager(JWTConfig(secret_key="another-secret-key-0123456789abcdefghij"))
         token = other.create_access_token({"sub": "u1"})
         assert manager.verify_token(token) is None
 
@@ -202,9 +198,7 @@ def _make_request(headers=None, query="", cookies=None):
     for k, v in (headers or {}).items():
         raw_headers.append((k.lower().encode(), v.encode()))
     if cookies:
-        raw_headers.append(
-            (b"cookie", "; ".join(f"{k}={v}" for k, v in cookies.items()).encode())
-        )
+        raw_headers.append((b"cookie", "; ".join(f"{k}={v}" for k, v in cookies.items()).encode()))
     scope = {
         "type": "http",
         "method": "GET",
@@ -324,9 +318,7 @@ class TestAuthMiddlewareDispatch:
         token = mw.jwt_manager.create_access_token(
             {"sub": "u9", "username": "bob", "role": "admin", "level": "premium"}
         )
-        resp = await _call(
-            mw, "/api/v1/generate", headers={"Authorization": f"Bearer {token}"}
-        )
+        resp = await _call(mw, "/api/v1/generate", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 200
         assert resp.headers["X-User-Id"] == "u9"
 
@@ -478,9 +470,7 @@ class TestRateLimiterHelpers:
 
     def test_client_id_ignores_spoofable_headers(self, limiter):
         """X-Forwarded-For / X-User-Id 由客户端可控，不得作为限流标识。"""
-        req = _make_request(
-            headers={"X-Forwarded-For": "9.9.9.9", "X-User-Id": "admin"}
-        )
+        req = _make_request(headers={"X-Forwarded-For": "9.9.9.9", "X-User-Id": "admin"})
         assert limiter._get_client_id(req) == "ip:1.2.3.4"
 
     def test_user_level_from_state_not_header(self, limiter):
@@ -590,6 +580,7 @@ class TestRequestLogger:
 
     def test_sanitize_query_masks_token(self, logger_mw):
         """S1: `?token=` / `?api_key=` 不得原样进日志。"""
+
         class _QP:
             @staticmethod
             def multi_items():

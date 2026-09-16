@@ -13,6 +13,29 @@ import pytest
 
 # 添加项目路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
+
+
+def pytest_collection_finish(session):
+    """收集结束后、执行任何用例之前，恢复"仓库根 `app` 优先"的不变量。
+
+    必须在**这里**而不是 fixture 里做：收集阶段会 import 各测试模块，
+    而 `backend/tests/test_generators.py` 在模块级把 `backend/novel-service` 插到
+    `sys.path[0]`（那里也有一个 `app` 包），于是 `import app` 会被它劫持。
+    收集已完成、用例尚未执行，正是唯一能整体纠正的时刻。
+
+    事故背景见 `tests/_app_authority.py` 的模块文档：本轮 v3.1.0 的 Release
+    就是因为它被跳过而没能发布。
+    """
+    from _app_authority import describe_app_authority, restore_root_app_authority
+
+    try:
+        fixed = restore_root_app_authority()
+    except RuntimeError as exc:  # pragma: no cover - 只会在真正无解时触发
+        raise pytest.UsageError(f"测试进程的 `app` 解析异常：\n{exc}\n{describe_app_authority()}") from exc
+    if fixed:
+        # 大声说明修了什么：静默修正会让人以为环境本来就是干净的
+        print(f"\n[tests/conftest] 已恢复 `app` 包归属（{('；'.join(fixed))}）")
 
 
 @pytest.fixture

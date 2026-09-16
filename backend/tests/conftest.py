@@ -11,6 +11,7 @@ for _p in (str(_project_root), str(_backend_dir)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+
 @pytest.fixture
 def mock_ai_client():
     """Mock AI client for testing"""
@@ -19,11 +20,8 @@ def mock_ai_client():
     client.is_configured.return_value = True
     return client
 
+
 @pytest.fixture
 def sample_novel_config():
     """Sample novel configuration"""
-    return {
-        "title": "测试小说",
-        "type": "scifi",
-        "author": "测试作者"
-    }
+    return {"title": "测试小说", "type": "scifi", "author": "测试作者"}

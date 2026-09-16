@@ -1,4 +1,4 @@
-# AI NovelWriter v3.0.0
+# AI NovelWriter v3.1.0
 
 [![CI](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml/badge.svg)](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ATboy-web/AI_NovelWriter?label=release&color=blue)](https://github.com/ATboy-web/AI_NovelWriter/releases/latest)
@@ -20,7 +20,7 @@ Windows desktop ships as a single-file EXE. The repository also contains an Andr
 
 | Platform | Version | Size | Link |
 |----------|---------|------|------|
-| **Windows** | **v3.0.0** | ~19.2 MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
+| **Windows** | **v3.1.0** | ~25 MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
 | Android | v4.0.1 (previous build) | ~10.9 MB | [AI_NovelWriter_v4.0.1.apk](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.16.0) |
 
 Portable — no installation required. Configure an AI provider on first launch
@@ -34,7 +34,8 @@ Portable — no installation required. Configure an AI provider on first launch
 - **Panel workbench** — 15 panels in 5 groups (materials, structure analysis, memory &
   summaries, **world-lines & generations**, operations). Every panel gets a breadcrumb bar,
   refresh button, status bar, and F5 / Ctrl+F / Esc shortcuts, provided by the panel host;
-  registering a new panel is a one-line change.
+  registering a new panel is a one-line change. Any panel can also be **detached into its
+  own window** to sit beside the main window; closing that window returns it automatically.
 - **World-lines, branches and generations** — decision points are detected per chapter;
   a branch is a **openable sub-project** that joins the generation tree while remaining
   **read-only with respect to its parent** (writes inside the branch are allowed, escaping

@@ -1,10 +1,10 @@
-# AI小说创作工坊 v3.0.0
+# AI小说创作工坊 v3.1.0
 
 [![CI](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml/badge.svg)](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ATboy-web/AI_NovelWriter?label=release&color=blue)](https://github.com/ATboy-web/AI_NovelWriter/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT%20Modified-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-2250%20collected-brightgreen.svg)](#开发)
+[![Tests](https://img.shields.io/badge/tests-2295%20collected-brightgreen.svg)](#开发)
 
 基于 AI 的长篇小说创作工坊 —— **15 种题材**、**5 Agent 协作**、**面板化工作台**、
 **世界线分支与世代传承**、**多 AI 服务适配与用量成本统计**。
@@ -17,7 +17,7 @@
 
 | 平台 | 版本 | 大小 | 链接 |
 |------|------|------|------|
-| **Windows** | **v3.0.0** | ~19.2 MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
+| **Windows** | **v3.1.0** | ~25 MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
 | Android | v4.0.1（沿用上一次构建） | ~10.9 MB | [AI_NovelWriter_v4.0.1.apk](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.16.0) |
 
 > 单文件免安装：下载后直接双击运行。首次启动需在 **设置** 里配置 AI 服务。
@@ -52,7 +52,11 @@
 
 - 面板框架统一提供**面包屑 + 刷新按钮 + 状态栏 + F5 / Ctrl+F / Esc**，
   新增面板只需在注册表加一行。
+- 任何面板都能**脱离为独立窗口**（面包屑右上角「独立窗口」），可与主窗口并排摆放；
+  关掉窗口即自动收回，换书时窗口里的内容同步重建。
 - 基于线程感知事件总线联动：某处写入成功后，相关面板自动刷新。
+
+![面板独立窗口](docs/ui_review/after_09_popout_window.png)
 
 ### 世界线 · 分支 · 世代
 - 每章自动检测决策点；主线完结后可生成**分支世界线**

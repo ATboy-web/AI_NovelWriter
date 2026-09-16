@@ -10,7 +10,7 @@ from pathlib import Path as _Path
 # 冻结(EXE)环境下回退到构建时注入的常量。
 # ⚠️ 改版本号要同时改 `pyproject.toml`（权威源）与这里；
 # `tests/test_version_consistency.py` 会断言两者、README 与 CHANGELOG 相互一致。
-_FALLBACK_VERSION = "3.0.0"
+_FALLBACK_VERSION = "3.1.0"
 
 
 def _load_version() -> str:

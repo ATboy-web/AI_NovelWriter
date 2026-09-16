@@ -31,9 +31,7 @@ def snapshot(root: Path) -> dict[str, str]:
 
 def make_novel(root: Path, title: str, **meta_extra) -> Path:
     root.mkdir(parents=True, exist_ok=True)
-    (root / "meta.json").write_text(
-        json.dumps({"title": title, **meta_extra}, ensure_ascii=False), encoding="utf-8"
-    )
+    (root / "meta.json").write_text(json.dumps({"title": title, **meta_extra}, ensure_ascii=False), encoding="utf-8")
     return root
 
 
@@ -46,8 +44,7 @@ def make_parent(tmp_path: Path) -> Path:
     memory = parent / "memory"
     (memory / "timeline").mkdir(parents=True)
     (memory / "characters.json").write_text(
-        json.dumps({"甲": {"name": "甲", "age": 20}, "乙": {"name": "乙", "age": "不明"}},
-                   ensure_ascii=False),
+        json.dumps({"甲": {"name": "甲", "age": 20}, "乙": {"name": "乙", "age": "不明"}}, ensure_ascii=False),
         encoding="utf-8",
     )
     (memory / "settings.json").write_text(json.dumps({"world": "浮空岛"}), encoding="utf-8")
@@ -76,13 +73,18 @@ class TestLineageRecord:
         assert lin.LineageRecord.from_meta("不是字典") is None
 
     def test_from_meta_reads_all_fields(self):
-        record = lin.LineageRecord.from_meta({
-            "lineage": {
-                "generation": 3, "parent_novel": "P", "parent_title": "前作",
-                "era_gap_years": 20, "child_scope": "readonly_parent",
-                "inherited": {"outline": False, "timeline": True},
+        record = lin.LineageRecord.from_meta(
+            {
+                "lineage": {
+                    "generation": 3,
+                    "parent_novel": "P",
+                    "parent_title": "前作",
+                    "era_gap_years": 20,
+                    "child_scope": "readonly_parent",
+                    "inherited": {"outline": False, "timeline": True},
+                }
             }
-        })
+        )
         assert record.generation == 3
         assert record.era_gap_years == 20
         assert record.inherited["outline"] is False
@@ -114,10 +116,9 @@ class TestLineageRecord:
 
     def test_build_lineage_record_auto_generation(self, tmp_path):
         parent = make_novel(tmp_path / "第一部", "第一部")
-        child = make_novel(tmp_path / "第二部", "第二部",
-                           lineage={"generation": 2, "parent_novel": str(parent)})
+        child = make_novel(tmp_path / "第二部", "第二部", lineage={"generation": 2, "parent_novel": str(parent)})
         record = lin.build_lineage_record(child, era_gap_years=10)
-        assert record.generation == 3          # 父代是第 2 代 → 子代第 3 代
+        assert record.generation == 3  # 父代是第 2 代 → 子代第 3 代
         assert record.era_gap_years == 10
         assert record.parent_novel == str(child)
         assert record.child_scope == lin.SCOPE_READONLY_PARENT
@@ -133,10 +134,8 @@ class TestLineageRecord:
 class TestGenerationTree:
     def test_walks_up_the_chain(self, tmp_path):
         gp = make_novel(tmp_path / "第一代", "第一代")
-        parent = make_novel(tmp_path / "第二代", "第二代",
-                            lineage={"generation": 2, "parent_novel": str(gp)})
-        child = make_novel(tmp_path / "第三代", "第三代",
-                           lineage={"generation": 3, "parent_novel": str(parent)})
+        parent = make_novel(tmp_path / "第二代", "第二代", lineage={"generation": 2, "parent_novel": str(gp)})
+        child = make_novel(tmp_path / "第三代", "第三代", lineage={"generation": 3, "parent_novel": str(parent)})
 
         rows = lin.generation_tree(child)
 
@@ -147,8 +146,9 @@ class TestGenerationTree:
         assert rows[2]["title"] == "第一代"
 
     def test_flags_missing_parent(self, tmp_path):
-        child = make_novel(tmp_path / "第二部", "第二部",
-                           lineage={"generation": 2, "parent_novel": str(tmp_path / "已删除")})
+        child = make_novel(
+            tmp_path / "第二部", "第二部", lineage={"generation": 2, "parent_novel": str(tmp_path / "已删除")}
+        )
         rows = lin.generation_tree(child)
         assert rows[1]["missing"] is True
 
@@ -173,7 +173,7 @@ class TestReadonlyParentGuard:
         root = tmp_path / "root"
         root.mkdir()
         assert lin.is_within(root, root / "a" / "b") is True
-        assert lin.is_within(root, root) is False          # 自身不算"之内"
+        assert lin.is_within(root, root) is False  # 自身不算"之内"
         assert lin.is_within(root, tmp_path / "other") is False
         assert lin.is_within(root, root / ".." / "outside") is False
 
@@ -218,8 +218,7 @@ class TestReadonlyParentGuard:
     def test_inherit_never_touches_parent(self, tmp_path):
         """**本文件最重要的一条**：继承前后父代目录逐字节不变。"""
         parent = make_parent(tmp_path)
-        child = make_novel(tmp_path / "第二部", "第二部",
-                           lineage={"generation": 2, "parent_novel": str(parent)})
+        child = make_novel(tmp_path / "第二部", "第二部", lineage={"generation": 2, "parent_novel": str(parent)})
         before = snapshot(parent)
 
         result = lin.inherit_into_child(child, parent)
@@ -359,9 +358,7 @@ class TestCharacterTransform:
         assert set(chars) == set(source)
 
     def test_death_marks_deceased_without_deleting(self):
-        chars, notes = lin.apply_death_status(
-            {"甲": {"name": "甲", "death_chapter": 80}}, last_chapter=120
-        )
+        chars, notes = lin.apply_death_status({"甲": {"name": "甲", "death_chapter": 80}}, last_chapter=120)
         assert chars["甲"]["status"] == "deceased"
         assert any("deceased" in n for n in notes)
 
@@ -370,9 +367,7 @@ class TestCharacterTransform:
         assert "status" not in chars["甲"]
 
     def test_existing_status_is_not_overwritten(self):
-        chars, _ = lin.apply_death_status(
-            {"甲": {"death_chapter": 10, "status": "复活"}}, last_chapter=120
-        )
+        chars, _ = lin.apply_death_status({"甲": {"death_chapter": 10, "status": "复活"}}, last_chapter=120)
         assert chars["甲"]["status"] == "复活"
 
     @pytest.mark.parametrize("value", ["", None, "?", "未知"])
@@ -440,3 +435,25 @@ class TestPlotsAndChapters:
     def test_parent_last_chapter_without_data(self, tmp_path):
         assert lin.parent_last_chapter(tmp_path / "无") == 0
         assert lin.parent_last_chapter(None) == 0
+
+
+# ============================================================ 去重辅助
+
+
+class TestDedupePreserveOrder:
+    """`inherit_into_child` 用它去重（`memory` 与 `plots` 都会带上 global_summary.txt）。"""
+
+    def test_keeps_first_occurrence_order(self):
+        assert lin.dedupe_preserve_order(["b", "a", "b", "c", "a"]) == ["b", "a", "c"]
+
+    def test_empty(self):
+        assert lin.dedupe_preserve_order([]) == []
+
+    def test_inherit_result_has_no_duplicates(self, tmp_path):
+        """`memory/global_summary.txt` 同时属于 memory 与 plots 两个维度，结果不得重复。"""
+        parent = make_parent(tmp_path)
+        child = make_novel(tmp_path / "第二部", "第二部")
+
+        result = lin.inherit_into_child(child, parent, {"memory": True, "plots": True})
+
+        assert len(result["copied"]) == len(set(result["copied"]))

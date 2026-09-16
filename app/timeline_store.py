@@ -113,7 +113,9 @@ class TimelineEvent:
         chars = record.get("characters") or ()
         if isinstance(chars, str):
             chars = (chars,)
-        payload = {
+        # 显式标注：否则 mypy 推出 `dict[str, object]`，`TimelineEvent(**payload)` 会报一堆
+        # 「incompatible type」——那些报警本身无价值，但会淹没真正的问题。
+        payload: dict[str, Any] = {
             "chapter": int(record.get("chapter", 0) or 0),
             "event": str(record.get("event", "") or ""),
             "type": str(record.get("type", "story") or "story"),
@@ -202,9 +204,7 @@ class TimelineStore:
 
     # ------------------------------------------------------------------ 读：事件源
 
-    def read_memory_events(
-        self, from_chapter: int = 0, to_chapter: int | None = None
-    ) -> list[TimelineEvent]:
+    def read_memory_events(self, from_chapter: int = 0, to_chapter: int | None = None) -> list[TimelineEvent]:
         """从 `memory/timeline/timeline_*.json` 读全部事件（唯一事件源）。
 
         直接读文件而不是走 `MemoryManager.get_timeline`：后者需要构造
@@ -337,9 +337,7 @@ class TimelineStore:
 
         previous = [r for r in (world_line.get("events") or []) if isinstance(r, dict)]
         previous_keys = {
-            (int(r.get("chapter", 0) or 0), str(r.get("event", "") or ""))
-            for r in previous
-            if r.get("event")
+            (int(r.get("chapter", 0) or 0), str(r.get("event", "") or "")) for r in previous if r.get("event")
         }
         added = len(set(merged) - previous_keys)
         dropped = len(previous_keys - set(merged))
@@ -459,9 +457,9 @@ class TimelineStore:
         `branches` 项来自 `generation_ui._auto_detect_decisions`，
         字段为 `chapter/decision/chosen/alternative/story`。
         """
-        tree = []
+        tree: list[dict[str, Any]] = []
         for world in self.read_world_lines():
-            branches = []
+            branches: list[dict[str, Any]] = []
             for raw in world.get("branches") or []:
                 if not isinstance(raw, dict):
                     continue
@@ -536,9 +534,7 @@ class TimelineStore:
         tracks: dict[str, dict] = {}
 
         def slot(name: str) -> dict:
-            return tracks.setdefault(
-                name, {"appearances": [], "last_seen": 0, "importance": 5, "event_chapters": []}
-            )
+            return tracks.setdefault(name, {"appearances": [], "last_seen": 0, "importance": 5, "event_chapters": []})
 
         for name, raw in self.character_activity().items():
             if not isinstance(raw, dict):
@@ -571,7 +567,7 @@ class TimelineStore:
         父代目录**只读打开**：本方法只调 `read_memory_events`，不写任何文件 ——
         这是「子代不得污染父代」护栏在时间线侧的落点。
         """
-        chronicle: list[dict] = []
+        chronicle: list[dict[str, Any]] = []
         if self.novel_dir is None:
             return chronicle
         meta, status = read_json_with_backup(self.novel_dir / "meta.json", default=None)
@@ -605,7 +601,13 @@ class TimelineStore:
             row.update({"generation": generation, "novel_dir": str(self.novel_dir), "readonly": False})
             chronicle.append(row)
 
-        chronicle.sort(key=lambda r: (r.get("generation", 1), r.get("chapter", 0), r.get("event", "")))
+        chronicle.sort(
+            key=lambda r: (
+                int(r.get("generation", 1) or 1),
+                int(r.get("chapter", 0) or 0),
+                str(r.get("event", "")),
+            )
+        )
         return chronicle
 
     # ------------------------------------------------------------------ 统计（面板侧栏）
@@ -633,7 +635,7 @@ class TimelineStore:
 
 #: 抽取事件用的返回契约（面板把它拼进提示词，也据此解析结果）
 EXTRACTION_SCHEMA_HINT = (
-    '只输出 JSON 数组，不要任何解释文字。每项形如：'
+    "只输出 JSON 数组，不要任何解释文字。每项形如："
     '{"chapter": 12, "event": "一句话事件", "type": "story", '
     '"characters": ["角色A"], "location": "地点", "story_time": "故事内时间", '
     '"arc": "所属弧线", "confidence": "high"}'
@@ -659,7 +661,7 @@ def extraction_prompt(
     body = (text or "").strip()
     if len(body) > max_chars:
         head = body[: max_chars * 2 // 3]
-        tail = body[-max_chars // 3:]
+        tail = body[-max_chars // 3 :]
         body = f"{head}\n……（中间省略）……\n{tail}"
 
     names = [str(n) for n in known_characters if str(n).strip()]
@@ -677,7 +679,7 @@ def extraction_prompt(
         f"1. 每条事件的 `chapter` 必须是 {chapter_num}（不要写别的章号）；\n"
         f"2. `event` 是一句话，不要抄原文长句；\n"
         f"3. 判断不了 `location` / `story_time` 时留空字符串，不要编造；\n"
-        f"4. `confidence` 只在事件明确写到时才用 \"high\"，否则 \"low\"；\n"
+        f'4. `confidence` 只在事件明确写到时才用 "high"，否则 "low"；\n'
         f"5. {EXTRACTION_SCHEMA_HINT}\n\n"
         f"【第 {chapter_num} 章正文】\n{body}"
     )

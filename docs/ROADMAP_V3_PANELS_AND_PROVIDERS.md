@@ -171,7 +171,7 @@ class BasePanel:
 
 | 文件 | 作用 |
 |---|---|
-| `app/panels/base.py` | `BasePanel`：`key/title/category/order/requires_novel/topics_of_interest` + 生命周期钩子 + `attach_events`；`__init_subclass__` 自动登记 |
+| `app/panels/base.py` | `BasePanel`：`key/title/category/order/description/topics_of_interest` + 生命周期钩子 + `attach_events`；`__init_subclass__` 自动登记 |
 | `app/panels/registry.py` | `NATIVE_PANEL_MODULES`（**唯一**原生清单）+ `PanelSpec` + `grouped()` 分组渲染 |
 | `app/panels/legacy.py` | `LEGACY_PANEL_SPECS`（12 项）+ `LegacyPanelAdapter`，老面板**一行未改** |
 | `app/panels/host.py` | `PanelHost`：容器 / 分组选择器 / 懒建 / `on_show`-`on_hide` 调度 / 暂停 `novel.opened` 刷新 |

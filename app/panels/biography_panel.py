@@ -315,7 +315,6 @@ class BiographyPanel(BasePanel):
     category = "世界与世代"
     order = 20
     description = "286 个角色可搜索筛选；传记可编辑；生成接入 RAG + 时间线事件；结构化落盘 biographies/<名>.json"
-    requires_novel = True
     topics_of_interest = (TOPIC_CHARACTER_CHANGED, TOPIC_TIMELINE_CHANGED)
 
     # ------------------------------------------------------------------ 构建
@@ -342,14 +341,20 @@ class BiographyPanel(BasePanel):
         filters.pack(fill=tk.X, pady=(0, 2))
         self._category_var = tk.StringVar(value="全部分类")
         self._category_box = ttk.Combobox(
-            filters, textvariable=self._category_var, state="readonly", width=12,
+            filters,
+            textvariable=self._category_var,
+            state="readonly",
+            width=12,
             values=["全部分类"],
         )
         self._category_box.pack(side=tk.LEFT, padx=(0, 2))
         self._category_box.bind("<<ComboboxSelected>>", lambda _e: self._refresh_character_list())
         self._faction_var = tk.StringVar(value="全部阵营")
         self._faction_box = ttk.Combobox(
-            filters, textvariable=self._faction_var, state="readonly", width=12,
+            filters,
+            textvariable=self._faction_var,
+            state="readonly",
+            width=12,
             values=["全部阵营"],
         )
         self._faction_box.pack(side=tk.LEFT)
@@ -357,14 +362,17 @@ class BiographyPanel(BasePanel):
 
         self._only_bio_var = tk.BooleanVar(value=False)
         tk.Checkbutton(
-            left, text="仅看已有传记", variable=self._only_bio_var,
-            bg=C["bg_dark"], fg=C["text_secondary"], selectcolor=C["bg_medium"],
-            font=("微软雅黑", 8), command=self._refresh_character_list,
+            left,
+            text="仅看已有传记",
+            variable=self._only_bio_var,
+            bg=C["bg_dark"],
+            fg=C["text_secondary"],
+            selectcolor=C["bg_medium"],
+            font=("微软雅黑", 8),
+            command=self._refresh_character_list,
         ).pack(anchor=tk.W)
 
-        self._tree = ttk.Treeview(
-            left, columns=("角色", "分类", "阵营", "重要", "传记"), show="headings", height=16
-        )
+        self._tree = ttk.Treeview(left, columns=("角色", "分类", "阵营", "重要", "传记"), show="headings", height=16)
         for col, width in (("角色", 110), ("分类", 60), ("阵营", 70), ("重要", 40), ("传记", 40)):
             self._tree.heading(col, text=col)
             self._tree.column(col, width=width, anchor=tk.W, stretch=False)
@@ -376,37 +384,55 @@ class BiographyPanel(BasePanel):
         right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 0))
 
         self._title_label = tk.Label(
-            right, text="请选择左侧角色", font=("微软雅黑", 11, "bold"),
-            bg=C["bg_dark"], fg=C["text_primary"], anchor=tk.W,
+            right,
+            text="请选择左侧角色",
+            font=("微软雅黑", 11, "bold"),
+            bg=C["bg_dark"],
+            fg=C["text_primary"],
+            anchor=tk.W,
         )
         self._title_label.pack(fill=tk.X)
 
         self._material_label = tk.Label(
-            right, text="", font=("微软雅黑", 8), bg=C["bg_dark"],
-            fg=C["text_muted"], anchor=tk.W, justify=tk.LEFT, wraplength=700,
+            right,
+            text="",
+            font=("微软雅黑", 8),
+            bg=C["bg_dark"],
+            fg=C["text_muted"],
+            anchor=tk.W,
+            justify=tk.LEFT,
+            wraplength=700,
         )
         self._material_label.pack(fill=tk.X, pady=(0, 2))
 
         bar = tk.Frame(right, bg=C["bg_dark"])
         bar.pack(fill=tk.X)
         self._words_var = tk.StringVar(value="1500")
-        tk.Label(bar, text="目标字数", font=("微软雅黑", 9), bg=C["bg_dark"],
-                 fg=C["text_secondary"]).pack(side=tk.LEFT)
-        tk.Spinbox(bar, from_=300, to=5000, increment=100, width=7,
-                   textvariable=self._words_var).pack(side=tk.LEFT, padx=(2, 8))
+        tk.Label(bar, text="目标字数", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_secondary"]).pack(side=tk.LEFT)
+        tk.Spinbox(bar, from_=300, to=5000, increment=100, width=7, textvariable=self._words_var).pack(
+            side=tk.LEFT, padx=(2, 8)
+        )
         for text, command in (
             ("AI 生成传记", self._on_generate),
             ("保存", self._on_save),
             ("导出 TXT", self._on_export),
             ("转为手工故事线", self._on_push_to_story_arcs),
         ):
-            tk.Button(bar, text=text, font=("微软雅黑", 9), bg=C["bg_medium"],
-                      fg=C["text_primary"], command=command).pack(side=tk.LEFT, padx=2)
+            tk.Button(
+                bar, text=text, font=("微软雅黑", 9), bg=C["bg_medium"], fg=C["text_primary"], command=command
+            ).pack(side=tk.LEFT, padx=2)
 
         text_frame = tk.Frame(right, bg=C["bg_dark"])
         text_frame.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
-        self._text = tk.Text(text_frame, wrap=tk.WORD, font=("微软雅黑", 10), undo=True,
-                             bg=C["bg_medium"], fg=C["text_primary"], insertbackground=C["text_primary"])
+        self._text = tk.Text(
+            text_frame,
+            wrap=tk.WORD,
+            font=("微软雅黑", 10),
+            undo=True,
+            bg=C["bg_medium"],
+            fg=C["text_primary"],
+            insertbackground=C["text_primary"],
+        )
         scroll = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self._text.yview)
         self._text.configure(yscrollcommand=scroll.set)
         self._text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -562,9 +588,7 @@ class BiographyPanel(BasePanel):
         if data:
             sections = data.get("sections") or []
             if sections:
-                return "\n\n".join(
-                    f"## {s.get('title', '')}\n{s.get('content', '')}".strip() for s in sections
-                )
+                return "\n\n".join(f"## {s.get('title', '')}\n{s.get('content', '')}".strip() for s in sections)
         txt_path, _json_path = self._biography_paths(name)
         if txt_path is not None and txt_path.exists():
             try:
@@ -586,20 +610,32 @@ class BiographyPanel(BasePanel):
             self._set_material("传记内容为空，未保存。")
             return
         try:
-            ok = self._persist(name, text, {"chapters": self._materials(name)[0]})
+            files_ok, profile_ok = self._persist(name, text, {"chapters": self._materials(name)[0]})
         except Exception as e:  # noqa: BLE001 - 保存失败要显示原因
             logger.error(f"[biography_panel] 保存传记失败: {type(e).__name__}: {e}")
             self._set_material(f"保存失败：{type(e).__name__}: {e}")
             return
-        self._set_material("已保存（txt + json，并回写角色档案）。" if ok else "保存失败（角色档案未更新）。")
+        if not files_ok:
+            self._set_material("尚未打开小说，无法保存。")
+        elif profile_ok:
+            self._set_material("已保存（txt + json，并回写角色档案）。")
+        else:
+            self._set_material("已保存 txt + json，但**未回写角色档案**（宿主未提供角色管理器）。")
         self._log(f"传记已保存：{name}")
 
-    def _persist(self, name: str, text: str, sources: Mapping[str, Any]) -> bool:
-        """落盘三件事：txt、json、角色档案字段。**角色档案只走 `mutate_characters`。**"""
+    def _persist(self, name: str, text: str, sources: Mapping[str, Any]) -> tuple[bool, bool]:
+        """落盘三件事：txt、json、角色档案字段。**角色档案只走 `mutate_characters`。**
+
+        Returns:
+            `(文件是否落盘, 角色档案是否回写)`。分成两个布尔是为了**如实报告** ——
+            没有宿主 memory 时文件仍然写成功，但档案没更新，此时不能告诉用户"已回写"。
+        """
         novel_dir = self._novel_dir()
         if not novel_dir:
-            return False
+            return (False, False)
         txt_path, json_path = self._biography_paths(name)
+        if txt_path is None or json_path is None:
+            return (False, False)
         sections = split_sections(text)
         payload = structured_biography(
             name,
@@ -613,7 +649,7 @@ class BiographyPanel(BasePanel):
         snippet = text[:PROFILE_BIOGRAPHY_LIMIT] + ("..." if len(text) > PROFILE_BIOGRAPHY_LIMIT else "")
         memory = getattr(self, "memory", None)
         if memory is None or not callable(getattr(memory, "mutate_characters", None)):
-            return True  # 文件已落盘；档案字段没有宿主可写
+            return (True, False)
 
         def _mutate(chars: Mapping[str, Any]) -> dict:
             out = {str(k): (v if isinstance(v, dict) else {}) for k, v in (chars or {}).items()}
@@ -622,7 +658,7 @@ class BiographyPanel(BasePanel):
             return out
 
         memory.mutate_characters(_mutate)
-        return True
+        return (True, True)
 
     def _on_export(self) -> None:
         """把当前编辑区内容写回 txt（"导出"= 确保文件与界面一致）。"""
@@ -655,9 +691,7 @@ class BiographyPanel(BasePanel):
             return
         current = read_story_arcs(novel_dir, name)
         existing = [a for a in (current.get("story_arcs") or []) if isinstance(a, Mapping)]
-        merged = existing + [
-            a for a in new_arcs if a["title"] not in {str(e.get("title", "")) for e in existing}
-        ]
+        merged = existing + [a for a in new_arcs if a["title"] not in {str(e.get("title", "")) for e in existing}]
         path = novel_dir / STORIES_DIR / f"{safe_filename(name)}.json"
         try:
             atomic_write_json(path, {**current, "name": name, "story_arcs": merged})
@@ -675,7 +709,7 @@ class BiographyPanel(BasePanel):
             return
         info = self._all_characters.get(name) or {}
         chapters, events = self._materials(name)
-        arcs = (read_story_arcs(self._novel_dir(), name).get("story_arcs") or [])
+        arcs = read_story_arcs(self._novel_dir(), name).get("story_arcs") or []
         anchors = self._retrieve(name)
         try:
             word_count = int(self._words_var.get())
@@ -727,12 +761,17 @@ class BiographyPanel(BasePanel):
             self._text.delete("1.0", tk.END)
             self._text.insert("1.0", text)
         try:
-            self._persist(name, text, {"chapters": chapters, "anchors": anchors})
+            files_ok, profile_ok = self._persist(name, text, {"chapters": chapters, "anchors": anchors})
         except Exception as e:  # noqa: BLE001
             logger.error(f"[biography_panel] 落盘失败: {type(e).__name__}: {e}")
             self._set_material(f"生成成功但落盘失败：{type(e).__name__}: {e}")
             return
-        self._set_material("已生成并保存（txt + json + 角色档案）。")
+        if not files_ok:
+            self._set_material("已生成，但尚未打开小说，无法保存。")
+        elif profile_ok:
+            self._set_material("已生成并保存（txt + json + 角色档案）。")
+        else:
+            self._set_material("已生成并保存 txt + json，但**未回写角色档案**（宿主未提供角色管理器）。")
         self._log(f"传记已生成：{name}（{len(text)} 字）")
         self._publish_generated(name, text, chapters)
 

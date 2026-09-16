@@ -68,15 +68,30 @@ class BrokenSink:
 class TestReadMemoryEvents:
     def test_reads_all_pages_and_sorts_by_chapter(self, tmp_path):
         # 第 1 页放第 5 章，第 2 页放第 150 章（分页规则每 100 章一页）
-        write_page(tmp_path, 0, [{"chapter": 5, "event": "乙", "type": "story",
-                                  "characters": ["甲"], "timestamp": "2026-01-01T00:00:00"}])
-        write_page(tmp_path, 1, [{"chapter": 150, "event": "丙", "type": "story",
-                                  "characters": [], "timestamp": "2026-01-02T00:00:00"}])
-        write_page(tmp_path, 0, [
-            {"chapter": 3, "event": "甲", "type": "story", "characters": [], "timestamp": "2025-12-31T00:00:00"},
-            {"chapter": 5, "event": "乙", "type": "story",
-             "characters": ["甲"], "timestamp": "2026-01-01T00:00:00"},
-        ])
+        write_page(
+            tmp_path,
+            0,
+            [{"chapter": 5, "event": "乙", "type": "story", "characters": ["甲"], "timestamp": "2026-01-01T00:00:00"}],
+        )
+        write_page(
+            tmp_path,
+            1,
+            [{"chapter": 150, "event": "丙", "type": "story", "characters": [], "timestamp": "2026-01-02T00:00:00"}],
+        )
+        write_page(
+            tmp_path,
+            0,
+            [
+                {"chapter": 3, "event": "甲", "type": "story", "characters": [], "timestamp": "2025-12-31T00:00:00"},
+                {
+                    "chapter": 5,
+                    "event": "乙",
+                    "type": "story",
+                    "characters": ["甲"],
+                    "timestamp": "2026-01-01T00:00:00",
+                },
+            ],
+        )
 
         events = TimelineStore(tmp_path).read_memory_events()
 
@@ -84,9 +99,7 @@ class TestReadMemoryEvents:
         assert [e.event for e in events] == ["甲", "乙", "丙"]
 
     def test_range_filter(self, tmp_path):
-        write_page(tmp_path, 0, [
-            {"chapter": n, "event": f"事件{n}", "timestamp": ""} for n in (1, 2, 3, 4, 5)
-        ])
+        write_page(tmp_path, 0, [{"chapter": n, "event": f"事件{n}", "timestamp": ""} for n in (1, 2, 3, 4, 5)])
         store = TimelineStore(tmp_path)
         assert [e.chapter for e in store.read_memory_events(from_chapter=2, to_chapter=4)] == [2, 3, 4]
 
@@ -105,8 +118,9 @@ class TestReadMemoryEvents:
 
     def test_old_records_without_v3_fields_get_defaults(self, tmp_path):
         """v3 新增 5 个字段；老记录没有它们，必须是默认值而不是 KeyError。"""
-        write_page(tmp_path, 0, [{"chapter": 1, "event": "旧事件", "type": "story",
-                                  "characters": ["甲"], "timestamp": "t"}])
+        write_page(
+            tmp_path, 0, [{"chapter": 1, "event": "旧事件", "type": "story", "characters": ["甲"], "timestamp": "t"}]
+        )
 
         event = TimelineStore(tmp_path).read_memory_events()[0]
 
@@ -134,8 +148,7 @@ class TestReadMemoryEvents:
 class TestMergeAndSync:
     def test_sync_mirrors_events_into_world_line(self, tmp_path):
         write_page(tmp_path, 0, [{"chapter": 1, "event": "开篇", "characters": ["甲"]}])
-        write_world_line(tmp_path, branches=[{"chapter": 1, "decision": "去向", "chosen": "东"}],
-                         chapters=[1])
+        write_world_line(tmp_path, branches=[{"chapter": 1, "decision": "去向", "chosen": "东"}], chapters=[1])
 
         result = TimelineStore(tmp_path).sync()
 
@@ -151,9 +164,12 @@ class TestMergeAndSync:
     def test_manual_events_survive_sync(self, tmp_path):
         """标记 `source=manual` 的条目是作者手写的，同步**不得**抹掉。"""
         write_page(tmp_path, 0, [{"chapter": 1, "event": "自动事件"}])
-        write_world_line(tmp_path, events=[
-            {"chapter": 9, "event": "作者手写事件", "source": SOURCE_MANUAL},
-        ])
+        write_world_line(
+            tmp_path,
+            events=[
+                {"chapter": 9, "event": "作者手写事件", "source": SOURCE_MANUAL},
+            ],
+        )
 
         result = TimelineStore(tmp_path).sync()
 
@@ -177,9 +193,12 @@ class TestMergeAndSync:
     def test_sync_drops_stale_auto_events(self, tmp_path):
         """事件源里已删掉的事件，重建后不应残留（否则同步等于只增不减）。"""
         write_page(tmp_path, 0, [{"chapter": 1, "event": "留下"}])
-        write_world_line(tmp_path, events=[
-            {"chapter": 2, "event": "已被删除的旧自动事件", "source": "auto"},
-        ])
+        write_world_line(
+            tmp_path,
+            events=[
+                {"chapter": 2, "event": "已被删除的旧自动事件", "source": "auto"},
+            ],
+        )
 
         result = TimelineStore(tmp_path).sync()
 
@@ -227,9 +246,16 @@ class TestMergeAndSync:
 class TestAddEventAndAnnotate:
     def test_add_event_writes_new_fields(self, tmp_path):
         memory = MemoryManager(tmp_path)
-        memory.add_event(7, "找到密道", characters_involved=["甲"],
-                         location="地宫", story_time="第三日", arc="第一卷",
-                         source="manual", confidence="low")
+        memory.add_event(
+            7,
+            "找到密道",
+            characters_involved=["甲"],
+            location="地宫",
+            story_time="第三日",
+            arc="第一卷",
+            source="manual",
+            confidence="low",
+        )
 
         event = TimelineStore(tmp_path).read_memory_events()[0]
 
@@ -283,11 +309,15 @@ class TestAddEventAndAnnotate:
 
 class TestViews:
     def test_chapter_axis_groups_by_chapter(self, tmp_path):
-        write_page(tmp_path, 0, [
-            {"chapter": 1, "event": "A", "characters": ["甲", "乙"]},
-            {"chapter": 1, "event": "B", "characters": ["甲"]},
-            {"chapter": 2, "event": "C", "characters": []},
-        ])
+        write_page(
+            tmp_path,
+            0,
+            [
+                {"chapter": 1, "event": "A", "characters": ["甲", "乙"]},
+                {"chapter": 1, "event": "B", "characters": ["甲"]},
+                {"chapter": 2, "event": "C", "characters": []},
+            ],
+        )
 
         rows = TimelineStore(tmp_path).chapter_axis()
 
@@ -297,9 +327,14 @@ class TestViews:
         assert "A" in rows[0]["summary"] and "B" in rows[0]["summary"]
 
     def test_branch_tree_reads_all_world_lines(self, tmp_path):
-        write_world_line(tmp_path, "main.json", name="主线", branches=[
-            {"chapter": 5, "decision": "去留", "chosen": "留下", "alternative": "离开", "story": "分支正文"},
-        ])
+        write_world_line(
+            tmp_path,
+            "main.json",
+            name="主线",
+            branches=[
+                {"chapter": 5, "decision": "去留", "chosen": "留下", "alternative": "离开", "story": "分支正文"},
+            ],
+        )
         write_world_line(tmp_path, "alt.json", name="副线", branches=[])
 
         tree = TimelineStore(tmp_path).branch_tree()
@@ -312,9 +347,18 @@ class TestViews:
         """`branch_%03d/` 是"只写不读"的历史遗留，本面板首次把它显示出来。"""
         branch = tmp_path / "timelines" / "branch_000"
         branch.mkdir(parents=True)
-        (branch / "meta.json").write_text(json.dumps({
-            "name": "另一条路", "origin_chapter": 5, "status": "completed", "chapter_count": 3,
-        }, ensure_ascii=False), encoding="utf-8")
+        (branch / "meta.json").write_text(
+            json.dumps(
+                {
+                    "name": "另一条路",
+                    "origin_chapter": 5,
+                    "status": "completed",
+                    "chapter_count": 3,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
 
         dirs = TimelineStore(tmp_path).branch_dirs()
 
@@ -331,9 +375,15 @@ class TestViews:
     def test_character_tracks_from_activity_file(self, tmp_path):
         memory_dir = tmp_path / "memory"
         memory_dir.mkdir(parents=True)
-        (memory_dir / "character_activity.json").write_text(json.dumps({
-            "甲": {"appearances": [1, 3, 5], "last_seen": 5, "importance": 9},
-        }, ensure_ascii=False), encoding="utf-8")
+        (memory_dir / "character_activity.json").write_text(
+            json.dumps(
+                {
+                    "甲": {"appearances": [1, 3, 5], "last_seen": 5, "importance": 9},
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
 
         tracks = TimelineStore(tmp_path).character_tracks()
 
@@ -342,10 +392,14 @@ class TestViews:
 
     def test_character_tracks_fall_back_to_events(self, tmp_path):
         """`update_character_activity` 目前没有生产调用方 → 文件常为空，须能兜底。"""
-        write_page(tmp_path, 0, [
-            {"chapter": 1, "event": "A", "characters": ["甲"]},
-            {"chapter": 2, "event": "B", "characters": ["甲", "乙"]},
-        ])
+        write_page(
+            tmp_path,
+            0,
+            [
+                {"chapter": 1, "event": "A", "characters": ["甲"]},
+                {"chapter": 2, "event": "B", "characters": ["甲", "乙"]},
+            ],
+        )
 
         tracks = TimelineStore(tmp_path).character_tracks()
 
@@ -368,10 +422,16 @@ class TestViews:
         child.mkdir()
         write_page(parent, 0, [{"chapter": 1, "event": "父代事件", "characters": ["甲"]}])
         write_page(child, 0, [{"chapter": 1, "event": "子代事件", "characters": ["乙"]}])
-        (child / "meta.json").write_text(json.dumps({
-            "title": "第二部",
-            "lineage": {"generation": 2, "parent_novel": str(parent), "parent_title": "第一部"},
-        }, ensure_ascii=False), encoding="utf-8")
+        (child / "meta.json").write_text(
+            json.dumps(
+                {
+                    "title": "第二部",
+                    "lineage": {"generation": 2, "parent_novel": str(parent), "parent_title": "第一部"},
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
 
         chronicle = TimelineStore(child).lineage_chronicle()
 
@@ -386,18 +446,28 @@ class TestViews:
         assert TimelineStore(tmp_path).lineage_chronicle() == []
 
     def test_lineage_chronicle_tolerates_missing_parent(self, tmp_path):
-        (tmp_path / "meta.json").write_text(json.dumps({
-            "lineage": {"generation": 2, "parent_novel": str(tmp_path / "不存在")},
-        }, ensure_ascii=False), encoding="utf-8")
+        (tmp_path / "meta.json").write_text(
+            json.dumps(
+                {
+                    "lineage": {"generation": 2, "parent_novel": str(tmp_path / "不存在")},
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
         write_page(tmp_path, 0, [{"chapter": 1, "event": "x"}])
         chronicle = TimelineStore(tmp_path).lineage_chronicle()
         assert [r["event"] for r in chronicle] == ["x"]
 
     def test_stats(self, tmp_path):
-        write_page(tmp_path, 0, [
-            {"chapter": 1, "event": "A", "characters": ["甲"], "confidence": "low"},
-            {"chapter": 2, "event": "B", "characters": ["甲"], "source": "manual"},
-        ])
+        write_page(
+            tmp_path,
+            0,
+            [
+                {"chapter": 1, "event": "A", "characters": ["甲"], "confidence": "low"},
+                {"chapter": 2, "event": "B", "characters": ["甲"], "source": "manual"},
+            ],
+        )
         write_world_line(tmp_path, "main.json")
 
         stats = TimelineStore(tmp_path).stats()
@@ -440,7 +510,7 @@ class TestParseExtractionResult:
     def test_parses_plain_json_array(self):
         raw = json.dumps([{"chapter": 99, "event": "事件", "characters": ["甲"]}], ensure_ascii=False)
         events = parse_extraction_result(raw, 7, ["甲"])
-        assert events[0]["chapter"] == 7          # 章号被强制改回
+        assert events[0]["chapter"] == 7  # 章号被强制改回
         assert events[0]["characters"] == ["甲"]
 
     def test_strips_code_fence(self):
@@ -457,11 +527,14 @@ class TestParseExtractionResult:
         assert parse_extraction_result(raw, 1, [])[0]["characters"] == ["任何人"]
 
     def test_confidence_normalised(self):
-        raw = json.dumps([
-            {"event": "A", "confidence": "HIGH"},
-            {"event": "B", "confidence": "whatever"},
-            {"event": "C"},
-        ], ensure_ascii=False)
+        raw = json.dumps(
+            [
+                {"event": "A", "confidence": "HIGH"},
+                {"event": "B", "confidence": "whatever"},
+                {"event": "C"},
+            ],
+            ensure_ascii=False,
+        )
         events = parse_extraction_result(raw, 1, [])
         assert [e["confidence"] for e in events] == ["high", "low", "low"]
 

@@ -169,7 +169,6 @@ class TimelinePanel(BasePanel):
     category = "世界与世代"
     order = 10
     description = "统一 timelines/ 与 memory/timeline/ 两套存储：章节轴 / 世界线分支 / 人物轨迹 / 跨代编年史"
-    requires_novel = True
     #: `novel.opened` 由宿主统一处理（它会重建当前面板），这里只关心数据变化
     topics_of_interest = (TOPIC_TIMELINE_CHANGED, TOPIC_CHAPTER_SAVED)
 
@@ -183,19 +182,33 @@ class TimelinePanel(BasePanel):
         header = tk.Frame(parent, bg=C["bg_dark"])
         header.pack(fill=tk.X, pady=(2, 4))
         self._stats_label = tk.Label(
-            header, text="", font=("微软雅黑", 9), bg=C["bg_dark"],
-            fg=C["text_secondary"], anchor=tk.W, justify=tk.LEFT, wraplength=760,
+            header,
+            text="",
+            font=("微软雅黑", 9),
+            bg=C["bg_dark"],
+            fg=C["text_secondary"],
+            anchor=tk.W,
+            justify=tk.LEFT,
+            wraplength=760,
         )
         self._stats_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         self._extract_btn = tk.Button(
-            header, text="从正文抽取事件", font=("微软雅黑", 9),
-            bg=C["bg_medium"], fg=C["text_primary"], command=self._on_extract,
+            header,
+            text="从正文抽取事件",
+            font=("微软雅黑", 9),
+            bg=C["bg_medium"],
+            fg=C["text_primary"],
+            command=self._on_extract,
         )
         self._extract_btn.pack(side=tk.RIGHT, padx=2)
         self._sync_btn = tk.Button(
-            header, text="同步到世界线", font=("微软雅黑", 9),
-            bg=C["bg_medium"], fg=C["text_primary"], command=self._on_sync,
+            header,
+            text="同步到世界线",
+            font=("微软雅黑", 9),
+            bg=C["bg_medium"],
+            fg=C["text_primary"],
+            command=self._on_sync,
         )
         self._sync_btn.pack(side=tk.RIGHT, padx=2)
 
@@ -215,8 +228,9 @@ class TimelinePanel(BasePanel):
             "跨代编年史", ("代", "章", "地点", "事件", "范围"), (70, 70, 100, 430, 110), self._on_lineage_double
         )
 
-        self._detail = tk.Text(parent, height=5, wrap=tk.WORD, font=("微软雅黑", 9),
-                               bg=C["bg_medium"], fg=C["text_primary"])
+        self._detail = tk.Text(
+            parent, height=5, wrap=tk.WORD, font=("微软雅黑", 9), bg=C["bg_medium"], fg=C["text_primary"]
+        )
         self._detail.pack(fill=tk.X, pady=(4, 0))
         self._detail.configure(state=tk.DISABLED)
 
@@ -363,7 +377,11 @@ class TimelinePanel(BasePanel):
         """跳到指定章节：复用 `chapter_ui._load_chapter_by_number`（既有入口）。"""
         detail = "\n".join(
             f"· {getattr(e, 'event', '')}"
-            + (f"（{e.location}／{e.story_time}）" if getattr(e, "location", "") or getattr(e, "story_time", "") else "")
+            + (
+                f"（{e.location}／{e.story_time}）"
+                if getattr(e, "location", "") or getattr(e, "story_time", "")
+                else ""
+            )
             for e in events
         )
         loader = getattr(self, "_load_chapter_by_number", None)

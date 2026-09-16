@@ -134,14 +134,18 @@ def _register_module_panels(module: Any) -> int:
 
     count = 0
     for obj in vars(module).values():
-        if (
-            isinstance(obj, type)
-            and issubclass(obj, BasePanel)
-            and getattr(obj, "key", "")
-            and obj.__module__ == module.__name__
-        ):
-            register(obj)
-            count += 1
+        if not (isinstance(obj, type) and issubclass(obj, BasePanel)):
+            continue
+        if obj.__module__ != module.__name__:
+            # 只登记"在本模块里定义"的类：`import` 进来的子类不该被重复登记
+            continue
+        # 显式 `str()` 包一层：mypy 会对 `getattr(type, "key", "")` 选错重载
+        # （报「expected bool」），而这个默认值本身是正确且必要的。
+        panel_key = str(getattr(obj, "key", "") or "")
+        if not panel_key:
+            continue
+        register(obj)
+        count += 1
     return count
 
 

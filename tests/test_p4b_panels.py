@@ -65,14 +65,8 @@ class TestRegistration:
         assert set(registry.NATIVE_PANEL_MODULES) == {f"app.panels.{m}" for m in P4B_MODULES}
 
     def test_orders_ascending_within_group(self):
-        specs = sorted(
-            (s for s in registry.all_panels() if s.category == "世界与世代"), key=lambda s: s.order
-        )
+        specs = sorted((s for s in registry.all_panels() if s.category == "世界与世代"), key=lambda s: s.order)
         assert [s.key for s in specs] == ["timeline", "biography", "lineage"]
-
-    def test_panels_require_novel(self):
-        for key in ("timeline", "biography", "lineage"):
-            assert registry.get(key).panel_cls.requires_novel is True
 
     def test_topics_of_interest_declared(self):
         """订阅总线的唯一开关：声明了才订阅（避免空转的通配处理器）。"""
@@ -110,10 +104,16 @@ class TestTimelineRows:
         from app.panels.timeline_panel import chapter_axis_rows
         from app.timeline_store import TimelineEvent
 
-        rows = chapter_axis_rows([
-            {"chapter": 3, "count": 2, "characters": ["甲"],
-             "events": [TimelineEvent(chapter=3, event="事件" * 40)]},
-        ])
+        rows = chapter_axis_rows(
+            [
+                {
+                    "chapter": 3,
+                    "count": 2,
+                    "characters": ["甲"],
+                    "events": [TimelineEvent(chapter=3, event="事件" * 40)],
+                },
+            ]
+        )
         iid, values = rows[0]
         assert iid == "ch3"
         assert values[0] == "第3章"
@@ -124,10 +124,12 @@ class TestTimelineRows:
     def test_track_rows_sorted_by_importance(self):
         from app.panels.timeline_panel import track_rows
 
-        rows = track_rows({
-            "乙": {"appearances": [1], "importance": 3},
-            "甲": {"appearances": [1, 2], "importance": 9},
-        })
+        rows = track_rows(
+            {
+                "乙": {"appearances": [1], "importance": 3},
+                "甲": {"appearances": [1, 2], "importance": 9},
+            }
+        )
         assert [iid for iid, _ in rows] == ["tr甲", "tr乙"]
 
     def test_track_rows_truncates_long_history(self):
@@ -139,45 +141,62 @@ class TestTimelineRows:
     def test_branch_rows_two_levels(self):
         from app.panels.timeline_panel import branch_rows
 
-        rows = branch_rows([{
-            "name": "主线", "file": "main.json",
-            "branches": [{"chapter": 5, "decision": "去留", "chosen": "留下", "alternative": "离开"}],
-        }])
+        rows = branch_rows(
+            [
+                {
+                    "name": "主线",
+                    "file": "main.json",
+                    "branches": [{"chapter": 5, "decision": "去留", "chosen": "留下", "alternative": "离开"}],
+                }
+            ]
+        )
         assert [iid for iid, _ in rows] == ["wlmain.json", "wlmain.json#5"]
         assert rows[0][1][1] == "1 处抉择"
 
     def test_chronicle_rows_marks_readonly(self):
         from app.panels.timeline_panel import chronicle_rows
 
-        rows = chronicle_rows([
-            {"generation": 1, "chapter": 1, "event": "父", "readonly": True},
-            {"generation": 2, "chapter": 2, "event": "子", "readonly": False},
-        ])
+        rows = chronicle_rows(
+            [
+                {"generation": 1, "chapter": 1, "event": "父", "readonly": True},
+                {"generation": 2, "chapter": 2, "event": "子", "readonly": False},
+            ]
+        )
         assert rows[0][1][4] == "前代史（只读）"
         assert rows[1][1][4] == "本代（可编辑）"
 
     def test_chronicle_iids_are_unique_per_event(self):
         from app.panels.timeline_panel import chronicle_rows
 
-        rows = chronicle_rows([
-            {"generation": 1, "chapter": 5, "event": "A"},
-            {"generation": 1, "chapter": 5, "event": "B"},
-        ])
+        rows = chronicle_rows(
+            [
+                {"generation": 1, "chapter": 5, "event": "A"},
+                {"generation": 1, "chapter": 5, "event": "B"},
+            ]
+        )
         assert len({iid for iid, _ in rows}) == 2
 
     def test_stats_text_omits_zero_extras(self):
         from app.panels.timeline_panel import stats_text
 
-        text = stats_text({"events": 3, "chapters": 2, "characters": 1,
-                           "world_lines": 1, "branch_dirs": 0, "manual": 0, "low_confidence": 0})
+        text = stats_text(
+            {
+                "events": 3,
+                "chapters": 2,
+                "characters": 1,
+                "world_lines": 1,
+                "branch_dirs": 0,
+                "manual": 0,
+                "low_confidence": 0,
+            }
+        )
         assert "手工" not in text and "低置信" not in text
         assert "事件 3 条" in text
 
     def test_stats_text_includes_extras_when_present(self):
         from app.panels.timeline_panel import stats_text
 
-        text = stats_text({"events": 3, "manual": 2, "low_confidence": 1,
-                           "first_chapter": 1, "last_chapter": 9})
+        text = stats_text({"events": 3, "manual": 2, "low_confidence": 1, "first_chapter": 1, "last_chapter": 9})
         assert "手工 2 条" in text and "低置信 1 条" in text and "1–9" in text
 
 
@@ -222,10 +241,12 @@ class TestBiographyLogic:
     def test_character_rows_sorted_and_flags_biography(self):
         from app.panels.biography_panel import character_rows
 
-        rows = character_rows({
-            "甲": {"importance": 9, "biography": "x"},
-            "乙": {"importance": 2},
-        })
+        rows = character_rows(
+            {
+                "甲": {"importance": 9, "biography": "x"},
+                "乙": {"importance": 2},
+            }
+        )
         assert [iid for iid, _ in rows] == ["ch甲", "ch乙"]
         assert rows[0][1][4] == "✓"
         assert rows[1][1][4] == "—"
@@ -274,9 +295,15 @@ class TestBiographyLogic:
     def test_structured_biography_shape(self):
         from app.panels.biography_panel import structured_biography
 
-        data = structured_biography("甲", [{"id": "sec1", "title": "t", "content": "c"}],
-                                    sources={"chapters": [1, 2]}, provider="deepseek",
-                                    model="m", tokens=100, generated_at="2026-01-01T00:00:00")
+        data = structured_biography(
+            "甲",
+            [{"id": "sec1", "title": "t", "content": "c"}],
+            sources={"chapters": [1, 2]},
+            provider="deepseek",
+            model="m",
+            tokens=100,
+            generated_at="2026-01-01T00:00:00",
+        )
         assert data["name"] == "甲"
         assert data["version"] == 1
         assert data["sections"][0]["id"] == "sec1"
@@ -330,8 +357,7 @@ class TestBiographyLogic:
         assert load_biography_json(tmp_path, "甲") is None
         bio = tmp_path / "biographies"
         bio.mkdir()
-        (bio / "甲.json").write_text(json.dumps({"name": "甲", "sections": []}, ensure_ascii=False),
-                                     encoding="utf-8")
+        (bio / "甲.json").write_text(json.dumps({"name": "甲", "sections": []}, ensure_ascii=False), encoding="utf-8")
         assert load_biography_json(tmp_path, "甲")["name"] == "甲"
 
     def test_biography_filename_is_sanitised(self, tmp_path):
@@ -349,8 +375,9 @@ class TestLineagePanelLogic:
         from app.panels.lineage_panel import novel_candidates
 
         (tmp_path / "有meta").mkdir()
-        (tmp_path / "有meta" / "meta.json").write_text(json.dumps({"title": "甲"}, ensure_ascii=False),
-                                                     encoding="utf-8")
+        (tmp_path / "有meta" / "meta.json").write_text(
+            json.dumps({"title": "甲"}, ensure_ascii=False), encoding="utf-8"
+        )
         (tmp_path / "无meta").mkdir()
 
         candidates = novel_candidates(tmp_path)
@@ -375,6 +402,28 @@ class TestLineagePanelLogic:
 
         assert novel_candidates(tmp_path) == []
 
+    def test_novel_candidates_excludes_descendants(self, tmp_path):
+        """把**子代**设成父代同样会造出环，必须排除。
+
+        方向容易写反：`is_within(root, target)` 的含义是「target 在 root 之内」。
+        """
+        from app.panels.lineage_panel import novel_candidates
+
+        me = tmp_path / "我"
+        (me / "第二部").mkdir(parents=True)
+        (me / "meta.json").write_text("{}", encoding="utf-8")
+        (me / "第二部" / "meta.json").write_text("{}", encoding="utf-8")
+        sibling = tmp_path / "兄弟"
+        sibling.mkdir()
+        (sibling / "meta.json").write_text("{}", encoding="utf-8")
+
+        # 遍历的是 novels_dir 的直接子项，所以要把"我"当成根才能看到后代
+        names = {c["dir"] for c in novel_candidates(me, exclude_dir=me)}
+        assert names == set(), "自己与自己的后代都不应出现在父代候选里"
+
+        names2 = {c["dir"] for c in novel_candidates(tmp_path, exclude_dir=me)}
+        assert str(sibling) in names2
+
     def test_novel_candidates_missing_root(self, tmp_path):
         from app.panels.lineage_panel import novel_candidates
 
@@ -384,12 +433,26 @@ class TestLineagePanelLogic:
     def test_lineage_rows(self):
         from app.panels.lineage_panel import lineage_rows
 
-        rows = lineage_rows([
-            {"generation": 2, "title": "二", "novel_dir": "p2", "is_current": True,
-             "readonly": False, "missing": False},
-            {"generation": 1, "title": "一", "novel_dir": "p1", "is_current": False,
-             "readonly": True, "missing": False},
-        ])
+        rows = lineage_rows(
+            [
+                {
+                    "generation": 2,
+                    "title": "二",
+                    "novel_dir": "p2",
+                    "is_current": True,
+                    "readonly": False,
+                    "missing": False,
+                },
+                {
+                    "generation": 1,
+                    "title": "一",
+                    "novel_dir": "p1",
+                    "is_current": False,
+                    "readonly": True,
+                    "missing": False,
+                },
+            ]
+        )
         assert [iid for iid, _ in rows] == ["g0", "g1"]
         assert rows[0][1][2] == "当前作品"
         assert rows[1][1][2] == "前代史（只读）"
@@ -397,8 +460,9 @@ class TestLineagePanelLogic:
     def test_lineage_rows_marks_missing_dir(self):
         from app.panels.lineage_panel import lineage_rows
 
-        rows = lineage_rows([{"generation": 1, "title": "一", "novel_dir": "p",
-                              "is_current": False, "readonly": True, "missing": True}])
+        rows = lineage_rows(
+            [{"generation": 1, "title": "一", "novel_dir": "p", "is_current": False, "readonly": True, "missing": True}]
+        )
         assert rows[0][1][4] == "目录丢失"
 
     def test_inheritance_rows_without_plan(self):
@@ -428,13 +492,59 @@ class TestLineagePanelLogic:
     def test_summary_with_lineage(self):
         from app.panels.lineage_panel import lineage_summary
 
-        record = lin.LineageRecord(generation=2, parent_novel="p", parent_title="第一部",
-                                   era_gap_years=20)
+        record = lin.LineageRecord(generation=2, parent_novel="p", parent_title="第一部", era_gap_years=20)
         text = lineage_summary(record)
         assert "第 2 代" in text
         assert "第一部" in text
         assert "时间跳跃 20 年" in text
         assert "readonly_parent" in text
+
+
+class TestBiographyPersist:
+    """`_persist` 必须**如实**分别报告"文件落盘"与"档案回写"两件事。"""
+
+    def _panel(self, novel_dir, memory=None):
+        app = FakeApp(novel_dir)
+        app.memory = memory
+        return BiographyPanel(app)
+
+    def test_writes_both_files(self, tmp_path):
+        novel = _novel(tmp_path)
+        panel = self._panel(novel)
+
+        files_ok, profile_ok = panel._persist("甲", "## 出身\n内容", {"chapters": [1]})
+
+        assert files_ok is True
+        assert (novel / "biographies" / "甲_传记.txt").exists()
+        assert (novel / "biographies" / "甲.json").exists()
+        # 没有 memory → 档案未回写，必须如实返回 False
+        assert profile_ok is False
+
+    def test_reports_profile_writeback_when_memory_available(self, tmp_path):
+        novel = _novel(tmp_path)
+        (novel / "memory" / "characters.json").write_text(
+            json.dumps({"甲": {"name": "甲"}}, ensure_ascii=False), encoding="utf-8"
+        )
+
+        class FakeMemory:
+            def __init__(self):
+                self.calls = 0
+
+            def mutate_characters(self, mutator):
+                self.calls += 1
+                return mutator({"甲": {"name": "甲"}})
+
+        memory = FakeMemory()
+        panel = self._panel(novel, memory)
+
+        files_ok, profile_ok = panel._persist("甲", "## 出身\n内容", {"chapters": []})
+
+        assert (files_ok, profile_ok) == (True, True)
+        assert memory.calls == 1, "角色档案必须走 mutate_characters（锁 + 三道闸门）"
+
+    def test_reports_failure_without_novel(self, tmp_path):
+        panel = self._panel(None)
+        assert panel._persist("甲", "内容", {}) == (False, False)
 
 
 # ============================================================ 3. 源码级护栏
@@ -534,8 +644,7 @@ def _novel(tmp_path: Path) -> Path:
     novel = tmp_path / "试作"
     (novel / "memory" / "timeline").mkdir(parents=True)
     (novel / "meta.json").write_text(json.dumps({"title": "试作"}, ensure_ascii=False), encoding="utf-8")
-    (novel / "outline.json").write_text(json.dumps([{"title": "第1章"}], ensure_ascii=False),
-                                       encoding="utf-8")
+    (novel / "outline.json").write_text(json.dumps([{"title": "第1章"}], ensure_ascii=False), encoding="utf-8")
     (novel / "chapters").mkdir()
     (novel / "chapters" / "chapter_0001.txt").write_text("第一章正文。", encoding="utf-8")
     (novel / "memory" / "timeline" / "timeline_000.json").write_text(

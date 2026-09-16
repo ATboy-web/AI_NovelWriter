@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from functools import partial
 from typing import Any, Callable
 
 from loguru import logger
@@ -99,15 +100,29 @@ class PanelHost:
             row = tk.Frame(parent, bg=C["bg_dark"])
             row.pack(fill=tk.X, pady=1)
             tk.Label(
-                row, text=category, font=("微软雅黑", 9, "bold"),
-                bg=C["bg_dark"], fg=C["accent_light"], width=7, anchor=tk.W,
+                row,
+                text=category,
+                font=("微软雅黑", 9, "bold"),
+                bg=C["bg_dark"],
+                fg=C["accent_light"],
+                width=7,
+                anchor=tk.W,
             ).pack(side=tk.LEFT)
             for spec in specs:
                 tk.Radiobutton(
-                    row, text=spec.title, variable=self.select_var, value=spec.key,
-                    font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_secondary"],
-                    selectcolor=C["accent"], activebackground=C["bg_dark"],
-                    command=lambda k=spec.key: self.select(k),
+                    row,
+                    text=spec.title,
+                    variable=self.select_var,
+                    value=spec.key,
+                    font=("微软雅黑", 9),
+                    bg=C["bg_dark"],
+                    fg=C["text_secondary"],
+                    selectcolor=C["accent"],
+                    activebackground=C["bg_dark"],
+                    # 用 `functools.partial` 而不是 `lambda k=spec.key:` ——
+                    # 默认参数捕获写法 mypy 无法推断 lambda 的类型（advisory 报错），
+                    # 且 partial 的意图（"绑定这个 key"）比默认参数更直白。
+                    command=partial(self.select, spec.key),
                 ).pack(side=tk.LEFT, padx=6)
         return parent
 

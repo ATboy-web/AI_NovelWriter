@@ -52,8 +52,9 @@ class BasePanel:
     order: int = 100
     #: 一句话说明（选择器 tooltip 与自检报告用）
     description: str = ""
-    #: 需要已打开的小说才能正常显示。宿主据此提前给提示，而不是让面板抛异常
-    requires_novel: bool = False
+    # 注：P4a 曾声明 `requires_novel`，但宿主/选择器从未读取它（零可观察面），
+    # 且各面板本就会自行显示"请先新建或打开小说"。按本仓死代码判据已移除；
+    # 若将来真要"宿主提前拦一道"，请连同**消费者**一起加，而不是只加标记。
 
     #: 属性写入是否转发给宿主 —— **只有迁移适配器打开**，见模块文档
     proxy_writes: ClassVar[bool] = False

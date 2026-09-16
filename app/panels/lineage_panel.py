@@ -56,8 +56,13 @@ DIMENSION_LABELS: dict[str, str] = {
 def novel_candidates(novels_dir: Any, exclude_dir: Any = None) -> list[dict]:
     """列出可作为"父代"的小说（有 `meta.json` 的目录）。
 
-    `exclude_dir` 用来排掉**自己**（不能把自己设为自己的父代 —— 那会造出环）。
-    顺带排掉自己的后代，避免"把子代设成父代"。
+    `exclude_dir` 用来排掉**自己**（不能把自己设为自己的父代 —— 那会造出环），
+    以及**自己的后代**（把子代设成父代同样会成环）。
+
+    ⚠️ 方向很容易写反：`is_within(root, target)` 的含义是「target 在 root 之内」。
+    要"排除后代"必须写 `is_within(exclude, entry)`（entry 在 exclude 之内），
+    而**不是** `is_within(entry, exclude)`（那排除的是祖先 —— 而祖先恰恰是
+    最合法的父代候选）。
     """
     root = Path(novels_dir) if novels_dir else None
     if root is None or not root.exists():
@@ -71,11 +76,9 @@ def novel_candidates(novels_dir: Any, exclude_dir: Any = None) -> list[dict]:
         if not meta_path.exists():
             continue
         if exclude is not None:
-            resolved = entry.resolve()
-            if resolved == exclude:
+            if entry.resolve() == exclude:
                 continue
-            # 后代也算"自己人"：子代目录通常建在 novels_dir 下并记录 parent_novel
-            if lin.is_within(entry, exclude):
+            if lin.is_within(exclude, entry):  # entry 是 exclude 的后代 → 不能当父代
                 continue
         meta, status = read_json_with_backup(meta_path, default=None)
         if status == "corrupt" or not isinstance(meta, Mapping):
@@ -164,7 +167,6 @@ class LineagePanel(BasePanel):
     category = "世界与世代"
     order = 30
     description = "meta.lineage 代际树；可勾选继承角色/世界观/大纲/时间线/记忆/伏笔；子代只读父代"
-    requires_novel = True
     #: 本面板只展示"当前作品"的代际信息，换书后宿主会重建它，故无需订阅任何主题
     topics_of_interest = ()
 
@@ -176,18 +178,28 @@ class LineagePanel(BasePanel):
         self._inherited_vars: dict[str, tk.BooleanVar] = {}
 
         self._summary_label = tk.Label(
-            parent, text="", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_secondary"],
-            anchor=tk.W, justify=tk.LEFT, wraplength=760,
+            parent,
+            text="",
+            font=("微软雅黑", 9),
+            bg=C["bg_dark"],
+            fg=C["text_secondary"],
+            anchor=tk.W,
+            justify=tk.LEFT,
+            wraplength=760,
         )
         self._summary_label.pack(fill=tk.X, pady=(2, 4))
 
-        tk.Label(parent, text="代际链（双击切到该代）", font=("微软雅黑", 9, "bold"),
-                 bg=C["bg_dark"], fg=C["text_primary"], anchor=tk.W).pack(fill=tk.X)
+        tk.Label(
+            parent,
+            text="代际链（双击切到该代）",
+            font=("微软雅黑", 9, "bold"),
+            bg=C["bg_dark"],
+            fg=C["text_primary"],
+            anchor=tk.W,
+        ).pack(fill=tk.X)
         tree_frame = tk.Frame(parent, bg=C["bg_dark"])
         tree_frame.pack(fill=tk.BOTH, expand=False)
-        self._tree = ttk.Treeview(
-            tree_frame, columns=("代", "作品", "范围", "目录", "状态"), show="headings", height=5
-        )
+        self._tree = ttk.Treeview(tree_frame, columns=("代", "作品", "范围", "目录", "状态"), show="headings", height=5)
         for col, width in (("代", 60), ("作品", 180), ("范围", 110), ("目录", 330), ("状态", 70)):
             self._tree.heading(col, text=col)
             self._tree.column(col, width=width, anchor=tk.W, stretch=False)
@@ -195,24 +207,23 @@ class LineagePanel(BasePanel):
         self._tree.bind("<Double-1>", self._on_switch_generation)
 
         # ---- 继承设置
-        settings = tk.LabelFrame(
-            parent, text="继承设置", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_primary"]
-        )
+        settings = tk.LabelFrame(parent, text="继承设置", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_primary"])
         settings.pack(fill=tk.X, pady=(6, 2))
 
         picker = tk.Frame(settings, bg=C["bg_dark"])
         picker.pack(fill=tk.X, pady=2)
-        tk.Label(picker, text="父代作品", font=("微软雅黑", 9), bg=C["bg_dark"],
-                 fg=C["text_secondary"]).pack(side=tk.LEFT)
+        tk.Label(picker, text="父代作品", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_secondary"]).pack(
+            side=tk.LEFT
+        )
         self._parent_var = tk.StringVar(value="")
         self._parent_box = ttk.Combobox(picker, textvariable=self._parent_var, state="readonly", width=36)
         self._parent_box.pack(side=tk.LEFT, padx=4)
         self._parent_box.bind("<<ComboboxSelected>>", lambda _e: self._refresh_plan())
-        tk.Label(picker, text="时间跳跃（年）", font=("微软雅黑", 9), bg=C["bg_dark"],
-                 fg=C["text_secondary"]).pack(side=tk.LEFT, padx=(10, 0))
+        tk.Label(picker, text="时间跳跃（年）", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_secondary"]).pack(
+            side=tk.LEFT, padx=(10, 0)
+        )
         self._gap_var = tk.StringVar(value="0")
-        tk.Spinbox(picker, from_=0, to=500, increment=1, width=6,
-                   textvariable=self._gap_var).pack(side=tk.LEFT, padx=4)
+        tk.Spinbox(picker, from_=0, to=500, increment=1, width=6, textvariable=self._gap_var).pack(side=tk.LEFT, padx=4)
 
         checks = tk.Frame(settings, bg=C["bg_dark"])
         checks.pack(fill=tk.X, pady=2)
@@ -220,14 +231,17 @@ class LineagePanel(BasePanel):
             var = tk.BooleanVar(value=True)
             self._inherited_vars[dim] = var
             tk.Checkbutton(
-                checks, text=DIMENSION_LABELS.get(dim, dim), variable=var,
-                bg=C["bg_dark"], fg=C["text_secondary"], selectcolor=C["bg_medium"],
-                font=("微软雅黑", 8), command=self._refresh_plan,
+                checks,
+                text=DIMENSION_LABELS.get(dim, dim),
+                variable=var,
+                bg=C["bg_dark"],
+                fg=C["text_secondary"],
+                selectcolor=C["bg_medium"],
+                font=("微软雅黑", 8),
+                command=self._refresh_plan,
             ).pack(side=tk.LEFT, padx=(0, 8))
 
-        self._plan_tree = ttk.Treeview(
-            parent, columns=("选", "维度", "明细"), show="headings", height=6
-        )
+        self._plan_tree = ttk.Treeview(parent, columns=("选", "维度", "明细"), show="headings", height=6)
         for col, width in (("选", 40), ("维度", 200), ("明细", 520)):
             self._plan_tree.heading(col, text=col)
             self._plan_tree.column(col, width=width, anchor=tk.W, stretch=False)
@@ -240,11 +254,13 @@ class LineagePanel(BasePanel):
             ("按勾选补齐继承", self._on_apply_inheritance),
             ("刷新", self.reload),
         ):
-            tk.Button(bar, text=text, font=("微软雅黑", 9), bg=C["bg_medium"],
-                      fg=C["text_primary"], command=command).pack(side=tk.LEFT, padx=2)
+            tk.Button(
+                bar, text=text, font=("微软雅黑", 9), bg=C["bg_medium"], fg=C["text_primary"], command=command
+            ).pack(side=tk.LEFT, padx=2)
 
-        self._detail = tk.Text(parent, height=6, wrap=tk.WORD, font=("微软雅黑", 9),
-                               bg=C["bg_medium"], fg=C["text_primary"])
+        self._detail = tk.Text(
+            parent, height=6, wrap=tk.WORD, font=("微软雅黑", 9), bg=C["bg_medium"], fg=C["text_primary"]
+        )
         self._detail.pack(fill=tk.X, pady=(4, 0))
         self._detail.configure(state=tk.DISABLED)
 
@@ -396,8 +412,15 @@ class LineagePanel(BasePanel):
     def _on_apply_inheritance(self) -> None:
         """按勾选把父代数据补进当前作品（每一次写入都过护栏）。"""
         novel_dir = self._novel_dir()
-        parent = self._selected_parent_dir() or (lin.read_lineage(novel_dir).parent_novel if lin.read_lineage(novel_dir) else "")
-        if not novel_dir or not parent:
+        if not novel_dir:
+            self._set_detail("尚未打开小说。")
+            return
+
+        # 只读一次 lineage：此前写成 `... if lin.read_lineage(x) else ""` 会调用两次，
+        # 且 mypy 正确地指出第二次返回 None 时会被解引用（union-attr）。
+        record = lin.read_lineage(novel_dir)
+        parent = self._selected_parent_dir() or (record.parent_novel if record else "")
+        if not parent:
             self._set_detail("请先选择父代（或先「登记为续作」）。")
             return
         if not Path(parent).exists():
@@ -412,25 +435,26 @@ class LineagePanel(BasePanel):
 
         result = lin.inherit_into_child(novel_dir, parent, inherited)
         notes: list[str] = []
-        char_note = self._apply_character_transform(novel_dir, gap, notes)
+        # ⚠️ 必须把**同一个** parent 传下去：先前 `_apply_character_transform` 自己再取一遍
+        # 下拉框，于是"继承用已登记的父代、年龄换算用下拉框"两条路径可能指向不同作品。
+        char_note = self._apply_character_transform(novel_dir, parent, gap, notes)
         self._set_detail(
             "继承完成。\n"
+            f"- 父代：{parent}\n"
             f"- 已复制 {len(result['copied'])} 项：{'、'.join(result['copied']) or '无'}\n"
             f"- 父代缺失 {len(result['missing'])} 项：{'、'.join(result['missing']) or '无'}\n"
             f"- 伏笔清单：{result['plots_file'] or '未生成'}\n"
-            f"- 角色：{char_note}\n"
-            + ("\n".join(f"  · {n}" for n in notes[:12]) if notes else "")
+            f"- 角色：{char_note}\n" + ("\n".join(f"  · {n}" for n in notes[:12]) if notes else "")
         )
         self._log(f"世代传承：补齐继承 {len(result['copied'])} 项，角色{char_note}")
         self.reload()
 
-    def _apply_character_transform(self, novel_dir: Path, gap: int, notes: list[str]) -> str:
+    def _apply_character_transform(self, novel_dir: Path, parent: str, gap: int, notes: list[str]) -> str:
         """年龄推进 + 死亡转状态。**必须走 `mutate_characters`**（锁 + 三道闸门）。"""
         memory = getattr(self, "memory", None)
         if memory is None or not callable(getattr(memory, "mutate_characters", None)):
             return "跳过（宿主未提供角色管理器）"
-        parent = self._selected_parent_dir()
-        last_chapter = lin.parent_last_chapter(parent) if parent else 0
+        last_chapter = lin.parent_last_chapter(parent)
         transform = lin.make_character_transform(gap, last_chapter, notes)
         try:
             before = len(memory.get_characters() or {})

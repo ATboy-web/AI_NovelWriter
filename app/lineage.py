@@ -63,6 +63,7 @@ __all__ = [
     "parent_last_chapter",
     "make_character_transform",
     "inherit_into_child",
+    "dedupe_preserve_order",
     "is_within",
     "guard_child_path",
     "copy_into_child",
@@ -296,9 +297,7 @@ def guard_child_path(child_dir: Any, target: Any) -> Path:
         raise ValueError("子代目录为空，拒绝写入")
     child_p = Path(child_dir).resolve()
     if not is_within(child_p, target):
-        raise ValueError(
-            f"护栏拒绝：目标 {target!r} 不在子代目录 {child_p} 之内（子代只读父代，禁止越界写入）"
-        )
+        raise ValueError(f"护栏拒绝：目标 {target!r} 不在子代目录 {child_p} 之内（子代只读父代，禁止越界写入）")
     return Path(target)
 
 
@@ -358,9 +357,7 @@ class InheritancePlan:
         return "；".join(parts)
 
 
-def plan_inheritance(
-    parent_dir: Any, inherited: Mapping[str, bool] | None = None
-) -> InheritancePlan:
+def plan_inheritance(parent_dir: Any, inherited: Mapping[str, bool] | None = None) -> InheritancePlan:
     """算出"勾选的维度各要拷哪些路径、哪些不存在"。**不复制任何文件**。
 
     先算后做，是为了让面板能在用户点"创建"之前就把"父代缺大纲/缺时间线"
@@ -375,7 +372,9 @@ def plan_inheritance(
 
     plan = InheritancePlan(parent_dir=str(parent_p) if parent_p else "", inherited=want)
     for dim in INHERIT_DIMENSIONS:
-        entry = {"copy": [], "missing": [], "skipped": not want.get(dim, False)}
+        # 显式标注：否则 mypy 推成 `dict[str, object]`，下面 `entry["copy"].append` 会被
+        # 误报为「object 没有 append」。
+        entry: dict[str, Any] = {"copy": [], "missing": [], "skipped": not want.get(dim, False)}
         if not entry["skipped"] and parent_p is not None:
             for rel in DIMENSION_SOURCES[dim]:
                 if (parent_p / rel).exists():
@@ -447,9 +446,7 @@ def apply_age_progression(characters: Mapping[str, Any], years: int) -> tuple[di
     return out, notes
 
 
-def apply_death_status(
-    characters: Mapping[str, Any], last_chapter: int
-) -> tuple[dict, list[str]]:
+def apply_death_status(characters: Mapping[str, Any], last_chapter: int) -> tuple[dict, list[str]]:
     """把"在父代范围内已死亡"的角色显式标为 `deceased`，**而不是删除**。
 
     判据：`death_chapter` 是数字且 `<= last_chapter`，且当前没有 `status`。
@@ -608,6 +605,22 @@ def make_character_transform(
     return transform
 
 
+def dedupe_preserve_order(items: Iterable[str]) -> list[str]:
+    """去重但保留首次出现顺序。
+
+    单独抽成函数而不是写 `[x for x in xs if not (x in seen or seen.add(x))]` ——
+    那个技巧虽然能跑，但 mypy 会（正确地）报「set.add 不返回值」，
+    而且下次读代码的人要停下来想一遍。
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
 def inherit_into_child(
     child_dir: Any,
     parent_dir: Any,
@@ -660,11 +673,10 @@ def inherit_into_child(
             except (OSError, ValueError) as e:
                 logger.error(f"[lineage] 写入伏笔清单失败: {type(e).__name__}: {e}")
 
-    # 去重但保序
-    seen: set[str] = set()
-    copied = [x for x in copied if not (x in seen or seen.add(x))]
-    seen = set()
-    missing = [x for x in missing if not (x in seen or seen.add(x))]
-
-    return {"copied": copied, "missing": missing, "plots_file": plots_file, "plan": plan}
-
+    # 去重但保序（`memory` 与 `plots` 都会带上 `memory/global_summary.txt`）
+    return {
+        "copied": dedupe_preserve_order(copied),
+        "missing": dedupe_preserve_order(missing),
+        "plots_file": plots_file,
+        "plan": plan,
+    }

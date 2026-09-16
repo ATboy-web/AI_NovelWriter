@@ -783,6 +783,7 @@ class MemoryManager:
                 return False
 
             hit = False
+            record_type = "story"
             for record in events:
                 if not isinstance(record, dict):
                     continue
@@ -790,6 +791,7 @@ class MemoryManager:
                     continue
                 if str(record.get("event", "")) != str(event):
                     continue
+                record_type = str(record.get("type", "story") or "story")
                 for key, value in changes.items():
                     if record.get(key) != value:
                         record[key] = value
@@ -803,7 +805,9 @@ class MemoryManager:
             "novel_dir": str(self.novel_dir),
             "chapter": chapter_num,
             "event": event,
-            "type": changes.get("arc", ""),
+            # 这里必须是事件**自身**的类型：先前误填成 `changes.get("arc", "")`，
+            # 于是订阅方看到"type=第一卷"这种非类型值（面板只是刷新，但载荷语义是错的）。
+            "type": record_type,
             "characters": [],
             "page_file": str(page_file),
             "annotated": sorted(changes),

@@ -345,7 +345,11 @@ class TimelinePanel(BasePanel):
         self._update_kpi(snapshot.stats)
 
     def _update_kpi(self, stats: dict | None) -> None:
-        """刷新顶部的指标小块（数量级一眼可见，比一行长文字好扫读）。"""
+        """刷新顶部的指标小块（数量级一眼可见，比一行长文字好扫读）。
+
+        数值 Label 由 `ui_kit.kpi_row` 直接给出（`value_labels`），
+        不再靠"比对字体"定位 —— 那种写法让 KPI 永远停在占位符。
+        """
         stats = stats or {}
         values = [
             f"{stats.get('events', 0)}",
@@ -354,12 +358,8 @@ class TimelinePanel(BasePanel):
             f"{stats.get('world_lines', 0)}",
             f"{stats.get('branch_dirs', 0)}",
         ]
-        cells = list(self._kpi.winfo_children())
-        for cell, value in zip(cells, values):
-            for child in cell.winfo_children():
-                if isinstance(child, tk.Label) and child.cget("font") == UIStyle.font("title"):
-                    child.configure(text=value)
-                    break
+        for label, value in zip(getattr(self._kpi, "value_labels", []), values):
+            label.configure(text=value)
 
     def _query(self) -> str:
         var = self.__dict__.get("_search_var")

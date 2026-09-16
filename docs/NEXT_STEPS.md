@@ -27,7 +27,7 @@
 | **S4** | ✅ 完成 | `488a31e` | F3：`add_event` 采集轨迹（**人物轨迹终于有真实数据**，一批角色只落盘一次、失败不影响事件写入）；F4：传记纯逻辑收进 `app/biography.py`，面板再导出（`is` 同一对象），`character_ui` 入口改用同一提示词 + 同一四类素材 + 同时写结构化 JSON |
 | **S5** | ✅ 完成（机制+棘轮，P5 第一步） | `59338ea` | `UIStyle.FONT_ROLES` + `font(role)`；**我自己拥有的 4 个文件归零**（零视觉变化已证）；`test_font_token_ratchet.py` 棘轮（**385 处/25 文件**只减不增）；顺带修老面板 `memory is None` 判空、放宽颜色守卫判据；**修掉我引入的缓存边界**（等长重写漏检） |
 | **S6** | ✅ 完成 | `127cbf1` | 分支子项目**可打开 + 进代际树**：`meta.json` 补 `title`/`lineage`（分支与父代**同代**、仍 `readonly_parent`）；`discover_branches` 统一读取器；代际树把分支挂在所属作品下并可双击打开；`BasePanel.open_novel_dir` 走宿主入口；**顺带修掉"面板导入失败静默"**（`registry.LOAD_FAILURES` → 落磁盘诊断日志） |
-| **S7** | ✅ 完成 | 见提交 | **面板 UI/UX 系统化改造**（用户反馈"简陋、操作不便"）—— 详见下方 §0.6 |
+| **S7** | ✅ 完成 | 见提交 | **面板 UI/UX 系统化改造**（用户反馈"简陋、操作不便"）—— 详见下方 §0.6；**第二轮（可读截图后）又抓到 4 个真 bug**（重复渲染 / KPI 永远占位 / 换肤掉皮 / 米色控件），见 §0.7 |
 
 ---
 
@@ -78,6 +78,46 @@
 | 字号种类 ≤4 | 1–4 | 1–4 |
 
 门禁：`tests/test_panel_ui_quality.py`（29 条）把上述可测项写成断言，防止改一次退一次。
+
+---
+
+## 0.7 第二轮：把"截图读进来"之后抓到的 4 个真 bug（同一提交）
+
+用户提示"尝试读取上一轮的截图后再调整"。**上一轮我读不了图**，只能靠度量指标；
+这次截图可读，一眼就看出度量体系**根本没覆盖**的问题 —— 这 4 个全是"看得见、测不到"的类型：
+
+| # | 截图暴露的现象 | 根因 | 修法 |
+|---|---|---|---|
+| 1 | 元素库面板**渲染了两份**（两组面包屑+两组面板内容） | `refresh()` 先把 `is_built` 置 False 再 `select()`，而外壳与面板内容长在**同一个 frame**；不销毁旧控件就再建一遍 ⇒ 打开/切换小说（`novel.opened` → `refresh()`）或**按 F5 必现** | `select()` 重建前先 `destroy` 该 frame 的全部子控件（顺带自愈"上次构建中途异常留下的半个外壳"） |
+| 2 | KPI 卡片永远显示占位符「—」（旁边摘要行却是有数字的） | 靠 `cget("font") == UIStyle.font("title")` 找数值 Label；而 `cget("font")` 返回 **Tcl 字体名（字符串）**，与元组**永不相等** | `kpi_row` 直接把数值 Label 列表交出来（`value_labels`），不再靠字体比对定位 |
+| 3 | 切走再切回迁移面板，**深色换肤"掉皮"**（Listbox 又变回 `SystemWindow` 白底） | 迁移面板 `on_show()` 会**重建内容**（v2 语义），新控件回到系统默认色，而润色只在**首次构建**时跑过一次 | `on_show` 之后为迁移面板**重跑** `polish_legacy`（`test_polish_is_repeatable_after_rebuild` 钉住） |
+| 4 | 元素库/网搜/摘要管理里大片**米色横带与米色列表** | ① `tk.Listbox` 没设颜色（系统默认 `SystemWindow`）；② v2 面板的 `ttk.Frame/Label/Button` **不指定 style** → 退回 clam 默认浅色；③ `ScrolledText` 自带的 `tk.Scrollbar` 也是米色 | 润色补齐 `tk.Listbox` / `tk.Scrollbar` / `tk.Label` / `tk.Frame`，以及**未指定 style 的 ttk 控件**映射到 `Dark.TFrame/Dark.TLabel/Secondary.TButton/Dark.VScrollbar` 等；Combobox 弹出列表用 option 数据库着色 |
+
+### 一个值得记下的 Tk 陷阱
+
+`ttk.Combobox` 继承链是 `Combobox → ttk.Entry → tk.Entry`（为复用 validate 机制）。
+所以润色里的 **ttk 分支必须排在 tk 分支前面** —— 否则下拉框被"Entry 分支"截胡，
+`style="Dark.TCombobox"` 永远轮不到执行（本轮实测：`touched` 计数正常但仍未换肤，
+排查花了三个探针脚本）。`test_ttk_widgets_are_not_shadowed_by_tk_branches` 钉住这条顺序。
+
+### 判据（避免"误伤有意的配色"）
+
+"该不该换肤"的判据不是猜，而是 **`cget("bg")` 是否为系统色名**：
+未配色的控件报告 `SystemButtonFace` / `SystemWindow`，显式配过色的报告 `#rrggbb`。
+因此"没配色 → 换；配过色 → 不动"有明确可判定的依据（`test_explicitly_colored_widgets_are_left_alone`）。
+
+### 第二轮后的验收
+
+| 项 | 结果 |
+|---|---|
+| 面板外壳唯一性（首次 / refresh 后 / 连续 refresh / 切走切回） | **每种情况都恰好 1 份** |
+| KPI 数值 | 随 `snapshot.stats` 实时更新（`4 / 4 / 3 / 1 / 1`） |
+| 迁移面板切回后 | 与首次构建**完全一致的深色**（不再掉皮） |
+| 门禁用例 | `test_panel_ui_quality.py` 由 29 → **35 条**，全绿 |
+| 回归 | 面板相关 456 + 基础/约束 162 全绿；`ruff check` 全绿、`ruff format` 全达标 |
+
+**仍未解决（诚实记录）**：`chapter_analysis` 面板在离屏演示环境里 `select()` 返回 `False`
+（构建抛错，与本次改动无关，第一轮截图同样缺这一张）—— 需要在**真实应用**里点开该面板取证。
 
 **P5 剩余部分**（不在本轮）：`app/` 下 **385 处**硬编码字体元组的角色化命名与替换（含 55 处计算式）、
 `dialogs.py` 抽取、面板"脱离为独立 Toplevel"。棘轮已就位，可增量推进；清零后把

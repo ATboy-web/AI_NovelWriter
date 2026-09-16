@@ -142,9 +142,30 @@ class PanelHost:
         frame = self._frame_for(key)
         if panel.is_built:
             self._safe(panel, "on_show", key)
+            if spec.legacy and isinstance(frame, tk.Misc):
+                # 迁移面板的 `on_show()` 会**重建内容**（v2 语义）—— 重建出的新控件
+                # 又回到系统默认色，润色必须跟着重跑，否则切走再切回就"掉皮"
+                # （截图实证：首次构建是深色，切回来 Listbox 又变回 SystemWindow 白底）
+                content = getattr(panel, "_chrome_content", None)
+                if content is not None:
+                    from . import ui_kit
+
+                    ui_kit.polish_legacy(content)
         else:
+            # 重建前必须清空 frame：`refresh()` 会把 is_built 置 False 后回到这里，
+            # 而外壳（面包屑/内容区/状态栏）与面板内容都长在这同一个 frame 里 ——
+            # 不销毁旧控件就再建一遍，面包屑会叠成两行（截图实证过的重复渲染 bug）。
+            # 顺便自愈：上次构建中途异常留下的半个外壳也会被清掉。
+            for child in frame.winfo_children():
+                child.destroy()
             try:
-                self._build_with_chrome(panel, spec, frame)
+                if isinstance(frame, tk.Misc):
+                    self._build_with_chrome(panel, spec, frame)
+                else:
+                    # 非 Tk 容器（测试替身）：外壳是真实 Tk 控件，无从构建。
+                    # 这些测试关心的是生命周期语义（建一次/on_show/on_hide/refresh），
+                    # 与外壳无关 —— 退化为裸构建；外壳行为由真实 Tk 的测试单独把关。
+                    panel.build(frame)
             except Exception as e:  # noqa: BLE001 - 单个面板构建失败不应中断切换
                 logger.error(f"面板 {key!r} 构建失败: {type(e).__name__}: {e}")
                 return False

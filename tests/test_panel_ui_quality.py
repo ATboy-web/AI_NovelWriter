@@ -336,3 +336,180 @@ class TestPanelChrome:
     def test_unknown_panel_key_is_reported(self, tk_root):
         host, _app = _build_host(tk_root)
         assert host.select("definitely-not-a-panel") is False
+
+
+# ====================================================================== 6. 截图实证的三个回归点
+
+
+class TestRefreshDoesNotDuplicateChrome:
+    """**回归（截图实证）**：`refresh()` 把 `is_built` 置 False 后 `select()` 会在
+    **同一个 frame** 里重建外壳。旧实现不销毁旧控件，面包屑/内容区/状态栏就叠两份
+    —— 打开/切换小说（`novel.opened` → `host.refresh()`）或按 F5 必现。"""
+
+    def test_refresh_keeps_exactly_one_chrome(self, tk_root):
+        host, _app = _build_host(tk_root)
+        assert host.select("timeline") is True
+        tk_root.update()
+        frame = host._frames["timeline"]
+        assert len(frame.winfo_children()) == 3, "首次构建：面包屑 + 内容区 + 状态栏"
+        host.refresh()
+        tk_root.update()
+        assert len(frame.winfo_children()) == 3, "refresh 后外壳叠了不止一份"
+        host.refresh()
+        tk_root.update()
+        assert len(frame.winfo_children()) == 3, "连续 refresh 仍应只有一份外壳"
+
+    def test_switch_away_and_back_keeps_single_chrome(self, tk_root):
+        host, _app = _build_host(tk_root)
+        assert host.select("timeline") is True
+        assert host.select("biography") is True
+        assert host.select("timeline") is True
+        tk_root.update()
+        assert len(host._frames["timeline"].winfo_children()) == 3
+
+
+class TestKpiRowUpdates:
+    """**回归（截图实证）**：上一版靠"比对字体"找数值 Label，
+    而 `cget("font")` 返回 Tcl 字体名（字符串），与 `UIStyle.font()` 元组**永不相等**
+    —— KPI 卡片永远停在占位符"—"。现在由 `kpi_row` 直接交出数值 Label 列表。"""
+
+    def test_kpi_row_exposes_value_labels(self, tk_root):
+        from app.panels import ui_kit
+
+        row = ui_kit.kpi_row(tk_root, [("事件", "—"), ("章节", "—")])
+        labels = getattr(row, "value_labels", None)
+        assert labels is not None and len(labels) == 2, "kpi_row 必须暴露 value_labels"
+        labels[0].configure(text="42")
+        assert str(row.value_labels[0].cget("text")) == "42"
+
+    def test_timeline_kpi_updates_with_stats(self, tk_root):
+        host, _app = _build_host(tk_root)
+        assert host.select("timeline") is True
+        tk_root.update()
+        panel = host.panel("timeline")
+        panel._update_kpi({"events": 7, "chapters": 3, "characters": 5, "world_lines": 1, "branch_dirs": 2})
+        texts = [str(label.cget("text")) for label in panel._kpi.value_labels]
+        assert texts == ["7", "3", "5", "1", "2"], f"KPI 数值未更新：{texts}"
+
+
+class TestPolishLegacyDarkWidgets:
+    """**回归（截图实证）**：v2 面板里不设颜色的 `tk.Listbox` 是暗色主题里的"米色斑"；
+    `ttk.Combobox` 不指定 style 则退回 clam 默认浅色。"""
+
+    def test_listbox_is_darkened(self, tk_root):
+        import tkinter as tk
+
+        from app.panels import ui_kit
+
+        holder = tk.Frame(tk_root)
+        listbox = tk.Listbox(holder)  # v2 面板的典型写法：不设任何颜色
+        ui_kit.polish_legacy(holder)
+        assert str(listbox.cget("bg")) == UIStyle.COLORS["bg_card"]
+        assert str(listbox.cget("fg")) == UIStyle.COLORS["text_primary"]
+        assert str(listbox.cget("selectbackground")) == UIStyle.COLORS["accent"]
+
+    def test_combobox_gets_dark_style(self, tk_root):
+        import tkinter as tk
+        from tkinter import ttk
+
+        from app.panels import ui_kit
+
+        holder = tk.Frame(tk_root)
+        combo = ttk.Combobox(holder, values=("a", "b"))
+        ui_kit.polish_legacy(holder)
+        assert str(combo.cget("style")) == "Dark.TCombobox"
+
+    def test_ttk_widgets_are_not_shadowed_by_tk_branches(self, tk_root):
+        """**回归**：`ttk.Combobox` 继承自 `ttk.Entry` → `tk.Entry`，
+        若 tk 分支排在 ttk 分支前面，下拉框会被"Entry 分支"截胡，永远轮不到换肤。"""
+        import tkinter as tk
+        from tkinter import ttk
+
+        from app.panels import ui_kit
+
+        holder = tk.Frame(tk_root)
+        entry = ttk.Entry(holder)
+        combo = ttk.Combobox(holder, values=("a",))
+        tree = ttk.Treeview(holder, columns=("x",), show="headings")
+        ui_kit.polish_legacy(holder)
+        assert str(entry.cget("style")) == "Panel.TEntry"
+        assert str(combo.cget("style")) == "Dark.TCombobox"
+        assert str(tree.cget("style")) == "Panel.Treeview"
+
+    def test_unstyled_frame_and_label_are_darkened(self, tk_root):
+        """**回归（截图实证）**：v2 面板里没配色的 Frame/Label 是系统默认米色
+        （`SystemButtonFace`），在暗色主题里是一条条米色横带/区块。"""
+        import tkinter as tk
+
+        from app.panels import ui_kit
+
+        holder = tk.Frame(tk_root)  # 自身也是默认色
+        strip = tk.Frame(holder)  # 按钮行式的米色横带
+        label = tk.Label(strip, text="类别：")
+        ui_kit.polish_legacy(holder)
+        assert str(strip.cget("bg")) == UIStyle.COLORS["bg_dark"]
+        assert str(label.cget("bg")) == UIStyle.COLORS["bg_dark"]
+        assert str(label.cget("fg")) == UIStyle.COLORS["text_primary"]
+
+    def test_explicitly_colored_widgets_are_left_alone(self, tk_root):
+        """换肤只动"没配色"的控件：显式配色的强调标签/容器不得被覆盖。"""
+        import tkinter as tk
+
+        from app.panels import ui_kit
+
+        holder = tk.Frame(tk_root, bg="#123456")
+        label = tk.Label(holder, text="成功", bg="#0f6e56", fg="#ffffff")
+        half = tk.Label(holder, text="半配色", bg="#123456")  # bg 显式、fg 默认 → 不动
+        ui_kit.polish_legacy(holder)
+        assert str(holder.cget("bg")) == "#123456"
+        assert str(label.cget("bg")) == "#0f6e56"
+        assert str(label.cget("fg")) == "#ffffff"
+        assert str(half.cget("bg")) == "#123456"
+
+    def test_bare_ttk_widgets_get_dark_styles(self, tk_root):
+        """**回归（截图实证）**：v2 面板的 ttk.Frame/Label/Button 不指定 style，
+        退回 clam 默认浅色 —— 那就是截图里的一条条米色横带。"""
+        import tkinter as tk
+        from tkinter import ttk
+
+        from app.panels import ui_kit
+
+        holder = tk.Frame(tk_root)
+        frame = ttk.Frame(holder)
+        label = ttk.Label(holder, text="类别:")
+        button = ttk.Button(holder, text="运行")
+        styled = ttk.Button(holder, text="强调", style="Accent.TButton")
+        ui_kit.polish_legacy(holder)
+        assert str(frame.cget("style")) == "Dark.TFrame"
+        assert str(label.cget("style")) == "Dark.TLabel"
+        assert str(button.cget("style")) == "Secondary.TButton"
+        assert str(styled.cget("style")) == "Accent.TButton", "显式指定的 style 不得被覆盖"
+
+    def test_tk_scrollbar_is_darkened(self, tk_root):
+        """ScrolledText 自带的滚动条是经典 tk 控件，默认米色。"""
+        import tkinter as tk
+
+        from app.panels import ui_kit
+
+        holder = tk.Frame(tk_root)
+        bar = tk.Scrollbar(holder)
+        ui_kit.polish_legacy(holder)
+        assert str(bar.cget("bg")) == UIStyle.COLORS["bg_medium"]
+        assert str(bar.cget("troughcolor")) == UIStyle.COLORS["bg_dark"]
+
+    def test_polish_is_repeatable_after_rebuild(self, tk_root):
+        """**回归（截图实证）**：迁移面板 `on_show()` 会重建内容 —— 新控件回到系统
+        默认色，宿主会在 `on_show` 后重跑润色。润色必须可重复、且对新建控件生效。"""
+        import tkinter as tk
+
+        from app.panels import ui_kit
+
+        holder = tk.Frame(tk_root)
+        first = tk.Listbox(holder)
+        ui_kit.polish_legacy(holder)
+        assert str(first.cget("bg")) == UIStyle.COLORS["bg_card"]
+        # 模拟 on_show 重建：旧控件销毁、新控件又是系统默认色
+        first.destroy()
+        second = tk.Listbox(holder)
+        ui_kit.polish_legacy(holder)
+        assert str(second.cget("bg")) == UIStyle.COLORS["bg_card"]

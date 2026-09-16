@@ -159,11 +159,12 @@ def build_body(version: str, original: str | None) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     # Windows 控制台默认 GBK，打印中文/符号会抛 UnicodeEncodeError 并**中断整个脚本**
-    # （实测：在处理完第 1 个 release 后崩掉）。统一把 stdout 设为 UTF-8 且永不因编码失败。
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
-    except (AttributeError, ValueError):  # pragma: no cover - 非标准流
-        pass
+    # （实测：在处理完第 1 个 release 后崩掉）。实现已抽到 `scripts/_console_utf8.py`
+    # —— `release_notes.py` 后来因同一原因让 CI 的发布作业失败过，不再各写一份。
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _console_utf8 import make_stdout_utf8_safe
+
+    make_stdout_utf8_safe()
 
     parser = argparse.ArgumentParser(description="修复历史 Release 的乱码标题与正文")
     parser.add_argument("--dry-run", action="store_true", help="只打印将要做的修改，不写入")

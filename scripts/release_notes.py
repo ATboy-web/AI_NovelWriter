@@ -99,7 +99,33 @@ def build_release_notes(version: str, date: str | None = None) -> str:
     return HEADER.format(version=version, date=when) + changelog_section(version) + FOOTER
 
 
+def make_stdout_utf8_safe() -> None:
+    """把标准输出/错误切到 UTF-8，避免在非 UTF-8 控制台上 print 中文时崩溃。
+
+    ⚠️ **本项目已经踩过两次这个坑**：`fix_release_metadata.py` 的 `✓`，
+    以及本脚本的 `已写入 …（N 字符）`。CI 的发布作业跑在 Windows runner 上，
+    控制台编码是 **cp1252**，`print` 中文直接
+    `UnicodeEncodeError: 'charmap' codec can't encode characters`。
+
+    更麻烦的是它**发生在写完文件之后** ⇒ 产物其实是好的，但进程以 1 退出、
+    `Create Release` 步骤被跳过、**Release 没建出来**。所以统一在入口修一次，
+    而不是逐个 `print` 去改成英文。
+
+    实现已抽到 `scripts/_console_utf8.py`（同一类修复不该写第二遍）。
+    """
+    from _console_utf8 import make_stdout_utf8_safe as _impl
+
+    _impl()
+
+
 def main(argv: list[str] | None = None) -> int:
+    # CI 的 Windows runner 控制台是 cp1252，print 中文会直接抛 UnicodeEncodeError，
+    # 且崩点在写完文件之后 ⇒ Create Release 被跳过、Release 没发布（已踩过）。
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _console_utf8 import make_stdout_utf8_safe
+
+    make_stdout_utf8_safe()
+
     parser = argparse.ArgumentParser(description="从 CHANGELOG 生成 GitHub Release 正文")
     parser.add_argument("version", nargs="?", default=None, help="版本号（默认取 pyproject.toml）")
     parser.add_argument("--out", default=None, help="输出文件（默认写 stdout）")

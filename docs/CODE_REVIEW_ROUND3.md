@@ -329,7 +329,7 @@
 | 全量测试 | `python -m pytest -q`（`testpaths = tests, backend/tests`） | **1391 passed / 0 failed** |
 | 本轮专项回归 | `python -m pytest tests/test_review_round3_fixes.py` | **47 passed** |
 | 静态检查 | `python -m ruff check app/ tests/ backend/ scripts/ installer/` | **All checks passed!** |
-| 角色资产未受影响 | 对线上 `memory/characters.json` 计算摘要 | **286 个角色**，sha256 `fdd2d44d…2db056`，49048 字节；未出现在 `git status` 变更列表中 |
+| 角色资产未受影响 | 对线上 `memory/characters.json` 计算摘要 | **286 个角色**，sha256 `fdd2d44d…2db056`，49,086 字节（原文误记为 49048，2026-09-16 复核更正）；未出现在 `git status` 变更列表中 |
 | 改动范围 | `git diff --stat` | 仅 19 个源码/测试/配置/文档文件，**无任何数据文件** |
 
 ### 7.3 新增回归测试（`tests/test_review_round3_fixes.py`）

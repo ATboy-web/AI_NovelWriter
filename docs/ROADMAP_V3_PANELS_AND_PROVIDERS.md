@@ -1,7 +1,9 @@
 # AI_NovelWriter v3 改造方案：面板化 · 多 API 适配 · 模块整合
 
 > 版本基线：`62bb854`（v2.16.0）｜测试基线：**1391 passed / 0 failed**｜ruff 全绿
-> 角色数据基线：286 个角色，`memory/characters.json` sha256 `fdd2d44d…2db056`（49048 B）
+> 角色数据基线：286 个角色，`memory/characters.json` sha256 `fdd2d44d…2db056`（49,086 B，286 个角色文件 / 1094 章）
+> 线上数据根目录（**不在仓库内**）：`%USERPROFILE%\.ai_novel_writer\novels\<书名>_<id>\`
+> —— 复核数据时必须用此路径，仓库里的 `memory/` 不是线上数据。
 > 本文所有事实均带 `文件:行号` 证据，来自对 `app/` 全部 50 个模块的实测勘察。
 
 ---

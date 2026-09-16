@@ -36,6 +36,7 @@ from app.events import TOPIC_CHAPTER_SAVED, TOPIC_TIMELINE_CHANGED
 from app.timeline_store import TimelineStore, extraction_prompt, parse_extraction_result
 from app.ui_style import UIStyle
 
+from . import ui_kit
 from .base import BasePanel
 
 __all__ = [
@@ -202,42 +203,37 @@ class TimelinePanel(BasePanel):
         #: 复用的 store（读取缓存挂在它身上）与各视图的行集指纹（避免无谓重建）
         self._timeline_store: TimelineStore | None = None
         self._seen_signatures: dict[str, tuple] = {}
+        #: 各视图的**完整行集**（搜索过滤在它之上做，随时可还原）
+        self._all_rows: dict[str, list[tuple[str, tuple]]] = {}
+        self._search_var = tk.StringVar()
 
-        header = tk.Frame(parent, bg=C["bg_dark"])
-        header.pack(fill=tk.X, pady=(2, 4))
-        self._stats_label = tk.Label(
-            header,
-            text="",
-            font=UIStyle.font("label"),
-            bg=C["bg_dark"],
-            fg=C["text_secondary"],
-            anchor=tk.W,
-            justify=tk.LEFT,
-            wraplength=760,
+        # ── 工具栏：主操作在左、搜索在右（左主右辅，视线有落点）────────────────
+        bar = ui_kit.toolbar(parent)
+        bar["bar"].pack(fill=tk.X, pady=(0, ui_kit.SPACE["sm"]))
+        self._extract_btn = ui_kit.button(bar["left"], "从正文抽取事件", self._on_extract, kind="primary")
+        self._extract_btn.pack(side=tk.LEFT)
+        self._sync_btn = ui_kit.button(bar["left"], "同步到世界线", self._on_sync, kind="secondary")
+        self._sync_btn.pack(side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0))
+        search = ui_kit.search_entry(
+            bar["right"],
+            self._search_var,
+            placeholder="过滤当前视图（Ctrl+F）…",
+            on_change=self._apply_filter,
+            width=26,
         )
-        self._stats_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        search["frame"].pack(side=tk.RIGHT)
+        self._toolkit_search_entry = search["entry"]
 
-        self._extract_btn = tk.Button(
-            header,
-            text="从正文抽取事件",
-            font=UIStyle.font("label"),
-            bg=C["bg_medium"],
-            fg=C["text_primary"],
-            command=self._on_extract,
+        # ── KPI 小块：用"数值 + 标签"替代一行长文字，扫一眼就能读到量级 ────────
+        self._kpi = ui_kit.kpi_row(
+            parent, [("事件", "—"), ("覆盖章节", "—"), ("角色", "—"), ("世界线", "—"), ("分支项目", "—")]
         )
-        self._extract_btn.pack(side=tk.RIGHT, padx=2)
-        self._sync_btn = tk.Button(
-            header,
-            text="同步到世界线",
-            font=UIStyle.font("label"),
-            bg=C["bg_medium"],
-            fg=C["text_primary"],
-            command=self._on_sync,
-        )
-        self._sync_btn.pack(side=tk.RIGHT, padx=2)
+        self._kpi.pack(fill=tk.X, pady=(0, ui_kit.SPACE["xs"]))
+        self._stats_label = ui_kit.hint(parent, "")
+        self._stats_label.pack(fill=tk.X)
 
-        self._notebook = ttk.Notebook(parent)
-        self._notebook.pack(fill=tk.BOTH, expand=True)
+        self._notebook = ttk.Notebook(parent, style="Dark.TNotebook")
+        self._notebook.pack(fill=tk.BOTH, expand=True, pady=(ui_kit.SPACE["sm"], 0))
 
         self._tree["axis"] = self._add_view(
             "章节轴", ("章", "事件数", "涉及角色", "事件摘要"), (90, 70, 190, 420), self._on_axis_double
@@ -255,30 +251,31 @@ class TimelinePanel(BasePanel):
             "跨代编年史", ("代", "章", "地点", "事件", "范围"), (70, 70, 100, 430, 110), self._on_lineage_double
         )
 
-        self._detail = tk.Text(
-            parent, height=5, wrap=tk.WORD, font=UIStyle.font("label"), bg=C["bg_medium"], fg=C["text_primary"]
+        detail_card = ui_kit.card(parent, "详情", pad=ui_kit.SPACE["md"])
+        detail_card["frame"].pack(fill=tk.X, pady=(ui_kit.SPACE["sm"], 0))
+        self._detail = tk.Label(
+            detail_card["body"],
+            text="选中一行查看详情；双击可跳转或打开。",
+            bg=C["bg_card"],
+            fg=C["text_secondary"],
+            font=UIStyle.font("label"),
+            anchor=tk.NW,
+            justify=tk.LEFT,
+            wraplength=1180,
         )
-        self._detail.pack(fill=tk.X, pady=(4, 0))
-        self._detail.configure(state=tk.DISABLED)
+        self._detail.pack(fill=tk.X)
 
         self.mark_built(True)
         self.reload()
         return parent
 
     def _add_view(self, title, columns, widths, on_double) -> ttk.Treeview:
-        frame = tk.Frame(self._notebook)
+        """一个视图 = 一个表格页签（统一用 `ui_kit.pretty_tree`：斑马纹 / 可排序 / Enter 触发）。"""
+        frame = tk.Frame(self._notebook, bg=UIStyle.COLORS["bg_dark"])
         self._notebook.add(frame, text=title)
-        tree = ttk.Treeview(frame, columns=columns, show="headings", height=12)
-        for col, width in zip(columns, widths):
-            tree.heading(col, text=col)
-            tree.column(col, width=width, anchor=tk.W, stretch=False)
-        bar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
-        tree.configure(yscrollcommand=bar.set)
-        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        bar.pack(side=tk.RIGHT, fill=tk.Y)
-        if on_double is not None:
-            tree.bind("<Double-1>", on_double)
-        return tree
+        built = ui_kit.pretty_tree(frame, columns, widths, on_double=on_double, height=12)
+        built["frame"].pack(fill=tk.BOTH, expand=True)
+        return built["tree"]
 
     # ------------------------------------------------------------------ 生命周期
 
@@ -319,9 +316,11 @@ class TimelinePanel(BasePanel):
         """
         if not getattr(self, "current_novel_dir", None):
             self._set_stats("尚未打开小说：请先新建或打开一部作品。")
+            self._update_kpi(None)
             for tree in self._tree.values():
                 self._clear(tree)
             self._rows = {"axis": {}, "lineage": {}}
+            self._all_rows.clear()
             self._seen_signatures.clear()
             return
 
@@ -330,6 +329,7 @@ class TimelinePanel(BasePanel):
         except Exception as e:  # noqa: BLE001 - 面板刷新失败不该让整个 UI 崩
             logger.error(f"[timeline_panel] 刷新失败: {type(e).__name__}: {e}")
             self._set_stats(f"刷新失败：{type(e).__name__}: {e}")
+            self.set_status(f"刷新失败：{type(e).__name__}: {e}", kind="error")
             return
 
         self._rows["axis"] = {f"ch{int(r.get('chapter', 0) or 0)}": r for r in snapshot.axis}
@@ -342,6 +342,41 @@ class TimelinePanel(BasePanel):
         self._fill(self._tree["tracks"], track_rows(snapshot.tracks))
         self._fill(self._tree["lineage"], chronicle_rows(snapshot.chronicle))
         self._set_stats(stats_text(snapshot.stats))
+        self._update_kpi(snapshot.stats)
+
+    def _update_kpi(self, stats: dict | None) -> None:
+        """刷新顶部的指标小块（数量级一眼可见，比一行长文字好扫读）。"""
+        stats = stats or {}
+        values = [
+            f"{stats.get('events', 0)}",
+            f"{stats.get('chapters', 0)}",
+            f"{stats.get('characters', 0)}",
+            f"{stats.get('world_lines', 0)}",
+            f"{stats.get('branch_dirs', 0)}",
+        ]
+        cells = list(self._kpi.winfo_children())
+        for cell, value in zip(cells, values):
+            for child in cell.winfo_children():
+                if isinstance(child, tk.Label) and child.cget("font") == UIStyle.font("title"):
+                    child.configure(text=value)
+                    break
+
+    def _query(self) -> str:
+        var = self.__dict__.get("_search_var")
+        return (var.get() if var is not None else "").strip().lower()
+
+    def _apply_filter(self) -> None:
+        """搜索框内容变化 → 用**已缓存的完整行集**重算四个视图（不重新读盘）。"""
+        for view, tree in self._tree.items():
+            rows = self._all_rows.get(view)
+            if rows is not None:
+                self._fill(tree, rows)
+
+    def _view_key(self, tree: ttk.Treeview) -> str:
+        for key, candidate in self._tree.items():
+            if candidate is tree:
+                return key
+        return str(tree)
 
     @staticmethod
     def _clear(tree: ttk.Treeview) -> None:
@@ -353,28 +388,38 @@ class TimelinePanel(BasePanel):
 
         这是必要的：1094 章的章节轴有 1094 行，而 `chapter.saved` 每存一次章
         都会触发一次刷新 —— 每次都重建 1094 行会让面板明显掉帧。
+        行集里带斑马纹标签（`ui_kit` 的统一表格风格）。
         """
-        signature = tuple(rows)
-        view = str(tree)
+        view = self._view_key(tree)
+        self._all_rows[view] = rows
+        query = self._query()
+        visible = rows if not query else [row for row in rows if any(query in str(cell).lower() for cell in row[1])]
+
+        signature = (query, tuple(visible))
         if self._seen_signatures.get(view) == signature:
             return
         self._seen_signatures[view] = signature
         self._clear(tree)
-        if not rows:
-            tree.insert("", tk.END, iid="__empty__", values=(_empty_hint(tree),))
+        if not visible:
+            hint_text = f"没有匹配「{query}」的行。" if query else _empty_hint(tree)
+            tree.insert("", tk.END, iid="__empty__", values=(hint_text,), tags=("muted",))
             return
-        for iid, values in rows:
+        for index, (iid, values) in enumerate(visible):
             parent = iid.split("#", 1)[0] if "#" in iid else ""
-            tree.insert(parent, tk.END, iid=iid, values=values, open=True)
+            tree.insert(
+                parent,
+                tk.END,
+                iid=iid,
+                values=values,
+                tags=("odd" if index % 2 else "even",),
+                open=True,
+            )
 
     def _set_stats(self, text: str) -> None:
         self._stats_label.configure(text=text)
 
     def _set_detail(self, text: str) -> None:
-        self._detail.configure(state=tk.NORMAL)
-        self._detail.delete("1.0", tk.END)
-        self._detail.insert("1.0", text)
-        self._detail.configure(state=tk.DISABLED)
+        self._detail.configure(text=text)
 
     # ------------------------------------------------------------------ 动作
 

@@ -35,6 +35,7 @@ from app import lineage as lin
 from app.storage import read_json_with_backup
 from app.ui_style import UIStyle
 
+from . import ui_kit
 from .base import BasePanel
 
 __all__ = ["LineagePanel", "inheritance_rows", "lineage_rows", "novel_candidates"]
@@ -225,12 +226,15 @@ class LineagePanel(BasePanel):
         ).pack(fill=tk.X)
         tree_frame = tk.Frame(parent, bg=C["bg_dark"])
         tree_frame.pack(fill=tk.BOTH, expand=False)
-        self._tree = ttk.Treeview(tree_frame, columns=("代", "作品", "范围", "目录", "状态"), show="headings", height=5)
-        for col, width in (("代", 60), ("作品", 180), ("范围", 110), ("目录", 330), ("状态", 70)):
-            self._tree.heading(col, text=col)
-            self._tree.column(col, width=width, anchor=tk.W, stretch=False)
+        self._tree = ui_kit.pretty_tree(
+            tree_frame,
+            ("代", "作品", "范围", "目录", "状态"),
+            (60, 180, 110, 330, 70),
+            on_double=self._on_switch_generation,
+            height=5,
+            sortable=False,
+        )["tree"]
         self._tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self._tree.bind("<Double-1>", self._on_switch_generation)
 
         # ---- 继承设置
         settings = tk.LabelFrame(
@@ -269,11 +273,10 @@ class LineagePanel(BasePanel):
                 command=self._refresh_plan,
             ).pack(side=tk.LEFT, padx=(0, 8))
 
-        self._plan_tree = ttk.Treeview(parent, columns=("选", "维度", "明细"), show="headings", height=6)
-        for col, width in (("选", 40), ("维度", 200), ("明细", 520)):
-            self._plan_tree.heading(col, text=col)
-            self._plan_tree.column(col, width=width, anchor=tk.W, stretch=False)
-        self._plan_tree.pack(fill=tk.BOTH, expand=True, pady=(4, 2))
+        self._plan_tree = ui_kit.pretty_tree(parent, ("选", "维度", "明细"), (40, 200, 520), height=6, sortable=False)[
+            "tree"
+        ]
+        self._plan_tree.pack(fill=tk.BOTH, expand=True, pady=(ui_kit.SPACE["sm"], ui_kit.SPACE["xs"]))
 
         bar = tk.Frame(parent, bg=C["bg_dark"])
         bar.pack(fill=tk.X)

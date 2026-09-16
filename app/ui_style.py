@@ -28,18 +28,31 @@ class UIStyle:
         "accent_hover": "#6a62d0",  # 悬停色
         "accent_bg": "#2d1b69",  # 紫色背景
         # 语义色
-        "success": "#0f6e56",  # 成功绿
+        # ⚠️ 基色是**填充色**（配 `text_inverse` 白字用），不要拿它们当深色背景上的文字色 ——
+        # 实测在 `bg_dark` 上：`success` 3.07、`accent` 2.75、`error` 5.06、`info` 5.17。
+        # 深色背景上的语义文字请用下面的 `*_text` 变体。
+        "success": "#0f6e56",  # 成功绿（填充）
         "success_bg": "#064e3b",  # 成功背景
-        "warning": "#f59e0b",  # 警告黄
+        "warning": "#f59e0b",  # 警告黄（填充；作文字色也达标 6.90）
         "warning_bg": "#78350f",  # 警告背景
-        "error": "#ef4444",  # 错误红
+        "error": "#ef4444",  # 错误红（填充）
         "error_bg": "#7f1d1d",  # 错误背景
-        "info": "#3b82f6",  # 信息蓝
+        "info": "#3b82f6",  # 信息蓝（填充）
         "info_bg": "#1e3a5f",  # 信息背景
+        # 语义色的**文字变体**：实测在 bg_dark/bg_medium/bg_card/bg_hover 上**全部 ≥4.5:1**
+        # （2026-09-16 用最小提亮法算出，保持色相不变；见 `tests/test_ui_contrast.py`）
+        "accent_text": "#8c86cf",  # 最差 4.53
+        "success_text": "#16a27e",  # 最差 4.59
+        "info_text": "#4c8df7",  # 最差 4.56
+        "error_text": "#f15b5b",  # 最差 4.51
+        "warning_text": "#f59e0b",  # 最差 6.90（与基色同值，保留以统一用法）
         # 文字色阶
-        "text_primary": "#e0e0f0",  # 主文字
-        "text_secondary": "#a0a0b0",  # 次文字
-        "text_muted": "#606080",  # 弱文字
+        "text_primary": "#e0e0f0",  # 主文字（12.4:1 起）
+        "text_secondary": "#a0a0b0",  # 次文字（6.3:1 起）
+        #: 弱文字/提示 —— 2026-09-16 由 `#606080` 提亮：原值在 `bg_dark` 上仅 3.16:1、
+        #: `bg_card` 上 2.68:1（低于 4.5:1 可读底线）⇒ 全应用 15 个面板的提示文字都发灰难认。
+        #: 只提亮、不改色相，现在最差 4.54:1。这是"一处改动改善全部面板"的那一处。
+        "text_muted": "#8c8ca8",
         "text_inverse": "#ffffff",  # 反色文字
         # 边框色
         "border": "#2a2a40",  # 默认边框

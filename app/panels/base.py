@@ -151,6 +151,59 @@ class BasePanel:
 
     # ------------------------------------------------------------------ 联动：切换作品
 
+    def set_status(self, text: str, kind: str = "info") -> None:
+        """把操作结果显示在**面板底部状态栏**（由宿主注入）。
+
+        为什么不用 `messagebox`：本仓原有 64 处弹窗，每次都要用户点一下才能继续，
+        是"操作难受"的最大来源。状态栏是内联反馈，不打断、也不丢信息。
+        真正需要**确认**的场景（删除、覆盖）仍应使用 `messagebox.askyesno`。
+        """
+        bar = self.__dict__.get("_status_bar")
+        if bar is not None:
+            bar.set(text, kind)
+
+    def notify(self, text: str, kind: str = "info") -> None:
+        """轻提示（浮窗，自动消失）。适合"成功/失败"这类一次性反馈。"""
+        from . import ui_kit
+
+        target = self.__dict__.get("container") or self.__dict__.get("tool_content_frame")
+        ui_kit.toast(target or self._host_widget(), text, kind=kind)
+
+    def _host_widget(self) -> Any:
+        """拿一个能当浮窗挂载点的控件（宿主的主窗口兜底）。"""
+        app = self.__dict__.get("app")
+        return getattr(app, "root", None) or getattr(app, "tool_content_frame", None)
+
+    def focus_search(self) -> bool:
+        """把焦点移到本面板的搜索框（`Ctrl+F`）。找不到就返回 False（不报错）。"""
+        for name in ("_toolkit_search_entry",):
+            entry = self.__dict__.get(name)
+            if entry is not None:
+                try:
+                    entry.focus_set()
+                    return True
+                except tk.TclError:
+                    return False
+        target = self.__dict__.get("container") or self.__dict__.get("tool_content_frame")
+        if target is None:
+            return False
+        stack = [target]
+        while stack:
+            widget = stack.pop()
+            try:
+                children = widget.winfo_children()
+            except tk.TclError:
+                return False
+            for child in children:
+                if getattr(child, "_ui_kit_search", False):
+                    try:
+                        child.focus_set()
+                        return True
+                    except tk.TclError:
+                        return False
+                stack.append(child)
+        return False
+
     def open_novel_dir(self, novel_dir: Any) -> bool:
         """请求宿主把某个目录**作为作品打开**，返回是否成功发起。
 

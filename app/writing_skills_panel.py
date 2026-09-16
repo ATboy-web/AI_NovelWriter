@@ -25,7 +25,7 @@ class WritingSkillsPanelMixin:
 
         # 标题
         tk.Label(
-            main_frame, text="✍️ 写作技能系统", font=("微软雅黑", 14, "bold"), bg=C["bg_dark"], fg=C["accent"]
+            main_frame, text="✍️ 写作技能系统", font=("微软雅黑", 14, "bold"), bg=C["bg_dark"], fg=C["accent_text"]
         ).pack(anchor=tk.W, pady=(0, 10))
 
         # 风格配置区

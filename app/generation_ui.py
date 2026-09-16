@@ -947,7 +947,7 @@ class GenerationMixin:
         edit_dlg.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(edit_dlg, text="编辑决策点", font=("微软雅黑", 11, "bold"), bg=C["bg_dark"], fg=C["accent"]).pack(
+        tk.Label(edit_dlg, text="编辑决策点", font=("微软雅黑", 11, "bold"), bg=C["bg_dark"], fg=C["accent_text"]).pack(
             pady=8
         )
 
@@ -1332,7 +1332,7 @@ class GenerationMixin:
         dlg.resizable(False, False)
         C = UIStyle.COLORS
 
-        tk.Label(dlg, text="⚠️ 全部重新创作", font=("微软雅黑", 13, "bold"), bg=C["bg_dark"], fg=C["accent"]).pack(
+        tk.Label(dlg, text="⚠️ 全部重新创作", font=("微软雅黑", 13, "bold"), bg=C["bg_dark"], fg=C["accent_text"]).pack(
             pady=(12, 3)
         )
         tk.Label(
@@ -1961,7 +1961,7 @@ class GenerationMixin:
             text=f"📖《{meta.get('title', '小说')}》章节回顾",
             font=("微软雅黑", 12, "bold"),
             bg=C["bg_dark"],
-            fg=C["accent"],
+            fg=C["accent_text"],
         ).pack(pady=10)
 
         review_text = scrolledtext.ScrolledText(
@@ -2022,7 +2022,7 @@ class GenerationMixin:
         ask.configure(bg=C["bg_dark"])
 
         tk.Label(
-            ask, text=f"从第{last_ch}章后续写", font=("微软雅黑", 12, "bold"), bg=C["bg_dark"], fg=C["accent"]
+            ask, text=f"从第{last_ch}章后续写", font=("微软雅黑", 12, "bold"), bg=C["bg_dark"], fg=C["accent_text"]
         ).pack(pady=15)
 
         tk.Label(ask, text="新增章节数:", bg=C["bg_dark"], fg=C["text_primary"]).pack()

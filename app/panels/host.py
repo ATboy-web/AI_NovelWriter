@@ -144,7 +144,7 @@ class PanelHost:
             self._safe(panel, "on_show", key)
         else:
             try:
-                panel.build(frame)
+                self._build_with_chrome(panel, spec, frame)
             except Exception as e:  # noqa: BLE001 - 单个面板构建失败不应中断切换
                 logger.error(f"面板 {key!r} 构建失败: {type(e).__name__}: {e}")
                 return False
@@ -153,6 +153,71 @@ class PanelHost:
         if self.select_var is not None:
             self.select_var.set(key)
         return True
+
+    def _build_with_chrome(self, panel: BasePanel, spec: Any, frame: tk.Frame) -> None:
+        """给**任何**面板套上统一外壳：面包屑 → 内容区 → 状态栏（+ 快捷键）。
+
+        为什么放在宿主而不是每个面板里：15 个面板（12 个 v2 迁移 + 3 个原生）
+        都要有"我在哪、怎么刷新、刚才那步成没成"，逐面板实现必然各写各的
+        （这正是"界面不成体系"的成因）。宿主是唯一的公共点。
+
+        迁移面板额外做一次 `polish_legacy`（纯外观润色，不动布局）。
+        """
+        from app import UIStyle  # 延迟导入：避免 app 包初始化期间的循环引用
+
+        from . import ui_kit
+
+        ui_kit.apply_widget_theme(frame)
+        bg = UIStyle.COLORS["bg_dark"]
+
+        crumbs = tk.Frame(frame, bg=bg)
+        crumbs.pack(fill=tk.X, padx=ui_kit.SPACE["md"], pady=(ui_kit.SPACE["sm"], 0))
+        tk.Label(
+            crumbs,
+            text=spec.category,
+            bg=bg,
+            fg=UIStyle.COLORS["text_muted"],
+            font=UIStyle.font("caption"),
+        ).pack(side=tk.LEFT)
+        tk.Label(crumbs, text="›", bg=bg, fg=UIStyle.COLORS["border_light"], font=UIStyle.font("caption")).pack(
+            side=tk.LEFT, padx=ui_kit.SPACE["xs"]
+        )
+        tk.Label(
+            crumbs,
+            text=spec.title,
+            bg=bg,
+            fg=UIStyle.COLORS["text_secondary"],
+            font=UIStyle.font("label_bold"),
+        ).pack(side=tk.LEFT)
+        ui_kit.button(crumbs, "刷新 (F5)", lambda: self.refresh(), kind="ghost", padx=ui_kit.SPACE["sm"]).pack(
+            side=tk.RIGHT
+        )
+
+        content = tk.Frame(frame, bg=bg)
+        content.pack(fill=tk.BOTH, expand=True, padx=ui_kit.SPACE["md"], pady=(ui_kit.SPACE["sm"], 0))
+
+        status = ui_kit.StatusBar(frame, bg=bg)
+        # `StatusBar` 是包装类（持有 `frame` / `set()`），不是控件 —— 要 pack 它的 frame
+        status.frame.pack(fill=tk.X, padx=ui_kit.SPACE["md"], pady=(ui_kit.SPACE["xs"], ui_kit.SPACE["sm"]))
+        # 下划线名 → 面板私有（迁移适配器不会把它转发给宿主）
+        object.__setattr__(panel, "_status_bar", status)
+        object.__setattr__(panel, "_chrome_content", content)
+
+        panel.build(content)
+
+        if spec.legacy:
+            touched = ui_kit.polish_legacy(content)
+            logger.debug(f"[panel_host] 迁移面板 {spec.key} 外观润色 {touched} 个控件")
+
+        # 快捷键：宿主统一提供，面板无需各自绑定
+        ui_kit.bind_shortcuts(
+            content,
+            {
+                "<F5>": lambda: self.refresh(),
+                "<Control-f>": panel.focus_search,
+                "<Escape>": lambda: status.clear(),
+            },
+        )
 
     def refresh(self) -> bool:
         """重建当前面板（等价于 v2 到处调用的 `_refresh_toolkit()`）。"""

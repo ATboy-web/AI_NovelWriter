@@ -33,7 +33,7 @@ class TimelineMixin:
         C = UIStyle.COLORS
 
         tk.Label(
-            dialog, text="🌐 世界线 / 时间线管理", font=("微软雅黑", 12, "bold"), bg=C["bg_dark"], fg=C["accent"]
+            dialog, text="🌐 世界线 / 时间线管理", font=("微软雅黑", 12, "bold"), bg=C["bg_dark"], fg=C["accent_text"]
         ).pack(pady=10)
 
         # 加载已有世界线
@@ -82,9 +82,9 @@ class TimelineMixin:
         left_frame = tk.Frame(main_paned, bg=C["bg_card"])
         main_paned.add(left_frame, width=w // 3)
 
-        tk.Label(left_frame, text="📋 决策点列表", font=("微软雅黑", 10, "bold"), bg=C["bg_card"], fg=C["accent"]).pack(
-            anchor=tk.W, padx=10, pady=(8, 2)
-        )
+        tk.Label(
+            left_frame, text="📋 决策点列表", font=("微软雅黑", 10, "bold"), bg=C["bg_card"], fg=C["accent_text"]
+        ).pack(anchor=tk.W, padx=10, pady=(8, 2))
 
         # 决策点列表使用Canvas+滚动
         left_canvas = tk.Canvas(left_frame, bg=C["bg_card"], highlightthickness=0)
@@ -309,7 +309,7 @@ class TimelineMixin:
 
                     # 选择标签
                     chosen_lbl = tk.Label(
-                        card, text=f"✅{chosen}", font=("微软雅黑", 8), bg=card["bg"], fg=C["success"], padx=4
+                        card, text=f"✅{chosen}", font=("微软雅黑", 8), bg=card["bg"], fg=C["success_text"], padx=4
                     )
                     chosen_lbl.pack(side=tk.RIGHT)
 
@@ -498,7 +498,7 @@ class TimelineMixin:
         C = UIStyle.COLORS
 
         tk.Label(
-            ask, text="选择决策点创建分支世界线:", font=("微软雅黑", 10, "bold"), bg=C["bg_dark"], fg=C["accent"]
+            ask, text="选择决策点创建分支世界线:", font=("微软雅黑", 10, "bold"), bg=C["bg_dark"], fg=C["accent_text"]
         ).pack(pady=10)
 
         lb = tk.Listbox(ask, bg=C["bg_card"], fg=C["text_primary"], font=("微软雅黑", 9))

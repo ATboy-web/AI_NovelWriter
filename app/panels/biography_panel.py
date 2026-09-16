@@ -37,6 +37,7 @@ from app.storage import atomic_write_json, atomic_write_text, read_json_with_bac
 from app.timeline_store import TimelineStore
 from app.ui_style import UIStyle
 
+from . import ui_kit
 from .base import BasePanel
 
 __all__ = [
@@ -142,12 +143,14 @@ class BiographyPanel(BasePanel):
             command=self._refresh_character_list,
         ).pack(anchor=tk.W)
 
-        self._tree = ttk.Treeview(left, columns=("角色", "分类", "阵营", "重要", "传记"), show="headings", height=16)
-        for col, width in (("角色", 110), ("分类", 60), ("阵营", 70), ("重要", 40), ("传记", 40)):
-            self._tree.heading(col, text=col)
-            self._tree.column(col, width=width, anchor=tk.W, stretch=False)
+        self._tree = ui_kit.pretty_tree(
+            left,
+            ("角色", "分类", "阵营", "重要", "传记"),
+            (110, 60, 70, 40, 40),
+            on_select=lambda _e: self._load_selected(),
+            height=16,
+        )["tree"]
         self._tree.pack(fill=tk.BOTH, expand=True)
-        self._tree.bind("<<TreeviewSelect>>", lambda _e: self._load_selected())
 
         # ---- 右区：传记正文 + 素材
         right = tk.Frame(body, bg=C["bg_dark"])

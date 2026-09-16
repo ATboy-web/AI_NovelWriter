@@ -11,10 +11,14 @@ import json
 import logging
 import os
 import sys
+import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from cryptography.fernet import Fernet
+
+from .storage import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +104,12 @@ class SecureConfig:
         self.config_file = self.config_dir / "config.json"
         self.key_file = self.config_dir / ".config_key"
         self._dpapi = _WindowsDPAPI()
+        # M7: set()/save()/get() 会被多处并发调用，实例内加锁
+        self._lock = threading.RLock()
+        # L7: 记录「读盘失败」与「解密失败」，两者都不得在下次 save 时
+        # 把用户既有配置当作默认值/空值覆盖掉
+        self._load_failed = False
+        self._undecryptable: dict = {}
         self.fernet = self._init_encryption()
         self.config = self._load()
 
@@ -156,24 +166,64 @@ class SecureConfig:
             return ""
 
     def _load(self) -> dict:
-        """加载配置"""
+        """加载配置。
+
+        L7: 读盘失败**不再静默返回默认值**。旧实现把解析异常吞掉后返回
+        `_default_config()`，此后任何一次 `set()` 都会触发 `save()`，把默认值
+        连同已加密的 `api_key` 一起写回磁盘 —— 用户的密钥与全部设置被永久抹掉。
+        现在改为：先把无法解析的原文件留档（原始字节保留，可人工恢复），
+        再标记 `_load_failed`，让 `save()` 能如实告警而不是假装一切正常。
+        """
         if not self.config_file.exists():
             return self._default_config()
 
         try:
             with open(self.config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-
-            # 解密敏感字段
-            sensitive_fields = ['api_key', 'img_api_key', 'secret_key']
-            for field in sensitive_fields:
-                if field in config and config[field]:
-                    config[field] = self._decrypt(config[field])
-
-            return config
+            if not isinstance(config, dict):
+                raise ValueError(f"配置根节点不是对象（{type(config).__name__}）")
         except Exception as e:
-            logger.error(f"加载配置失败: {e}")
+            self._load_failed = True
+            archived = self._archive_corrupt_config()
+            logger.error(
+                f"加载配置失败: {e}；原文件已留档为 "
+                f"{archived.name if archived else '（留档失败）'}。本次运行使用默认配置，"
+                "无法解密字段的原始密文会被保留、不会被写空。"
+            )
             return self._default_config()
+
+        # 解密敏感字段
+        sensitive_fields = ['api_key', 'img_api_key', 'secret_key']
+        for field in sensitive_fields:
+            if field in config and config[field]:
+                ciphertext = config[field]
+                plain = self._decrypt(ciphertext)
+                if plain == "" and str(ciphertext).startswith('gAAAAA'):
+                    # 解密失败（Fernet 密钥不匹配/密文损坏）：记下原文，
+                    # save() 时原样写回，避免「空值覆盖已加密密钥」
+                    self._undecryptable[field] = ciphertext
+                config[field] = plain
+
+        return config
+
+    def _archive_corrupt_config(self) -> Optional[Path]:
+        """把无法解析的配置文件留档，供人工恢复；返回留档路径。"""
+        try:
+            if not self.config_file.exists():
+                return None
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base = f"{self.config_file.stem}.corrupt-{stamp}"
+            dst = self.config_file.with_name(f"{base}.json")
+            seq = 1
+            while dst.exists():
+                dst = self.config_file.with_name(f"{base}_{seq}.json")
+                seq += 1
+            dst.write_bytes(self.config_file.read_bytes())
+            logger.warning(f"已留档损坏的配置文件: {dst.name}")
+            return dst
+        except OSError as e:
+            logger.error(f"留档损坏配置文件失败: {e}")
+            return None
 
     def _default_config(self) -> dict:
         """默认配置"""
@@ -199,32 +249,44 @@ class SecureConfig:
         }
 
     def save(self):
-        """保存配置（加密敏感字段）"""
-        config_to_save = self.config.copy()
+        """保存配置（加密敏感字段）
 
-        # 加密敏感字段
-        sensitive_fields = ['api_key', 'img_api_key', 'secret_key']
-        for field in sensitive_fields:
-            if field in config_to_save and config_to_save[field]:
-                config_to_save[field] = self._encrypt(config_to_save[field])
+        L7 + 原子写：旧实现用 `open(...,'w')` + `json.dump` 非原子写，
+        写一半崩溃就留下截断的配置；且会把「解密失败返回的空值」当新值加密回写，
+        等于静默抹掉密钥。现在：
+          - 用 `atomic_write_json`（临时文件 + `os.replace`），
+            `mode=0o600` 在替换前施加，不存在"权限尚且宽松"的窗口期；
+          - 内存为空但原始密文仍在手上的字段，**原样写回密文**。
+        """
+        with self._lock:
+            config_to_save = self.config.copy()
 
-        with open(self.config_file, 'w', encoding='utf-8') as f:
-            json.dump(config_to_save, f, indent=2, ensure_ascii=False)
+            sensitive_fields = ['api_key', 'img_api_key', 'secret_key']
+            for field in sensitive_fields:
+                if config_to_save.get(field):
+                    config_to_save[field] = self._encrypt(config_to_save[field])
+                elif field in self._undecryptable:
+                    # 无法解密 → 保留原密文（不做"空值覆盖"）
+                    config_to_save[field] = self._undecryptable[field]
 
-        # 设置文件权限（仅当前用户可读写）
-        try:
-            os.chmod(self.config_file, 0o600)
-        except (OSError, AttributeError):
-            pass
+            if self._load_failed:
+                logger.warning(
+                    "配置读取曾失败，本次保存基于默认值；原文件已留档为 "
+                    "config.corrupt-*.json，如需恢复请手动比对。"
+                )
+
+            atomic_write_json(self.config_file, config_to_save, indent=2, mode=0o600)
 
     def get(self, key: str, default=None):
         """获取配置值"""
-        return self.config.get(key, default)
+        with self._lock:
+            return self.config.get(key, default)
 
     def set(self, key: str, value):
         """设置配置值"""
-        self.config[key] = value
-        self.save()
+        with self._lock:
+            self.config[key] = value
+            self.save()
 
     def get_api_key(self) -> str:
         """获取API密钥"""
@@ -237,11 +299,17 @@ class SecureConfig:
 
 # 全局实例
 _secure_config: Optional[SecureConfig] = None
+# M7: 单例构造必须加锁 —— 旧实现无锁，首次并发调用可能各构造一个实例，
+# 而每个实例在密钥文件不存在时会各自 `Fernet.generate_key()`，
+# 只有一个写入磁盘成功，另一个实例用它自己的密钥加密数据后永远解不开。
+_secure_config_lock = threading.Lock()
 
 
 def get_secure_config() -> SecureConfig:
-    """获取安全配置管理器单例"""
+    """获取安全配置管理器单例（线程安全）"""
     global _secure_config
     if _secure_config is None:
-        _secure_config = SecureConfig()
+        with _secure_config_lock:
+            if _secure_config is None:
+                _secure_config = SecureConfig()
     return _secure_config

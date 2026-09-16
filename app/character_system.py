@@ -435,12 +435,38 @@ class CharacterSystem:
                 with open(old_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 name = data.get("name", "主角")
+                imported = False
                 if name not in self.characters:
                     self.characters[name] = CharacterProfile(data=data)
                     self.save_character(name)
-                old_file.unlink()  # 删除旧文件
-            except Exception:
-                pass
+                    imported = True
+
+                # L6: 旧文件**一律不删除**，改为改名归档（内容原样保留在磁盘上）。
+                # 旧实现把 `old_file.unlink()` 放在 `if name not in ...` 的同级：
+                # 当 name 已存在于内存时，旧文件从未被读取导入就被删掉，
+                # 用户失去最后一次人工比对机会，且 unlink 不可逆。
+                archived = old_file.with_name(old_file.name + ".migrated")
+                if archived.exists():
+                    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    archived = old_file.with_name(f"{old_file.name}.migrated-{stamp}")
+                old_file.rename(archived)
+
+                if imported:
+                    logger.info(
+                        f"[character_system] 已从旧版单文件导入角色「{name}」，"
+                        f"原文件归档为 {archived.name}"
+                    )
+                else:
+                    logger.warning(
+                        f"[character_system] 旧版单文件中的「{name}」已存在于角色库、未重复导入；"
+                        f"原文件已归档为 {archived.name}，内容未被删除，可人工比对"
+                    )
+            except Exception as e:
+                # 不再静默：保留原文件并明确记录，便于人工处理
+                logger.warning(
+                    f"[character_system] 旧版单文件 {old_file.name} 处理失败，已保留原文件: "
+                    f"{type(e).__name__}: {e}"
+                )
         
         # 设置活跃角色
         if self.characters and not self.active_name:

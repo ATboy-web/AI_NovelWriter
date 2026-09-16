@@ -73,6 +73,9 @@ ignore = ["E501", "E701", "E702", "W291", "W293"]
 # 该模块用 try/except ImportError 包裹一组导入，用来探测"新功能"子模块是否可用；
 # 导入本身就是探测手段，不能删除（故豁免 F401）。
 "backend/novel-service/app/api/new_features_routes.py" = ["F401"]
+# 启动器同样用 try/except ImportError 探测 tkinter 子模块与 psutil 是否可用
+# （`HAS_TKINTER` / `HAS_PSUTIL` 这两个开关就是探测结果），导入即探测，不能删除。
+"installer/launcher.py" = ["F401"]
 
 [tool.mypy]
 python_version = "3.11"

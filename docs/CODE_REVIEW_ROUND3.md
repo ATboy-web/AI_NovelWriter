@@ -4,7 +4,7 @@
 - 复查对象：`ai-novel-writer` 桌面端 `app/`（21,855 行 / 50 文件）、`backend/`、`installer/`、部署编排
 - 方法：逐段阅读实际代码 + 全仓模式扫描 + **可执行核验**（可疑点一律写脚本实跑，避免误报）
 - 复查基线：HEAD `2bc4e68`
-- 说明：本报告只做**识别与定位**，未修改任何代码
+- 说明：本报告只做**识别与定位**，未修改任何代码；**修复落实与验证结果见 §7**
 
 ---
 
@@ -278,3 +278,77 @@
 
 14. 删除 `retry_with_backoff`、`_CHARACTER_FIELD_NAMES`；`_load_all` 的 `unlink` 改为显式确认或保留文件（消除 M1/M2/L6）。
 15. `memory_manager` 的索引/活跃度/摘要落盘统一到 `app/storage.py`（消除 M5）。
+
+---
+
+## 7. 修复落实与验证（收尾补写）
+
+> §1–§6 保持「识别与定位」原貌以便对照；本节记录**已落地的修改**与**验证方式**。
+
+### 7.1 逐项落实状态
+
+| 编号 | 状态 | 修复位置 | 关键改动 |
+|---|---|---|---|
+| V1 | ✅ | `app/memory_manager.py` `save_characters` | 新增「降级读之后禁止盲写」闸门：`_characters_corrupt` 为真时**即使入参非空也拒绝**写入；`force=True` 才放行，且**放行也会先留档**损坏文件 |
+| V2 | ✅ | `app/storage.py` | `backup_file(validate=True)` + `atomic_write_json` 默认带 `validate=True`：主文件不可解析时**跳过轮转**，保住既有 `.bak` |
+| V3 | ✅ | `app/character_ui.py` `_auto_detect_characters` | 改走 `memory.mutate_characters`（锁内读-改-写），并捕获闸门异常提示「已阻止一次可能清空角色库的写入」 |
+| V4 | ✅ | `app/novel_agent.py` `generate_characters` | 合并前校验底座可信，损坏即抛 `CharacterDataGuardError`。判据用 `is True` 而非真值判断 —— `self.memory` 允许是鸭子类型协作者（单测即 MagicMock），真值判断会把一切调用误判为损坏 |
+| S1 | ✅ | `backend/shared/middleware/logging.py` | 新增 `_sanitize_query`，查询串中的敏感键按名打码 |
+| S2 | ✅ | 同上 | `_sanitize_value` 递归处理 `dict` / `list` / `tuple` |
+| S3 | ✅ | `docker-compose.yml` | 仅 `frontend`、`nginx` 绑 `0.0.0.0`；`postgres/redis/ai-service/novel-service` 与整个监控栈全部改绑 `127.0.0.1` |
+| S4 | ✅ | `backend/ai-service/app/core/config.py` | `validate_settings` 在生产环境 `raise ValueError`（缺 `DATABASE_URL`、CORS 为 `*`） |
+| S5 | ✅ | `backend/shared/middleware/auth.py` | 模块文档 + 503 文案明确「开箱仅支持静态 API Key，无签发端点」，消除「开启即不可用」的误导 |
+| S6 | ✅ | `app/cloud_storage.py` | 新增 `_safe_error(...)`，对 URL 中的 token 与错误文本统一脱敏；10 处 `print(f"…{e}")` 全部替换 |
+| S7 | ✅ | `app/ai_client.py`、`app/cloud_storage.py` | `AIClient._validate_api_base` 与 `WebDAVProvider` 的 `_require_secure_url` 拒绝向非本机地址发送明文 HTTP / 非 http(s) 协议 |
+| S8 | ✅ | `backend/shared/middleware/auth.py` | `X-User-Id` 改为 `apikey-<sha256 前 12 位>`，不再泄露 Key 原文片段 |
+| L1/L2 | ✅ | `app/parsing.py` | 结构修复只作用于**字符串外**片段（`_iter_segments` + `_repair_outside_strings`），不再改写正文 |
+| L3 | ✅ | `app/parsing.py` `clean_ai_json_text` | 弯引号改为对称状态机：记录 opener，`“` 只能被配对的 `”` 关闭 |
+| L4/L5 | ✅ | `app/storage.py` `safe_filename` | 中和 Windows 保留设备名；超长名截断并追加 sha1 前 8 位；剥离尾点/尾空格 |
+| L6 | ✅ | `app/character_system.py` `_load_all` | 旧单文件一律 `rename` 为 `.migrated`（同名带时间戳去重）；失败改为显式告警，`unlink` 彻底移除 |
+| L7 | ✅ | `app/secure_config.py` | 读盘失败时留档 + 置 `_load_failed`；解不开的密文记入 `_undecryptable` 并在下次 `save` 原样写回，不再被空值覆盖 |
+| L8 | ✅ | `installer/launcher.py` | 子进程输出重定向到 `logs/<name>.log`，创建失败退回 `subprocess.DEVNULL`；句柄在 `stop_all_services` 统一关闭 |
+| L9 | ✅ | `app/character_ui.py` `start_generate` / `run` | 字数先 `try/except` 解析 + 范围校验，**通过后才** `destroy()` 对话框；`max_tokens` 按 `MAX_BIO_TOKENS` 钳位；空返回抛 `RuntimeError`；传记未挂到角色时明确提示 |
+| L10 | ✅ | `app/parsing.py` `extract_characters_payload` | `raw` 仅在**确为字符串**时按旧版载体处理，否则与顶层字典合并，避免与「名为 raw 的角色」冲突 |
+| M1 | ✅ | `app/ai_client.py` | 删除 `retry_with_backoff`；新增 `_is_transient_error`（仅 `httpx.TransportError` 与 429/5xx 才重试） |
+| M2 | ✅ | `app/parsing.py` | 删除死常量 `_CHARACTER_FIELD_NAMES` |
+| M3 | ✅ | `app/parsing.py` | `_pair_braces` 改为 O(n) 配对，替代最坏 O(n²) 的反向扫描 |
+| M4 | ✅ | `app/parsing.py` | 策略 4/5 增加 `_is_balanced` + 顶层类型校验，杜绝「补后缀强行解析成功」 |
+| M5 | ✅ | `app/memory_manager.py` | 倒排索引/角色活跃度/卷摘要/设置/meta 落盘全部走 `atomic_write_json` / `atomic_write_text`（已无裸 `write_text`） |
+| M6 | ✅ | `app/memory_manager.py` | 类级 `_KW_CACHE` 增配 `_KW_CACHE_LOCK`，读写全部加锁 |
+| M7 | ✅ | `app/secure_config.py` | 单例改为双重检查锁；`get`/`set`/`save` 走实例级 `RLock` |
+| M8 | ✅ | `app/ai_client.py` | 诊断日志移除 `content_preview`，正文不再落盘 |
+| M9 | ✅ | `app/ai_client.py` | 新增 `refresh_if_needed()`（按配置指纹比对重建客户端），`chat()` 调用前先刷新 |
+| M10 | ✅ | `app/cloud_storage.py` | 见 S6：10 处直接 `print` 全部改为脱敏输出 |
+| M11 | ✅ | `docker-compose.yml` | 健康检查改用 `REDISCLI_AUTH` 环境变量，口令不再出现在 `argv`；`--requirepass` 去掉「不配即空口令」的默认值 |
+| M12 | ✅ | `app/parsing.py` | 新增 `_safe_exp_int`，钳位 ±1,000,000，兼容超长数字串 |
+
+### 7.2 验证方式
+
+| 验证项 | 命令 / 方法 | 结果 |
+|---|---|---|
+| 全量测试 | `python -m pytest -q`（`testpaths = tests, backend/tests`） | **1391 passed / 0 failed** |
+| 本轮专项回归 | `python -m pytest tests/test_review_round3_fixes.py` | **47 passed** |
+| 静态检查 | `python -m ruff check app/ tests/ backend/ scripts/ installer/` | **All checks passed!** |
+| 角色资产未受影响 | 对线上 `memory/characters.json` 计算摘要 | **286 个角色**，sha256 `fdd2d44d…2db056`，49048 字节；未出现在 `git status` 变更列表中 |
+| 改动范围 | `git diff --stat` | 仅 19 个源码/测试/配置/文档文件，**无任何数据文件** |
+
+### 7.3 新增回归测试（`tests/test_review_round3_fixes.py`）
+
+按缺陷编号组织，逐条锁定行为，共 47 条：
+
+- **V1/V4**：降级读后写非空集合必须被拒且不触碰磁盘；拒绝时留档损坏文件；286 规模库在损坏下不丢失；`force=True` 可放行且**仍先留档**；同一秒内多次留档各自独立；`mutate_characters` 同样被闸门拦住；主文件坏但 `.bak` 可解析属正常降级、不误伤写路径。
+- **V3**：`_auto_detect_characters` 必须走 `mutate_characters`，且把闸门异常暴露给用户。
+- **L6**：旧单文件导入后必须存在 `.migrated` 归档；同名时不静默丢弃；迁移块内不得出现 `unlink`。
+- **L7**：配置损坏留档并置标记；解不开的密文在 `save` 后被原样保留；原子写不留临时文件；单例并发只构造一次。
+- **L8**：不得创建永不排空的 `PIPE`；输出必须重定向到日志（失败退回 `DEVNULL`）；停止时关闭句柄。
+- **L9**：字数解析有守卫与提示；校验失败不关对话框；`max_tokens` 有钳位；空返回被拒；角色未挂上时明确提示。
+- **M6**：缓存锁存在；并发抽取无异常且缓存有界。
+- **M8/M9/S7**：远程明文 HTTP 被拒、非 http(s) 协议被拒、本机 HTTP 放行；改 Key 后客户端立即重建；`content_preview` 已消失。
+- **S3/M11/S4**：仅边缘服务对外；内部服务均绑 `127.0.0.1`；Redis 口令必填且不进 `argv`；`ENABLE_AUTH` 默认 `true`；生产校验真正 `raise`。
+
+> 源码扫描型断言统一经 `_strip_noise()` 处理：修复说明本身会以注释/文档字符串提到「旧的 `xxx` 写法」，不过滤会让断言被自己的说明文字推翻。
+
+### 7.4 已知遗留（未在本轮处理）
+
+- `backend/` 系列的「用户认证服务 / 支付服务 / 前端 React 重构」仍为规划状态，与本轮安全修复无关。
+- `M5` 覆盖了 `memory_manager` 的落盘路径；`app/` 下若还有其它模块直接 `write_text` 写结构化数据，属后续统一项。

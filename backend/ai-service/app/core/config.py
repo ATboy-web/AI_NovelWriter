@@ -131,11 +131,21 @@ def validate_settings():
     if settings.is_production:
         if settings.CORS_ORIGINS == ["*"]:
             errors.append("生产环境CORS_ORIGINS不能为['*']，请配置具体域名")
-    
+        # S4: 生产环境缺少数据库连接同样是致命配置错误
+        if not settings.DATABASE_URL:
+            errors.append("生产环境DATABASE_URL未配置")
+
+    if errors:
+        for error in errors:
+            logger.error(f"配置错误: {error}")
+        # S4: 此前只打日志就返回 —— 生产环境带着错误配置照常启动，
+        # "校验"形同虚设。与 novel-service 的行为对齐：生产环境直接拒绝启动。
+        if settings.is_production:
+            raise ValueError(
+                "配置验证失败，拒绝在生产环境启动: " + "; ".join(errors)
+            )
+
     return errors
 
 # 在模块加载时验证配置
 validation_errors = validate_settings()
-if validation_errors:
-    for error in validation_errors:
-        logger.error(f"配置错误: {error}")

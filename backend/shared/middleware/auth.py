@@ -1,7 +1,22 @@
 """
 JWT认证中间件 - 提供API认证和授权功能
+
+认证模型（S5 明确声明）
+----------------------
+本中间件支持两种凭据：
+
+1. **静态 API Key**（推荐，也是本服务唯一开箱可用的方式）
+   通过环境变量 ``API_KEYS`` 配置，客户端以 ``X-API-Key: <key>``（或
+   ``?api_key=``）调用。
+2. JWT Token —— 由 ``JWTManager`` 验签，但**本服务不提供签发端点**
+   （全仓无 ``/login`` / ``/token`` 路由）。``create_access_token`` 仅用于
+   单元测试与内部集成。
+
+因此一体化部署请优先使用 ``API_KEYS``；只配置 ``SECRET_KEY`` 而不配
+``API_KEYS`` 会得到一个"能验签但没有 token 可用"的服务。
 """
 
+import hashlib
 import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -92,8 +107,13 @@ def _load_api_keys() -> Dict[str, Dict]:
             key, level = item, "basic"
         key = key.strip()
         if key:
+            # S8: user_id 不能包含密钥本体。旧实现用 `f"apikey-{key[:8]}"`，
+            # 而这个值会经 `X-User-Id` 响应头回给调用方（见 dispatch），
+            # 使密钥前 8 位进入浏览器 / 代理 / 日志的可见范围，缩小暴力破解空间。
+            # 改用密钥的短哈希：仍然稳定、可区分不同 key，但不可逆。
+            digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
             result[key] = {
-                "user_id": f"apikey-{key[:8]}",
+                "user_id": f"apikey-{digest}",
                 "username": "apikey",
                 "role": "user",
                 "level": level.strip() or "basic",
@@ -200,14 +220,26 @@ class AuthMiddleware(BaseHTTPMiddleware):
         
         # 启用鉴权但不存在任何凭据来源时，中间件无法认证任何调用方。
         # 此时必须显式失败（503 + 可操作提示），绝不能静默放行 —— 静默放行等于没有鉴权。
-        self._credential_source_available = bool(
-            self.config.SECRET_KEY or _load_api_keys()
-        )
+        #
+        # S5 说明：本服务**只支持静态凭据**（环境变量 `API_KEYS` 里的 API Key），
+        # 没有任何签发 JWT 的端点（全仓无 /login、/token 路由，
+        # `JWTManager.create_access_token` 仅供单测与内部使用）。
+        # 因此"只配 SECRET_KEY 不配 API_KEYS"仍会得到一个能验签却没有 token 可用的服务，
+        # 下面的提示把 API Key 作为**首选**方案写出来，避免把运维逼向 ENABLE_AUTH=false。
+        api_keys_configured = bool(_load_api_keys())
+        self._credential_source_available = bool(self.config.SECRET_KEY or api_keys_configured)
         if not self._credential_source_available:
             logger.error(
-                "ENABLE_AUTH 已启用，但未配置任何凭据来源（SECRET_KEY / JWT_SECRET / "
-                "API_KEYS 均为空）。所有非公开端点将返回 503。"
-                "请配置其中任意一项，或显式设置 ENABLE_AUTH=false 关闭鉴权。"
+                "ENABLE_AUTH 已启用，但既未配置 API_KEYS（推荐，客户端用 `X-API-Key` 直接调用），"
+                "也未配置 SECRET_KEY / JWT_SECRET。本服务没有签发 JWT 的端点，"
+                "只配 SECRET_KEY 无法获得可用凭据。所有非公开端点将返回 503。"
+                "请配置 API_KEYS，或显式设置 ENABLE_AUTH=false 关闭鉴权。"
+            )
+        elif self.config.SECRET_KEY and not api_keys_configured:
+            logger.warning(
+                "已配置 SECRET_KEY 但未配置 API_KEYS：本服务没有签发 JWT 的端点，"
+                "客户端需要一个由其它途径签发的 Token 才可用；"
+                "一体化部署建议直接使用 API_KEYS + `X-API-Key`。"
             )
     
     def _is_public_path(self, path: str) -> bool:
@@ -276,9 +308,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 content={
                     "error": "Auth Misconfigured",
                     "message": (
-                        "认证已启用，但服务未配置任何凭据来源。请设置环境变量 "
-                        "SECRET_KEY（或 JWT_SECRET）/ API_KEYS，"
+                        "认证已启用，但服务未配置任何可用凭据。"
+                        "本服务当前只支持静态 API Key：请设置环境变量 "
+                        "API_KEYS（客户端以 `X-API-Key: <key>` 调用），"
                         "或显式设置 ENABLE_AUTH=false 关闭鉴权。"
+                        "（注意：本服务**没有**签发 JWT 的端点，"
+                        "单独配置 SECRET_KEY 不产生可用凭据。）"
                     ),
                 },
             )

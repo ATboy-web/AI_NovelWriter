@@ -16,8 +16,17 @@ from loguru import logger
 from app import UIStyle
 from app.character_system import CharacterSystem
 from app.format_converter import FormatConverter, ImageManager
+from app.memory_manager import CharacterDataCorruptError, CharacterDataGuardError
 from app.parsing import extract_characters_payload, strip_ai_json_fences
 from app.storage import atomic_write_json, atomic_write_text, safe_filename
+
+# L9: 传记生成的输入/输出边界
+MIN_BIO_WORDS = 1_000
+MAX_BIO_WORDS = 200_000
+# 单次请求的 max_tokens 上限。主流云端 API 的 completion 上限通常 8K–16K，
+# 旧实现直接用 `word_count * 2`（可选 200000 → 请求 400000 tokens），
+# 结果必然是 400 报错或被截断，而用户以为在生成 20 万字传记。
+MAX_BIO_TOKENS = 16_000
 
 
 class CharacterUIMixin:
@@ -157,24 +166,35 @@ class CharacterUIMixin:
                 return
             new_names = json.loads(match.group())
 
-            if new_names:
-                characters = existing.copy() if existing else {}
-                added = []
-                for name in new_names:
-                    if name and name not in characters:
-                        characters[name] = {
-                            "first_appearance": chapter_num,
-                            "category": "无名小卒",
-                            "faction": "中立",
-                            "auto_created": True
-                        }
-                        added.append(name)
+            if new_names and self.memory:
+                # V3: 必须走锁内「读-改-写」。旧实现是
+                # `characters = existing.copy()` 后整体 `save_characters(characters)`：
+                # 一旦 `existing` 是降级读出来的 {}（主文件与 .bak 都损坏），
+                # 合并结果就只剩本次新增的几条，守卫（只查入参是否为空）放行 →
+                # 整库角色被清空；与传记后台线程并发时还会丢更新。
+                added: list = []
+
+                def _mutate(chars: dict):
+                    for name in new_names:
+                        if name and name not in chars:
+                            chars[name] = {
+                                "first_appearance": chapter_num,
+                                "category": "无名小卒",
+                                "faction": "中立",
+                                "auto_created": True
+                            }
+                            added.append(name)
+
+                self.memory.mutate_characters(_mutate)
 
                 if added:
-                    self.memory.save_characters(characters)
                     # 同时同步到CharacterSystem
                     self._sync_characters_to_system(added, chapter_num)
                     self._log(f"[角色] 自动创建{len(added)}个新角色: {', '.join(added[:5])}")
+        except (CharacterDataGuardError, CharacterDataCorruptError) as e:
+            # 数据保护闸门触发：必须显式告知用户，不能只写进日志。
+            self._log(f"[角色] ⚠️ 已阻止一次可能清空角色库的写入：{e}")
+            logger.error(f"[character_ui] 角色写入被数据保护闸门拦截: {e}")
         except Exception as e:
             self._log(f"[角色] 角色检测异常: {type(e).__name__}: {e}")
     def _sync_characters_to_system(self, names: list, chapter_num: int):
@@ -247,7 +267,22 @@ class CharacterUIMixin:
         contrast_btn.pack(anchor=tk.W, padx=30, pady=3)
 
         def start_generate():
-            word_count = int(word_var.get())
+            # L9: word_var 绑定的是**可编辑** Combobox，用户可以输入任意文本。
+            # 旧实现直接 `int(word_var.get())`：非数字会抛 ValueError，且发生在
+            # `word_dialog.destroy()` 之前 —— 异常逃逸到 Tk 回调，只打栈、
+            # 不给用户任何提示，对话框还关不掉。
+            raw = (word_var.get() or "").strip()
+            try:
+                word_count = int(raw)
+            except (TypeError, ValueError):
+                messagebox.showwarning("输入无效", f"传记字数必须是整数，当前输入：{raw!r}")
+                return
+            if not (MIN_BIO_WORDS <= word_count <= MAX_BIO_WORDS):
+                messagebox.showwarning(
+                    "输入无效",
+                    f"传记字数需在 {MIN_BIO_WORDS} ~ {MAX_BIO_WORDS} 之间，当前输入：{word_count}",
+                )
+                return
             word_dialog.destroy()
 
             def run():
@@ -288,8 +323,16 @@ class CharacterUIMixin:
 
                     prompt = f"请为「{char_name}」撰写个人传记。大纲参考：{json.dumps(outline[:5], ensure_ascii=False)}"
 
+                    # L9: max_tokens 按 API 上限钳位（详见 MAX_BIO_TOKENS 注释）
+                    max_tokens = min(max(word_count * 2, 1024), MAX_BIO_TOKENS)
                     result = self.ai_client.chat([{"role": "user", "content": prompt}],
-                                         system=system, max_tokens=word_count * 2)
+                                         system=system, max_tokens=max_tokens)
+
+                    # L9: 返回校验 —— 空结果直接失败，不要把空文件写下去并
+                    # 谎报"生成完成"
+                    if not result or not str(result).strip():
+                        raise RuntimeError("AI 返回了空传记，未保存任何内容（请检查 API Key 与模型配置）")
+                    result = str(result)
 
                     # 保存传记
                     bio_dir = self.current_novel_dir / "biographies"
@@ -302,14 +345,24 @@ class CharacterUIMixin:
                     # 可能已跑了很久（10万字的传记可达数分钟），其间其它线程
                     # （章节生成自动建角色）写入的新角色若被这里"读全量→写全量"
                     # 覆盖，就会静默丢失（R4）。
+                    attached = {"ok": False}
                     if self.memory:
                         def _attach_bio(characters: dict):
                             info = characters.get(char_name)
                             if isinstance(info, dict):
                                 info['biography'] = result[:500] + "..."
                                 info['biography_file'] = str(bio_file)
+                                attached["ok"] = True
 
                         self.memory.mutate_characters(_attach_bio)
+
+                    # L9: 角色不在档案里时旧实现直接跳过、界面仍显示"生成完成"，
+                    # 用户以为已挂上。现在明确告知。
+                    if not attached["ok"]:
+                        self._log(
+                            f"[提示] 角色「{char_name}」不在角色档案中，传记已保存到 {bio_file}，"
+                            "但未能挂到角色面板（请先创建该角色后重试）"
+                        )
 
                     self.root.after(0, lambda: self._show_biography(result, char_name))
                     self._log(f"「{char_name}」个人传记生成完成，已保存到 {bio_file}")

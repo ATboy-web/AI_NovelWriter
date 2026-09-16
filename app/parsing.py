@@ -5,12 +5,19 @@
 中抽取出的纯逻辑：不依赖 self、GUI 或任何全局可变状态 —— 输入字符串、输出数据结构，
 因此可被独立单元测试（见 tests/test_parsing.py）。
 
-方法体与原实现逐字节一致，仅由「类方法」提升为「模块级函数」。
-
 第二轮优化（2026-09-16）新增：
 - `clean_ai_json_text` / `repair_ai_json_text`：两种 JSON 清洗策略
 - `extract_characters_payload` / `parse_characters_payload` / `strip_ai_json_fences`：
   收敛原先散落在 `character_ui` 中、已出现漂移的三份「角色原始文本解析」实现
+
+第三轮修复（2026-09-17）：
+- L1/L2 结构性修复改为**字符串感知**（`_repair_structures`），不再改写字符串正文
+- L3 `clean_ai_json_text` 的弯引号状态机改为对称（`“` 开 / `”` 关）
+- L10 不再把顶层键 `raw` 当作"必然是旧版载体"而丢弃名为 raw 的角色
+- M2 删除全仓零引用的死常量 `_CHARACTER_FIELD_NAMES`
+- M3 Strategy 5 从 O(n²) 降为 O(n)（配对括号预计算）
+- M4 Strategy 4 增加"括号配平 + 顶层类型一致"校验，不再把失败伪装成成功
+- M12 EXP 数值读取加保护与钳位（超长数字串会让 `int()` 抛错）
 """
 
 import json
@@ -26,15 +33,19 @@ __all__ = [
     "extract_characters_payload",
 ]
 
-# 角色字典中不应被当作角色名的保留键
-_RESERVED_CHARACTER_KEYS = frozenset({"raw"})
-# 已知的"字段名而非角色名"集合（AI 响应里出现时需排除）
-_CHARACTER_FIELD_NAMES = frozenset({
-    "gender", "age", "category", "faction", "personality", "background",
-    "appearance", "weapon", "attributes", "skill_suggestions", "goal",
-    "relationship_to_main", "title", "summary", "key_events", "name",
-    "level", "hp", "mp", "exp", "stats",
-})
+# Strategy 5 中不应被当作角色名的键：它们的值是角色的子对象（武器/属性等），
+# 不是角色本身。
+# L10：此前这里还包含 `"raw"`，导致一个**真的叫 raw 的角色**被静默丢弃；
+# 现在只保留真正是子对象的字段名。
+_PARSE_SKIP_KEYS = frozenset({"weapon", "attributes", "skill_suggestions"})
+
+# 匹配 `"键": {` 的位置（Strategy 5 用）
+_KEY_OBJECT_RE = re.compile(r'"([^"]+)"\s*:\s*\{')
+
+# M12：EXP 单次增减的绝对上限。正则可能抓到超长数字串
+# （如 100 位数字），`int()` 在超过 `sys.get_int_max_str_digits()` 时抛错；
+# 即便不抛错，下游按数值计算也会溢出。这里统一钳位。
+_MAX_ABS_EXP = 1_000_000
 
 
 def clean_ai_json_text(text: str) -> str:
@@ -50,15 +61,18 @@ def clean_ai_json_text(text: str) -> str:
     内嵌引号的内容不会被破坏 —— 旧的朴素做法会把它们一并替换成半角或直引号，
     导致 JSON 非法或文案被改写。
 
-    已知取舍：若 AI 把弯引号**当作 JSON 分隔符**（如 ``{“a”: “b”}``），
-    本函数无法修复（字符串内部一律原样保留）；这种情况由
-    `repair_ai_json_text` 作为兜底候选处理，见 `parse_characters_payload`。
+    L3 修复（引号对称）：此前**字符串外**的 ``“`` 与 ``”`` 都会 `in_string = True`，
+    于是 ``{“a”: “b”}`` 会被解析成"开、开"两次而永远关不上。现在记录进入字符串
+    时用的是哪种引号：由 ``“`` 开启的字符串只有 ``”`` 能关闭（反之由 ``"`` 开启的
+    字符串只有 ``"`` 能关闭），因此 ``{“a”: “b”}`` 能直接归一化为合法 JSON，
+    而 ``{"口头禅": "他常说“我不在乎”"}`` 里的弯引号仍原样保留。
     """
     if not text:
         return text
 
     out = []
     in_string = False
+    opener = ""  # 进入字符串时使用的引号：'"' 或 '“'
     i = 0
     n = len(text)
     while i < n:
@@ -69,16 +83,32 @@ def clean_ai_json_text(text: str) -> str:
                 out.append(text[i + 1])
                 i += 2
                 continue
-            if ch == '"':
-                in_string = False
-            # 字符串内部一律原样保留（含 ，： “ ” ‘ ’）
-            out.append(ch)
+            if opener == '"':
+                if ch == '"':
+                    in_string = False
+                # 字符串内部一律原样保留（含 ，： “ ” ‘ ’）
+                out.append(ch)
+            else:
+                # 由 “ 开启的字符串
+                if ch == "\u201d":  # ” 关闭
+                    in_string = False
+                    out.append('"')
+                elif ch == '"':
+                    # 直引号出现在弯引号字符串内部：作为字面量保留会破坏 JSON，
+                    # 转义后保留内容
+                    out.append('\\"')
+                else:
+                    out.append(ch)
         else:
             if ch == '"':
                 in_string = True
+                opener = '"'
                 out.append(ch)
-            elif ch in ("\u201c", "\u201d"):  # “ ” 用作分隔符
+            elif ch == "\u201c":  # “ 作为分隔符
                 in_string = True
+                opener = "\u201c"
+                out.append('"')
+            elif ch == "\u201d":  # ” 出现在字符串外 —— 只可能是闭合符误入
                 out.append('"')
             elif ch == "\uff1a":  # ：
                 out.append(":")
@@ -118,16 +148,151 @@ def strip_ai_json_fences(text: str) -> str:
     return clean
 
 
-def _fix_common_json_defects(text: str) -> str:
-    """修复 AI 常见的结构性错误：数组型 goal、连续冒号、尾随逗号。"""
+# ----------------------------------------------------------------- 结构性修复
+
+
+def _iter_segments(text: str):
+    """把文本切成 ``(是否为字符串字面量, 片段)`` 的列表。
+
+    字符串片段**包含两侧引号**；未闭合的字符串会一直延伸到串尾（容错）。
+    """
+    segments = []
+    buf = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch != '"':
+            buf.append(ch)
+            i += 1
+            continue
+        if buf:
+            segments.append((False, "".join(buf)))
+            buf = []
+        j = i + 1
+        chunk = ['"']
+        while j < n:
+            if text[j] == "\\" and j + 1 < n:
+                chunk.append(text[j])
+                chunk.append(text[j + 1])
+                j += 2
+                continue
+            chunk.append(text[j])
+            if text[j] == '"':
+                j += 1
+                break
+            j += 1
+        segments.append((True, "".join(chunk)))
+        i = j
+    if buf:
+        segments.append((False, "".join(buf)))
+    return segments
+
+
+def _repair_outside_strings(chunk: str) -> str:
+    """只作用于「字符串之外」片段的结构修复。"""
+    # 连续冒号（AI 常写成 "key"::value）
+    chunk = re.sub(r":{2,}", ":", chunk)
+    # 尾随逗号：{"a": 1,}
+    chunk = re.sub(r",\s*([\]}])", r"\1", chunk)
+    return chunk
+
+
+def _repair_structures(text: str) -> str:
+    """字符串感知的结构性修复（L1/L2 的核心修复）。
+
+    旧实现把三条正则直接作用在**整段文本**上，其中
+    ``re.sub(r",\\s*([\\]}])", r"\\1", text)`` 会跨越字符串边界：
+    ``{"a": "正文,}"}`` 里的 ``,}`` 被当成尾随逗号删掉 —— **小说正文被改写**。
+
+    现在先按「字符串字面量 / 非字符串」切段，只对非字符串片段做替换；
+    「缺失逗号」这条规则本身就在两个字符串片段之间生效，改为在切段结构上
+    判断：前一段是字符串、中间段只含空白与换行、后一段也是字符串时补 ``,``。
+
+    注：``goal`` 这类"数组型字段归一化为字符串"的修复需要跨越引号匹配，
+    仍在整段上应用；它只有在冒号后紧跟 ``[`` 时才触发，误伤面远小于逗号规则。
+    """
+    segments = _iter_segments(text)
+
+    for idx, (is_str, chunk) in enumerate(segments):
+        if not is_str:
+            segments[idx] = (False, _repair_outside_strings(chunk))
+
+    # 缺失逗号：  "字符串片段" <换行/空白> "字符串片段"  →  前一段后补逗号
+    for idx in range(1, len(segments) - 1):
+        prev_is_str = segments[idx - 1][0]
+        cur_is_str, cur_chunk = segments[idx]
+        next_is_str = segments[idx + 1][0]
+        if prev_is_str and next_is_str and not cur_is_str and re.fullmatch(r"\s*\n\s*", cur_chunk):
+            segments[idx] = (False, "," + cur_chunk)
+
+    fixed = "".join(chunk for _is_str, chunk in segments)
+
+    # 数组型 goal / target / objective / purpose → 分号连接的字符串
     fixed = re.sub(
         r'("(?:goal|target|objective|purpose)")\s*:\s*\[([^\]]*)\]',
         lambda m: m.group(1) + ': "' + "; ".join(re.findall(r'"([^"]*)"', m.group(2))) + '"',
-        text,
+        fixed,
     )
-    fixed = re.sub(r'("\w+")\s*:{2,}', r"\1:", fixed)
-    fixed = re.sub(r",\s*([\]}])", r"\1", fixed)
     return fixed
+
+
+def _fix_common_json_defects(text: str) -> str:
+    """修复 AI 常见的结构性错误：数组型 goal、连续冒号、尾随逗号、缺失逗号。
+
+    第三轮起改为调用字符串感知实现（见 `_repair_structures`），
+    保证不会改写字符串正文。
+    """
+    return _repair_structures(text)
+
+
+def _pair_braces(text: str) -> dict:
+    """返回 ``{`` 下标 → 配对 ``}`` 下标 的映射（单次栈扫描，O(n)）。
+
+    M3：Strategy 5 旧实现对**每个**键匹配都从该处向后扫到串尾寻找配对括号，
+    最坏 O(n²)；200 KB 的 AI 响应可能长时间占住 UI 线程。
+    """
+    stack = []
+    pairs = {}
+    for idx, ch in enumerate(text):
+        if ch == "{":
+            stack.append(idx)
+        elif ch == "}" and stack:
+            pairs[stack.pop()] = idx
+    return pairs
+
+
+def _is_balanced(text: str) -> bool:
+    """字符串感知地检查 ``{}`` / ``[]`` 是否配平且引号闭合。"""
+    depth = 0
+    bracket = 0
+    in_string = False
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if in_string:
+            if ch == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if ch == '"':
+                in_string = False
+        elif ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth < 0:
+                return False
+        elif ch == "[":
+            bracket += 1
+        elif ch == "]":
+            bracket -= 1
+            if bracket < 0:
+                return False
+        i += 1
+    return depth == 0 and bracket == 0 and not in_string
 
 
 def parse_characters_payload(raw) -> dict:
@@ -135,10 +300,12 @@ def parse_characters_payload(raw) -> dict:
 
     多层容错，按"保真度"依次尝试：字符串感知清洗 → 朴素清洗；每层再叠加
     结构性缺陷修复。任一候选能解析出非空角色字典即返回。
+
+    L10：不再用保留键剔除 `raw` —— 只有**值不是 dict** 的条目会被丢掉，
+    因此一个真的叫 `raw` 的角色（其值是 dict）不会被静默丢弃。
     """
     if isinstance(raw, dict):
-        return {k: v for k, v in raw.items()
-                if k not in _RESERVED_CHARACTER_KEYS and isinstance(v, dict)}
+        return {k: v for k, v in raw.items() if isinstance(v, dict)}
     if not isinstance(raw, str) or not raw.strip():
         return {}
 
@@ -156,8 +323,7 @@ def parse_characters_payload(raw) -> dict:
             except (json.JSONDecodeError, ValueError):
                 continue
             if isinstance(parsed, dict):
-                chars = {k: v for k, v in parsed.items()
-                         if k not in _RESERVED_CHARACTER_KEYS and isinstance(v, dict)}
+                chars = {k: v for k, v in parsed.items() if isinstance(v, dict)}
                 if chars:
                     return chars
     return {}
@@ -169,36 +335,48 @@ def extract_characters_payload(data) -> dict:
     兼容两种格式：
     - 现行格式：``{角色名: {字段...}}``
     - 旧版格式：``{"raw": "<AI 原始输出>"}``
+
+    L10 修复：此前只凭键名 `raw` 就认定是旧版载体，且一旦把 `raw` 当载体就
+    **提前返回**、不再看顶层其它条目 —— 于是「一个叫 raw 的角色」会被拿去当
+    载体解析并从结果里消失。现在：
+      - 只有 `raw` 的值是**字符串**时才视为旧版载体（旧格式存的就是文本）；
+      - 解析结果与顶层条目**并集**返回，而不是提前返回，避免丢角色。
     """
     if not isinstance(data, dict):
         return {}
 
-    raw = data.get("raw", "")
-    if isinstance(raw, (str, dict)):
+    # 现行格式的条目：所有 dict 值的条目都是角色
+    result = {k: v for k, v in data.items() if isinstance(v, dict)}
+
+    raw = data.get("raw")
+    if isinstance(raw, str):
         parsed = parse_characters_payload(raw)
         if parsed:
-            return parsed
+            merged = dict(parsed)
+            merged.update(result)  # 顶层现状更权威
+            return merged
 
-    return {k: v for k, v in data.items()
-            if k not in _RESERVED_CHARACTER_KEYS and isinstance(v, dict)}
+    return result
 
 
 
 def _repair_json_preserving_strings(raw: str) -> str:
-    """保真修复：只动字符串之外的标点，字符串内部原样保留。"""
-    fixed = clean_ai_json_text(raw)
-    fixed = re.sub(r'("(?:goal|target|objective|purpose)")\s*:\s*\[([^\]]*)\]',
-                   lambda m: m.group(1) + ': "' + '; '.join(re.findall(r'"([^"]*)"', m.group(2))) + '"',
-                   fixed)
-    fixed = re.sub(r'("\w+")\s*:{2,}', r'\1:', fixed)
-    fixed = re.sub(r',\s*([\]}])', r'\1', fixed)
-    # 缺失逗号: "value"\n  "key" → "value",\n  "key"
-    fixed = re.sub(r'"\s*\n(\s*")', '",\n\\1', fixed)
-    return fixed
+    """保真修复：只动字符串之外的标点，字符串内部原样保留（L2）。
+
+    第三步起统一委托给 `clean_ai_json_text` + `_repair_structures`：
+    旧版本这里一半的正则（尾随逗号、连续冒号、缺失逗号）其实是
+    **字符串不感知**的，会把 `{"a": "正文,}"}` 里的 `,}` 删掉 ——
+    名为"保真"却并不保真。现在所有结构性修复都走同一套字符串感知实现。
+    """
+    return _repair_structures(clean_ai_json_text(raw))
 
 
 def _repair_json_naive(raw: str) -> str:
-    """兼容修复：全角标点与弯引号一律替换（原实现行为，逐字保留）。"""
+    """兼容修复：全角标点与弯引号一律替换（原实现行为，逐字保留）。
+
+    这是**有意不保真**的兜底候选：AI 把弯引号当 JSON 分隔符时，
+    只有全量替换能救回来。调用方按"保真版先试、朴素版兜底"的顺序解析。
+    """
     fixed = repair_ai_json_text(raw)
     # 连续冒号
     fixed = re.sub(r'("\w+")\s*:{2,}', r'\1:', fixed)
@@ -254,38 +432,86 @@ def parse_json_response(response: str, default):
             continue
 
     # Strategy 4: 尝试补全截断的JSON
+    # M4：旧实现无条件把 `'"}', '"}]' …` 拼到候选串尾再 `json.loads`，
+    # 只要恰好解析成功就 `return` —— 可能返回一个"合法但语义错误"的对象，
+    # 把解析失败伪装成成功（下游据此走错分支，比直接失败更难排查）。
+    # 现在要求补全后 **括号配平** 且 **顶层类型与候选开头字符一致**。
     for s in strategies:
+        opener = s.lstrip()[:1]
         for suffix in ['"}', '"}]', '"}}', '"}]}}', '"]}}}', '}}}', '"}\n}', '"}\n}]']:
+            candidate = s + suffix
+            if not _is_balanced(candidate):
+                # 补全后结构仍不平衡 → 这次"成功"必然是假象，跳过
+                continue
             try:
-                return json.loads(s + suffix)
+                parsed = json.loads(candidate)
             except (json.JSONDecodeError, ValueError):
                 continue
+            if opener == '{' and not isinstance(parsed, dict):
+                continue
+            if opener == '[' and not isinstance(parsed, list):
+                continue
+            return parsed
 
     # Strategy 5: 逐个提取已完成的对象
+    # M3：改为预计算配对括号（O(n)），不再对每个匹配向后扫到串尾（O(n²)）。
     for s in strategies:
         chars = {}
-        for m in re.finditer(r'"([^"]+)"\s*:\s*\{', s):
+        pairs = _pair_braces(s)
+        pos = 0
+        while True:
+            m = _KEY_OBJECT_RE.search(s, pos)
+            if not m:
+                break
+            pos = m.end()
             name = m.group(1)
-            if name in ('raw', 'weapon', 'attributes', 'skill_suggestions'):
+            if name in _PARSE_SKIP_KEYS:
                 continue
             brace_start = m.end() - 1
-            depth = 0
-            for j in range(brace_start, len(s)):
-                if s[j] == '{': depth += 1
-                elif s[j] == '}':
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            obj = json.loads(s[brace_start:j+1])
-                            chars[name] = obj
-                        except (json.JSONDecodeError, ValueError):
-                            pass
-                        break
+            close = pairs.get(brace_start)
+            if close is None:
+                continue  # 该对象未闭合，无法提取
+            try:
+                chars[name] = json.loads(s[brace_start:close + 1])
+            except (json.JSONDecodeError, ValueError):
+                pass
         if chars:
             return chars
 
     return default
 
+
+
+def _safe_exp_int(value, default: int = 0) -> int:
+    """把 AI 返回的 EXP 值安全转成 int 并钳位（M12）。
+
+    直接 `int()` 有两个坑：
+    1. 值可能不是数字（None / 字符串 / 列表）→ 抛 TypeError/ValueError；
+    2. 超过 `sys.get_int_max_str_digits()`（Python 3.11+ 默认 4300）位的数字串
+       会让 `int()` 抛 ValueError —— 这个异常会一路冒到 UI 线程；即便不抛错，
+       下游按数值计算也可能溢出。
+    """
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        text = str(value).strip()
+        if re.fullmatch(r"-?\d+", text):
+            # 超长数字串：按符号钳到边界，而不是把用户看到的数值变成 0
+            return -_MAX_ABS_EXP if text.startswith("-") else _MAX_ABS_EXP
+        return default
+    return max(-_MAX_ABS_EXP, min(_MAX_ABS_EXP, number))
+
+
+def _normalize_exp_entries(data: dict) -> dict:
+    """把已解析结果中的 exp 统一钳位（M12）。
+
+    Strategy 1/2 直接返回 `json.loads` 的结果，其中的 exp 可能是字符串、
+    超大整数或非数字；统一走 `_safe_exp_int`，下游才能安全参与计算。
+    """
+    for val in data.values():
+        if isinstance(val, dict) and "exp" in val:
+            val["exp"] = _safe_exp_int(val.get("exp", 0))
+    return data
 
 
 def parse_exp_json(response: str) -> dict:
@@ -312,8 +538,10 @@ def parse_exp_json(response: str) -> dict:
             try:
                 result = json.loads(json_str)
                 if isinstance(result, dict):
-                    return result
-            except json.JSONDecodeError:
+                    return _normalize_exp_entries(result)
+            except (json.JSONDecodeError, ValueError):
+                # M12: 超长数字串会让 json.loads 抛 ValueError（非 JSONDecodeError），
+                # 旧实现只捕获 JSONDecodeError → 异常直接冒到调用方的 UI 线程
                 pass
 
     # Strategy 2: 清理markdown后重试
@@ -339,8 +567,10 @@ def parse_exp_json(response: str) -> dict:
                     break
         if end_idx > start:
             try:
-                return json.loads(cleaned[start:end_idx])
-            except json.JSONDecodeError:
+                parsed = json.loads(cleaned[start:end_idx])
+                if isinstance(parsed, dict):
+                    return _normalize_exp_entries(parsed)
+            except (json.JSONDecodeError, ValueError):
                 pass
 
     # Strategy 3: 逐行提取key-value对
@@ -349,7 +579,7 @@ def parse_exp_json(response: str) -> dict:
     for m in re.finditer(pattern, response):
         result[m.group(1)] = {
             "action": m.group(2),
-            "exp": int(m.group(3)),
+            "exp": _safe_exp_int(m.group(3)),
             "detail": m.group(4)
         }
 
@@ -360,7 +590,7 @@ def parse_exp_json(response: str) -> dict:
         for m in re.finditer(partial_pattern, response):
             result[m.group(1)] = {
                 "action": m.group(2),
-                "exp": int(m.group(3)),
+                "exp": _safe_exp_int(m.group(3)),
                 "detail": ""
             }
 
@@ -384,7 +614,7 @@ def parse_exp_json(response: str) -> dict:
                     if isinstance(val, dict) and 'exp' in val:
                         result[key] = {
                             "action": val.get("action", ""),
-                            "exp": int(val.get("exp", 0)),
+                            "exp": _safe_exp_int(val.get("exp", 0)),
                             "detail": val.get("detail", "")
                         }
         except (json.JSONDecodeError, ValueError):

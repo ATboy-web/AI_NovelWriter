@@ -5,11 +5,61 @@
 
 import hashlib
 import json
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 import httpx
+
+# 允许使用明文 http 的本机地址（本地 WebDAV / 自建网盘）
+_ALLOWED_INSECURE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+
+
+def _require_secure_url(url: str, what: str = "云盘地址") -> str:
+    """校验云盘端点协议：除本机地址外必须使用 https（S7）。
+
+    WebDAV 用 HTTP Basic 承载口令（``auth=(user, password)``），
+    迅雷/阿里云盘用 ``Authorization: Bearer <token>``。若 base_url 被写成
+    ``http://``，这些凭据就会以**明文**发出；此前代码不校验 scheme。
+    """
+    if not url:
+        return url
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"{what}协议非法: {url!r}（仅支持 http/https）")
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme == "http" and host not in _ALLOWED_INSECURE_HOSTS:
+        raise ValueError(
+            f"拒绝向非本机地址 {host!r} 用明文 HTTP 发送云盘凭据（{url!r}）；"
+            "请改用 https://，或把地址指向 localhost / 127.0.0.1 上的本地服务"
+        )
+    return url
+
+
+
+def _safe_error(message: str, error, *secrets: str) -> str:
+    """构造不会泄露凭据的错误文本（S6 / M10）。
+
+    第三方 SDK 与 httpx 的异常 ``str()`` 会带上完整请求 URL，而百度网盘把
+    ``access_token`` 放在查询串里 —— 一次失败的上传就会把长期令牌打印到
+    stdout（并被 launcher 的日志/管道长期留存）。本文件既有的
+    ``_SENSITIVE_FIELDS`` 只用于"展示脱敏"，异常文本绕过了它。
+
+    这里在输出前做两件事：
+    1. 把调用方已知的凭据字面量替换成 ``***``；
+    2. 用正则清掉 URL / 文本里 ``access_token=...`` 一类的查询串键值。
+    """
+    text = f"{message}: {error}"
+    for secret in secrets:
+        if secret:
+            text = text.replace(str(secret), "***")
+    return re.sub(
+        r"(?i)(access_token|refresh_token|api_key|apikey|token|password|secret)=[^&\s\"']+",
+        r"\1=***",
+        text,
+    )
 
 
 class CloudProvider(ABC):
@@ -68,6 +118,8 @@ class WebDAVProvider(CloudProvider):
     
     def connect(self) -> bool:
         try:
+            # S7: WebDAV 走 HTTP Basic，必须拒绝非本机的明文 http 端点
+            self.base_url = _require_secure_url(self.base_url, "WebDAV 地址")
             self.client = httpx.Client(
                 base_url=self.base_url,
                 auth=(self.username, self.password),
@@ -78,7 +130,7 @@ class WebDAVProvider(CloudProvider):
             self.connected = resp.status_code in [200, 207]
             return self.connected
         except Exception as e:
-            print(f"WebDAV连接失败: {e}")
+            print(_safe_error("WebDAV连接失败", e))
             return False
     
     def upload(self, local_path: Path, remote_path: str) -> bool:
@@ -88,7 +140,7 @@ class WebDAVProvider(CloudProvider):
             resp = self.client.put(remote_path, content=data)
             return resp.status_code in [200, 201, 204]
         except Exception as e:
-            print(f"上传失败: {e}")
+            print(_safe_error("上传失败", e))
             return False
     
     def download(self, remote_path: str, local_path: Path) -> bool:
@@ -101,7 +153,7 @@ class WebDAVProvider(CloudProvider):
                 return True
             return False
         except Exception as e:
-            print(f"下载失败: {e}")
+            print(_safe_error("下载失败", e))
             return False
     
     def list_files(self, remote_path: str = "/") -> List[Dict]:
@@ -214,7 +266,7 @@ class BaiduPanProvider(CloudProvider):
             
             return False
         except Exception as e:
-            print(f"百度网盘上传失败: {e}")
+            print(_safe_error("百度网盘上传失败", e))
             return False
     
     def download(self, remote_path: str, local_path: Path) -> bool:
@@ -335,7 +387,7 @@ class QuarkPanProvider(CloudProvider):
             
             return resp.status_code == 200
         except Exception as e:
-            print(f"夸克网盘上传失败: {e}")
+            print(_safe_error("夸克网盘上传失败", e))
             return False
     
     def download(self, remote_path: str, local_path: Path) -> bool:
@@ -448,7 +500,7 @@ class XunleiPanProvider(CloudProvider):
             
             return resp.status_code == 200
         except Exception as e:
-            print(f"迅雷网盘上传失败: {e}")
+            print(_safe_error("迅雷网盘上传失败", e))
             return False
     
     def download(self, remote_path: str, local_path: Path) -> bool:
@@ -568,7 +620,7 @@ class AliyunPanProvider(CloudProvider):
             
             return resp.status_code == 200
         except Exception as e:
-            print(f"阿里云盘上传失败: {e}")
+            print(_safe_error("阿里云盘上传失败", e))
             return False
     
     def download(self, remote_path: str, local_path: Path) -> bool:
@@ -758,7 +810,7 @@ class CloudStorageManager:
             
             return True
         except Exception as e:
-            print(f"上传小说失败: {e}")
+            print(_safe_error("上传小说失败", e))
             return False
     
     def download_novel(self, remote_path: str, local_dir: Path, 
@@ -784,7 +836,7 @@ class CloudStorageManager:
             
             return True
         except Exception as e:
-            print(f"下载小说失败: {e}")
+            print(_safe_error("下载小说失败", e))
             return False
     
     def sync_novel(self, novel_dir: Path, provider_id: str, 
@@ -812,5 +864,5 @@ class CloudStorageManager:
             
             return True
         except Exception as e:
-            print(f"同步小说失败: {e}")
+            print(_safe_error("同步小说失败", e))
             return False

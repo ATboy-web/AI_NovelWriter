@@ -25,7 +25,7 @@ from typing import Any, Callable, Dict, List
 from .agent_orchestrator import AgentOrchestrator
 from .ai_client import AIClient
 from .config import AppConfig
-from .memory_manager import MemoryManager
+from .memory_manager import CharacterDataGuardError, MemoryManager
 from .storage import atomic_write_json, safe_filename
 
 # 诊断日志
@@ -1271,7 +1271,21 @@ class NovelAgent:
                     merged[name] = info
             return merged
 
+        # V4: 先确认底座可信。若磁盘上的角色档案已损坏且无可用备份，
+        # `get_characters()` 会降级返回 {}，于是下面的"并集"退化成"整体覆盖"
+        # ——上一轮修好的 R1 在损坏场景下完全不生效，且因为结果是非空，
+        # 用户看不到任何告警。这里在读到降级结果后立即失败，交出可操作的提示。
+        #
+        # 用 `is True` 而非真值判断：`self.memory` 允许是鸭子类型的协作者
+        # （单测里就是 MagicMock），`getattr(mock, "_characters_corrupt")` 会返回
+        # 一个真值的子 Mock，真值判断会把**一切**调用都误判成"底座损坏"。
         before = len(self.memory.get_characters())
+        if getattr(self.memory, "_characters_corrupt", False) is True:
+            raise CharacterDataGuardError(
+                "角色档案损坏且无可用备份，已拒绝本次角色写入以避免清空既有角色；"
+                "请先修复 memory/characters.json（或其 .bak）后重试"
+            )
+
         merged_chars = self.memory.mutate_characters(_merge)
         added = len(merged_chars) - before
         if added > 0:

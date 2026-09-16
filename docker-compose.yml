@@ -1,5 +1,12 @@
 # AI自动写小说系统 - Docker Compose配置
 # 生产环境配置
+#
+# 端口暴露约定（S3）：
+#   - 只有 nginx(80/443) 与 frontend(3000) 绑定 0.0.0.0，作为唯一入口；
+#   - 数据库、缓存、应用服务、全套监控均绑定 127.0.0.1，仅本机可访问。
+#     此前它们全部发布到 0.0.0.0，同网段任意主机都能直连 PostgreSQL
+#     （口令可能很弱）或直接调用 8002 生成接口消耗 API 配额。
+#   - Redis / PostgreSQL 口令改为**必填**（`${VAR:?}`），不再有空默认值。
 
 version: '3.8'
 
@@ -15,7 +22,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请设置POSTGRES_PASSWORD环境变量}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -36,15 +43,21 @@ services:
   redis:
     image: redis:7-alpine
     container_name: ai-novel-redis
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    # 强制要求口令（去掉 `:-` 空默认，避免"没配就裸奔"）
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?请设置REDIS_PASSWORD环境变量}
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?请设置REDIS_PASSWORD环境变量}
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     networks:
       - backend-net
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-}", "ping"]
+      # M11: 不再用 `redis-cli -a <口令>`（口令会出现在容器进程 argv 里，
+      # `ps` / `docker inspect` 可直接读到）。改用 redis-cli 官方支持的
+      # REDISCLI_AUTH 环境变量传递，argv 中不再含明文口令。
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -63,7 +76,7 @@ services:
       dockerfile: ai-service/Dockerfile
     container_name: ai-novel-ai-service
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?请设置POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_novel}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
@@ -95,13 +108,15 @@ services:
       dockerfile: novel-service/Dockerfile
     container_name: ai-novel-novel-service
     ports:
-      - "8002:8002"
+      - "127.0.0.1:8002:8002"
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?请设置POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_novel}
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?请设置REDIS_PASSWORD环境变量}@redis:6379/0
       - AI_SERVICE_URL=http://ai-service:8001
-      # 认证：本地一体化栈默认关闭（理由同 ai-service）
-      - ENABLE_AUTH=${ENABLE_AUTH:-false}
+      # 认证：本地一体化栈默认开启。此前默认 false 会导致"部署即无鉴权"，
+      # 任何能访问 8002 的人都能直接调用生成接口并消耗 API 配额。
+      # 若确实需要无鉴权的本地调试，请显式设置 ENABLE_AUTH=false。
+      - ENABLE_AUTH=${ENABLE_AUTH:-true}
       - SECRET_KEY=${SECRET_KEY:-}
       - API_KEYS=${API_KEYS:-}
     volumes:
@@ -177,7 +192,7 @@ services:
     image: prom/node-exporter:v1.8.1
     container_name: ai-novel-node-exporter
     ports:
-      - "9100:9100"
+      - "127.0.0.1:9100:9100"
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -196,7 +211,7 @@ services:
     image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: ai-novel-postgres-exporter
     ports:
-      - "9187:9187"
+      - "127.0.0.1:9187:9187"
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?请设置POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_novel}?sslmode=disable"
     depends_on:
@@ -211,10 +226,10 @@ services:
     image: oliver006/redis_exporter:v1.58.0
     container_name: ai-novel-redis-exporter
     ports:
-      - "9121:9121"
+      - "127.0.0.1:9121:9121"
     environment:
       REDIS_ADDR: "redis://redis:6379"
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请设置REDIS_PASSWORD环境变量}
     depends_on:
       - redis
     networks:
@@ -227,7 +242,7 @@ services:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: ai-novel-cadvisor
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -246,7 +261,7 @@ services:
     image: prom/prometheus:v2.53.0
     container_name: ai-novel-prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml
@@ -271,7 +286,7 @@ services:
     image: prom/alertmanager:v0.27.0
     container_name: ai-novel-alertmanager
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml
       - alertmanager_data:/alertmanager
@@ -287,7 +302,7 @@ services:
     image: grafana/grafana:11.1.0
     container_name: ai-novel-grafana
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?请设置GRAFANA_ADMIN_PASSWORD环境变量}
       - GF_USERS_ALLOW_SIGN_UP=false
@@ -312,7 +327,7 @@ services:
     image: grafana/loki:3.0.0
     container_name: ai-novel-loki
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     volumes:
       - loki_data:/loki
     command: -config.file=/etc/loki/local-config.yaml

@@ -17,7 +17,7 @@
 ### 模块位置
 
 ```python
-from app.ai_client import AIClient, TokenStats, retry_with_backoff
+from app.ai_client import AIClient, TokenStats
 ```
 
 ### TokenStats
@@ -74,47 +74,25 @@ print(stats.get_display())  # "1.5K tokens (1次调用)"
 
 ---
 
-### retry_with_backoff
+### 重试策略（v3 变更）
 
-指数退避重试装饰器。
+**`retry_with_backoff` 装饰器已在第三轮代码修复中删除。**
 
-```python
-@retry_with_backoff(max_retries=3, base_delay=1, max_delay=30)
-def api_call():
-    # 可能失败的 API 调用
-    pass
-```
+删除原因（详见 `docs/CODE_REVIEW_ROUND3.md` M1）：
 
-#### 参数
+- 它**无差别重试一切异常**，包括 401（鉴权失败）与 400（参数错误）这类
+  重试必然失败、且会放大配额消耗与用户等待的错误；
+- 全仓生产代码**零调用**（仅被单元测试引用），属于会误导后来者的死代码。
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `max_retries` | int | 3 | 最大重试次数 |
-| `base_delay` | float | 1 | 基础延迟（秒） |
-| `max_delay` | float | 30 | 最大延迟（秒） |
-
-#### 退避策略
-
-- 第 1 次重试：等待 `base_delay` 秒
-- 第 2 次重试：等待 `base_delay * 2` 秒
-- 第 3 次重试：等待 `base_delay * 4` 秒
-- 延迟不超过 `max_delay`
-
-#### 示例
+现行重试逻辑只有一处：`AIClient._dispatch_with_retry`，其退避判定由
+`app.ai_client._is_transient_error` 提供 —— **仅对网络层错误（`httpx.TransportError`）
+与 429 / 5xx 重试**，401/400 等直接失败并给出可操作的报错。
 
 ```python
-import time
+from app.ai_client import _is_transient_error
 
-@retry_with_backoff(max_retries=3, base_delay=0.1)
-def unstable_api():
-    if random.random() < 0.7:
-        raise ConnectionError("连接失败")
-    return "成功"
-
-try:
-    result = unstable_api()
-except ConnectionError:
-    print("重试3次后仍然失败")
+_is_transient_error(httpx.TimeoutException("t"))   # True  —— 网络超时，值得重试
+_is_transient_error(http_401_error)                # False —— 鉴权失败，立即失败
 ```
 
 ---

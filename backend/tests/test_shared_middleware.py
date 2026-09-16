@@ -261,7 +261,17 @@ class TestApiKeyLoading:
         monkeypatch.setenv("API_KEYS", "sk-abc")
         keys = _load_api_keys()
         assert keys["sk-abc"]["level"] == "basic"
-        assert keys["sk-abc"]["user_id"] == "apikey-sk-abc"
+        # S8: user_id 不得包含密钥本体（此前是 "apikey-sk-abc"，会把密钥前 8 位
+        # 通过 X-User-Id 响应头回给调用方）
+        assert keys["sk-abc"]["user_id"].startswith("apikey-")
+        assert "sk-abc" not in keys["sk-abc"]["user_id"]
+
+    def test_api_key_user_id_is_stable_and_not_revealing(self, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-abc,sk-xyz")
+        keys = _load_api_keys()
+        assert keys["sk-abc"]["user_id"] != keys["sk-xyz"]["user_id"]
+        # 同一密钥重复加载必须得到同一个标识（供审计/排查用）
+        assert keys["sk-abc"]["user_id"] == _load_api_keys()["sk-abc"]["user_id"]
 
     def test_key_with_level(self, monkeypatch):
         monkeypatch.setenv("API_KEYS", "sk-a:premium, sk-b ")
@@ -305,7 +315,9 @@ class TestAuthMiddlewareDispatch:
     async def test_valid_api_key_grants_access(self, mw):
         resp = await _call(mw, "/api/v1/generate", headers={"X-API-Key": "good-key"})
         assert resp.status_code == 200
-        assert resp.headers["X-User-Id"] == "apikey-good-key"
+        # S8: 响应头不得泄露密钥本体
+        assert "good-key" not in resp.headers["X-User-Id"]
+        assert resp.headers["X-User-Id"].startswith("apikey-")
 
     @pytest.mark.asyncio
     async def test_valid_jwt_grants_access(self, mw):
@@ -562,6 +574,36 @@ class TestRequestLogger:
         out = logger_mw._sanitize_body(body)
         assert out["outer"]["token"] == "***"
         assert out["outer"]["keep"] == 1
+
+    def test_sanitize_recurses_into_lists(self, logger_mw):
+        """S2: 嵌套在 list 里的凭据同样要被打码。"""
+        body = {"items": [{"api_key": "sk-secret"}, {"keep": 1}]}
+        out = logger_mw._sanitize_body(body)
+        assert out["items"][0]["api_key"] == "***"
+        assert out["items"][1]["keep"] == 1
+
+    def test_sanitize_matches_key_variants(self, logger_mw):
+        """S1: access_token / refreshToken / x-api-key 等变体也要命中。"""
+        body = {"access_token": "a", "refreshToken": "b", "x-api-key": "c"}
+        out = logger_mw._sanitize_body(body)
+        assert out == {"access_token": "***", "refreshToken": "***", "x-api-key": "***"}
+
+    def test_sanitize_query_masks_token(self, logger_mw):
+        """S1: `?token=` / `?api_key=` 不得原样进日志。"""
+        class _QP:
+            @staticmethod
+            def multi_items():
+                return [("token", "eyJhbGciOi"), ("page", "2"), ("api_key", "sk-live")]
+
+        out = logger_mw._sanitize_query(_QP())
+        assert "eyJhbGciOi" not in out
+        assert "sk-live" not in out
+        assert "token=***" in out
+        assert "api_key=***" in out
+        assert "page=2" in out
+
+    def test_sanitize_query_empty_returns_none(self, logger_mw):
+        assert logger_mw._sanitize_query({}) is None
 
     @pytest.mark.asyncio
     async def test_logged_request_passes_through(self, logger_mw):

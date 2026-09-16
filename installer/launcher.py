@@ -3,20 +3,19 @@ AI自动写小说系统 - 主启动器
 图形界面启动器，可以启动所有服务
 """
 
-import sys
+import json
 import os
 import subprocess
-import threading
+import sys
 import time
-import json
 import webbrowser
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict
 
 # 尝试导入tkinter
 try:
     import tkinter as tk
-    from tkinter import ttk, messagebox, filedialog
+    from tkinter import filedialog, messagebox, ttk
     HAS_TKINTER = True
 except ImportError:
     HAS_TKINTER = False
@@ -96,7 +95,50 @@ class ServiceManager:
         config_file = self.base_dir / "config.json"
         with open(config_file, 'w', encoding='utf-8') as f:
             json.dump(self.config, f, indent=2, ensure_ascii=False)
-    
+
+    # -------- 子进程输出重定向（L8）--------
+
+    def _log_handles(self) -> Dict[str, object]:
+        """持有子进程输出句柄的字典，避免句柄被 GC 提前关闭。"""
+        if not hasattr(self, "_log_handle_map"):
+            self._log_handle_map: Dict[str, object] = {}
+        return self._log_handle_map
+
+    def _open_service_log(self, name: str):
+        """把服务输出重定向到 `logs/<name>.log`。
+
+        L8: 旧实现用 `stdout=subprocess.PIPE, stderr=subprocess.PIPE` 启动子进程，
+        但全文件没有任何 `communicate()` / `.read()` —— 管道从不排空。
+        Windows 管道缓冲只有 4–8 KB，写满后子进程的 `write()` 会**阻塞**，
+        表现为服务假死（uvicorn 的启动与访问日志很容易超过该阈值）。
+
+        这里改为写日志文件：既不阻塞，又保留事后诊断能力；
+        无法创建文件时退回 `DEVNULL`（宁可少日志，也不能假死）。
+        """
+        handles = self._log_handles()
+        if name in handles:
+            return handles[name]
+        try:
+            log_dir = self.base_dir / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            fh = open(log_dir / f"{name}.log", "a", encoding="utf-8", errors="replace")
+        except OSError as e:
+            print(f"[启动器] 无法创建 {name} 日志文件，改用 DEVNULL: {e}")
+            fh = subprocess.DEVNULL
+        handles[name] = fh
+        return fh
+
+    def _close_service_logs(self):
+        """关闭并清除所有子进程输出句柄。"""
+        handles = self._log_handles()
+        for name in list(handles):
+            fh = handles.pop(name)
+            try:
+                if hasattr(fh, "close"):
+                    fh.close()
+            except OSError:
+                pass
+
     def start_ai_service(self) -> bool:
         """启动AI服务"""
         try:
@@ -115,8 +157,8 @@ class ServiceManager:
                 [str(exe_path)],
                 cwd=str(self.exe_dir),
                 env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=self._open_service_log("ai_service"),
+                stderr=subprocess.STDOUT,
                 creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
             )
             
@@ -155,8 +197,8 @@ class ServiceManager:
                 [str(exe_path)],
                 cwd=str(self.exe_dir),
                 env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=self._open_service_log("novel_service"),
+                stderr=subprocess.STDOUT,
                 creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
             )
             
@@ -218,8 +260,8 @@ class ServiceManager:
                 process = subprocess.Popen(
                     ["python3", "-m", "http.server", str(port)],
                     cwd=str(frontend_dir),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
+                    stdout=self._open_service_log("frontend"),
+                    stderr=subprocess.STDOUT
                 )
             
             self.processes["frontend"] = process
@@ -349,6 +391,14 @@ class ServiceManager:
                 
                 del self.processes[service_name]
                 self.service_status[service_name] = "stopped"
+                # L8: 进程结束后关闭其输出句柄，避免句柄泄漏
+                fh = self._log_handles().pop(service_name, None)
+                if fh is not None:
+                    try:
+                        if hasattr(fh, "close"):
+                            fh.close()
+                    except OSError:
+                        pass
                 print(f"{service_name} 已停止")
                 return True
             
@@ -362,6 +412,7 @@ class ServiceManager:
         """停止所有服务"""
         for service_name in list(self.processes.keys()):
             self.stop_service(service_name)
+        self._close_service_logs()
     
     def get_service_status(self, service_name: str) -> str:
         """获取服务状态"""

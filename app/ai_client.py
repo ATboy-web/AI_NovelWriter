@@ -16,8 +16,8 @@ import json
 import threading
 import time
 from dataclasses import dataclass, field
-from functools import wraps
 from typing import Callable, Dict, List, Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -71,24 +71,19 @@ class TokenStats:
 token_stats = TokenStats()
 
 
-def retry_with_backoff(max_retries=3, base_delay=1, max_delay=30):
-    """指数退避重试装饰器"""
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            last_error = None
-            for attempt in range(max_retries + 1):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    last_error = e
-                    if attempt == max_retries:
-                        break
-                    delay = min(base_delay * (2 ** attempt), max_delay)
-                    time.sleep(delay)
-            raise last_error
-        return wrapper
-    return decorator
+def _is_transient_error(exc: BaseException) -> bool:
+    """判断异常是否属于「重试有意义」的瞬时故障。
+
+    M1: 原 `retry_with_backoff` 装饰器**无差别重试一切异常**（包括 401 鉴权
+    失败、400 参数错误），既放大配额消耗又拖长用户等待；且全仓生产代码零调用
+    （仅单测引用），属于会误导后来者的死代码，故整体删除。
+    真正的重试逻辑只有 `_dispatch_with_retry` 一处，这里保留判定标准供其复用。
+    """
+    if isinstance(exc, httpx.TransportError):
+        # httpx 中 TimeoutException / ConnectError / ReadError 等均继承 TransportError
+        return True
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    return bool(status and (status == 429 or status >= 500))
 
 
 class AIMetrics:
@@ -450,12 +445,44 @@ class AIClient:
         except Exception as _silent_e:
             logger.debug(f"[ai_client] 捕获异常: {_silent_e}")
 
+    # S7: 允许使用明文 http 的本机地址（本地模型服务 ollama/llama.cpp 等）
+    _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0", "[::1]"})
+
+    @classmethod
+    def _validate_api_base(cls, url: str) -> str:
+        """校验 AI 端点协议：除本机地址外必须使用 https。
+
+        S7: `api_base` 完全来自用户配置且此前不做任何校验，若被写成
+        `http://api.example.com`（手误 / 共享配置被篡改 / 第三方预设），
+        API Key 会以明文 HTTP 发出。这里直接拒绝而不是静默降级，
+        因为静默降级会让"密钥已泄露"这件事变得不可见。
+        """
+        if not url:
+            return url
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(
+                f"AI 端点协议非法: {url!r}（仅支持 http/https），请在设置中修正 api_base"
+            )
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme == "http" and host not in cls._LOCAL_HOSTS:
+            raise ValueError(
+                f"拒绝向非本机地址 {host!r} 使用明文 HTTP 发送 API Key（{url!r}）；"
+                "请改用 https://，或把 api_base 指向 localhost/127.0.0.1 上的本地模型服务"
+            )
+        return url
+
     def _init_client(self):
         provider = self.config.get("api_provider", "ollama")
         api_key = self.config.get("api_key", "")
         api_base = self.config.get("api_base", "")
 
         base_url = api_base or self.PROVIDERS.get(provider, {}).get("base_url", "")
+
+        # S7: 端点必须校验 —— 此前 api_base 完全取自配置、不校验 scheme，
+        # 一旦被写成 http://（手误、共享配置被改、第三方预设），
+        # `Authorization: Bearer <key>` 会以明文 HTTP 发出。
+        base_url = self._validate_api_base(base_url)
 
         if provider == "claude" and api_key:
             # Claude 使用 httpx 直接调用 Anthropic API（无需 anthropic SDK）
@@ -479,6 +506,27 @@ class AIClient:
         else:
             self.client = None
 
+        # M9: 记录本次构建依据的配置指纹，供 refresh_if_needed 检测变更
+        self._client_fingerprint = (
+            provider, api_key, api_base, self.config.get("model", ""),
+        )
+
+    def refresh_if_needed(self) -> None:
+        """M9: 运行中改完 API Key / 端点后立即生效，无需重启应用。
+
+        此前 `_init_client` 只在 `__init__` 里调用一次，用户在设置里换了 Key
+        之后 `self.client` 的默认请求头仍是旧 Key，表现为"改了没生效"。
+        """
+        fingerprint = (
+            self.config.get("api_provider", "ollama"),
+            self.config.get("api_key", ""),
+            self.config.get("api_base", ""),
+            self.config.get("model", ""),
+        )
+        if fingerprint != getattr(self, "_client_fingerprint", None):
+            self._init_client()
+            self._log("检测到 AI 配置变更，已重建 HTTP 客户端")
+
     def is_configured(self) -> bool:
         return self.client is not None
 
@@ -492,6 +540,8 @@ class AIClient:
 
     def chat(self, messages: List[Dict], system: str = "", **kwargs) -> str:
         """发送聊天请求 - 带模型降级"""
+        # M9: 配置在运行中被改动时重建客户端（否则仍用旧 API Key）
+        self.refresh_if_needed()
         if not self.is_configured():
             raise Exception("AI API未配置")
 
@@ -540,12 +590,13 @@ class AIClient:
             self.metrics.record(latency)
 
             # 🔍 成功日志
+            # M8: 不再记录 `content_preview` —— 与上方「不记录创作内容」的注释直接矛盾，
+            # 会把 AI 正文（含用户设定）落到诊断日志文件里。
             if _diag_logger:
                 _diag_logger.api_call(
                     provider=detected_provider, endpoint=f"chat/{model}",
                     request_data={"model": model, "messages_count": len(messages)},
-                    response_data={"status": "success", "result_len": len(result),
-                                  "content_preview": result[:200]},
+                    response_data={"status": "success", "result_len": len(result)},
                     duration_ms=latency * 1000
                 )
 

@@ -10,9 +10,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 
-from app.ai_client import AIClient, AIMetrics, PromptManager, TokenStats, retry_with_backoff
+from app.ai_client import AIClient, AIMetrics, PromptManager, TokenStats, _is_transient_error
 
 
 class TestTokenStatsDeep:
@@ -175,59 +176,45 @@ class TestPromptManagerDeep:
             assert isinstance(prompt, str)
 
 
-class TestRetryWithBackoffDeep:
-    """retry_with_backoff 深度测试"""
+class TestIsTransientErrorDeep:
+    """M1: `_is_transient_error` 深度测试（原 retry_with_backoff 已删除）"""
 
-    def test_success_first_try(self):
-        call_count = 0
-        @retry_with_backoff(max_retries=3, base_delay=0.01)
-        def success():
-            nonlocal call_count
-            call_count += 1
-            return "ok"
-        assert success() == "ok"
-        assert call_count == 1
+    def test_timeout_is_transient(self):
+        assert _is_transient_error(httpx.TimeoutException("t")) is True
 
-    def test_success_after_retries(self):
-        call_count = 0
-        @retry_with_backoff(max_retries=3, base_delay=0.01)
-        def fail_then_succeed():
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise ValueError("not yet")
-            return "ok"
-        assert fail_then_succeed() == "ok"
-        assert call_count == 3
+    def test_read_error_is_transient(self):
+        assert _is_transient_error(httpx.ReadError("r")) is True
 
-    def test_failure_after_max_retries(self):
-        call_count = 0
-        @retry_with_backoff(max_retries=2, base_delay=0.01)
-        def always_fail():
-            nonlocal call_count
-            call_count += 1
-            raise ValueError("fail")
-        with pytest.raises(ValueError):
-            always_fail()
-        assert call_count == 3
+    def test_rate_limit_is_transient(self):
+        req = httpx.Request("POST", "https://api.deepseek.com/chat")
+        resp = httpx.Response(429, request=req)
+        assert _is_transient_error(
+            httpx.HTTPStatusError("429", request=req, response=resp)
+        ) is True
 
-    def test_zero_retries(self):
-        call_count = 0
-        @retry_with_backoff(max_retries=0, base_delay=0.01)
-        def fail_once():
-            nonlocal call_count
-            call_count += 1
-            raise ValueError("fail")
-        with pytest.raises(ValueError):
-            fail_once()
-        assert call_count == 1
+    def test_server_error_is_transient(self):
+        req = httpx.Request("POST", "https://api.deepseek.com/chat")
+        resp = httpx.Response(503, request=req)
+        assert _is_transient_error(
+            httpx.HTTPStatusError("503", request=req, response=resp)
+        ) is True
 
-    def test_different_exceptions(self):
-        @retry_with_backoff(max_retries=1, base_delay=0.01)
-        def type_error():
-            raise TypeError("type")
-        with pytest.raises(TypeError):
-            type_error()
+    def test_auth_error_is_not_transient(self):
+        req = httpx.Request("POST", "https://api.deepseek.com/chat")
+        resp = httpx.Response(401, request=req)
+        assert _is_transient_error(
+            httpx.HTTPStatusError("401", request=req, response=resp)
+        ) is False
+
+    def test_bad_request_is_not_transient(self):
+        req = httpx.Request("POST", "https://api.deepseek.com/chat")
+        resp = httpx.Response(400, request=req)
+        assert _is_transient_error(
+            httpx.HTTPStatusError("400", request=req, response=resp)
+        ) is False
+
+    def test_generic_exception_is_not_transient(self):
+        assert _is_transient_error(RuntimeError("boom")) is False
 
 
 class TestAIClientDeep:

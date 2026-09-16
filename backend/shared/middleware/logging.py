@@ -55,17 +55,56 @@ class RequestLogger(BaseHTTPMiddleware):
                 return False
         return True
     
-    def _sanitize_body(self, body: Dict[str, Any]) -> Dict[str, Any]:
-        """清理敏感字段"""
-        sanitized = {}
-        for key, value in body.items():
-            if key.lower() in self.config.SENSITIVE_FIELDS:
-                sanitized[key] = "***"
-            elif isinstance(value, dict):
-                sanitized[key] = self._sanitize_body(value)
-            else:
-                sanitized[key] = value
-        return sanitized
+    def _is_sensitive_key(self, key: Any) -> bool:
+        """按 key 名判断是否敏感。
+
+        S1: 用**子串**匹配而不只是等值匹配，才能覆盖 `access_token`、
+        `refreshToken`、`x-api-key` 这类变体（认证中间件正是从
+        `?token=` / `?api_key=` 里取凭据的）。
+        """
+        name = str(key).lower().replace("-", "_")
+        return any(field in name for field in self.config.SENSITIVE_FIELDS)
+
+    def _sanitize_value(self, value: Any) -> Any:
+        """递归清理嵌套结构中的敏感字段。
+
+        S2: 旧实现只对 `dict` 下钻，`list` 落到 else 分支原样保留，于是
+        `{"items": [{"api_key": "sk-..."}]}` 里的密钥不会被替换成 `***`。
+        现在 dict 与 list/tuple 都会下钻。
+        """
+        if isinstance(value, dict):
+            sanitized = {}
+            for key, item in value.items():
+                if self._is_sensitive_key(key):
+                    sanitized[key] = "***"
+                else:
+                    sanitized[key] = self._sanitize_value(item)
+            return sanitized
+        if isinstance(value, (list, tuple)):
+            return [self._sanitize_value(item) for item in value]
+        return value
+
+    def _sanitize_body(self, body: Any) -> Any:
+        """清理敏感字段（保留旧入口名以兼容既有调用与测试）"""
+        return self._sanitize_value(body)
+
+    def _sanitize_query(self, query_params) -> Optional[str]:
+        """按 key 名脱敏查询串。
+
+        S1: 此前 query 是 `str(request.query_params)` 原样写日志，而
+        `AuthMiddleware` 接受 `?token=` 与 `?api_key=` 认证 —— 等于把有效
+        JWT/密钥明文落盘（日志通常比凭据留存更久、可见范围更广）。
+        """
+        if not query_params:
+            return None
+        try:
+            items = query_params.multi_items()
+        except AttributeError:  # pragma: no cover - 兼容 dict 形态
+            items = list(query_params.items())
+        parts = []
+        for key, value in items:
+            parts.append(f"{key}=***" if self._is_sensitive_key(key) else f"{key}={value}")
+        return "&".join(parts)
     
     async def _read_body(self, request: Request) -> Optional[Dict]:
         """读取请求体"""
@@ -109,7 +148,7 @@ class RequestLogger(BaseHTTPMiddleware):
         request_log = {
             "method": request.method,
             "path": request.url.path,
-            "query": str(request.query_params) if request.query_params else None,
+            "query": self._sanitize_query(request.query_params),
             "client_ip": client_ip,
             "user_agent": request.headers.get("User-Agent", ""),
         }

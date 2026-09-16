@@ -22,6 +22,7 @@ from app.storage import (
     STATUS_BACKUP,
     STATUS_CORRUPT,
     atomic_write_json,
+    atomic_write_text,
     read_json_with_backup,
 )
 
@@ -85,8 +86,11 @@ class MemoryManager:
         '可以', '这个', '那个', '什么', '怎么', '因为', '所以', '但是', '然后',
     })
     # 有界关键词缓存（跨实例共享纯函数结果）
+    # M6: 类级共享 → 必须加锁，否则并发下 clear/写读交错会读到半构造状态、
+    # 或在上限边界反复清空导致命中率塌陷。
     _KW_CACHE: Dict[str, tuple] = {}
     _KW_CACHE_MAX = 512
+    _KW_CACHE_LOCK = threading.Lock()
 
     def __init__(self, novel_dir: Path):
         self.novel_dir = novel_dir
@@ -124,10 +128,11 @@ class MemoryManager:
         self.character_activity_file = self.memory_dir / "character_activity.json"
 
         # 缓存
+        self._inverted_index_load_failed = False  # 索引损坏标记（M5）：置位后禁止用空索引覆盖
         self._inverted_index = self._load_inverted_index()
         self._scores = self._load_scores()
         self._character_activity = self._load_character_activity()
-        # 角色档案损坏标记：读侧降级为空，写侧据此拒绝覆盖（见 save_characters）
+        # 角色档案损坏标记：读侧降级为空并对外暴露（见 characters_health / save_characters）
         self._characters_corrupt = False
         self._current_page = 0  # 当前chunks页
         self._chunks_cache = []  # 当前页的chunks缓存
@@ -168,23 +173,41 @@ class MemoryManager:
         if self.inverted_index_file.exists():
             try:
                 return json.loads(self.inverted_index_file.read_text(encoding='utf-8'))
-            except (json.JSONDecodeError, FileNotFoundError) as _silent_e:
-                logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+                # 不再静默：索引读坏了意味着检索会退化，必须可观测（M5）
+                logger.warning(f"[memory_manager] 倒排索引不可读，本次以空索引继续: {e}")
+                self._inverted_index_load_failed = True
         return {}
 
     def _save_inverted_index(self):
-        self.inverted_index_file.write_text(json.dumps(self._inverted_index, ensure_ascii=False), encoding='utf-8')
+        """原子写入倒排索引，并拒绝用空索引覆盖已有的非空索引。
+
+        旧实现是非原子的 `write_text`；一旦写坏，`_load_inverted_index` 会吞掉
+        异常返回 `{}`，随后任何一次落盘都会把空索引写回 —— 检索索引被永久清零
+        （与角色库「读空→写空」同构，见 CODE_REVIEW_ROUND3 M5）。
+        """
+        if not self._inverted_index and not self._inverted_index_load_failed:
+            try:
+                if self.inverted_index_file.exists() and self.inverted_index_file.stat().st_size > 2:
+                    logger.error(
+                        "[memory_manager] 拒绝以空倒排索引覆盖已有索引"
+                        f"（{self.inverted_index_file.name}）；如需重建请显式删除该文件"
+                    )
+                    return
+            except OSError:
+                pass
+        atomic_write_json(self.inverted_index_file, self._inverted_index, indent=None)
 
     def _load_character_activity(self) -> Dict:
         if self.character_activity_file.exists():
             try:
                 return json.loads(self.character_activity_file.read_text(encoding='utf-8'))
-            except (json.JSONDecodeError, FileNotFoundError) as _silent_e:
-                logger.debug(f"[memory_manager] 捕获异常: {_silent_e}")
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+                logger.warning(f"[memory_manager] 角色活跃度文件不可读，本次重置: {e}")
         return {}
 
     def _save_character_activity(self):
-        self.character_activity_file.write_text(json.dumps(self._character_activity, ensure_ascii=False), encoding='utf-8')
+        atomic_write_json(self.character_activity_file, self._character_activity, indent=None)
 
     # ===== 卷级摘要管理 =====
 
@@ -195,7 +218,7 @@ class MemoryManager:
     def save_volume_summary(self, volume_num: int, summary: str):
         """保存卷级摘要"""
         file = self.volumes_dir / f"volume_{volume_num:03d}.txt"
-        file.write_text(summary, encoding='utf-8')
+        atomic_write_text(file, summary)
 
     def get_volume_summary(self, volume_num: int) -> str:
         """获取卷级摘要"""
@@ -240,7 +263,7 @@ class MemoryManager:
             "chapters": chapters or [],
             "updated_at": datetime.now().isoformat()
         }
-        file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+        atomic_write_json(file, data, indent=2)
 
     def get_arc_summary(self, arc_name: str) -> str:
         """获取弧线摘要"""
@@ -264,8 +287,7 @@ class MemoryManager:
     # ===== 核心记忆保存 =====
 
     def save_global_summary(self, summary: str):
-        with open(self.global_summary_file, 'w', encoding='utf-8') as f:
-            f.write(summary)
+        atomic_write_text(self.global_summary_file, summary)
 
     def get_global_summary(self) -> str:
         if self.global_summary_file.exists():
@@ -274,15 +296,13 @@ class MemoryManager:
 
     def save_chapter_summary(self, chapter_num: int, summary: str):
         file = self.chapters_dir / f"chapter_{chapter_num:05d}.txt"
-        with open(file, 'w', encoding='utf-8') as f:
-            f.write(summary)
+        atomic_write_text(file, summary)
 
         # 同时保存到 summaries/ 目录（给用户查看）
         summary_dir = self.novel_dir / "summaries"
         summary_dir.mkdir(exist_ok=True)
         summary_file = summary_dir / f"chapter_{chapter_num:05d}_summary.txt"
-        with open(summary_file, 'w', encoding='utf-8') as f:
-            f.write(f"第{chapter_num}章摘要\n\n{summary}")
+        atomic_write_text(summary_file, f"第{chapter_num}章摘要\n\n{summary}")
 
         # 更新倒排索引
         self._update_inverted_index(f"chapter_{chapter_num:05d}", summary)
@@ -535,7 +555,7 @@ class MemoryManager:
     def _save_chunks_page(self, page: int, chunks: List[Dict]):
         """保存指定页的chunks"""
         page_file = self.chunks_dir / f"page_{page:04d}.json"
-        page_file.write_text(json.dumps(chunks, ensure_ascii=False, indent=1), encoding='utf-8')
+        atomic_write_json(page_file, chunks, indent=1)
 
     def _get_total_chunk_count(self) -> int:
         """获取chunks总数"""
@@ -674,7 +694,7 @@ class MemoryManager:
             "timestamp": datetime.now().isoformat(),
         })
 
-        page_file.write_text(json.dumps(events, ensure_ascii=False, indent=1), encoding='utf-8')
+        atomic_write_json(page_file, events, indent=1)
 
     def get_timeline(self, from_chapter: int = 0, to_chapter: int = None) -> List[Dict]:
         """获取时间线（按范围加载）"""
@@ -701,7 +721,8 @@ class MemoryManager:
 
     # ===== 角色档案和关系图 =====
 
-    def save_characters(self, characters: dict, allow_empty: bool = False):
+    def save_characters(self, characters: dict, allow_empty: bool = False,
+                        force: bool = False):
         """保存角色档案：原子写 + `.bak` 轮转 + **非空守卫**。
 
         为什么要守卫：角色名是小说内容资产（当前数据量 286 个）。此前
@@ -712,9 +733,44 @@ class MemoryManager:
 
         因此：新集合为空而磁盘上仍有角色时**拒绝写入并抛错**；确实需要清空
         的调用方必须显式传 `allow_empty=True`。若磁盘文件已损坏、内容不可确认，
-        则先把损坏文件留档为 `characters.corrupt-<时间戳>.json` 再写，避免灭失。
+        则先把损坏文件留档为 `characters.corrupt-<时间戳>.json`，再拒绝写入，
+        避免灭失。
+
+        另有一道"降级读之后禁止盲写"的闸门（V1/V4）：只要本进程发生过一次
+        `get_characters()` 返回空字典的**降级读**（`_characters_corrupt=True`，
+        即主文件与 `.bak` 都不可解析），后续任何写盘都是"基于不完整认知的覆盖"。
+        此时即使待写集合非空也拒绝（如 `_auto_detect_characters` 只拿到新识别
+        的一批、或 `mutate_characters` 在空底座上只加了 1 个角色），必须先留档
+        损坏文件；确需继续的调用方显式传 `force=True`。
+
+        Args:
+            allow_empty: 允许以空集合覆盖（"清空角色库"这一显式意图）。
+            force: 跳过"降级读之后的盲写"闸门（仍会先留档损坏文件）。
         """
         characters = characters or {}
+
+        # --- 闸门 1：降级读之后禁止盲写（V1/V4）---
+        # 注意：force=True 只跳过"拒绝"，**不跳过留档** —— 只要本进程发生过降级读，
+        # 那份不可解析的旧文件就必须先落一份 `.corrupt-<时间戳>.json` 快照，
+        # 否则一次 force 写入会把证据彻底覆盖掉（与本文档字符串的承诺一致）。
+        if getattr(self, "_characters_corrupt", False):
+            archived = self._archive_corrupt_characters()
+            archived_name = archived.name if archived else "（留档失败）"
+            if not force:
+                msg = (
+                    f"角色档案此前读取失败（主文件与备份均不可解析：{self.characters_file}），"
+                    f"已留档为 {archived_name}；"
+                    f"拒绝基于不完整的角色集合写入 {len(characters)} 个条目，"
+                    "如确需继续请显式传 force=True"
+                )
+                logger.error(f"[memory_manager] {msg}")
+                raise CharacterDataGuardError(msg)
+            logger.warning(
+                f"[memory_manager] 角色档案此前读取失败，已留档为 {archived_name}；"
+                f"按 force=True 继续写入 {len(characters)} 个条目"
+            )
+
+        # --- 闸门 2：禁止空集合覆盖既有角色（R3）---
         if not characters and not allow_empty:
             existing, status = read_json_with_backup(self.characters_file, default=None)
             if status == STATUS_CORRUPT:
@@ -738,12 +794,21 @@ class MemoryManager:
         self._characters_corrupt = False
 
     def _archive_corrupt_characters(self) -> Optional[Path]:
-        """把无法解析的角色档案留档，供人工恢复；返回留档路径。"""
+        """把无法解析的角色档案留档，供人工恢复；返回留档路径。
+
+        同一秒内可能被连续调用（拒绝写盘 + 用户重试），因此带序号去重，
+        确保每一次留档都独立成文件、不会覆盖上一份快照。
+        """
         try:
             if not self.characters_file.exists():
                 return None
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            dst = self.characters_file.with_name(f"{self.characters_file.stem}.corrupt-{stamp}.json")
+            base = f"{self.characters_file.stem}.corrupt-{stamp}"
+            dst = self.characters_file.with_name(f"{base}.json")
+            seq = 1
+            while dst.exists():
+                dst = self.characters_file.with_name(f"{base}_{seq}.json")
+                seq += 1
             shutil.copy2(self.characters_file, dst)
             logger.warning(f"[memory_manager] 已留档损坏的角色档案: {dst.name}")
             return dst
@@ -859,8 +924,12 @@ class MemoryManager:
 
     def _load_scores(self) -> dict:
         if self.scores_file.exists():
-            with open(self.scores_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
+            try:
+                with open(self.scores_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                return data if isinstance(data, dict) else {}
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"[memory_manager] 记忆评分读取失败: {e}")
         return {}
 
     # ===== 记忆健康检查 =====
@@ -956,9 +1025,10 @@ class MemoryManager:
         result = keywords[:30]
         # 有界缓存：仅在文本长度可控时缓存，避免海量长文本占用内存
         if len(text) <= 4000:
-            if len(MemoryManager._KW_CACHE) >= MemoryManager._KW_CACHE_MAX:
-                MemoryManager._KW_CACHE.clear()
-            MemoryManager._KW_CACHE[text] = tuple(result)
+            with MemoryManager._KW_CACHE_LOCK:
+                if len(MemoryManager._KW_CACHE) >= MemoryManager._KW_CACHE_MAX:
+                    MemoryManager._KW_CACHE.clear()
+                MemoryManager._KW_CACHE[text] = tuple(result)
         return result
 
     def get_settings(self) -> dict:
@@ -970,39 +1040,44 @@ class MemoryManager:
     def save_settings(self, settings: dict):
         """保存世界观设定 - 同时保存JSON和Markdown两个版本"""
         # 保存JSON版本（给AI看）
-        with open(self.settings_file, 'w', encoding='utf-8') as f:
-            json.dump(settings, f, indent=2, ensure_ascii=False)
+        atomic_write_json(self.settings_file, settings, indent=2)
 
         # 保存Markdown版本（给用户看）
         md_file = self.settings_file.parent / "settings.md"
         try:
-            with open(md_file, 'w', encoding='utf-8') as f:
-                f.write("# 世界观设定\n\n")
-                f.write(self._format_settings_md(settings))
-        except Exception as e:
-            print(f"保存Markdown版本失败: {e}")
+            atomic_write_text(md_file, "# 世界观设定\n\n" + self._format_settings_md(settings))
+        except OSError as e:
+            logger.warning(f"[memory_manager] 保存世界观 Markdown 版本失败: {e}")
 
     def get_meta(self, key: str = None, default=None):
         """获取小说元数据"""
         meta_file = self.novel_dir / "meta.json"
         if meta_file.exists():
-            with open(meta_file, 'r', encoding='utf-8') as f:
-                meta = json.load(f)
+            try:
+                with open(meta_file, 'r', encoding='utf-8') as f:
+                    meta = json.load(f)
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"[memory_manager] meta.json 读取失败，按空元数据处理: {e}")
+                meta = {}
             if key:
                 return meta.get(key, default)
             return meta
         return default if key else {}
 
     def set_meta(self, key: str, value):
-        """设置小说元数据字段"""
+        """设置小说元数据字段（原子写：旧实现直接 open('w') 会在写入中途崩溃时留下截断文件）"""
         meta_file = self.novel_dir / "meta.json"
         meta = {}
         if meta_file.exists():
-            with open(meta_file, 'r', encoding='utf-8') as f:
-                meta = json.load(f)
+            try:
+                with open(meta_file, 'r', encoding='utf-8') as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    meta = loaded
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"[memory_manager] meta.json 损坏，重建: {e}")
         meta[key] = value
-        with open(meta_file, 'w', encoding='utf-8') as f:
-            json.dump(meta, f, indent=2, ensure_ascii=False)
+        atomic_write_json(meta_file, meta, indent=2)
 
     def _format_settings_md(self, settings: dict, level: int = 0) -> str:
         """将settings字典格式化为Markdown"""
@@ -1040,8 +1115,12 @@ class MemoryManager:
 
     def _load_index(self) -> dict:
         if self.index_file.exists():
-            with open(self.index_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
+            try:
+                with open(self.index_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                return data if isinstance(data, dict) else {}
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"[memory_manager] 章节关键词索引读取失败: {e}")
         return {}
 
     # ===== 智能上下文构建 =====

@@ -6,26 +6,44 @@ AI_NovelWriter 应用包
 import importlib
 from pathlib import Path as _Path
 
-# P3-1: 单一版本源。优先读取已安装包元数据，其次读取 pyproject.toml，
-# 冻结(EXE)环境下回退到构建时注入的常量。
+# P3-1: 单一版本源。**顺序即优先级**：`pyproject.toml`（仓库声明的权威源）→
+# 已安装分发元数据 → 构建时注入的常量（冻结 EXE 用）。
 # ⚠️ 改版本号要同时改 `pyproject.toml`（权威源）与这里；
 # `tests/test_version_consistency.py` 会断言两者、README 与 CHANGELOG 相互一致。
 _FALLBACK_VERSION = "3.1.0"
 
 
 def _load_version() -> str:
-    try:
-        from importlib.metadata import version as _v
+    """解析版本号。
 
-        return _v("ai-novel-writer")
-    except Exception:
-        pass
+    ⚠️ **为什么 pyproject 排第一，而不是已安装元数据**（2026-09-17 修正）：
+
+    原实现先查 `importlib.metadata.version("ai-novel-writer")`。这在 CI 上出过事
+    ——v3.1.0 的发布流水线里，pip 明明装的是 `ai-novel-writer==3.1.0`，
+    `app.__version__` 却解析成 `'1.0.0'`（仓库里 `backend/*/app/__init__.py`
+    也把自己标成 `1.0.0`），版本一致性门禁因此红，**发布作业被跳过、Release 没能建出来**。
+
+    根因是这类实现的通病：**把"当前代码是什么版本"交给运行环境回答**。
+    环境里只要存在任何一份同名分发元数据，就能覆盖真相；而这类失败完全静默
+    （版本号是个字符串，没人会去校验它从哪来）。
+
+    仓库已经把 `pyproject.toml` 定为唯一权威源，所以就该先读它：
+    - 开发态 / editable 安装：读得到，且与源码同源；
+    - 非 editable 安装：读不到 → 退到已安装元数据（这时它确实是可信来源）；
+    - 冻结 EXE：两者都读不到 → 用 `_FALLBACK_VERSION`（构建时注入）。
+    """
     try:
         import tomllib
 
         _pyproject = _Path(__file__).resolve().parent.parent / "pyproject.toml"
         with open(_pyproject, "rb") as _f:
             return tomllib.load(_f)["project"]["version"]
+    except Exception:
+        pass
+    try:
+        from importlib.metadata import version as _v
+
+        return _v("ai-novel-writer")
     except Exception:
         pass
     return _FALLBACK_VERSION

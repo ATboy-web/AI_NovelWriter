@@ -49,6 +49,71 @@ def test_pyproject_version_is_semver(version):
     assert SEMVER_RE.match(version), f"版本号不符合语义化版本格式: {version!r}"
 
 
+def test_app_resolves_to_the_repository_package():
+    """**先定位"版本的来源"，再比较版本值**。
+
+    这条守卫是 2026-09-17 发布事故的直接产物：CI 上 `app.__version__` 解析成 `'1.0.0'`
+    （pip 装的明明是 `ai-novel-writer==3.1.0`），失败信息只有一句版本不一致，
+    完全看不出是"版本读错了"还是"读错了包"。
+
+    本仓库存在**三个名为 `app` 的包**（根目录 `app/` 与 `backend/ai-service/app`、
+    `backend/novel-service/app`，后两者自带 `__version__ = "1.0.0"`），
+    而 `backend/tests/conftest.py` 会往 `sys.path` 插目录。一旦解析到后端那个，
+    版本断言就会以一个毫无线索的数字差异出现。所以这里先钉死"必须是仓库根下的 app"。
+    """
+    import app
+
+    resolved = Path(app.__file__).resolve()
+    assert resolved.is_relative_to(REPO_ROOT.resolve()), (
+        f"import app 解析到了仓库之外：{resolved}\n"
+        f"（仓库根为 {REPO_ROOT}；backend/*/app 里另有同名包，其 __version__ 是 1.0.0）"
+    )
+    assert resolved == (REPO_ROOT / "app" / "__init__.py").resolve(), f"import app 解析到了非预期的文件：{resolved}"
+
+
+def test_version_ignores_installed_distribution_metadata(version, monkeypatch):
+    """**回归**：已安装分发元数据不得覆盖 `pyproject.toml`。
+
+    复刻 CI 的失败条件 —— 环境里有一份声称别的版本的同名分发元数据。
+    原实现先查 `importlib.metadata.version("ai-novel-writer")`，于是被它带偏：
+    版本一致性门禁变红 ⇒ `Build EXE & Release` 跳过 ⇒ **v3.1.0 的 Release 没建出来**，
+    而本地（没有该元数据）永远复现不了。
+
+    `pyproject.toml` 是仓库声明的唯一权威源，就应当先读它。
+    """
+    import importlib.metadata
+
+    import app
+
+    monkeypatch.setattr(importlib.metadata, "version", lambda _name: "1.0.0")
+    assert app._load_version() == version, "环境里的分发元数据覆盖了 pyproject.toml 的版本"
+
+
+def test_version_falls_back_when_pyproject_is_unreadable(monkeypatch):
+    """读不到 `pyproject.toml` 时才退到分发元数据 / 常量（冻结 EXE 走这条）。"""
+    import importlib.metadata
+    import tomllib
+
+    import app
+
+    real_load = tomllib.load
+
+    def _fail(handle):
+        if str(getattr(handle, "name", "")).endswith("pyproject.toml"):
+            raise OSError("模拟冻结环境：没有 pyproject.toml")
+        return real_load(handle)
+
+    monkeypatch.setattr(tomllib, "load", _fail)
+    monkeypatch.setattr(importlib.metadata, "version", lambda _name: "9.9.9")
+    assert app._load_version() == "9.9.9", "pyproject 不可读时应退到已安装元数据"
+
+    # 两者都不可用 → 构建时注入的常量
+    monkeypatch.setattr(
+        importlib.metadata, "version", lambda _name: (_ for _ in ()).throw(importlib.metadata.PackageNotFoundError)
+    )
+    assert app._load_version() == app._FALLBACK_VERSION
+
+
 def test_single_source_of_truth(version):
     """`pyproject.toml` 是权威源，`app.__version__` 必须与之一致。"""
     from app import __version__

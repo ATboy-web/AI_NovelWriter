@@ -44,6 +44,7 @@
 | [ARCHITECTURE_BOUNDARY.md](ARCHITECTURE_BOUNDARY.md) | 桌面端/后端架构边界约定（P2-2） |
 | [UI_DESIGN.md](UI_DESIGN.md) | UI 设计 |
 | [ROADMAP_V3_PANELS_AND_PROVIDERS.md](ROADMAP_V3_PANELS_AND_PROVIDERS.md) | v3 改造方案与实施进度：面板化框架与联动 · 多 API 适配与用量统计 · 模块整合去重（**P0–P4b 已完成**，P5 待做） |
+| [NEXT_STEPS.md](NEXT_STEPS.md) | 下一步行动计划：优先级的建议 / 目标 / 风险 / 执行顺序（P4 之后） |
 
 ## 归档（对应功能模块已移除）
 | 文档 | 说明 |

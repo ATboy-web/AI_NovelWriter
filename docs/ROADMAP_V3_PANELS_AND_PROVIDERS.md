@@ -42,26 +42,69 @@
 |---|---|---|---|---|
 | A1 | **AI JSON 解析双实现** | `parsing.py:396 parse_json_response` vs `novel_agent.py:1919-2036 _parse_json_response`（Strategy 1~5 结构雷同）；后者 `:2015` 还保留 parsing 已修掉的「剔除键含 raw」旧缺陷 | 删 novel_agent 版，6 处调用点（`860,1065,1150,1393,1434,1786`）改调 parsing | 中（核心链路） |
 | A2 | **角色原始文本解析双实现** | `parsing.py:332 extract_characters_payload` vs `novel_agent.py:1836-1917 _extract_characters_from_raw`，后者被 `character_ui.py:66` 调用 | 同上收敛 | 中 |
-| A3 | **设计令牌两套** | `design_tokens.py:12 DesignTokens.COLORS` 与 `ui_style.py:18 UIStyle.COLORS` 同值异名；`DesignTokens` 在 `app/` 内**零调用**，仅 `tests/test_design_tokens.py` 引用 | 合并为单一源（保留 `UIStyle` 命名空间），`design_tokens` 改为从 `UIStyle` 派生以不破坏既有 import | 低 |
+| A3 | **设计令牌两套** | `design_tokens.py:12 DesignTokens.COLORS` 与 `ui_style.py:18 UIStyle.COLORS` 同值异名；`DesignTokens` 在 `app/` 内**零调用**，但在 `tests/` 有 **20 个用例**引用 | ⚠️ **不可删除**（删则 `tests/test_design_tokens.py` 整体 ImportError）。改为**单向派生**：`DesignTokens` 的取值从 `UIStyle` 取，保证单一源，同时保住模块与其公开 API | 低 |
 | A4 | **UI 样式绕过令牌** | `font=('微软雅黑'` 硬编码 **372 处 / 23 个文件**（`lifecycle_ui.py:69`、`shell_ui.py:68`、`character_ui.py:54`…）；走令牌的仅 `ui_style.py:4` 处 | 新增 `UIStyle.font(size_key)` + 脚本批量替换，分文件推进 | 低（量大） |
 | A5 | **`create_styled_*` 零调用** | `ui_style.py:326/353/369/391` 四个工厂方法全仓仅定义处命中 | **接线**（作为 A4 的落地载体），不删 | 低 |
 | A6 | **线程执行器缺失** | 手工 `threading.Thread(` **40 处 / 17 文件**；`agent_orchestrator.py:5,18` 另用 `ThreadPoolExecutor` | 新增 `app/async_runner.py` 统一 | 中高（见 §5 风险） |
 | A7 | **原子写被绕过** | 单入口 `storage.py` 已建成，但约 20 文件仍裸写。最危险的是**同一文件被三处各自裸写**：`outline.json` / `meta.json` ← `outline_ui.py:75/93/229/309/354`、`generation_ui.py:99/1404/1429/1611/1848/1859`、`timeline_ui.py:45/402/477/651` | 新增 `NovelStore` 领域级读写层，全部走 storage 原子写 | 中（数据一致性） |
 | A8 | **同构对话框 36 处** | `Toplevel(` 36 处，归纳为三类同构：输入框+确定取消 / 列表+编辑 / 只读文本展示 | 抽 `app/dialogs.py` 三个helper | 低 |
 
-### 1.2 死代码（已用 Grep 复核现状）
+### 1.2 死代码审计结论（已 6 类来源逐一实证 · 2026-09-16）
 
-| 项 | 结论 | 证据 |
+审计覆盖 6 类调用来源：`app/` 内部、`tests/`、`scripts/`、`installer/`、`backend/`、**动态引用**
+（`getattr`/`hasattr`/`command=`/反射），并核对 `pyproject.toml:50 testpaths` 的测试收集范围。
+
+#### ✅ 已确认无效并删除（3 项，本轮已执行）
+
+| 已删项 | 原位置 | 判据 |
 |---|---|---|
-| `_atomic_json_write` | 已删除 ✅ | 仅 `tests/test_storage.py:196` 断言其不存在 |
-| `_show_image_prompt_dialog` | 已删除 ✅ | app/ 零命中 |
-| `_toggle_ai` | **仍存在、零调用** | 仅 `fullscreen_writer.py:383` 定义处 |
-| `_run_async` | 从未实现 | 仅 `docs/TEAM_IMPROVEMENT_PLAN.md:185` 草案 |
-| `performance_monitor.py` **整模块** | **app/ 内零调用** | 仅 `tests/test_performance_monitor.py` 引用 |
-| `character_system.py` 约 25 个方法 | 零调用 | `mark_death:511`、`promote_character:529`、`simulate_battle:909`、`CharacterProfile.take_damage:318` 等 |
+| `CharacterProfile.add_item` | `character_system.py:311` | `inventory` 字段全仓 5 处命中（`143/181/204/312/316`）**全在本类内部**，无任何 UI 或逻辑读取 ⇒ 该方法**零可观察效果** |
+| `CharacterSystem.save_all` | `character_system.py:635` | 唯一实现是循环调用**已接线**的 `save_character`（`character_ui.py:847/1016/1109`、`generation_ui.py:1058`）⇒ 纯便捷包装，删除不损任何能力 |
+| `CharacterSystem.get_character_summary` | `character_system.py:953` | 方法体 `return self.character.get_summary()`，而 `character_ui.py:764` **已直接调用**同一方法 ⇒ 纯重复包装 |
 
-> 💡 **`performance_monitor.py` 不要删，要接线**：它已实现 HTTP 层耗时/百分位统计，
-> 正好是 §3.4 用量统计里缺的「耗时」维度。复用它 = 一次同时完成「减少重复」和「增强功能」。
+**删除判据（本轮确立的口径）**：只删「**零可观察面**」的项 —— 即删除后不损失任何**可达**能力。
+三者皆满足：无 UI 展示面、无逻辑读取、无测试覆盖、无动态调用可能。
+
+#### ⛔ 经实证**不可删除**（会直接弄坏测试）
+
+| 项 | 证据 | 结论 |
+|---|---|---|
+| `app/performance_monitor.py` **整模块** | `tests/test_performance_monitor.py:13-17` 直接 import，**16 个用例**（`test_initial_state:28` … `test_create_prometheus_metrics:234`） | 删除 ⇒ 该测试文件 ImportError 全挂 |
+| `app/design_tokens.py` **整模块** | `tests/test_design_tokens.py:12` import + 22 处属性访问，**20 个用例** | 同上；且 `pyproject.toml:93` 已列入 coverage omit |
+
+> ❗ 这两条推翻了我先前的直觉判断（「零调用的模块可删」）。**测试也是调用方** ——
+> 审计前若不查 `tests/`，会一次性弄坏 36 个用例。这也直接修正了 §1.1 的 A3 处置。
+
+#### ⏸ 零调用但**应保留**（本轮不删，待接线）
+
+这 21 项一律**零调用**，但都具备**可见但无法填写的界面槽位**，删除会让已展示的字段永久为空：
+
+| 分组 | 项 | 保留理由 |
+|---|---|---|
+| 死亡↔复活（成对） | `mark_death:511`、`mark_revival:520` | `status` 被 `character_ui.py:463` 读取；互相构成唯一语义闭环，只能整对处置 |
+| 集合查询族（4 元） | `get_characters_by_category:539`、`get_alive_characters:543`、`get_dead_characters:547`、`get_characters_by_faction:551` | 同族 `get_character_names:481` 已接线；单删破坏族对称。⚠️ 附带发现 `writing_skills_panel.py:188` 调用了**不存在**的 `get_all_characters()` —— 该族本就缺一环 |
+| 装备三元组 | `equip_armor:287`、`equip_accessory:292` | `character_ui.py:777-778` **已展示** `armor`/`accessory`，删则永久「无」 |
+| 技能对 | `forget_skill:304` | `learn_skill` 已接线、技能列表已展示（`:780`），删则技能只增不减 |
+| HP 组 | `heal:324` | 与已接线的 `rest:329`（`character_ui.py:846`）同族 |
+| 战斗死簇（链式，不可单删） | `simulate_battle:909` → `take_damage:318`/`record_battle:333`；`random_weapon:893` → `get_all_weapons:864`；`random_skill:900` → `get_all_skills:886`；`random_promote_minor:555` → `promote_character:529` | 其写出的 stats 被**已接线**的 `get_stats_display:956` 展示（`character_ui.py:795`）；删上游会让下游转零调用，删下游必先删上游 ⇒ 只能整簇处理 |
+| 其它 | `record_creation:342`、`unlock_achievement:349` | 同上，输出均被 `get_stats_display:967/969` 展示 |
+
+**与项目既定口径一致**：`_delete_character` 是**刻意不接线**的能力，`character_ui.py:807` 有注释说明，
+且 `tests/test_character_data_integrity.py:320-322` 断言该注释存在。
+⇒ 项目对「未接线能力」的既定态度是**保留并留下断言**，而非删除。
+
+#### 💭 仍需决策（3 项）
+
+| 项 | 说明 |
+|---|---|
+| `fullscreen_writer._toggle_ai:383` | 三份文档一致记为零调用（`FEATURE_VALUE_ASSESSMENT.md:149` 写「若保留则在工具栏接线，否则删除」，`:235` 标「⏸ 未处理」）。**建议接线**（与 `_toggle_typewriter:107`、`_toggle_preview:159` 同族，后两者均已绑定） |
+| `ui_style.create_styled_button:326` / `create_styled_entry:353` / `create_styled_text:369` / `create_styled_listbox:391` | 四个工厂零调用，但构成**完整控件族**，且是 §1.1 A4（372 处硬编码字体）的**落地载体** ⇒ **建议接线，不删** |
+| `performance_monitor.PerformanceMiddleware:274` | 模块内零调用（测试未覆盖），是该模块唯一 WSGI 集成点。因模块必须保留，建议保留或改为接入 AI 调用链（§3.5） |
+
+#### 已确认早已删除（无需处理）
+
+`_atomic_json_write`（仅 `tests/test_storage.py:196` 断言其不存在）、`_show_image_prompt_dialog`（全仓零命中）、
+`_run_async`（从未实现，仅 `docs/TEAM_IMPROVEMENT_PLAN.md:185` 草案）。
 
 ### 1.3 「看似重复实则不同」——不要合并
 
@@ -473,15 +516,173 @@ total_tokens, estimated, latency_ms, cost, cost_currency}`
 
 ---
 
-## 8. 需要你决策的 5 个点
+## 8. 已确认的决策（2026-09-16 用户确认）
 
-1. **P4 面板容器形态**：15+ 面板下，保持左侧 Radiobutton 列表（按 category 分组），
-   还是升级为二级 `Notebook`？（推荐前者，改动小且与现有 `tool_content_frame` 兼容）
-2. **「续写第二代」的继承默认值**：默认全继承（角色+世界观+大纲+时间线+记忆+伏笔），还是只继承角色+世界观（更接近现状）？
-3. **`max_tokens` 是否放开给用户编辑**：放开会有「填过大导致请求失败/费用飙升」的风险，建议放开但加范围校验与提示。
-4. **价目表来源**：内置一份默认价目（可能过期），还是留空让用户第一次使用时填写？（推荐内置 + 明确标注可编辑）
-5. **是否接受删除 §1.2 的死代码**：`fullscreen_writer._toggle_ai`、`character_system.py` 约 25 个零调用方法。
-   （`performance_monitor.py` 建议**保留并接线**，见 §1.2）
+| # | 决策点 | 确认结果 | 对方案的影响 |
+|---|---|---|---|
+| 1 | 面板容器形态 | **保持左侧分组列表**（不升级二级 Notebook） | §2.2 保留 `tool_content_frame` 单区容器；`BasePanel.category` 用于**分组小标题**，不改容器结构 |
+| 2 | 续写第二代继承范围 | **用户可自选，默认全继承** | §2.4③ 的继承勾选面板成为必需项；`meta.lineage.inherited` 默认全 `true` |
+| 3 | `max_tokens` 编辑 | **放开编辑 + 建议区间提示** | §3.3 表单新增 `max_tokens` 输入 + 区间校验与提示文案（见下） |
+| 4 | 价目表来源 | **内置数据 + 界面标注价格可编辑**，且须联网查证后填入 | §9 给出已查证价目表；`pricing.py` 内置该表，UI 明示可编辑 |
+| 5 | 死代码处置 | **全面排查、逐项确认、仅删确认无效者** | §1.2 已完成审计：**删 3 项、保留 21 项、2 个模块不可删**；余 3 项待接线 |
+
+### 决策 3 的落地细节：`max_tokens` 建议区间
+
+| 场景 | 建议值 | 说明 |
+|---|---|---|
+| 中文小说单章正文 | 4096 ~ 8192 | 常见 2000~4000 字一章；中文约 1.6 token/汉字 ⇒ 8000 字约 12800 token |
+| 大纲 / 摘要 / 审校 | 2048 ~ 4096 | 输出结构化，通常不需要大额度 |
+| 角色传记（长文） | 8192 ~ 16384 | 与现有 `MAX_BIO_TOKENS=16000`（`character_ui.py:29`）对齐 |
+| 危险阈值 | **> 32768** | 多数 provider 单次输出上限远低于此；且部分模型按输出计费，费用会显著上升 |
+
+UI 文案建议：「超过 32768 可能超出所配模型的输出上限而请求失败；该值直接决定单次调用可生成的长度，
+并按输出 token 计费，请按需设置。」
+
+---
+
+## 9. 内置价目表（2026-09-16 联网查证）
+
+> 全部价格为**每百万 tokens**。`官方` = 厂商定价页；`聚合` = 第三方汇总站（置信度较低）。
+> 该表将作为 `app/providers/pricing.py` 的内置数据，**并在 UI 上明示「内置默认值，可能变动，可编辑」**。
+
+### 9.1 DeepSeek（官方 · CNY）
+来源：`api-docs.deepseek.com/zh-cn/quick_start/pricing`
+
+| 模型 | 输入(缓存命中) | 输入(未命中) | 输出 |
+|---|---|---|---|
+| `deepseek-v4-flash` | 0.02 | **1** | **2** |
+| `deepseek-v4-pro` | 0.025 | **3** | **6** |
+
+> ⚠️ `deepseek-chat` 与 `deepseek-reasoner` 已于 **2026-07-24** 弃用（分别对应 v4-flash 的非思考/思考模式）。
+
+### 9.2 OpenAI（聚合 · USD）
+来源：`help.openai.com` 费率表 + 多个聚合站（2026-05 ~ 08 快照）
+
+| 模型 | 输入 | 输出 |
+|---|---|---|
+| `gpt-4o` | 2.50 | 10.00 |
+| `gpt-4o-mini` | 0.15 | 0.60 |
+| `gpt-4.1` | 2.00 | 8.00 |
+| `o4-mini` | 1.10 | 4.40 |
+
+### 9.3 Anthropic Claude（官方 · USD）
+来源：`platform.claude.com/docs/en/about-claude/pricing`
+
+| 模型 | 输入 | 输出 | 缓存命中 |
+|---|---|---|---|
+| `claude-sonnet-5` | **2** | **10** | 0.20 |
+| `claude-opus-5` | 5 | 25 | 0.50 |
+| `claude-sonnet-4-6` | 3 | 15 | 0.30 |
+| `claude-haiku-4-5` | 1 | 5 | 0.10 |
+| `claude-fable-5` / `claude-mythos-5` | 10 | 50 | 1.00 |
+
+> Sonnet 5 的 `$2/$10` 原为限时价，官方已确认**转为标准价**，原定 9/1 的涨价取消。
+
+### 9.4 Moonshot Kimi（官方+聚合 · USD · 国际站）
+来源：`api.moonshot.ai` 定价页 + 聚合站
+
+| 模型 | 输入 | 输出 | 缓存命中 |
+|---|---|---|---|
+| `kimi-k3` | **3** | **15** | 0.30 |
+| `kimi-k2.6` | 0.95 | 4 | — |
+| `kimi-k2.5` | 0.60 | 3 | — |
+
+> ⚠️ **存在来源冲突**：有聚合站报 K2.6 为 `$0.60/$2.50`，与主流来源的 `$0.95/$4.00` 不一致。
+> 且**国内站以 CNY 计价、与国际站价格不同**。落地前需以官方站复核，并标 `confidence: aggregate`。
+
+### 9.5 智谱 GLM（官方 · CNY）
+来源：`docs.bigmodel.cn/cn/guide/start/pricing`
+
+| 模型 | 输入 | 缓存命中 | 输出 |
+|---|---|---|---|
+| `glm-5.3` | 8 | 2 | 28 |
+| `glm-5.3-flash` | 0.8 | 0.23 | 2.8 |
+| `glm-5.2` | 8 | 2 | 28 |
+| `glm-4.7-flash` | **免费** | 免费 | **免费** |
+
+> 💡 智谱官方明确写出「**Token 与汉字换算比例约为 1:1.6**」——
+> 这正好为 §3.5 的估算系数「汉字 × 1.6」提供了官方依据（原方案该系数是我基于经验取的，现已有出处）。
+
+### 9.6 阿里云百炼 Qwen（官方 · CNY · **阶梯计费**）
+来源：`help.aliyun.com/zh/model-studio/model-pricing`
+
+| 模型 | 输入区间 | 输入 | 输出 |
+|---|---|---|---|
+| `qwen3.7-max` | 0 < Token ≤ 1M | 12 | 36 |
+| `qwen3-max` | ≤ 32K / 32–128K / 128–256K | 2.5 / 4 / 7 | 10 / 16 / 28 |
+| `qwen3.7-plus` | ≤ 256K | 2 | 8 |
+| `qwen-plus` | ≤ 128K | 0.8 | 2 |
+
+> ⚠️ **阶梯计费**：单价取决于**单次请求的输入 token 总量**，且该请求的全部 token 按对应档位结算。
+> 一个扁平的 `(输入价, 输出价)` 二元组**无法表达** Qwen 的定价 —— 这是价目表数据模型的硬约束（见 §9.9）。
+
+### 9.7 小米 MiMo（官方 · CNY/USD 双币种）
+来源：`platform.xiaomimimo.com/docs/zh-CN/price/pay-as-you-go`（更新 2026-08-06）
+
+| 模型 | 国内 输入(未命中) | 国内 输出 | 海外 输入 | 海外 输出 |
+|---|---|---|---|---|
+| `mimo-v2.5-pro` | ¥3.00 | ¥6.00 | $0.435 | $0.87 |
+| `mimo-v2.5` | ¥1.00 | ¥2.00 | $0.14 | $0.28 |
+
+### 9.8 聚合/托管平台
+
+| 平台 | 模型 | 输入 | 缓存 | 输出 | 来源 |
+|---|---|---|---|---|---|
+| SiliconFlow | `deepseek-ai/DeepSeek-V4-Flash` | $0.13 | $0.028 | $0.28 | 官方 blog |
+| SiliconFlow | `zai-org/GLM-5.3` | $1.40 | $0.26 | $4.40 | 官方 blog |
+| Groq | `openai/gpt-oss-120b` | $0.15 | — | $0.60 | `console.groq.com/docs/models` |
+| Groq | `openai/gpt-oss-20b` | $0.075 | $0.0375 | $0.30 | 同上 |
+| Groq | `qwen/qwen3.6-27b` | $0.60 | — | $3.00 | 同上 |
+| Groq | `llama-3.3-70b-versatile` | $0.59 | — | $0.79 | 同上 |
+| Together | `Qwen3.6-Plus` | $0.50 | — | $3.00 | **聚合，置信度低** |
+| Ollama | 本地模型 | — | — | — | 无计费，UI 显示「本地模型」 |
+
+### 9.9 ⚠️ 由查证得出的四条数据模型结论（重要）
+
+单纯的两列表格（输入价 / 输出价）**不足以表达真实定价**，`pricing.py` 必须支持：
+
+1. **缓存价独立**：DeepSeek / Anthropic / GLM / MiMo / SiliconFlow 都区分 cache-hit 与 cache-miss，价差可达 **50 倍**（DeepSeek 0.02 vs 1 元）
+2. **阶梯计费**：Qwen 按单次请求输入长度分档（§9.6），需 `tiers` 结构
+3. **币种**：CNY（DeepSeek/GLM/Qwen/MiMo 国内）与 USD（OpenAI/Anthropic/Kimi 国际/SiliconFlow/Groq）混用
+4. **部署区域**：**同一模型不同区域价格不同** —— Kimi 国内/国际、MiMo 国内/海外、Qwen 中国内地/全球/国际/欧盟
+
+```python
+@dataclass(frozen=True)
+class PriceTier:
+    max_input_tokens: int | None      # None = 最后一档
+    input: float
+    output: float
+
+@dataclass(frozen=True)
+class ModelPrice:
+    provider: str
+    model: str
+    currency: str                     # "CNY" | "USD"
+    input: float
+    output: float
+    cached_input: float | None = None
+    tiers: tuple[PriceTier, ...] = ()          # 阶梯（Qwen 类）
+    region: str = "default"                    # cn / global / international / eu
+    source_url: str = ""
+    verified_at: str = ""                      # "2026-09-16"
+    confidence: str = "official"               # official | aggregate | unverified
+    editable: bool = True                      # UI 必须可编辑
+```
+
+**UI 必须呈现的三件事**：① 标注「内置默认价，可能变动」② 提供编辑入口 ③ 显示 `verified_at` 与来源链接，
+让用户自行判断是否已过期。成本计算对 `confidence != "official"` 或估算的用量值加提示标记。
+
+### 9.10 附带发现：内置模型名已有过时项
+
+查证时发现 `ai_client.py:407-415 PROVIDERS` 里的内置模型名有 3 处已过时，建议 **P2 一并更新**：
+
+| provider | 内置模型名 | 现状 |
+|---|---|---|
+| claude | `claude-sonnet-4-20250514`、`claude-3-5-sonnet-20241022` | 均属**已退役世代**（官方定价页已不列，Sonnet 4 仅 Bedrock/GCP 可用） |
+| deepseek | `deepseek-chat` | **2026-07-24 已弃用** |
+| kimi | `moonshot-v1-128k` | V1 世代，官方标注 being retired |
+
+⇒ 注册表化（§3.2）时应同时刷新内置模型清单，并在 UI 提示「该模型名可能已停用」。
 
 ---
 

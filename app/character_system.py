@@ -308,13 +308,6 @@ class CharacterProfile:
                 return True
         return False
     
-    def add_item(self, item: Dict):
-        for inv_item in self.inventory:
-            if inv_item.get("name") == item.get("name") and inv_item.get("stackable", False):
-                inv_item["count"] = inv_item.get("count", 1) + item.get("count", 1)
-                return
-        self.inventory.append(item)
-    
     def take_damage(self, damage: int) -> Dict:
         defense = self.attributes.get("体质", 0)
         actual_damage = max(1, damage - defense // 2)
@@ -632,10 +625,6 @@ class CharacterSystem:
             f = self.save_dir / f"{safe_name}.json"
             atomic_write_json(f, self.characters[name].to_dict())
     
-    def save_all(self):
-        for name in self.characters:
-            self.save_character(name)
-    
     def load(self) -> bool:
         """兼容旧接口"""
         self._load_all()
@@ -949,9 +938,6 @@ class CharacterSystem:
         return {"won": won, "rounds": round_count, "remaining_hp": self.character.hp, "log": battle_log}
     
     # ===== 显示 =====
-    
-    def get_character_summary(self) -> str:
-        return self.character.get_summary() if self.character else "未创建角色"
     
     def get_stats_display(self) -> str:
         if not self.character:

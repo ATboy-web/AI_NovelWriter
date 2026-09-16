@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Dict, List
 
 from .ai_client import AIClient
+from .token_estimator import estimate_tokens, truncate_to_tokens
 
 
 class AgentOrchestrator:
@@ -117,11 +118,16 @@ class PromptOptimizer:
     @classmethod
     def optimize_prompt(cls, base_prompt: str, context: str,
                        max_tokens: int = 4000) -> str:
-        """优化提示词 - 控制长度和结构"""
-        # 估算token数（中文约2字符/token）
-        estimated_tokens = len(context) // 2 + len(base_prompt) // 2
+        """优化提示词 - 控制长度和结构
 
-        if estimated_tokens > max_tokens * 0.8:
-            context = context[:max_tokens * 2 - len(base_prompt)]
+        v3 §3.5(3)：这里原来是 `len(x) // 2`（注释写"中文约 2 字符/token"）。
+        该口径对中文**低估约 3 倍**，而且末尾那句 `context[:max_tokens * 2 - len(base_prompt)]`
+        又混用了字符与 token 两种单位（`* 2` 是在延续 `// 2` 的错误换算）。
+        现在统一走 `token_estimator`：估算用真实比例，截断按估算反推字符数。
+        """
+        budget = max_tokens * 0.8
+        if estimate_tokens(base_prompt) + estimate_tokens(context) > budget:
+            allowed = max(0.0, budget - estimate_tokens(base_prompt))
+            context = truncate_to_tokens(context, allowed)
 
         return f"{base_prompt}\n\n{context}"

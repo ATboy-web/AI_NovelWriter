@@ -16,7 +16,6 @@
 URL 预览由 `ProviderSpec.resolved_url` 直接算 —— 三者都不会另写一套请求逻辑。
 """
 
-import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Callable, Dict, List, Tuple
@@ -492,17 +491,12 @@ class AISettingsMixin:
 
         网络请求不能在事件回调里同步跑：DNS 失败也要等超时，界面会假死。
         结果必须经 `after()` 回主线程 —— Tk 控件只能由主线程访问。
-        """
 
-        def runner():
-            try:
-                result = work()
-            except Exception as exc:                    # noqa: BLE001 - 需回报给用户
-                result = exc
-            try:
-                dialog.after(0, lambda: _deliver(result))
-            except tk.TclError:
-                pass                                    # 对话框已被关闭
+        v3 §1.1 A6：这里原来是裸 `threading.Thread`，现在统一走
+        `BackgroundRunner` —— 除了少一处重复，更重要的是它做了
+        `copy_context()`，让用量归因上下文能跨线程正确传递。
+        """
+        from .async_runner import BackgroundRunner
 
         def _deliver(result):
             if isinstance(result, Exception):
@@ -510,7 +504,9 @@ class AISettingsMixin:
             else:
                 on_done(result)
 
-        threading.Thread(target=runner, daemon=True).start()
+        BackgroundRunner(ui=dialog).submit(
+            work, on_success=_deliver, on_error=_deliver, name="anw-settings-probe",
+        )
 
 
 # ============================================================ 顶层小工具

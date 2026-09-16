@@ -607,6 +607,11 @@ class ShellMixin:
         writing_skills_frame = tk.Frame(self.notebook, bg=C['bg_dark'])
         self.notebook.add(writing_skills_frame, text=" 写作技能 ")
         self._create_writing_skills_panel(writing_skills_frame)
+
+        # === 用量统计页（v3 §3.5：token 统计 / 价目表 / 余额）===
+        usage_frame = tk.Frame(self.notebook, bg=C['bg_dark'])
+        self.notebook.add(usage_frame, text=" 用量统计 ")
+        self._build_usage_tab(usage_frame)
     def _log(self, message: str):
         """添加日志（线程安全）"""
         # 使用loguru记录日志
@@ -655,7 +660,11 @@ class ShellMixin:
             from app.ai_client import token_stats
             token_display = token_stats.get_display()
 
+            # 用量统计（v3 §3.5）：按章归因 / 成本 / 估算占比
             text = f"{provider}/{model}{img_status} | {token_display}"
+            usage_text = self._usage_status_text()
+            if usage_text:
+                text = f"{text} | {usage_text}"
             self.status_indicator.config(text=text, fg='#10b981')
             if hasattr(self, 'ai_status_label'):
                 self.ai_status_label.config(text=text, fg=UIStyle.COLORS.get('success', '#10b981'))

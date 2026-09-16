@@ -9,6 +9,21 @@ from tkinter import messagebox
 
 from app import UIStyle
 
+from .token_estimator import format_tokens
+
+
+def _token_badge(tokens) -> str:
+    """章节列表里的 token 徽标（v3 §3.5(5)「章节列表每章旁显示 token 徽标」）。
+
+    没有记录时返回空串 —— 不显示 `0`，因为"还没生成过"和"生成了但没记到"
+    是两件事，前者不该在每章后面都挂个 0 干扰阅读。
+    """
+    try:
+        value = int(tokens or 0)
+    except (TypeError, ValueError):
+        return ""
+    return f"  · {format_tokens(value)}" if value > 0 else ""
+
 
 class OutlineUIMixin:
     """大纲层：整体大纲/故事大纲读写、上下文注入、世界观、大纲条目增删改"""
@@ -20,11 +35,15 @@ class OutlineUIMixin:
         outline_type = self.outline_type_var.get()
 
         if outline_type == "章节大纲":
+            badge_provider = getattr(self, "_chapter_token_badges", None)
+            badges = badge_provider() if badge_provider else {}
             chapters = []
             for item in self.outline:
                 ch = item.get("chapter", "?")
                 title = item.get("title", "未命名")
-                self.outline_list.insert(tk.END, f"第{ch}章: {title}")
+                self.outline_list.insert(
+                    tk.END, f"第{ch}章: {title}{_token_badge(badges.get(ch))}"
+                )
                 chapters.append(f"第{ch}章")
 
             # 更新章节选择器

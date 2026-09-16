@@ -34,6 +34,7 @@ __all__ = [
     "extract_path",
     "fetch_balance",
     "probe_for",
+    "capability_text",
 ]
 
 #: 余额缓存有效期（秒）。避免频繁请求触发限流。
@@ -281,6 +282,24 @@ class BalanceCache:
 
     def clear(self) -> None:
         self._store.clear()
+
+
+def capability_text(provider: str) -> str:
+    """「这家能不能查余额」→ 给用户看的一句话（用量面板与设置页共用）。
+
+    三种状态必须能分辨，否则用户无法判断"是功能坏了还是这家本来就没有"：
+
+    - `✅ 支持余额查询`            —— 有内置探针
+    - `❌ <具体原因>`              —— 明确知道这家没有公开余额接口
+    - `❓ 未内置余额接口，可在设置中填写` —— 未知，但用户可以自己配
+    """
+    probe = BALANCE_PROBES.get(provider)
+    if probe is not None and probe.configured:
+        return "✅ 支持余额查询"
+    note = _NO_BALANCE_NOTE.get(provider, "")
+    if note:
+        return f"❌ {note}"
+    return "❓ 未内置余额接口，可在设置中填写"
 
 
 def probe_for(provider: str, override_url: str = "", override_paths: dict = None):

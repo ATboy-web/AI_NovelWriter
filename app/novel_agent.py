@@ -27,6 +27,8 @@ from .config import AppConfig
 from .memory_manager import CharacterDataGuardError, MemoryManager
 from .parsing import parse_characters_payload, parse_json_response
 from .storage import atomic_write_json, safe_filename
+from .token_estimator import chars_for_context_window
+from .usage_tracker import task_tracker
 
 # 诊断日志
 try:
@@ -290,7 +292,11 @@ class NovelAgent:
         - ending: 结尾阶段，需要全局摘要
         """
         if max_chars is None:
-            max_chars = self.config.get("context_window", 32000) // 3 if self.config else 10000
+            # v3 §3.5(3)：换算口径收敛到 token_estimator，与 v2 的
+            # `context_window // 3` **等效**（32000 → 10666，无配置 → 10000）。
+            # 有意保留这个保守除数：窗口里还要装提示词模板、指令与输出预算。
+            window = self.config.get("context_window", 32000) if self.config else 30000
+            max_chars = chars_for_context_window(window)
 
         # 动态比例分配 — extra_context(前文内容)是连贯性关键，必须占大比例
         ratios = {
@@ -936,6 +942,7 @@ class NovelAgent:
 
     # ===== 传统方法（兼容旧接口）=====
 
+    @task_tracker("chapter", chapter_param="chapter_num")
     def generate_chapter(self, chapter_num: int, chapter_title: str,
                          chapter_outline: str, word_count: int = 3000,
                          prev_context: str = "") -> str:
@@ -1034,6 +1041,7 @@ class NovelAgent:
                   (similar_count > 3 and short_ratio > 0.7))
         return (has_rep, actual_words)
 
+    @task_tracker("review", chapter_param="chapter_num")
     def review_chapter(self, chapter_num: int, content: str) -> dict:
         """审校章节"""
         return self._reviewer_evaluate(chapter_num, content)
@@ -1070,6 +1078,7 @@ class NovelAgent:
         self.memory.save_settings(settings)
         return settings
 
+    @task_tracker("characters")
     def generate_characters(self, genre: str, title: str, count: int = None) -> dict:
         """生成角色 - 根据小说规模智能确定角色数量"""
         if count is None:
@@ -1293,6 +1302,7 @@ class NovelAgent:
 
         return chars
 
+    @task_tracker("outline")
     def generate_outline(self, genre: str, title: str, chapter_count: int, concept: str = "",
                           total_chapters: int = None) -> list:
         """生成大纲 - 智能分批+故事弧线
@@ -1408,6 +1418,7 @@ class NovelAgent:
         outline.sort(key=lambda x: x.get("chapter", 0))
         return outline
 
+    @task_tracker("outline")
     def generate_outline_continuation(self, genre: str, title: str,
                                       add_count: int, global_context: str,
                                       current_count: int) -> list:

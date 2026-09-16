@@ -477,6 +477,22 @@ class CharacterSystem:
     def get_character(self, name: str) -> Optional[CharacterProfile]:
         """获取指定名称的角色"""
         return self.characters.get(name)
+
+    def get_all_characters(self) -> Dict[str, CharacterProfile]:
+        """获取全部角色（名字 → 角色对象）。
+
+        v3 补漏：`writing_skills_panel.py:188`（知识图谱同步）一直在调用
+        `self.character_system.get_all_characters()`，而本类**从未定义过该方法** ——
+        也就是说点「更新知识图谱」必然抛 `AttributeError`。集合查询族
+        （`get_character_names` / `get_characters_by_category` / `get_alive_characters`
+        / `get_dead_characters` / `get_characters_by_faction`）此前恰好缺了这一环，
+        这里把它补齐，而不是去改调用方 —— 后者会让族更加不完整。
+
+        返回**浅拷贝**：调用方拿到的是容器副本，改它不会影响内部状态；
+        但角色对象本身仍是同一批引用（面板需要读它们的实时字段）。
+        **只读能力** —— 本方法不提供任何删除角色的入口（项目硬约束）。
+        """
+        return dict(self.characters)
     
     def set_active(self, name: str) -> bool:
         if name in self.characters:

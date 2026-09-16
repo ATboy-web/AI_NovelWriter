@@ -439,6 +439,7 @@ class NovelLifecycleMixin:
 
             # 初始化
             self.current_novel_dir = novel_dir
+            self._bind_usage_novel(novel_dir)
             self.memory = MemoryManager(novel_dir)
             self.agent = NovelAgent(self.ai_client, self.memory, log_callback=self._log, config=self.config)
             self.note_manager = NoteManager(novel_dir=novel_dir, config=self.config)
@@ -485,6 +486,7 @@ class NovelLifecycleMixin:
 
         try:
             self.current_novel_dir = novel_dir
+            self._bind_usage_novel(novel_dir)
             self._log("设置current_novel_dir成功")
         except Exception as e:
             self._log(f"设置current_novel_dir失败: {e}")
@@ -791,6 +793,7 @@ class NovelLifecycleMixin:
 
             # 切换到续集
             self.current_novel_dir = novel_dir
+            self._bind_usage_novel(novel_dir)
             self.memory = MemoryManager(novel_dir)
             self.agent = NovelAgent(self.ai_client, self.memory, log_callback=self._log, config=self.config)
             self.note_manager = NoteManager(novel_dir=novel_dir, config=self.config)
@@ -942,6 +945,7 @@ class NovelLifecycleMixin:
 
             # 切换到同人作品
             self.current_novel_dir = novel_dir
+            self._bind_usage_novel(novel_dir)
             self.memory = MemoryManager(novel_dir)
             self.agent = NovelAgent(self.ai_client, self.memory, log_callback=self._log, config=self.config)
             self.note_manager = NoteManager(novel_dir=novel_dir, config=self.config)

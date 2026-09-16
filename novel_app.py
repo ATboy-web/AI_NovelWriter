@@ -66,6 +66,7 @@ from app.timeline_ui import TimelineMixin
 from app.toolkit_ui import ToolkitUIMixin
 from app.persistence_ui import PersistenceMixin
 from app.note_ui import NoteUIMixin
+from app.usage_ui import UsagePanelMixin
 
 
 class NovelWriterApp(
@@ -82,6 +83,7 @@ class NovelWriterApp(
     ToolkitUIMixin,
     PersistenceMixin,
     NoteUIMixin,
+    UsagePanelMixin,
     WritingSkillsPanelMixin,
     ElementsPanelMixin, BridgesPanelMixin, DescriptionsPanelMixin,
     DialoguePanelMixin, StoryFlowPanelMixin, StylePanelMixin,

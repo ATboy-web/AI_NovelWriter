@@ -33,6 +33,8 @@ from .providers import (
     default_registry,
     is_transient_error,
 )
+from .token_estimator import estimate_messages_tokens, estimate_tokens
+from .usage_tracker import usage_tracker
 
 #: `_parse_thinking_response` 用的解析器缓存（模块级：该方法会被
 #: `AIClient.__new__(AIClient)` 方式的单测调用，实例属性此时并不存在）
@@ -1019,8 +1021,18 @@ class AIClient:
             stream=False,
         )
 
-        result = self._send(adapter, spec, base, request, api_key)
-        self._record_usage(result.usage, spec.key, model)
+        started = time.time()
+        try:
+            result = self._send(adapter, spec, base, request, api_key)
+        except Exception:
+            self._observe_call(spec.key, model, (time.time() - started) * 1000.0, ok=False)
+            raise
+        latency_ms = (time.time() - started) * 1000.0
+        self._record_usage(
+            result.usage, spec.key, model,
+            messages=messages, system=system or "", output_text=result.text,
+            latency_ms=latency_ms,
+        )
         if result.reasoning:
             self._log_thinking(result.reasoning)
         return self._finalize_text(result, adapter.label, model)
@@ -1082,16 +1094,30 @@ class AIClient:
             f"finish={result.finish_reason})"
         )
 
-    def _record_usage(self, usage: UsageData, provider: str, model: str) -> None:
-        """把 token 用量计入全局统计（修 P6）。
+    def _record_usage(self, usage: UsageData, provider: str, model: str, *,
+                      messages=None, system: str = "", output_text: str = "",
+                      latency_ms: float = 0.0, ok: bool = True) -> None:
+        """把 token 用量计入全局统计并持久化（v3 §3.5，修 P6 的完整版）。
 
         v2 只有 openai 与 `_parse_thinking_response` 两条路径记录，
         ollama / claude / 全部流式路径**从不记录**；现在每个 adapter 都会解析
-        usage，这里统一入账。仅在 provider 真的返回了用量时才记账，
-        避免把"没数据"记成"用了 0 个 token"并虚增调用次数。
+        usage，这里统一入账。
+
+        v3 再补三件 v2 缺失的事：
+
+        1. **估算兜底**：provider 没返回 usage 时（本地模型、部分聚合平台、
+           异常中断的流式响应）用 `token_estimator` 估算并打 `estimated=True`，
+           而不是"干脆不记账" —— 后者会让用量面板出现莫名其妙的空洞。
+           实在连估算材料都没有（无 prompt 也无输出）才真的不记，
+           避免把"没数据"记成"用了 0 个 token"并虚增调用次数。
+        2. **归因 + 持久化**：写进 `novels/<名>/usage/usage.jsonl`（重启不丢）。
+        3. **耗时维度**：接进 `performance_monitor`（v2 里该模块零调用）。
         """
-        if usage is None or usage.total_tokens <= 0:
+        usage = self._finalized_usage(usage, messages, system, output_text)
+        if usage is None:
+            self._observe_call(provider, model, latency_ms, ok=ok)
             return
+
         cache_note = f", 缓存命中:{usage.cached_tokens}" if usage.cached_tokens else ""
         est_note = ", 估算" if usage.estimated else ""
         token_stats.record(usage.prompt_tokens, usage.completion_tokens)
@@ -1101,6 +1127,56 @@ class AIClient:
             f"(输入:{usage.prompt_tokens} 输出:{usage.completion_tokens}"
             f"{cache_note}{est_note}) | 累计: {token_stats.total_tokens}"
         )
+        self._persist_usage(usage, provider, model, latency_ms, ok)
+        self._observe_call(provider, model, latency_ms, ok=ok)
+
+    def _finalized_usage(self, usage, messages, system: str,
+                         output_text: str) -> Optional[UsageData]:
+        """拿到可入账的用量：实测优先，估算兜底；两者皆无则返回 `None`。"""
+        if usage is not None and usage.total_tokens > 0:
+            return usage
+        prompt_tokens = estimate_messages_tokens(messages, system) if messages else \
+            estimate_tokens(system)
+        completion_tokens = estimate_tokens(output_text)
+        if prompt_tokens <= 0 and completion_tokens <= 0:
+            return None
+        return UsageData(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            estimated=True,
+        )
+
+    def _persist_usage(self, usage: UsageData, provider: str, model: str,
+                       latency_ms: float, ok: bool) -> None:
+        """落一条明细（含归因与成本）。记账失败**绝不影响**主流程。"""
+        try:
+            usage_tracker.record(
+                provider=provider,
+                model=model,
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                cached_tokens=usage.cached_tokens,
+                estimated=usage.estimated,
+                latency_ms=latency_ms,
+                ok=ok,
+            )
+        except Exception as exc:                   # noqa: BLE001 - 记账是增值项
+            self._log(f"[用量] 记账失败（不影响主流程）: {type(exc).__name__}: {exc}")
+
+    def _observe_call(self, provider: str, model: str, latency_ms: float,
+                      ok: bool) -> None:
+        """把耗时/成败喂给 `performance_monitor`（v3 §3.5(6)：让零调用模块接线）。"""
+        try:
+            from .performance_monitor import get_performance_monitor
+
+            get_performance_monitor().record_request(
+                path=f"ai:{provider or 'unknown'}/{model or '-'}",
+                method="POST",
+                status_code=200 if ok else 500,
+                duration_ms=float(latency_ms or 0.0),
+            )
+        except Exception as exc:                   # noqa: BLE001 - 监控是增值项
+            self._log(f"[监控] 记录失败（不影响主流程）: {type(exc).__name__}: {exc}")
 
     # ============================================================ 主入口: 流式
 
@@ -1153,37 +1229,49 @@ class AIClient:
 
         pieces: list = []
         usage: Optional[UsageData] = None
+        started = time.time()
 
-        with self.client.stream(
-            prepared.method, url,
-            json=prepared.json_body,
-            headers=headers,
-            timeout=self._httpx_timeout(spec),
-        ) as response:
-            response.raise_for_status()
-            for line in response.iter_lines():
-                if not line:
-                    continue
-                try:
-                    delta = adapter.parse_stream_chunk(line)
-                except Exception as exc:               # noqa: BLE001
-                    if _diag_logger:
-                        _diag_logger.log("API_CALL", "stream_chunk_parse_error", error=exc)
-                    continue
-                if delta is None:
-                    continue
-                if delta.text:
-                    pieces.append(delta.text)
-                    if callback:
-                        callback(delta.text)
-                if delta.usage is not None and delta.usage.total_tokens > 0:
-                    usage = delta.usage
-                if delta.done:
-                    break
+        try:
+            with self.client.stream(
+                prepared.method, url,
+                json=prepared.json_body,
+                headers=headers,
+                timeout=self._httpx_timeout(spec),
+            ) as response:
+                response.raise_for_status()
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        delta = adapter.parse_stream_chunk(line)
+                    except Exception as exc:               # noqa: BLE001
+                        if _diag_logger:
+                            _diag_logger.log("API_CALL", "stream_chunk_parse_error", error=exc)
+                        continue
+                    if delta is None:
+                        continue
+                    if delta.text:
+                        pieces.append(delta.text)
+                        if callback:
+                            callback(delta.text)
+                    if delta.usage is not None and delta.usage.total_tokens > 0:
+                        usage = delta.usage
+                    if delta.done:
+                        break
+        except Exception:
+            self._observe_call(
+                spec.key, request.model, (time.time() - started) * 1000.0, ok=False
+            )
+            raise
 
         text = "".join(pieces)
-        if usage is not None:
-            self._record_usage(usage, spec.key, request.model)
+        # v3：流式路径此前**从不记账**。现在无论 provider 是否回传 usage 都入账
+        # （没有 usage 就走估算兜底并标记 `estimated`）。
+        self._record_usage(
+            usage, spec.key, request.model,
+            messages=request.messages, system=request.system, output_text=text,
+            latency_ms=(time.time() - started) * 1000.0,
+        )
         return text
 
     # ============================================================ 模型自动检测

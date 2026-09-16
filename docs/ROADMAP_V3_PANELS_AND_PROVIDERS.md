@@ -425,6 +425,35 @@ provider 只是 Profile 里的一个字段。
 
 ### 3.5 每章 Token 消耗统计（需求 3）
 
+**实施状态：✅ 已完成（P3）** —— 落地形态与本节草案一致，新增/改动的文件：
+
+| 文件 | 作用 |
+|---|---|
+| `app/token_estimator.py` | 估算单一来源；另收口「token 窗口 → 字符预算」换算 |
+| `app/usage_tracker.py` | `contextvars` 归因 + `usage.jsonl` 追加 + `summary.json` 聚合 + CSV 导出 |
+| `app/async_runner.py` | 统一线程执行器（A6）；**在父线程 `copy_context()`** 交给子线程 |
+| `app/usage_ui.py` | 「用量统计」面板：按章/按服务/按任务/按模型/价目表 五个子页 + 余额查询 |
+
+两处**有意偏离**草案，都是被实测逼出来的：
+
+**偏离一：`contextvars` 的快照必须在父线程取。**
+草案写 `ctx = copy_context(); Thread(target=ctx.run, args=(fn,))`，方向是对的；
+实现时先写成「在线程体里调 `copy_context()`」，测试立刻证明那是**无效**的 ——
+子线程里拷贝到的是子线程自己那份空上下文，`chapter=N` 全丢（
+`tests/test_async_runner.py::TestContextHelpers::test_runner_constructed_inside_child_would_lose_context`
+把这条反向固化了）。现在由 `async_runner.context_runner()` 在**调用方线程**完成拷贝。
+
+**偏离二：`usage_tracker.record()` 里"先载入聚合、再追加明细"的顺序是硬要求。**
+最初写成「追加明细 → 更新聚合」，结果**每次冷启动的第一条记录都被算两遍**：
+聚合为 `None` 时会从 `usage.jsonl` 重建，而重建时明细里已经有本条了，
+随后 `_accumulate` 又加一次。修法是把顺序反过来（载入 → 追加 → 累加），
+测试从 2× 全绿变为正确（见 `test_writes_jsonl_and_summary` 等 7 个用例）。
+
+**另外补了一处与本需求相邻的真实 bug**：`writing_skills_panel.py:188` 调用
+`character_system.get_all_characters()`，而该方法**从未存在** ⇒「更新知识图谱」
+必然 `AttributeError`。按 §1.2 的判断（集合查询族缺一环）补齐了该方法，
+而不是改调用方；见 `tests/test_character_accessors.py`。
+
 **现状**：`TokenStats`（`ai_client.py:34-71`，含锁 + `get_summary` + `get_display`）是**全局内存累计**；
 只在 2 条路径记录（P6）；`shell_ui.py:655-658` 在状态栏显示。
 **缺**：按章归因、持久化（重启即失）、估算兜底、成本、耗时关联。

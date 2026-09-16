@@ -45,12 +45,19 @@ _DIGITS_RE = re.compile(r"\d+")
 __all__ = [
     "LINEAGE_KEY",
     "SCOPE_READONLY_PARENT",
+    "KIND_NOVEL",
+    "KIND_BRANCH",
+    "BRANCH_PREFIX",
     "INHERIT_DIMENSIONS",
     "DIMENSION_SOURCES",
     "DEFAULT_INHERITED",
     "LineageRecord",
     "InheritancePlan",
     "read_lineage",
+    "read_meta",
+    "branches_dir",
+    "discover_branches",
+    "branch_lineage_record",
     "build_lineage_record",
     "generation_tree",
     "plan_inheritance",
@@ -74,6 +81,14 @@ LINEAGE_KEY = "lineage"
 
 #: 子代对父代的唯一合法关系：**只读**
 SCOPE_READONLY_PARENT = "readonly_parent"
+
+#: 节点类型：一本独立作品 / 一个分支子项目（同一部作品的另一条世界线）
+KIND_NOVEL = "novel"
+KIND_BRANCH = "branch"
+
+#: 分支子项目在父代作品里的存放位置：`<父代>/timelines/branch_%03d/`
+BRANCH_PARENT_REL = "timelines"
+BRANCH_PREFIX = "branch_"
 
 #: 可勾选的继承维度（顺序即面板展示顺序）
 INHERIT_DIMENSIONS: tuple[str, ...] = (
@@ -111,7 +126,13 @@ DEFAULT_INHERITED: dict[str, bool] = {name: True for name in INHERIT_DIMENSIONS}
 
 @dataclass
 class LineageRecord:
-    """一本小说在世代链上的位置（对应 `meta.json` 的 `lineage` 字段）。"""
+    """一本小说在世代链上的位置（对应 `meta.json` 的 `lineage` 字段）。
+
+    `kind` 区分两种节点：
+    - `novel`（默认）—— 一部独立作品，`generation` 表示"第几代"；
+    - `branch` —— **同一代里的另一条世界线**（`timelines/branch_%03d/`）。
+      它不是"下一代"，因此 `generation` 与父代**相同**，靠 `branch_of` / `branch_id` 定位。
+    """
 
     generation: int = 1
     parent_novel: str = ""
@@ -119,11 +140,21 @@ class LineageRecord:
     era_gap_years: int = 0
     inherited: dict[str, bool] = field(default_factory=lambda: dict(DEFAULT_INHERITED))
     child_scope: str = SCOPE_READONLY_PARENT
+    #: `novel` | `branch`
+    kind: str = KIND_NOVEL
+    #: 分支编号（`branch_003` → `"003"`）；非分支为空
+    branch_id: str = ""
+    #: 分支从第几章分叉
+    origin_chapter: int = 0
 
     @property
     def is_root(self) -> bool:
         """第 1 代 = 没有父代。"""
         return self.generation <= 1 or not self.parent_novel
+
+    @property
+    def is_branch(self) -> bool:
+        return self.kind == KIND_BRANCH
 
     def as_dict(self) -> dict:
         return {
@@ -133,6 +164,9 @@ class LineageRecord:
             "era_gap_years": int(self.era_gap_years or 0),
             "inherited": {k: bool(v) for k, v in (self.inherited or {}).items()},
             "child_scope": str(self.child_scope or SCOPE_READONLY_PARENT),
+            "kind": str(self.kind or KIND_NOVEL),
+            "branch_id": str(self.branch_id or ""),
+            "origin_chapter": int(self.origin_chapter or 0),
         }
 
     @classmethod
@@ -163,6 +197,14 @@ class LineageRecord:
         except (TypeError, ValueError):
             gap = 0
 
+        kind = str(raw.get("kind", KIND_NOVEL) or KIND_NOVEL)
+        if kind not in (KIND_NOVEL, KIND_BRANCH):
+            kind = KIND_NOVEL
+        try:
+            origin_chapter = int(raw.get("origin_chapter", 0) or 0)
+        except (TypeError, ValueError):
+            origin_chapter = 0
+
         return cls(
             generation=max(generation, 1),
             parent_novel=str(raw.get("parent_novel", "") or ""),
@@ -170,6 +212,9 @@ class LineageRecord:
             era_gap_years=gap,
             inherited=inherited,
             child_scope=str(raw.get("child_scope", SCOPE_READONLY_PARENT) or SCOPE_READONLY_PARENT),
+            kind=kind,
+            branch_id=str(raw.get("branch_id", "") or ""),
+            origin_chapter=origin_chapter,
         )
 
 
@@ -182,6 +227,60 @@ def read_lineage(novel_dir: Any) -> LineageRecord | None:
         logger.warning(f"[lineage] meta.json 损坏，按无代际信息处理: {novel_dir}")
         return None
     return LineageRecord.from_meta(meta)
+
+
+def read_meta(novel_dir: Any) -> dict:
+    """读一个作品/分支目录的 `meta.json`（缺失或损坏返回空字典）。"""
+    if not novel_dir:
+        return {}
+    data, status = read_json_with_backup(Path(novel_dir) / "meta.json", default=None)
+    if status == "corrupt" or not isinstance(data, Mapping):
+        return {}
+    return dict(data)
+
+
+def branches_dir(parent_dir: Any) -> Path | None:
+    """分支子项目的所在目录：`<父代>/timelines/`。"""
+    if not parent_dir:
+        return None
+    return Path(parent_dir) / BRANCH_PARENT_REL
+
+
+def discover_branches(parent_dir: Any) -> list[dict]:
+    """列出一个作品的**分支子项目**（`timelines/branch_%03d/`）。
+
+    每个分支本身就是一份可被当作品打开的数据（`meta.json` + `chapters/` + `memory/`），
+    因此这里同时给出 `openable`：只有 `meta.json` 可解析才算能打开
+    （`_load_novel` 的第一道校验就是它）。
+
+    ⚠️ 背景：这些目录原本是**只写不读**的（`timeline_ui` 建出来就再没人碰）。
+    本函数与 `generation_tree(include_branches=True)` 一起把它们接进代际树。
+    """
+    base = branches_dir(parent_dir)
+    if base is None or not base.is_dir():
+        return []
+
+    out: list[dict] = []
+    for path in sorted(p for p in base.iterdir() if p.is_dir() and p.name.startswith(BRANCH_PREFIX)):
+        meta = read_meta(path)
+        record = LineageRecord.from_meta(meta)
+        openable = bool(meta)
+        out.append(
+            {
+                "dir": str(path),
+                "branch_id": path.name[len(BRANCH_PREFIX) :],
+                "title": str(meta.get("title") or meta.get("name") or path.name),
+                "origin_chapter": int(meta.get("origin_chapter", 0) or 0),
+                "status": str(meta.get("status") or ""),
+                "chapter_count": int(meta.get("chapter_count", 0) or 0),
+                "openable": openable,
+                "reason": "" if openable else "缺少可解析的 meta.json",
+                "kind": KIND_BRANCH,
+                "generation": record.generation if record else 1,
+                "parent_novel": str(parent_dir),
+            }
+        )
+    return out
 
 
 def build_lineage_record(
@@ -218,12 +317,16 @@ def build_lineage_record(
     )
 
 
-def generation_tree(novel_dir: Any, max_depth: int = 8) -> list[dict]:
+def generation_tree(novel_dir: Any, max_depth: int = 8, include_branches: bool = True) -> list[dict]:
     """沿 `parent_novel` 向上回溯，返回**从最新一代往前**的代际链（含自身）。
 
-    每一行 `{generation, novel_dir, title, is_current, readonly, missing}`。
+    每一行 `{generation, novel_dir, title, is_current, readonly, missing, kind, branches}`。
     `missing=True` 表示父代目录已不存在（被移动/删除）—— 面板应灰显而不是崩。
     `readonly` 对除自身以外的所有祖先恒为 True（子代只读父代）。
+
+    `include_branches=True` 时，每个节点会带上自己的分支子项目（`row["branches"]`）——
+    分支是**同一代的另一条世界线**，不是"下一代"，所以它挂在所属作品的下面，
+    而不是作为代际链上的一环。
     """
     rows: list[dict] = []
     current = Path(novel_dir) if novel_dir else None
@@ -253,10 +356,46 @@ def generation_tree(novel_dir: Any, max_depth: int = 8) -> list[dict]:
                 "is_current": depth == 0,
                 "readonly": depth > 0,
                 "missing": not exists or status == "corrupt",
+                # 当前节点本身可能就是一个分支（从分支里打开时）
+                "kind": record.kind if record else KIND_NOVEL,
+                "branches": discover_branches(node) if include_branches else [],
             }
         )
         node = Path(record.parent_novel) if (record and record.parent_novel) else None
+
+    if include_branches and rows:
+        # 标记"这一行就是当前打开的作品"：从分支里打开时，该分支会同时出现在
+        # 自己的第 0 行与父代节点的 branches 里，标出来才不至于让人以为是两个东西。
+        current = str(Path(novel_dir).resolve())
+        for row in rows:
+            for branch in row.get("branches") or []:
+                try:
+                    branch["is_current"] = str(Path(branch["dir"]).resolve()) == current
+                except OSError:
+                    branch["is_current"] = False
     return rows
+
+
+def branch_lineage_record(parent_dir: Any, branch_id: str, origin_chapter: int = 0, title: str = "") -> LineageRecord:
+    """为**新建的分支**构造它的代际记录（供 `timeline_ui` 写进分支的 `meta.json`）。
+
+    关键点：分支与父代**同一代**（`generation` 不变）—— 它是另一条世界线，不是下一代。
+    同时保留 `child_scope=readonly_parent`：分支也不能改父代的数据。
+    """
+    parent_path = Path(parent_dir) if parent_dir else None
+    parent_record = read_lineage(parent_path) if parent_path else None
+    parent_meta = read_meta(parent_path) if parent_path else {}
+    return LineageRecord(
+        generation=(parent_record.generation if parent_record else 1),
+        parent_novel=str(parent_path) if parent_path else "",
+        parent_title=str(parent_meta.get("title") or (parent_path.name if parent_path else "")),
+        era_gap_years=0,
+        inherited=dict(DEFAULT_INHERITED),
+        child_scope=SCOPE_READONLY_PARENT,
+        kind=KIND_BRANCH,
+        branch_id=str(branch_id),
+        origin_chapter=int(origin_chapter or 0),
+    )
 
 
 # ====================================================================== 护栏

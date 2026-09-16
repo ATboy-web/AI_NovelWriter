@@ -96,10 +96,17 @@ def novel_candidates(novels_dir: Any, exclude_dir: Any = None) -> list[dict]:
 
 
 def lineage_rows(tree: list[dict]) -> list[tuple[str, tuple]]:
-    """代际树 → Treeview 行。`iid` 用 `g{序号}`（目录名含空格，不适合进 iid）。"""
+    """代际树 → Treeview 行。`iid` 用 `g{序号}`（目录名含空格，不适合进 iid）。
+
+    每个节点后面紧跟它的**分支子项目**（`b{序号}-{分支号}`）——
+    分支是同一代的另一条世界线，因此缩进挂在所属作品下面，而不是作为代际链的一环。
+    双击分支行把它作为作品打开（见 `_on_switch_generation`）。
+    """
     out: list[tuple[str, tuple]] = []
     for index, node in enumerate(tree):
         scope = "当前作品" if node.get("is_current") else ("前代史（只读）" if node.get("readonly") else "—")
+        if node.get("kind") == "branch":
+            scope = "当前作品（分支）" if node.get("is_current") else "分支（同代）"
         state = "目录丢失" if node.get("missing") else "正常"
         out.append(
             (
@@ -113,6 +120,25 @@ def lineage_rows(tree: list[dict]) -> list[tuple[str, tuple]]:
                 ),
             )
         )
+        for branch_index, branch in enumerate(node.get("branches") or []):
+            title = str(branch.get("title") or "")
+            label = f"　↳ 分支 {branch.get('branch_id') or ''}：{title}"
+            origin = int(branch.get("origin_chapter", 0) or 0)
+            detail = f"第{origin}章分叉" if origin else "分叉点未知"
+            if not branch.get("openable", True):
+                detail += "（无法打开）"
+            out.append(
+                (
+                    f"b{index}-{branch_index}",
+                    (
+                        "",
+                        label,
+                        detail,
+                        str(branch.get("dir") or ""),
+                        "正常" if branch.get("openable", True) else "缺少 meta",
+                    ),
+                )
+            )
     return out
 
 
@@ -318,14 +344,24 @@ class LineagePanel(BasePanel):
         plan = self._plan()
         self._fill_tree(self._tree, lineage_rows(self._tree_rows))
         self._fill_tree(self._plan_tree, inheritance_rows(self._current_inherited(), plan))
-        self._summary_label.configure(text=lineage_summary(record, plan))
+        summary = lineage_summary(record, plan)
+        branch_total = sum(len(node.get("branches") or []) for node in self._tree_rows)
+        if branch_total:
+            summary += f"　｜　分支子项目 {branch_total} 个（在树中双击可打开）"
+        self._summary_label.configure(text=summary)
 
     @staticmethod
     def _fill_tree(tree: ttk.Treeview, rows: list[tuple[str, tuple]]) -> None:
+        """填充树。`b{父行号}-{分支序号}` 作为**子节点**挂在 `g{父行号}` 下面。"""
         for item in tree.get_children():
             tree.delete(item)
         for iid, values in rows:
-            tree.insert("", tk.END, iid=iid, values=values)
+            parent = ""
+            if iid.startswith("b") and "-" in iid:
+                parent = f"g{iid[1:].split('-', 1)[0]}"
+                if parent not in tree.get_children():
+                    parent = ""  # 父行不在（不该发生）时就当顶层，避免静默丢行
+            tree.insert(parent, tk.END, iid=iid, values=values, open=True)
 
     def _selected_parent_dir(self) -> str:
         index = self._parent_box.current()
@@ -472,12 +508,24 @@ class LineagePanel(BasePanel):
         return f"已推进（{after} 个角色，角色数未变）"
 
     def _on_switch_generation(self, _event=None) -> None:
-        """双击某代 → 切换当前作品。父代行也可切（切过去就是打开父代作品）。"""
+        """双击某一行 → 切换过去。
+
+        - `g{序号}`：代际链上的一代（父代行也可切 —— 切过去就是打开父代作品）；
+        - `b{父行号}-{分支序号}`：**分支子项目**，把它作为作品打开。
+        """
         selection = self._tree.selection()
         if not selection:
             return
+        iid = selection[0]
+
+        if iid.startswith("b"):
+            self._open_branch_row(iid)
+            return
+        if not iid.startswith("g"):
+            return
+
         try:
-            index = int(selection[0].lstrip("g"))
+            index = int(iid[1:])
         except ValueError:
             return
         rows = self._tree_rows
@@ -490,16 +538,37 @@ class LineagePanel(BasePanel):
         if node.get("missing"):
             self._set_detail(f"该代目录不存在（可能被移动或删除）：{node.get('novel_dir')}")
             return
-        loader = getattr(self, "_load_novel", None)
-        if not callable(loader):
+        if not self.open_novel_dir(node.get("novel_dir")):
             self._set_detail(f"当前宿主未提供打开作品入口：{node.get('novel_dir')}")
             return
+        kind = "分支" if node.get("kind") == "branch" else f"第 {node.get('generation')} 代"
+        self._set_detail(f"已切换到{kind}：{node.get('title')}")
+
+    def _open_branch_row(self, iid: str) -> None:
+        """打开代际树上的一个**分支子项目**行。"""
         try:
-            loader(Path(node["novel_dir"]))
-            self._set_detail(f"已切换到第 {node.get('generation')} 代：{node.get('title')}")
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"[lineage_panel] 切换世代失败: {type(e).__name__}: {e}")
-            self._set_detail(f"切换失败：{type(e).__name__}: {e}")
+            parent_index, branch_index = (int(part) for part in iid[1:].split("-", 1))
+        except (ValueError, TypeError):
+            return
+        rows = self._tree_rows
+        if parent_index >= len(rows):
+            return
+        branches = rows[parent_index].get("branches") or []
+        if branch_index >= len(branches):
+            return
+        branch = branches[branch_index]
+        if not branch.get("openable", True):
+            self._set_detail(f"该分支无法打开：{branch.get('reason')}（{branch.get('dir')}）")
+            return
+        if not self.open_novel_dir(branch.get("dir")):
+            self._set_detail(f"打开分支失败：{branch.get('dir')}")
+            return
+        self._set_detail(
+            f"已作为作品打开分支：{branch.get('title')}\n"
+            f"它是「{rows[parent_index].get('title')}」的另一条世界线（同一代，只读父代）。\n"
+            f"目录：{branch.get('dir')}"
+        )
+        self._log(f"世代传承：打开分支作品 {branch.get('dir')}")
 
     # ------------------------------------------------------------------ 辅助
 

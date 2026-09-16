@@ -736,3 +736,31 @@ class TestPanelColorTokensExist:
         # 下限跟着覆盖面一起提高（原为 10）：间接取色的文件现在也计入
         assert checked_files >= 20, f"只扫到 {checked_files} 个使用 COLORS 的文件，扫描可能已失效"
         assert bad == [], f"这些颜色键在 UIStyle.COLORS 里不存在：{bad}"
+
+
+class TestLoadFailuresAreRecorded:
+    """面板模块导入失败必须**留痕**（本轮踩到的真实坑）。
+
+     `load_panels()` 对单个模块的失败只记 error 后跳过；打包成 windowed EXE 后
+    没有控制台，那条日志永远看不到 —— 表现为"面板少了几块却毫无痕迹"。
+    现在失败会记进 `registry.LOAD_FAILURES`，并由启动时的诊断记录写到磁盘日志。
+    现在失败会记进 ，并由启动时的诊断记录写到磁盘日志。
+    """
+
+    def test_broken_module_is_recorded(self, monkeypatch):
+        registry.reset_registry()
+        monkeypatch.setattr(registry, "NATIVE_PANEL_MODULES", ("app.panels.definitely_missing",))
+        try:
+            specs = registry.load_panels()
+            assert specs, "迁移面板仍应正常登记"
+            assert registry.LOAD_FAILURES, "导入失败必须被记录"
+            assert "definitely_missing" in registry.LOAD_FAILURES[0]
+            # 坏模块不该混进注册表
+            assert all(not spec.key == "definitely_missing" for spec in specs)
+        finally:
+            monkeypatch.undo()
+            registry.reset_registry()
+            registry.load_panels()
+
+    def test_healthy_environment_has_no_failures(self, loaded):
+        assert registry.LOAD_FAILURES == [], f"有面板模块导入失败：{registry.LOAD_FAILURES}"

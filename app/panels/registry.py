@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 __all__ = [
     "CATEGORY_ORDER",
     "DEFAULT_CATEGORY",
+    "LOAD_FAILURES",
     "NATIVE_PANEL_MODULES",
     "PANEL_REGISTRY",
     "PanelSpec",
@@ -87,6 +88,13 @@ class PanelSpec:
 
 #: key -> PanelSpec。顺序不承载语义（排序由 `all_panels()` 负责）
 PANEL_REGISTRY: dict[str, PanelSpec] = {}
+
+#: 上一次 `load_panels()` 中**导入失败**的面板模块（`"模块名: 异常"`）。
+#:
+#: 为什么单独记一份：导入失败只 `logger.error` 后跳过，而打包成 windowed EXE 后
+#: **没有控制台** ⇒ 面板少了几块却毫无痕迹。把它留在可读的状态里，
+#: 启动时的诊断记录（`toolkit_ui._record_panel_registry`）就能把它写进磁盘日志。
+LOAD_FAILURES: list[str] = []
 
 _LOADED = False
 
@@ -167,7 +175,10 @@ def load_panels(force: bool = False) -> list[PanelSpec]:
         try:
             module = importlib.import_module(module_name)
         except Exception as e:  # noqa: BLE001 - 单个面板坏掉不应拖垮应用
+            detail = f"{module_name}: {type(e).__name__}: {e}"
             logger.error(f"面板模块 {module_name} 导入失败，该面板本次不可用: {type(e).__name__}: {e}")
+            # 同时留痕：windowed EXE 没有控制台，只有把它记进状态才可能被事后看到
+            LOAD_FAILURES.append(detail)
             continue
         _register_module_panels(module)
 
@@ -179,6 +190,7 @@ def reset_registry() -> None:
     """清空注册表（仅供测试）。"""
     global _LOADED
     PANEL_REGISTRY.clear()
+    LOAD_FAILURES.clear()
     _LOADED = False
 
 

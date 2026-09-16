@@ -11,6 +11,7 @@ from datetime import datetime
 from tkinter import messagebox, ttk
 
 from app import UIStyle
+from app.lineage import branch_lineage_record
 
 
 class TimelineMixin:
@@ -553,8 +554,15 @@ class TimelineMixin:
         (branch_dir / "summaries").mkdir(exist_ok=True)
 
         # 元数据
+        # ⚠️ 必须带 `title` 与 `lineage`（2026-09-16）：
+        # - `title`：`_load_novel` 与各面板都按它显示；此前这里只写 `name`，
+        #   于是分支被打开后标题是空的；
+        # - `lineage`：有了它，分支才能进代际树（`app/lineage.py` 的发现逻辑按它归类），
+        #   并且**同一代**（不是下一代）+ `child_scope=readonly_parent`（分支也不能改父代）。
+        branch_title = f"分支: {br['alternative'][:30]}"
         branch_meta = {
-            "name": f"分支: {br['alternative'][:30]}",
+            "title": branch_title,
+            "name": branch_title,
             "origin_chapter": origin_ch,
             "original_decision": br["decision"],
             "original_choice": br["chosen"],
@@ -562,6 +570,9 @@ class TimelineMixin:
             "chapter_count": n_chapters,
             "created_at": datetime.now().isoformat(),
             "status": "pending",
+            "lineage": branch_lineage_record(
+                self.current_novel_dir, f"{branch_id:03d}", origin_ch, branch_title
+            ).as_dict(),
         }
         (branch_dir / "meta.json").write_text(json.dumps(branch_meta, indent=2, ensure_ascii=False), encoding="utf-8")
 

@@ -91,8 +91,12 @@ def track_rows(tracks: dict[str, dict]) -> list[tuple[str, tuple]]:
     return out
 
 
-def branch_rows(tree: list[dict]) -> list[tuple[str, tuple]]:
-    """世界线 → 分支的两级行。`iid` 用 `wl{文件}` / `wl{文件}#{章号}`。"""
+def branch_rows(tree: list[dict], branch_dirs: list[dict] | None = None) -> list[tuple[str, tuple]]:
+    """世界线 → 分支的两级行，外加**分支子项目**（可双击打开）。
+
+    `iid`：世界线 `wl{文件}`、抉择 `wl{文件}#{章号}`、**分支子项目 `br{目录}`**。
+    列语义对两类条目略有不同，因此表头用中性词（`世界线 / 分支` 等）。
+    """
     out: list[tuple[str, tuple]] = []
     for world in tree:
         file_key = str(world.get("file") or "")
@@ -117,6 +121,22 @@ def branch_rows(tree: list[dict]) -> list[tuple[str, tuple]]:
                     ),
                 )
             )
+
+    for node in branch_dirs or []:
+        origin = int(node.get("origin_chapter", 0) or 0)
+        size = int(node.get("chapter_count", 0) or 0)
+        status = str(node.get("status") or "") or "—"
+        out.append(
+            (
+                f"br{node.get('dir')}",
+                (
+                    f"↳ 分支 {node.get('title') or ''}",
+                    f"第{origin}章分叉" if origin else "分叉点未知",
+                    status + ("" if node.get("openable", True) else "（无法打开）"),
+                    f"{size} 章" if size else "—",
+                ),
+            )
+        )
     return out
 
 
@@ -223,7 +243,10 @@ class TimelinePanel(BasePanel):
             "章节轴", ("章", "事件数", "涉及角色", "事件摘要"), (90, 70, 190, 420), self._on_axis_double
         )
         self._tree["branches"] = self._add_view(
-            "世界线 / 分支", ("世界线", "抉择", "所选", "未选项"), (150, 220, 120, 180), None
+            "世界线 / 分支",
+            ("世界线 / 分支", "抉择 / 分叉点", "所选 / 状态", "未选项 / 章数"),
+            (170, 220, 140, 110),
+            self._on_branch_double,
         )
         self._tree["tracks"] = self._add_view(
             "人物轨迹", ("角色", "出场章数", "最近章", "出现章节"), (140, 80, 70, 460), self._on_track_double
@@ -315,7 +338,7 @@ class TimelinePanel(BasePanel):
             for i, r in enumerate(snapshot.chronicle)
         }
         self._fill(self._tree["axis"], chapter_axis_rows(snapshot.axis))
-        self._fill(self._tree["branches"], branch_rows(snapshot.branches))
+        self._fill(self._tree["branches"], branch_rows(snapshot.branches, snapshot.branch_dirs))
         self._fill(self._tree["tracks"], track_rows(snapshot.tracks))
         self._fill(self._tree["lineage"], chronicle_rows(snapshot.chronicle))
         self._set_stats(stats_text(snapshot.stats))
@@ -385,6 +408,34 @@ class TimelinePanel(BasePanel):
             )
             return
         self._jump_to_chapter(chapter, [row])
+
+    def _on_branch_double(self, _event=None) -> None:
+        """双击「分支子项目」→ **把它当作作品打开**；双击世界线/抉择行只显示详情。
+
+        这是"只写不读的分支目录"真正被接上的地方：分支目录本身就是一份完整数据
+        （`meta.json` + `chapters/` + `memory/`），`_load_novel` 的校验它已经满足。
+        """
+        iid = self._selected_iid("branches")
+        if not iid:
+            return
+        if not iid.startswith("br"):
+            self._set_detail(
+                "世界线 / 抉择条目：双击它的子项「分支 …」可以把该分支作为作品打开。\n"
+                "（抉择本身只是记录，没有独立正文）"
+            )
+            return
+
+        branch_dir = iid[2:]
+        if not Path(branch_dir).is_dir():
+            self._set_detail(f"分支目录不存在（可能已被删除）：{branch_dir}")
+            return
+        if not self.open_novel_dir(branch_dir):
+            self._set_detail(f"无法打开该分支：{branch_dir}\n（宿主未提供打开入口，或该目录不是有效作品）")
+            return
+        self._set_detail(
+            f"已作为作品打开分支：{Path(branch_dir).name}\n它是父代作品的另一条世界线（同一代、只读父代）。"
+        )
+        self._log(f"时间线面板：打开分支作品 {branch_dir}")
 
     def _on_track_double(self, _event=None) -> None:
         """双击角色 → 打开角色传记面板（面板间联动的落点）。"""

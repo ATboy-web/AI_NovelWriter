@@ -32,7 +32,10 @@ ROADMAP §2.2 只给了 `__getattr__`。只代理读是不够的，因为 v2 面
 from __future__ import annotations
 
 import tkinter as tk
+from pathlib import Path
 from typing import Any, Callable, ClassVar
+
+from loguru import logger
 
 __all__ = ["BasePanel"]
 
@@ -145,6 +148,31 @@ class BasePanel:
         finally:
             object.__setattr__(self, "app", None)
             object.__setattr__(self, "_built", False)
+
+    # ------------------------------------------------------------------ 联动：切换作品
+
+    def open_novel_dir(self, novel_dir: Any) -> bool:
+        """请求宿主把某个目录**作为作品打开**，返回是否成功发起。
+
+        用途：面板里的"分支子项目"「代际链上的另一代」这类条目，点开就该切过去。
+
+        为什么走宿主的 `_load_novel` 而不是面板自己设 `current_novel_dir`：
+        那条流程还要建 `MemoryManager`、绑定用量目录、广播 `novel.opened`、刷新各面板 ——
+        自己拼一遍必然漏步骤（本仓已有教训）。这里只是把它包一层，
+        并把"宿主没提供该入口"与"加载抛错"都收敛成 `False`，让调用方能给出提示。
+        """
+        if not novel_dir:
+            return False
+        loader = getattr(self, "_load_novel", None)
+        if not callable(loader):
+            logger.warning(f"[{type(self).__name__}] 宿主未提供 _load_novel，无法打开 {novel_dir}")
+            return False
+        try:
+            loader(Path(novel_dir))
+        except Exception as e:  # noqa: BLE001 - 打开失败只提示，不影响面板自身
+            logger.error(f"[{type(self).__name__}] 打开作品失败 {novel_dir}: {type(e).__name__}: {e}")
+            return False
+        return True
 
     # ------------------------------------------------------------------ 辅助
 

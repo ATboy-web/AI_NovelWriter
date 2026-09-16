@@ -641,30 +641,28 @@ class TimelineStore:
     def branch_dirs(self) -> list[dict]:
         """已建立的**分支子项目**目录（`timelines/branch_%03d/`）。
 
-        ⚠️ 勘察发现：`timeline_ui` 只创建这些目录，**全仓无任何读取方**。
-        面板把它们列出来，把"写了但看不见"的能力接上（见 ROADMAP §2.4 ①）。
-        """
-        base = self.timelines_dir
-        if base is None or not base.exists():
-            return []
-        dirs = sorted(p for p in base.glob("branch_*") if p.is_dir())
-        metas = [path / "meta.json" for path in dirs]
-        return self._cached("branch_dirs", self._signature(metas), lambda: self._parse_branch_dirs(dirs))
+        ⚠️ 这些目录原本是**只写不读**的：`timeline_ui` 建出来（含完整目录树）就再没人碰。
+        现在它们既是本视图的一行，也能被当成作品打开、并出现在代际树里。
 
-    @staticmethod
-    def _parse_branch_dirs(dirs: list[Path]) -> list[dict]:
+        解析委托给 `app.lineage.discover_branches`（**同一份读取器**），
+        这里只映射成时间线视图用的字段名，避免两处各解析一遍 `meta.json`。
+        """
+        from app.lineage import discover_branches
+
         out = []
-        for path in dirs:
-            data, status = read_json_with_backup(path / "meta.json", default=None)
-            meta = data if isinstance(data, dict) else {}
+        for node in discover_branches(self.novel_dir):
             out.append(
                 {
-                    "dir": str(path),
-                    "name": str(meta.get("name") or path.name),
-                    "origin_chapter": int(meta.get("origin_chapter", 0) or 0),
-                    "status": str(meta.get("status") or ""),
-                    "chapter_count": int(meta.get("chapter_count", 0) or 0),
-                    "meta_ok": status == "ok",
+                    "dir": node["dir"],
+                    "branch_id": node["branch_id"],
+                    "name": node["title"],
+                    "title": node["title"],
+                    "origin_chapter": node["origin_chapter"],
+                    "status": node["status"],
+                    "chapter_count": node["chapter_count"],
+                    "meta_ok": node["openable"],
+                    "openable": node["openable"],
+                    "reason": node["reason"],
                 }
             )
         return out

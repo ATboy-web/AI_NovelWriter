@@ -8,6 +8,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
+from loguru import logger
+
 from app import SceneDetector, UIStyle
 from app.format_converter import FormatConverter, ImageManager
 from app.panels import PanelHost
@@ -38,6 +40,36 @@ class ToolkitUIMixin:
             f"面板注册表已加载：{len(panel_registry.PANEL_REGISTRY)} 个面板"
             f"（{len(panel_registry.categories())} 个分组）"
         )
+        self._record_panel_registry()
+
+    def _record_panel_registry(self):
+        """把面板注册结果**同时写进磁盘诊断日志**。
+
+        为什么需要它：`load_panels()` 对单个面板模块的导入失败是"记日志后跳过"，
+        而打包成 windowed EXE 后**没有控制台**，那条日志就永远看不到 ——
+        面板少了几块却毫无痕迹。落到 `~/.ai_novel_writer/diagnostic_logs/*.jsonl`
+        之后，无论界面怎么显示，"这次到底注册了哪些面板"都能事后核对。
+        """
+        try:
+            from app.diagnostic_logger import get_logger
+
+            specs = panel_registry.all_panels()
+            get_logger().log(
+                "SYSTEM",
+                "panel_registry",
+                {
+                    "total": len(specs),
+                    "by_category": {
+                        category: [spec.key for spec in group] for category, group in panel_registry.grouped()
+                    },
+                    "native": [spec.key for spec in specs if not spec.legacy],
+                    "legacy": [spec.key for spec in specs if spec.legacy],
+                    # 导入失败的模块（正常应为空）——这才是"面板少了几块"的可查证据
+                    "load_failures": list(panel_registry.LOAD_FAILURES),
+                },
+            )
+        except Exception as e:  # noqa: BLE001 - 诊断记录失败绝不能影响启动
+            logger.debug(f"[toolkit_ui] 面板注册结果落日志失败（忽略）: {e}")
 
     def _refresh_toolkit(self):
         """重建当前工具面板。

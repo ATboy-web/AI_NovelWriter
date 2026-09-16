@@ -415,19 +415,47 @@ class MemoryManager:
 
     # ===== 角色活跃度管理 =====
 
+    def _touch_activity(self, char_name: str, chapter_num: int) -> None:
+        """在内存里更新一个角色的出场记录（**不加锁、不落盘**，由调用方负责）。
+
+        抽出来是为了让"单个角色"（`update_character_activity`）与
+        "一批角色"（`_record_character_activity`）共用同一套规则：
+        去重、只保留最近 100 次出场、`last_seen` 取最大。
+        """
+        if char_name not in self._character_activity:
+            self._character_activity[char_name] = {"appearances": [], "last_seen": chapter_num, "importance": 5}
+        activity = self._character_activity[char_name]
+        if chapter_num not in activity["appearances"]:
+            activity["appearances"].append(chapter_num)
+            # 只保留最近100次出场
+            if len(activity["appearances"]) > 100:
+                activity["appearances"] = activity["appearances"][-100:]
+        activity["last_seen"] = chapter_num
+
     def update_character_activity(self, char_name: str, chapter_num: int):
         """更新角色活跃度"""
         with self._lock:
-            if char_name not in self._character_activity:
-                self._character_activity[char_name] = {"appearances": [], "last_seen": chapter_num, "importance": 5}
-            activity = self._character_activity[char_name]
-            if chapter_num not in activity["appearances"]:
-                activity["appearances"].append(chapter_num)
-                # 只保留最近100次出场
-                if len(activity["appearances"]) > 100:
-                    activity["appearances"] = activity["appearances"][-100:]
-            activity["last_seen"] = chapter_num
+            self._touch_activity(char_name, chapter_num)
             self._save_character_activity()
+
+    def _record_character_activity(self, names, chapter_num: int) -> None:
+        """把一条事件涉及的角色登记为"本章出场"（一批角色只落盘一次）。
+
+        为什么在 `add_event` 里接线：`add_event` 是**唯一**携带 `characters` 的写入口。
+        在此之前 `update_character_activity` **没有任何生产调用方**（只有测试调用），
+        于是真实小说里 `memory/character_activity.json` 一直是空的 ——
+        时间线面板的"人物轨迹"只能靠事件源兜底反推出现章。
+
+        ⚠️ 轨迹是**锦上添花**的数据：任何失败都只记日志，绝不能让事件本身的落盘受影响。
+        """
+        try:
+            with self._lock:
+                for name in names:
+                    if name:
+                        self._touch_activity(str(name), chapter_num)
+                self._save_character_activity()
+        except (OSError, TypeError, ValueError) as e:
+            logger.warning(f"[memory_manager] 更新角色活跃度失败（不影响事件）: {type(e).__name__}: {e}")
 
     def get_active_characters(self, chapter_num: int, window: int = 50) -> List[str]:
         """获取最近活跃的角色（按活跃度排序）"""
@@ -790,6 +818,10 @@ class MemoryManager:
         )
 
         atomic_write_json(page_file, events, indent=1)
+
+        # v3 P4 后：把事件里的角色登记为本章出场（轨迹数据的唯一采集点，见 _record_character_activity）
+        if characters_involved:
+            self._record_character_activity(characters_involved, chapter_num)
 
         # v3 P4：时间线面板据此增量追加（见 app/panels/timeline_panel.py）
         self._emit(

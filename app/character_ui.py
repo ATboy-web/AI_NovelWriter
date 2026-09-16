@@ -14,11 +14,13 @@ from tkinter import messagebox, ttk
 from loguru import logger
 
 from app import UIStyle
+from app.biography import build_biography_prompt, read_story_arcs, split_sections, structured_biography
 from app.character_system import CharacterSystem
 from app.format_converter import FormatConverter, ImageManager
 from app.memory_manager import CharacterDataCorruptError, CharacterDataGuardError
 from app.parsing import extract_characters_payload, strip_ai_json_fences
 from app.storage import atomic_write_json, atomic_write_text, safe_filename
+from app.timeline_store import TimelineStore
 
 # L9: 传记生成的输入/输出边界
 MIN_BIO_WORDS = 1_000
@@ -215,6 +217,52 @@ class CharacterUIMixin:
         if names:
             self._update_char_display()
 
+    def _biography_materials(self, char_name: str) -> dict:
+        """传记生成所需的全部材料：角色档案 / RAG 锚点 / 时间线事件 / 手工故事线 / 出场章。
+
+        F4 收敛的落点：**四条材料来源都取自既有数据**，与「角色传记」面板完全一致。
+        任何一项取不到都只记日志并返回空 —— 素材缺失不该让生成流程中断
+        （旧实现只喂 `char_info + outline[:5]`，是"输入太薄"的根因）。
+        """
+        materials: dict = {
+            "char_info": {},
+            "anchors": [],
+            "events": [],
+            "arcs": [],
+            "chapters": [],
+        }
+        try:
+            characters = self.memory.get_characters() if self.memory else {}
+            materials["char_info"] = characters.get(char_name, {}) or {}
+        except Exception as e:  # noqa: BLE001 - 档案读不到也该能生成（只是少料）
+            logger.debug(f"[character_ui] 传记材料：角色档案读取失败（忽略）: {e}")
+
+        if not self.current_novel_dir:
+            return materials
+
+        try:
+            if self.memory is not None:
+                materials["anchors"] = [
+                    item for item in (self.memory.retrieve_relevant(char_name, top_k=5) or []) if isinstance(item, dict)
+                ]
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[character_ui] 传记材料：记忆检索失败（忽略）: {e}")
+
+        try:
+            store = TimelineStore(self.current_novel_dir)
+            materials["events"] = [event for event in store.read_memory_events() if char_name in event.characters]
+            track = store.character_tracks().get(char_name) or {}
+            materials["chapters"] = [int(c) for c in (track.get("appearances") or [])]
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[character_ui] 传记材料：时间线读取失败（忽略）: {e}")
+
+        try:
+            materials["arcs"] = list(read_story_arcs(self.current_novel_dir, char_name).get("story_arcs") or [])
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[character_ui] 传记材料：故事线读取失败（忽略）: {e}")
+
+        return materials
+
     def _generate_character_biography(self, char_name: str = None):
         """生成角色个人传记"""
         if not self._check_ready():
@@ -308,39 +356,26 @@ class CharacterUIMixin:
                 try:
                     self._log(f"正在生成「{char_name}」的个人传记（约{word_count}字）...")
 
-                    # 获取角色信息
-                    characters = self.memory.get_characters()
-                    char_info = characters.get(char_name, {})
+                    # F4 收敛（2026-09-16）：材料改由 `app/biography.build_biography_prompt`
+                    # 统一构造 —— 与「角色传记」面板**共用同一份**。
+                    # 旧实现只用 `char_info + outline[:5]`，**完全没用已写的章节正文**，
+                    # 于是"从角色页生成"和"从传记面板生成"质量明显不同（同一功能两种质量）。
+                    materials = self._biography_materials(char_name)
+                    prompt = build_biography_prompt(
+                        char_name,
+                        materials["char_info"],
+                        word_count,
+                        materials["anchors"],
+                        materials["events"],
+                        materials["arcs"],
+                    )
 
-                    # 获取世界观和大纲
-                    settings = self.memory.get_settings() if self.memory else {}
-                    outline = self.outline if self.outline else []
-
-                    system = f"""你是专业的小说传记作家。请为角色「{char_name}」撰写一部完整的个人传记。
-
-角色信息：{json.dumps(char_info, ensure_ascii=False)[:1000]}
-
-世界观：{json.dumps(settings, ensure_ascii=False)[:500]}
-
-传记要求：
-1. 从角色的出生/起源开始写起
-2. 详细描述角色的成长历程
-3. 包含角色的心理变化过程
-4. 分析角色的性格特点和反差
-5. 描述角色的重要经历和转折点
-6. 在结尾总结：
-   - 这个角色是什么样的人
-   - 他的核心性格特征
-   - 他的心理发展过程
-   - 他身上的反差和矛盾
-   - 他对故事的意义
-
-{"请重点描写角色的心理历程。" if include_mental.get() else ""}
-{"请分析角色性格中的反差和矛盾。" if include_contrast.get() else ""}
-
-字数要求：约{word_count}字"""
-
-                    prompt = f"请为「{char_name}」撰写个人传记。大纲参考：{json.dumps(outline[:5], ensure_ascii=False)}"
+                    # 保留原对话框的两个勾选项与角色设定（不改变既有交互）
+                    system = f"你是专业的小说传记作家。请为角色「{char_name}」撰写一部完整的个人传记。"
+                    if include_mental.get():
+                        system += "\n请重点描写角色的心理历程。"
+                    if include_contrast.get():
+                        system += "\n请分析角色性格中的反差和矛盾。"
 
                     # L9: max_tokens 按 API 上限钳位（详见 MAX_BIO_TOKENS 注释）
                     max_tokens = min(max(word_count * 2, 1024), MAX_BIO_TOKENS)
@@ -359,6 +394,21 @@ class CharacterUIMixin:
                     bio_dir.mkdir(exist_ok=True)
                     bio_file = bio_dir / f"{safe_filename(char_name)}_传记.txt"
                     atomic_write_text(bio_file, result)
+
+                    # 与传记面板保持一致：**结构化 JSON 一并落盘**（它是权威源，txt 供导出）。
+                    # 此前只有角色页这条路径不产 JSON，导致同一个角色在面板里读不到结构化内容。
+                    atomic_write_json(
+                        bio_dir / f"{safe_filename(char_name)}.json",
+                        structured_biography(
+                            char_name,
+                            split_sections(result),
+                            sources={
+                                "chapters": materials["chapters"],
+                                "timeline_events": [],
+                                "anchors": [],
+                            },
+                        ),
+                    )
 
                     # 同步到角色面板。
                     # 必须走 mutate_characters（锁内读-改-写）：本函数在后台线程里

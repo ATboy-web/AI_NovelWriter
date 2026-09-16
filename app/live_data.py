@@ -138,8 +138,17 @@ def summarize_novel(novel_dir: Path) -> NovelDataSummary:
     """采集一个小说目录的数据摘要。
 
     只读：不写入任何文件，也不触碰 `.bak` 轮转。
+
+    Raises:
+        FileNotFoundError: 目录下没有 `memory/characters.json`。
+            这里**主动**检查并给出可执行的说明 —— 否则抛出去的是 `pathlib` 的原始
+            错误，只会显示某个深层路径不存在，排查方向容易被带偏。
+            （正常路径上 `iter_novel_dirs` / `find_novel_dir` 已经过滤过，
+            本检查只兜住"直接对该函数传目录"的调用方式。）
     """
     char_file = novel_dir / "memory" / "characters.json"
+    if not char_file.is_file():
+        raise FileNotFoundError(f"不是有效的作品目录：缺少 {char_file}（用 find_novel_dir() 定位真实数据根目录）")
     raw = char_file.read_bytes()
 
     characters = 0

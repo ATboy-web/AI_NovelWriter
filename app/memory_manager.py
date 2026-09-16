@@ -18,6 +18,7 @@ except ImportError:
     import logging
     logger = logging.getLogger(__name__)
 
+from app.events import TOPIC_CHARACTER_CHANGED, TOPIC_TIMELINE_CHANGED
 from app.storage import (
     STATUS_BACKUP,
     STATUS_CORRUPT,
@@ -150,8 +151,38 @@ class MemoryManager:
         self._chunk_page_index: Dict[str, int] = {}
         self._chunk_index_built = False
 
+        # v3 P4：领域事件出口（见 set_event_sink / _emit）。
+        # 默认 None = 不广播，因此本类在单测、CLI、后端服务里保持零副作用。
+        self.event_sink = None
+
         # 退出时强制落盘，避免索引/评分丢失（模块级 WeakSet 注册，单钩子）
         _register_flush(self)
+
+    # ===== 领域事件出口（v3 §2.3）=====
+
+    def set_event_sink(self, sink) -> None:
+        """接入事件出口：写盘成功后广播领域事件。
+
+        `sink` 只需具备 `publish(topic, payload)` —— 与 `NovelStore(events=...)`
+        （v3 A7）**同一套鸭子类型约定**，应用传的是 `EventBus.sink()` 门面
+        （`app/events/bus.py`），它内部按调用线程自动选路：
+        `add_event` / `save_characters` 大量在后台线程被调用（本仓 40 处
+        `threading.Thread`），而 Tk 只能在主线程碰。
+
+        传 `None` 表示关闭广播（默认值），因此本类在单测、CLI、后端服务里
+        保持零副作用。
+        """
+        self.event_sink = sink
+
+    def _emit(self, topic: str, payload: dict) -> None:
+        """广播一个领域事件；**任何异常都不得影响写盘结果**（写盘才是主职责）。"""
+        sink = getattr(self, "event_sink", None)
+        if sink is None:
+            return
+        try:
+            sink.publish(topic, payload)
+        except Exception as e:  # noqa: BLE001 - 广播是尽力而为的旁路
+            logger.debug(f"[memory_manager] 事件 {topic} 广播失败（忽略）: {e}")
 
     def flush(self):
         """强制将内存状态落盘（索引 + 评分）"""
@@ -696,6 +727,16 @@ class MemoryManager:
 
         atomic_write_json(page_file, events, indent=1)
 
+        # v3 P4：时间线面板据此增量追加（见 app/panels/timeline_panel.py）
+        self._emit(TOPIC_TIMELINE_CHANGED, {
+            "novel_dir": str(self.novel_dir),
+            "chapter": chapter_num,
+            "event": event,
+            "type": event_type,
+            "characters": list(characters_involved or []),
+            "page_file": str(page_file),
+        })
+
     def get_timeline(self, from_chapter: int = 0, to_chapter: int = None) -> List[Dict]:
         """获取时间线（按范围加载）"""
         if to_chapter is None:
@@ -792,6 +833,15 @@ class MemoryManager:
 
         atomic_write_json(self.characters_file, characters, backup=True)
         self._characters_corrupt = False
+
+        # v3 P4：角色/传记/时间线面板据此刷新。
+        # 只在写盘成功之后广播 —— 上面两道闸门抛错时不会走到这里，
+        # 面板不会被"其实没写成功"的假事件叫醒。
+        self._emit(TOPIC_CHARACTER_CHANGED, {
+            "novel_dir": str(self.novel_dir),
+            "count": len(characters),
+            "file": str(self.characters_file),
+        })
 
     def _archive_corrupt_characters(self) -> Optional[Path]:
         """把无法解析的角色档案留档，供人工恢复；返回留档路径。

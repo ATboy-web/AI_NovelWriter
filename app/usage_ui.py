@@ -27,6 +27,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from app import UIStyle
+from app.events import TOPIC_AI_USAGE
 
 from .async_runner import BackgroundRunner
 from .providers import balance as balance_module
@@ -105,6 +106,26 @@ class UsagePanelMixin:
         except Exception as exc:                        # noqa: BLE001
             return f"用量统计不可用（{type(exc).__name__}）"
 
+    def _subscribe_usage_events(self) -> None:
+        """订阅 `ai.usage`（v3 §2.3）：每条记录落账后即时刷新概览行。
+
+        只更新顶部的概览与提示文本，**不重建 Treeview** —— 用量页常被开着
+        "看着花销"，重建会把用户正在看的选中行与滚动位置打断。
+        """
+        bus = getattr(self, "event_bus", None)
+        if bus is None:
+            return
+        self._usage_unsubscribe = bus.subscribe(TOPIC_AI_USAGE, self._on_usage_recorded)
+
+    def _on_usage_recorded(self, _topic, _payload=None) -> None:
+        """`ai.usage` 处理器：重算概览文本。单条记录不影响分页明细，故不重填表格。"""
+        if not getattr(self, "usage_summary_var", None):
+            return
+        try:
+            self.usage_summary_var.set(summarize_rows(usage_tracker.summary()))
+        except Exception as exc:                        # noqa: BLE001 - 刷新失败不该冒泡
+            self.usage_summary_var.set(f"读取用量失败：{type(exc).__name__}: {exc}")
+
     def _chapter_token_badges(self) -> dict:
         """`{章号: token}` —— 章节列表徽标用。异常时返回空表，不打断列表渲染。"""
         try:
@@ -175,6 +196,7 @@ class UsagePanelMixin:
             (120, 260, 100, 60, 100, 100, 90, 90, 100),
         )
 
+        self._subscribe_usage_events()
         self._refresh_usage_panel()
 
     def _usage_button(self, parent, text: str, command, bg: str) -> tk.Button:

@@ -50,7 +50,7 @@ class StoryFlowPanelMixin:
         tk.Label(f, text="输入内容:", font=('微软雅黑', 9),
                 bg=C['bg_dark'], fg=C['text_primary']).pack(anchor=tk.W, pady=3)
         self.sf_input = tk.Text(f, height=5, wrap=tk.WORD, font=('微软雅黑', 10),
-                               bg=C['input_bg'], fg=C['text_primary'])
+                               bg=C['bg_medium'], fg=C['text_primary'])
         self.sf_input.pack(fill=tk.X, pady=3)
 
         btn_frame = tk.Frame(f, bg=C['bg_dark'])

@@ -569,28 +569,19 @@ class ShellMixin:
         toolkit_frame = tk.Frame(self.notebook, bg=C['bg_dark'])
         self.notebook.add(toolkit_frame, text=" 创作工具 ")
 
-        # 工具选择
+        # 工具选择（v3 P4：注册表驱动 —— 分组小标题 + 面板按钮，由 PanelHost 渲染）
+        # v2 在这里硬编码了 12 个 Radiobutton，与 toolkit_ui 的 12 路 elif 重复登记。
         tool_select_frame = tk.Frame(toolkit_frame, bg=C['bg_dark'])
         tool_select_frame.pack(fill=tk.X, padx=15, pady=(15, 5))
 
-        self.tool_type_var = tk.StringVar(value="elements")
-        tools = [("elements", "元素库"), ("bridges", "桥段库"), ("descriptions", "描写库"),
-                 ("dialogue", "对话推演"), ("story_flow", "故事流"), ("style", "风格转换"),
-                 ("adapt", "智能改编"), ("websearch", "热点改编"), ("chapters", "章节分析"),
-                 ("memory_viz", "记忆可视化"), ("summary_mgmt", "摘要管理"), ("batch_ops", "批量操作")]
+        self.tool_type_var = tk.StringVar(value="")
 
-        for val, label in tools:
-            tk.Radiobutton(tool_select_frame, text=label, variable=self.tool_type_var, value=val,
-                          font=('微软雅黑', 9), bg=C['bg_dark'], fg=C['text_secondary'],
-                          selectcolor=C['accent'], activebackground=C['bg_dark'],
-                          command=self._refresh_toolkit).pack(side=tk.LEFT, padx=8)
-
-        # 工具内容区
+        # 工具内容区（保持单区容器；每个面板在其中各有一个自己的 Frame）
         self.tool_content_frame = tk.Frame(toolkit_frame, bg=C['bg_dark'])
         self.tool_content_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
 
-        # 初始化工具集界面
-        self._refresh_toolkit()
+        # 加载面板注册表、渲染选择器并激活默认面板
+        self._init_panel_host(tool_select_frame)
 
         # 更新左侧面板滚动区域
         left_panel.update_idletasks()
@@ -628,6 +619,20 @@ class ShellMixin:
             self.root.after(0, _do_log)
         except RuntimeError:
             pass
+    def _publish_event(self, topic: str, payload=None):
+        """发布领域事件（v3 §2.3）—— 全应用统一的出口。
+
+        `self.events` 是总线的瘦门面，内部按调用线程自动选路：主线程同步派发
+        （面板立即更新），后台线程排队（内部 `root.after(0, ...)`）——
+        因为 **Tk 只能在主线程碰**，而本仓 40 处 `threading.Thread` 都在子线程里干活。
+
+        线程判断收在门面里，调用方（章节保存 / 时间线 / 角色 / 用量 / 配置）
+        不必各自操心。
+        """
+        events = getattr(self, "events", None)
+        if events is None:
+            return
+        events.publish(topic, payload)
     def _export_log(self):
         """导出运行日志到桌面"""
         desktop = Path.home() / "Desktop"

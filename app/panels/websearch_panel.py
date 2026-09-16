@@ -35,7 +35,7 @@ class WebSearchPanelMixin:
         search_frame = tk.Frame(f, bg=C['bg_dark'])
         search_frame.pack(fill=tk.X, pady=5)
         self.ws_search_entry = tk.Entry(search_frame, font=('微软雅黑', 10), width=40,
-                                       bg=C['input_bg'], fg=C['text_primary'])
+                                       bg=C['bg_medium'], fg=C['text_primary'])
         self.ws_search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
         self.ws_search_entry.insert(0, "输入热点关键词或梗，AI自动改编...")
 

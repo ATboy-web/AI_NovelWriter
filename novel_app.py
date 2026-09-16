@@ -35,9 +35,11 @@ import tkinter as tk
 from loguru import logger
 
 # 小说工具集
+from app.events import EventBus
 from app.novel_toolkit import ElementLibrary, BridgeLibrary, DescriptionLibrary
 from app.cloud_storage import CloudStorageManager
 from app.navigation import NavigationManager
+from app.usage_tracker import usage_tracker
 
 # 从 app 包导入核心类
 from app import (AppConfig, AIClient, ImageGenerator,
@@ -146,6 +148,18 @@ class NovelWriterApp(
 
         # 应用主题
         UIStyle.apply_theme(self.root)
+
+        # v3 P4：领域事件总线 —— 面板 ↔ 主面板联动的唯一通道（见 app/events/bus.py）。
+        # 必须在 _create_widgets() 之前建好：面板宿主在构建界面时就要订阅它。
+        self.event_bus = EventBus(root=self.root)
+        # 注入给非 UI 组件（NovelStore / MemoryManager）的事件门面：
+        # 它们只要求对象有 `publish(topic, payload)`，门面内部按调用线程自动选路。
+        self.events = self.event_bus.sink()
+        # 用量记账器是模块级单例，这里接一次事件出口：每条记录落盘后广播 `ai.usage`，
+        # 用量面板与状态栏即时更新，不必轮询。
+        usage_tracker.set_event_sink(self.events)
+        # 面板宿主由 ShellMixin 在构建「创作工具」页时建立（app/toolkit_ui._init_panel_host）
+        self.panel_host = None
 
         self.nav_manager = NavigationManager(self)
         self.nav_manager.create_menu()

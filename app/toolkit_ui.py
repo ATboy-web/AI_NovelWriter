@@ -10,43 +10,47 @@ from tkinter import filedialog, messagebox
 
 from app import SceneDetector, UIStyle
 from app.format_converter import FormatConverter, ImageManager
+from app.panels import PanelHost
+from app.panels import registry as panel_registry
 
 
 class ToolkitUIMixin:
     """工具层：工具面板刷新、格式转换、插图/封面、云同步"""
 
 
+    def _init_panel_host(self, selector_parent):
+        """建立面板宿主：加载注册表 → 渲染分组选择器 → 激活默认面板（v3 §2.2）。
+
+        这一段替代了 v2 的两处硬编码：`shell_ui` 里手写的 12 个 Radiobutton，
+        以及本文件里手写的 12 路 `if/elif`。两者表达的是同一份"有哪些面板"的信息，
+        写在两个文件里必然漂移；现在都由 `app/panels/registry.py` 渲染。
+        """
+        panel_registry.load_panels()
+        self.panel_host = PanelHost(
+            self,
+            container=self.tool_content_frame,
+            select_var=self.tool_type_var,
+            selector_parent=selector_parent,
+            bus=getattr(self, "event_bus", None),
+        )
+        self.panel_host.build_selector()
+        self.panel_host.select(panel_registry.default_key())
+        self._log(
+            f"面板注册表已加载：{len(panel_registry.PANEL_REGISTRY)} 个面板"
+            f"（{len(panel_registry.categories())} 个分组）"
+        )
+
     def _refresh_toolkit(self):
-        """刷新工具集界面"""
-        for w in self.tool_content_frame.winfo_children():
-            w.destroy()
+        """重建当前工具面板。
 
-        tool_type = self.tool_type_var.get()
+        v3 P4：改由注册表 + `PanelHost` 驱动，原来的 12 路 `if/elif` 分发链已删除。
+        保留此方法名是因为它被 `shell_ui` 与若干面板当作"刷新当前工具页"的入口。
+        """
+        host = getattr(self, "panel_host", None)
+        if host is None:
+            return
+        host.refresh()
 
-        if tool_type == "elements":
-            self._build_elements_tool()
-        elif tool_type == "bridges":
-            self._build_bridges_tool()
-        elif tool_type == "descriptions":
-            self._build_descriptions_tool()
-        elif tool_type == "dialogue":
-            self._build_dialogue_tool()
-        elif tool_type == "story_flow":
-            self._build_story_flow_tool()
-        elif tool_type == "style":
-            self._build_style_tool()
-        elif tool_type == "adapt":
-            self._build_adapt_tool()
-        elif tool_type == "websearch":
-            self._build_websearch_tool()
-        elif tool_type == "chapters":
-            self._build_chapter_analysis_tool()
-        elif tool_type == "memory_viz":
-            self._build_memory_viz_tool()
-        elif tool_type == "summary_mgmt":
-            self._build_summary_mgmt_tool()
-        elif tool_type == "batch_ops":
-            self._build_batch_ops_tool()
     def _show_tool_result(self, widget, text):
         widget.delete("1.0", tk.END)
         widget.insert("1.0", text)

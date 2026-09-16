@@ -12,11 +12,44 @@ from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
+from loguru import logger
+
 from app import AIClient, ImageGenerator, MemoryManager, NoteManager, NovelAgent, UIStyle
+from app.events import TOPIC_CONFIG_CHANGED, TOPIC_NOVEL_CLOSED, TOPIC_NOVEL_OPENED
 
 
 class NovelLifecycleMixin:
     """小说生命周期层：新建/打开/载入/续写/续集/外传/设置/简介/导入分析"""
+
+    # ===== v3 P4：领域事件出口 =====
+
+    def _announce_novel_opened(self, novel_dir):
+        """广播 `novel.opened`（必要时先广播 `novel.closed`），让全部面板刷新到新小说（v3 §2.3）。
+
+        统一收在这里，而不是散在 4 个打开入口里：新建 / 打开 / 续集 / 同人
+        四条路径共用同一处发起，将来加第 5 条路径也不会漏。
+
+        ⚠️ 调用时机：本方法只在入口把 `current_novel_dir` 改成新目录**之后**才被调用
+        （4 处入口都是这个顺序），因此 `novel.closed` 的载荷里显式带上旧目录 ——
+        订阅方不要在这个事件里读 `app.current_novel_dir`，那时它已经指向新书了。
+        """
+        events = getattr(self, "events", None)
+        if events is None:
+            return
+
+        previous = getattr(self, "_announced_novel_dir", None)
+        if previous and previous != str(novel_dir):
+            self._publish_event(TOPIC_NOVEL_CLOSED, {"novel_dir": previous})
+        self._announced_novel_dir = str(novel_dir)
+
+        title = ""
+        try:
+            meta = json.loads((Path(novel_dir) / "meta.json").read_text(encoding="utf-8"))
+            title = meta.get("title") or meta.get("original_title") or ""
+        except (OSError, json.JSONDecodeError, AttributeError, TypeError) as e:
+            # 标题只用于界面展示与日志，读不到不影响广播
+            logger.debug(f"读取 meta.json 标题失败（不影响 novel.opened 广播）: {e}")
+        self._publish_event(TOPIC_NOVEL_OPENED, {"novel_dir": str(novel_dir), "title": title})
 
 
     def _new_novel(self):
@@ -440,7 +473,9 @@ class NovelLifecycleMixin:
             # 初始化
             self.current_novel_dir = novel_dir
             self._bind_usage_novel(novel_dir)
+            self._announce_novel_opened(novel_dir)
             self.memory = MemoryManager(novel_dir)
+            self.memory.set_event_sink(getattr(self, "events", None))
             self.agent = NovelAgent(self.ai_client, self.memory, log_callback=self._log, config=self.config)
             self.note_manager = NoteManager(novel_dir=novel_dir, config=self.config)
             self.outline = []
@@ -487,6 +522,7 @@ class NovelLifecycleMixin:
         try:
             self.current_novel_dir = novel_dir
             self._bind_usage_novel(novel_dir)
+            self._announce_novel_opened(novel_dir)
             self._log("设置current_novel_dir成功")
         except Exception as e:
             self._log(f"设置current_novel_dir失败: {e}")
@@ -494,6 +530,7 @@ class NovelLifecycleMixin:
 
         try:
             self.memory = MemoryManager(novel_dir)
+            self.memory.set_event_sink(getattr(self, "events", None))
             self._log("MemoryManager初始化成功")
         except Exception as e:
             self._log(f"MemoryManager初始化失败: {e}")
@@ -794,7 +831,9 @@ class NovelLifecycleMixin:
             # 切换到续集
             self.current_novel_dir = novel_dir
             self._bind_usage_novel(novel_dir)
+            self._announce_novel_opened(novel_dir)
             self.memory = MemoryManager(novel_dir)
+            self.memory.set_event_sink(getattr(self, "events", None))
             self.agent = NovelAgent(self.ai_client, self.memory, log_callback=self._log, config=self.config)
             self.note_manager = NoteManager(novel_dir=novel_dir, config=self.config)
             self.outline = []
@@ -946,7 +985,9 @@ class NovelLifecycleMixin:
             # 切换到同人作品
             self.current_novel_dir = novel_dir
             self._bind_usage_novel(novel_dir)
+            self._announce_novel_opened(novel_dir)
             self.memory = MemoryManager(novel_dir)
+            self.memory.set_event_sink(getattr(self, "events", None))
             self.agent = NovelAgent(self.ai_client, self.memory, log_callback=self._log, config=self.config)
             self.note_manager = NoteManager(novel_dir=novel_dir, config=self.config)
             self.outline = []
@@ -1262,6 +1303,10 @@ class NovelLifecycleMixin:
                 self.agent = NovelAgent(self.ai_client, self.memory, log_callback=self._log, config=self.config)
 
             self._update_status()
+            # v3 P4：配置已落盘 + 客户端已重建，广播出去（状态栏/面板据此刷新）
+            self._publish_event(TOPIC_CONFIG_CHANGED, {
+                "active_profile": getattr(self.config, "active_profile", ""),
+            })
             dialog.destroy()
             self._log("配置已保存")
 

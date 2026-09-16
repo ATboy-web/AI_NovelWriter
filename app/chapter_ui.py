@@ -7,10 +7,24 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
+from app.events import TOPIC_CHAPTER_SAVED
+
 
 class ChapterUIMixin:
     """章节层：章节显示/保存/切换/导出/选择器"""
 
+    def _announce_chapter_saved(self, chapter_num: int, content: str):
+        """广播 `chapter.saved`（v3 §2.3）。
+
+        这一个事件同时驱动四件事：时间线抽事件、用量面板更新该章 token、
+        角色面板刷新"出现章"、记忆可视化刷新。发布方不需要知道有谁在听 ——
+        将来加第 5 个消费者时，这里一行都不用改。
+        """
+        self._publish_event(TOPIC_CHAPTER_SAVED, {
+            "novel_dir": str(self.current_novel_dir or ""),
+            "chapter": chapter_num,
+            "words": len(content or ""),
+        })
 
     def _display_chapter(self, num, title, content):
         """显示章节内容（线程安全）"""
@@ -66,6 +80,7 @@ class ChapterUIMixin:
         chapter_file = chapters_dir / f"chapter_{self.current_chapter:04d}.txt"
         self._atomic_write(chapter_file, content)
 
+        self._announce_chapter_saved(self.current_chapter, content)
         self._log(f"第{self.current_chapter}章已保存")
         messagebox.showinfo("成功", "章节已保存")
     def _prev_chapter(self):
@@ -107,6 +122,7 @@ class ChapterUIMixin:
         chapters_dir.mkdir(exist_ok=True)
         with open(chapters_dir / f"chapter_{self.current_chapter:04d}.txt", 'w', encoding='utf-8') as f:
             f.write(content)
+        self._announce_chapter_saved(self.current_chapter, content)
         self._log(f"第{self.current_chapter}章已自动保存")
     def _load_chapter_by_number(self, ch_num):
         """根据章节号加载内容"""

@@ -325,8 +325,12 @@ class TestIntegrationPoints:
         assert "tokens" in panel._usage_status_text()
 
     def test_lifecycle_calls_bind_at_every_switch(self):
-        """4 处 `current_novel_dir = ...` 之后都必须同步用量目录。"""
-        code = _scan.read("app/lifecycle_ui.py")
+        """4 处 `current_novel_dir = ...` 之后都必须同步用量目录。
+
+        ⚠️ 必须用 `code_only`：文档字符串里解释这个赋值顺序时会原样引用该行，
+        用 `read` 会把说明文字也数成一处入口。
+        """
+        code = _scan.code_only("app/lifecycle_ui.py")
         assignments = code.count("self.current_novel_dir = novel_dir")
         binds = code.count("self._bind_usage_novel(novel_dir)")
         assert assignments == 4

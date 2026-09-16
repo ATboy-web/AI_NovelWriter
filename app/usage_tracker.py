@@ -37,6 +37,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
+from .events import TOPIC_AI_USAGE
 from .storage import atomic_write_json
 
 __all__ = [
@@ -231,6 +232,31 @@ class UsageTracker:
         self._memory: list = []
         self._summary: dict | None = None
         self._summary_dir: Path | None = None
+        # v3 P4：领域事件出口（见 set_event_sink / _emit_usage_event）。
+        # 默认 None = 不广播，因此本模块在单测、CLI 与后端服务里保持零副作用。
+        self._event_sink = None
+
+    # ------------------------------------------------------------ 事件出口
+
+    def set_event_sink(self, sink) -> None:
+        """接入事件出口：每条记录落盘后广播 `ai.usage`。
+
+        `sink` 只需具备 `publish(topic, payload)` —— 与 `NovelStore(events=...)`
+        （v3 A7）和 `MemoryManager.set_event_sink()` 是**同一套鸭子类型约定**。
+        应用传的是 `EventBus.sink()` 门面，它内部按调用线程自动选路
+        （AI 调用几乎都发生在后台线程，而 Tk 只能在主线程碰）。
+        """
+        self._event_sink = sink
+
+    def _emit_usage_event(self, record: dict) -> None:
+        """广播一条 `ai.usage`；广播失败绝不影响记账。"""
+        sink = self._event_sink
+        if sink is None:
+            return
+        try:
+            sink.publish(TOPIC_AI_USAGE, record)
+        except Exception:  # noqa: BLE001 - 广播是尽力而为的旁路
+            pass
 
     # ------------------------------------------------------------ 目录
 
@@ -330,6 +356,9 @@ class UsageTracker:
             self._accumulate_into_groups(summary, record)
             summary["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             self._persist_summary(summary)
+
+        # v3 P4：落盘之后再广播 —— 订阅方（用量面板/状态栏）读到的一定是已记账的数据
+        self._emit_usage_event(record)
         return record
 
     def _ensure_summary_locked(self) -> dict:

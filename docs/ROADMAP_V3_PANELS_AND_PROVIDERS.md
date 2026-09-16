@@ -167,6 +167,35 @@ class BasePanel:
 有了代理，`LegacyPanelAdapter` 可以把它们包成 `BasePanel` 而**完全不改面板内的代码**，
 `toolkit_ui.py:26-49` 的 12 路 `elif` 链即可删除，改为查注册表。
 
+**实施状态：✅ 已完成（P4a）** —— 新增文件与本节草案一一对应，另加 `host.py`：
+
+| 文件 | 作用 |
+|---|---|
+| `app/panels/base.py` | `BasePanel`：`key/title/category/order/requires_novel/topics_of_interest` + 生命周期钩子 + `attach_events`；`__init_subclass__` 自动登记 |
+| `app/panels/registry.py` | `NATIVE_PANEL_MODULES`（**唯一**原生清单）+ `PanelSpec` + `grouped()` 分组渲染 |
+| `app/panels/legacy.py` | `LEGACY_PANEL_SPECS`（12 项）+ `LegacyPanelAdapter`，老面板**一行未改** |
+| `app/panels/host.py` | `PanelHost`：容器 / 分组选择器 / 懒建 / `on_show`-`on_hide` 调度 / 暂停 `novel.opened` 刷新 |
+
+`toolkit_ui.py` 的 12 路 `elif` 与 `shell_ui.py:577-586` 的 12 个 Radiobutton **已全部删除**，
+改为 `_init_panel_host()` + `registry.grouped()` 渲染 —— 至此「新增面板只需 1 处改动」
+（只在 `NATIVE_PANEL_MODULES` 加一行）真正成立，由 `test_no_module_keeps_a_second_panel_module_list` 守着。
+
+**❗对草案的关键补强：代理必须同时代理「写」。**
+草案只给了读代理 `__getattr__`。实测 v2 老面板不仅**读**宿主属性，还把控件挂到 `self.X`
+（`elements_panel.py:43 self.elem_result = ScrolledText(...)`）并在回调里从 `self.X` 读回（`:66`），
+甚至**写**真实应用状态（`chapter_analysis_panel.py:378 self.current_chapter = n`）。
+只代理读会让这些控件写进适配器实例、下一轮重建即丢失，且 `self.current_chapter` 不再影响主面板 ——
+与 v2 行为不等价。故 `LegacyPanelAdapter` 打开 `proxy_writes=True`，未声明属性一律转发宿主；
+只有 `LOCAL_ATTRS = {"app", "tool_content_frame"}` 留在面板自身（每个面板各有一份容器）。
+
+**另一处实测发现（顺手修掉的真 bug）**：`websearch_panel.py` 与 `story_flow_panel.py`
+读 `C['input_bg']`，而 `UIStyle.COLORS` **从不定义**该键 ⇒ 构建即 `KeyError`。
+v2 里这个异常被 Tk 回调吞掉，表现为「点了没反应 / 面板只画了一半」。
+已改为 `C['bg_medium']`，并加 `TestPanelColorTokensExist` 把全部 `C['xxx']` 键锁死。
+
+**测试**：`tests/test_panel_framework.py`（47）+ `tests/test_event_bus.py`（25）+ `tests/test_panel_events.py`（27），
+含「注册表覆盖每个 `*_panel.py`」「源码层无第二份面板清单」「颜色令牌存在性」「分发层去硬编码」等回归断言。
+
 ### 2.3 事件总线（联动的技术底座）
 
 现有机制无法支撑「面板 ↔ 主面板联动」，必须新建。设计要点：
@@ -193,6 +222,41 @@ class EventBus:
 
 ⚠️ **`publish` 必须在主线程**：Tk 非线程安全，而本仓 40 处 `threading.Thread` 都在子线程里干活。
 故提供 `publish_threadsafe`，内部统一 `self.root.after(0, ...)`——与既有做法（`bridges_panel.py:74`）一致。
+
+**实施状态：✅ 已完成（P4a）** —— 9 个主题全部落地且**都有真实发射点**（无「定义了没人发」的空头主题）：
+
+| 文件 | 作用 |
+|---|---|
+| `app/events/bus.py` | `EventBus` + `EventSink` + `publish_threadaware` + 9 个 `TOPIC_*` + `WILDCARD` |
+| `app/events/__init__.py` | 统一转出 |
+
+三处**有意偏离/补强**草案：
+
+**补强一：`EventSink` 门面（草案里没有）。**
+草案让调用方直接用 `EventBus.publish`，但那样 40 处后台线程每次发布都会走「改道 + 告警」分支
+（`publish` 检测到非主线程 → 转 `publish_threadsafe` → 返回 `-1` 并记日志），日志会被噪声淹没。
+`EventSink` 只暴露 `publish(topic, payload)`，内部按**调用线程**选路，于是
+`NovelStore(events=…)`（P1 A7 已存在的注入点）与 `MemoryManager.set_event_sink` 拿到的
+都是一个安静的鸭子类型出口，与它们的约定（只要求有 `publish`）完全吻合。
+
+**补强二：面板不订阅则不进总线。**
+草案设想「面板都订阅通配」。若真这么做，12 个迁移来的老面板会退化为 **12 个永不干活的通配处理器**。
+改为显式声明 `topics_of_interest`：迁移面板留空（它们没有 `on_event`，靠 `on_show` 重建），
+只有真正需要联动的面板才订阅。**宿主自身**订阅 `novel.opened` 并重建当前可见面板 ——
+「换书后旧数据全部失效、当前可见的是谁」这两件事只有宿主知道。
+
+**补强三：`novel.closed` 的载荷显式带旧目录。**
+`_announce_novel_opened` 在入口把 `current_novel_dir` 改到新书**之后**才被调用（4 条入口都是这个顺序），
+所以订阅方在 `novel.closed` 里读 `app.current_novel_dir` 只会拿到**新**目录。
+故载荷里直接带上旧目录，并在 `novel.opened` **之前**发出；
+首次打开不凭空冒 `novel.closed`。两条都由测试与端到端冒烟双向锁住。
+
+**线程模型**：主线程 `publish` 同步派发（Tk 回调里立刻看见结果）；非主线程自动改道到 `root.after(0, …)`
+并在返回值里报告 `-1`；每个处理器**单独** try/except 并计入 `error_count`，
+保证「一个订阅方炸掉」不会让同一事件的其他订阅方收不到。
+
+**测试**：`tests/test_event_bus.py`（25：投递语义 / 异常隔离 / `FakeRoot` 线程模型 / 门面 / 主题常量完整性）+
+`tests/test_panel_events.py`（27：写盘后才广播 / 广播异常不影响写盘 / 最小闭环 / 全部接线点的源码级断言）。
 
 ### 2.4 三个新面板的具体设计
 
@@ -538,7 +602,8 @@ total_tokens, estimated, latency_ms, cost, cost_currency}`
 | **P1** 去重 | A1 A2 A3 A7(最小集) A8 | 删除双解析、统一 outline/meta 写盘、令牌单一源 | 1391 全绿 + ruff + 角色 sha256 **不变** | 中 |
 | **P2** 多 API 底座 | §3.2 注册表 + 7 家迁移 + §3.3 配置分层 | `app/providers/` + 配置迁移器 + 设置页重构 | 每个 adapter 有单测；打包成功；**修掉 P1–P5、P9–P11** | 中高 |
 | **P3** 用量与余额 | §3.4 + §3.5 + `async_runner`(A6) | usage.jsonl + 估算器 + 价格表 + 用量面板 + 余额适配 + 接入 performance_monitor | 真实跑一次生成 → `usage.jsonl` 有该章记录；实测/估算标记正确 | 中 |
-| **P4** 面板框架与联动 | §2.2 + §2.3 + §2.4 三个新面板 | BasePanel/注册表/EventBus + 12 老面板迁移 + 3 新面板 | 新增面板**只需 1 处改动**；联动场景测试通过 | 中高 |
+| **P4a** 面板框架与事件总线 | §2.2 + §2.3 + 12 老面板迁移 | `app/panels/` + `app/events/` | ✅ **已完成**：新增面板只剩 1 处改动（`NATIVE_PANEL_MODULES`）；全量 1971 测试通过 + ruff 全绿 + Tk 端到端冒烟通过 | 中高 |
+| **P4b** 三个新面板 | §2.4 ①②③ | `timeline_store.py`+`timeline_panel.py` / `biography_panel.py` / `lineage_panel.py` | 联动场景测试通过；跨代只读断言 | 中高 |
 | **P5** 样式与对话框收敛 | A4 A5 A7(余下) + 面板 detach | 字体令牌化、`create_styled_*` 接线、dialogs.py、独立窗口 | 无字面 `font=` 断言；UI 冒烟通过 | 低 |
 
 **建议顺序理由**：P1 先做——它降低后续所有改动的心智负担且风险低；P2/P3 同属 AI 层，一起做可避免两次改动 `ai_client.py`；P4 最后做，因为它依赖 P3 产出的用量数据来展示联动效果。

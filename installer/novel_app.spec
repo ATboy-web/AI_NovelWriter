@@ -11,6 +11,10 @@ a = Analysis(
         ('../novel_data', 'novel_data'),
     ],
     hiddenimports=[
+        # ⚠️ 这里只需列「**动态导入**的目标」：PyInstaller 会静态跟踪 `import x`，
+        # 但 `importlib.import_module("app.xxx")` 用的是字符串，分析器看不见。
+        # 本仓的动态导入点只有三处（`app/__init__._safe_import`、
+        # `app/panels/legacy.py`、`app/panels/registry.py`），对应下面三组条目。
         'app',
         'app.config',
         'app.ai_client',
@@ -38,7 +42,15 @@ a = Analysis(
         'app.persistence_ui',
         'app.note_ui',
         'app.parsing',
+        # v3 P4 面板框架（registry 按字符串导入原生面板模块）
+        'app.events',
+        'app.events.bus',
         'app.panels',
+        'app.panels.base',
+        'app.panels.registry',
+        'app.panels.legacy',
+        'app.panels.host',
+        # v2 面板模块（legacy.py 按字符串导入）
         'app.panels.elements_panel',
         'app.panels.bridges_panel',
         'app.panels.descriptions_panel',

@@ -361,8 +361,12 @@ meta 记 `is_sequel / original_novel / original_title`（`:758-771`）；另有 
 **勘察中发现的既有缺陷（本次一并暴露，未擅自改行为）**：
 
 - ⚠️ **`timelines/branch_%03d/` 是"只写不读"**：`timeline_ui` 会建出带 `chapters/meta.json/...`
-  的完整分支子项目（`:460-497`），但**全仓没有任何读取方**。面板新增 `branch_dirs()`
-  把它列出来，让"写了但看不见"的能力第一次可见；**是否要做成可打开的子项目属产品决策，未动。**
+  的完整分支子项目（`:460-497`），但**全仓没有任何读取方**。
+  → **2026-09-16 已接线**（S6 / `127cbf1`）：分支的 `meta.json` 补 `title` + `lineage`
+  （分支与父代**同一代**、仍 `child_scope=readonly_parent`），`app/lineage.discover_branches()`
+  成为唯一读取器；时间线面板「世界线 / 分支」视图与世代面板的代际树都能看到它，
+  **双击即把它作为作品打开**（走 `BasePanel.open_novel_dir` → 宿主 `_load_novel`）。
+  护栏复核：写入分支内部允许、逃逸到父代被拒（分支目录就在父代**内部**，是最容易破的一处）。
 - ⚠️ **`update_character_activity` 没有生产调用方**（只有测试调用）⇒ 真实小说里
   `memory/character_activity.json` 基本是空的，"人物轨迹泳道"本来会是一条空视图。
   因此 `character_tracks()` 用**事件源的 `characters` 字段兜底**反推出现章。

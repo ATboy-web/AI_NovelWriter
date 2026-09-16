@@ -33,6 +33,7 @@
 | [SECURITY_AUDIT_REPORT.md](SECURITY_AUDIT_REPORT.md) | 安全审计报告 |
 | [OPTIMIZATION_REVIEW.md](OPTIMIZATION_REVIEW.md) | 优化审阅报告 |
 | [OPTIMIZATION_ROUND2.md](OPTIMIZATION_ROUND2.md) | 第二轮优化：健壮性/结构/可维护性（含角色数据保护） |
+| [CODE_REVIEW_ROUND3.md](CODE_REVIEW_ROUND3.md) | 第三轮代码复查：安全漏洞 / 逻辑缺陷 / 边界问题（含实测核验） |
 | [DAY_SUMMARY_20260630.md](DAY_SUMMARY_20260630.md) | 阶段小结 |
 
 ## 设计

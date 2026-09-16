@@ -15,7 +15,6 @@ except ImportError:
     logger = logging.getLogger(__name__)
 
 import json
-import re
 import threading
 import time
 from datetime import datetime
@@ -26,6 +25,7 @@ from .agent_orchestrator import AgentOrchestrator
 from .ai_client import AIClient
 from .config import AppConfig
 from .memory_manager import CharacterDataGuardError, MemoryManager
+from .parsing import parse_characters_payload, parse_json_response
 from .storage import atomic_write_json, safe_filename
 
 # 诊断日志
@@ -1831,209 +1831,33 @@ class NovelAgent:
         return response or ""
 
     # ===== 工具方法 =====
+    #
+    # v3 A1/A2（去重）：这两个方法原先各自带一份**独立实现**
+    # （`_extract_characters_from_raw` 约 80 行手写扫描、`_parse_json_response`
+    #  约 60 行 Strategy 1~5），与 `app/parsing.py` 的同名纯函数重复且已**漂移**：
+    # 本地版本会把键名为 `raw` 的**真角色**静默丢弃，而 parsing 版早已修掉该缺陷。
+    #
+    # 现在实现单一来源于 `app/parsing.py`，这里只保留薄委托。为什么保留方法名：
+    # 库内 6 处调用点 + 6 个测试文件都按此名调用 —— **测试也是调用方**，
+    # 直接删除会让 tests/test_novel_agent_*.py 整体失败。
 
     @staticmethod
     def _extract_characters_from_raw(raw_text: str) -> dict:
-        """从AI原始响应中尽最大努力提取角色数据（支持截断JSON）"""
-        chars = {}
-        if not raw_text or not isinstance(raw_text, str):
-            return chars
-        text = raw_text.replace('```json', '').replace('```', '').strip()
-        text = text.replace('\uff1a', ':')
-        text = text.replace('\u201c', '"').replace('\u201d', '"')
+        """从 AI 原始响应中提取角色字典。
 
-        depth = 0
-        key_buffer = ""
-        obj_start = -1
-        in_string = False
-        escape = False
-
-        i = 0
-        while i < len(text):
-            ch = text[i]
-            if escape:
-                escape = False
-                i += 1
-                continue
-            if ch == '\\':
-                escape = True
-                i += 1
-                continue
-            if ch == '"' and not escape:
-                in_string = not in_string
-                if not in_string and depth == 0:
-                    # 读完键
-                    if obj_start < 0:
-                        key_buffer = ""
-                        for j in range(i-1, -1, -1):
-                            if text[j] == '"':
-                                break
-                            key_buffer = text[j] + key_buffer
-                i += 1
-                continue
-            if in_string:
-                i += 1
-                continue
-            if ch == '{':
-                if depth == 0:
-                    obj_start = i
-                depth += 1
-            elif ch == '}':
-                depth -= 1
-                if depth == 0 and key_buffer and obj_start >= 0:
-                    try:
-                        obj = json.loads(text[obj_start:i+1])
-                        chars[key_buffer] = obj
-                    except (json.JSONDecodeError, ValueError) as _silent_e:
-                        logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
-                    key_buffer = ""
-                    obj_start = -1
-            i += 1
-
-        # 处理截断的JSON：最后一个对象没有闭合 }
-        if key_buffer and obj_start >= 0 and depth > 0:
-            partial = text[obj_start:]
-            # 尝试补全：关闭所有未闭合的括号
-            for closing in ['"]', '}', '}}']:
-                try:
-                    fixed = partial + closing
-                    obj = json.loads(fixed)
-                    chars[key_buffer] = obj
-                    break
-                except (json.JSONDecodeError, ValueError):
-                    continue
-            # 如果还是失败，尝试截取到最后一个完整字段
-            if key_buffer not in chars:
-                # 找到最后一个完整的 "key": "value" 对
-                last_complete = max(partial.rfind('",'), partial.rfind("'}"))
-                if last_complete > 0:
-                    truncated = partial[:last_complete+1] + '}'
-                    try:
-                        obj = json.loads(truncated)
-                        chars[key_buffer] = obj
-                    except (json.JSONDecodeError, ValueError) as _silent_e:
-                        logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
-
-        return chars
+        委托 `parsing.parse_characters_payload`（含字符串感知清洗、结构性修复、
+        以及"外层被截断但内部角色对象完整"的逐个提取兜底）。
+        """
+        return parse_characters_payload(raw_text)
 
     @staticmethod
     def _parse_json_response(response: str, default: Any, is_list: bool = False) -> Any:
-        """解析AI返回的JSON — 多层回退，极度容错"""
-        if not response or not isinstance(response, str):
-            return default
+        """解析 AI 返回的 JSON（多层回退）。
 
-        text = response.strip()
-        marker = "[" if is_list else "{"
-        end_marker = "]" if is_list else "}"
-
-        # 策略列表（按优先级）
-        strategies = []
-
-        # Strategy 1: 直接查找标记提取
-        start = text.find(marker)
-        end = text.rfind(end_marker) + 1
-        if start >= 0 and end > start:
-            strategies.append(text[start:end])
-
-        # Strategy 2: 清理 markdown 代码块后再提取
-        clean = text.replace('```json', '').replace('```', '')
-        start = clean.find(marker)
-        end = clean.rfind(end_marker) + 1
-        if start >= 0 and end > start:
-            strategies.append(clean[start:end])
-
-        # Strategy 3: 修复全角标点 + 各种常见 AI 错误
-        for raw_text in list(strategies):
-            fixed = raw_text
-            # 全角标点 → 半角（必须在阵列修复前处理）
-            fixed = fixed.replace('\uff1a', ':')
-            fixed = fixed.replace('\uff0c', ',')
-            fixed = fixed.replace('\u201c', "'").replace('\u201d', "'")
-            fixed = fixed.replace('\u2018', "'").replace('\u2019', "'")
-            # 连续冒号: "key":: → "key": (必须在阵列修复前处理)
-            fixed = re.sub(r'("\w+")\s*:{2,}', r'\1:', fixed)
-            # 字符串值中的数组误写: "goal":["a","b"] → "goal":"a; b"
-            # 先处理有闭合]的
-            fixed = re.sub(
-                r'("(?:goal|target|objective|purpose)")\s*:\s*\[([^\]]*)\]',
-                lambda m: m.group(1) + ': "' + '; '.join(re.findall(r'"([^"]*)"', m.group(2))) + '"',
-                fixed
-            )
-            # 处理未闭合的数组: "goal":[ "a", "b" ...无闭合]
-            while True:
-                m = re.search(r'"goal"\s*:\s*\[', fixed)
-                if not m:
-                    break
-                pos = m.start()
-                bstart = m.end() - 1
-                depth = 0
-                for j in range(bstart, len(fixed)):
-                    if fixed[j] == '[': depth += 1
-                    elif fixed[j] == ']':
-                        depth -= 1
-                        if depth == 0:
-                            arr = fixed[bstart+1:j]
-                            items = re.findall(r'"([^"]*)"', arr)
-                            joined = '; '.join(items)
-                            fixed = fixed[:pos] + f'"goal": "{joined}"' + fixed[j+1:]
-                            break
-                else:
-                    break  # no closing ], skip
-            strategies.append(fixed)
-
-        # 依次尝试每个策略
-        for s in strategies:
-            try:
-                return json.loads(s)
-            except (json.JSONDecodeError, ValueError):
-                continue
-
-        # Strategy 4: 尝试补全截断的JSON（逐步关闭括号）
-        for s in strategies:
-            # 先尝试关闭未闭合的字符串，再关闭括号
-            for suffix in [
-                '"}',       # 关闭字符串+对象
-                '"}]',      # 关闭字符串+对象+数组
-                '"}}',      # 关闭字符串+两层对象
-                '"}]}}',    # 关闭字符串+对象+数组+两层对象
-                '"]}}}',    # 关闭字符串+数组+三层对象
-                '}}}',      # 关闭三层对象
-                '"}\n}',    # 关闭字符串+对象(带换行)
-                '"}\n}]',   # 关闭字符串+对象+数组(带换行)
-            ]:
-                try:
-                    return json.loads(s + suffix)
-                except (json.JSONDecodeError, ValueError):
-                    continue
-
-        # Strategy 5: 提取已完成的完整角色对象（逐个提取）
-        for s in strategies:
-            chars = {}
-            # 找所有 "name": { ... } 模式
-            for m in re.finditer(r'"([^"]+)"\s*:\s*\{', s):
-                name = m.group(1)
-                if name in ('raw', 'weapon', 'attributes', 'skill_suggestions'):
-                    continue
-                brace_start = m.end() - 1
-                depth = 0
-                for j in range(brace_start, len(s)):
-                    if s[j] == '{': depth += 1
-                    elif s[j] == '}':
-                        depth -= 1
-                        if depth == 0:
-                            try:
-                                obj = json.loads(s[brace_start:j+1])
-                                chars[name] = obj
-                            except (json.JSONDecodeError, ValueError) as _silent_e:
-                                logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
-                            break
-            if chars:
-                # 🔧 BUG-5修复: is_list=True时返回list而非dict
-                if is_list:
-                    return list(chars.values())
-                return chars
-
-        return default
+        委托 `parsing.parse_json_response`；`is_list=True` 时只接受 list 结果，
+        与旧实现的类型语义一致（调用方随后按序列遍历）。
+        """
+        return parse_json_response(response, default, is_list=is_list)
 
     def _generate_long_chapter(self, chapter_num, chapter_title, chapter_outline, word_count, context, prev_ending="") -> str:
         """分段生成长章节 - 确保每章结尾完整自然"""

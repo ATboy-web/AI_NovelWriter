@@ -96,8 +96,7 @@ class GenerationMixin:
                     )
                     with self._state_lock:
                         self.outline = new_outline
-                    with open(self.current_novel_dir / "outline.json", 'w', encoding='utf-8') as f:
-                        json.dump(new_outline, f, indent=2, ensure_ascii=False)
+                    self._novel_store().write_outline(new_outline)
                     self._log("章节大纲已保存到 outline.json")
 
                 elif outline_type == "整体大纲":
@@ -1400,10 +1399,11 @@ class GenerationMixin:
                                 # 如果没有标记为主角，取第一个角色
                                 protagonist = next(iter(chars.keys()), "")
                             if protagonist:
-                                meta["protagonist"] = protagonist
-                                with open(self.current_novel_dir / "meta.json", 'w', encoding='utf-8') as f:
-                                    json.dump(meta, f, indent=2, ensure_ascii=False)
-                                self.memory.save_meta("protagonist", protagonist)
+                                # 一次读-改-写同时落 both 字段（原先写两次 meta.json，
+                                # 中间存在"只写了其中一半"的窗口）
+                                self._novel_store().update_meta(
+                                    {"protagonist": protagonist}
+                                )
                                 self._log(f"[角色] 主角已锁定: {protagonist}")
                         else:
                             self._log("[错误] 角色生成完全失败，无法恢复")
@@ -1431,8 +1431,7 @@ class GenerationMixin:
                                 json.dump(self.outline, f, indent=2, ensure_ascii=False)
                         # 更新meta中的章节数，保持total_chapters不变
                         meta["chapter_count"] = outline_count
-                        with open(self.current_novel_dir / "meta.json", 'w', encoding='utf-8') as f:
-                            json.dump(meta, f, indent=2, ensure_ascii=False)
+                        self._novel_store().write_meta(meta)
                         self.root.after(0, self._refresh_outline_list)
                         self._log(f"大纲已生成: {len(self.outline)}章 (总计划{real_total}章)")
                     except Exception as e:
@@ -1607,9 +1606,7 @@ class GenerationMixin:
                                                         self.outline[idx]["title"] = item.get("title", f"第{item['chapter']}章")
                                                         self.outline[idx]["summary"] = item.get("summary", f"第{item['chapter']}章情节")
                                             # 保存已更新的 outline.json
-                                            outline_file = self.current_novel_dir / "outline.json"
-                                            with open(outline_file, 'w', encoding='utf-8') as f:
-                                                json.dump(self.outline, f, indent=2, ensure_ascii=False)
+                                            self._novel_store().write_outline(self.outline)
                                         # 用新生成的大纲
                                         cur_item = next((x for x in new_batch if x["chapter"] == ch_num), None)
                                         if cur_item:
@@ -1845,8 +1842,7 @@ class GenerationMixin:
                     total = last_ch + n
                     meta["chapter_count"] = total
                     meta["total_chapters"] = total  # 同步更新 total_chapters
-                    with open(self.current_novel_dir / "meta.json", 'w', encoding='utf-8') as f:
-                        json.dump(meta, f, indent=2, ensure_ascii=False)
+                    self._novel_store().write_meta(meta)
 
                     # 合并大纲
                     existing_outline = list(self.outline) if self.outline else []
@@ -1856,8 +1852,7 @@ class GenerationMixin:
 
                     # 写入 outline.json
                     full_outline = existing_outline + new_outline
-                    with open(self.current_novel_dir / "outline.json", 'w', encoding='utf-8') as f:
-                        json.dump(full_outline, f, indent=2, ensure_ascii=False)
+                    self._novel_store().write_outline(full_outline)
                     self.outline = full_outline
                     self._refresh_outline_list()
 

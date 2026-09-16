@@ -8,11 +8,25 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+from app.novel_store import NovelStore
 from app.storage import atomic_write_json, atomic_write_text
 
 
 class PersistenceMixin:
     """持久化层：备份、检查点、断电恢复、原子写"""
+
+    def _novel_store(self) -> NovelStore:
+        """当前小说的领域数据读写入口（v3 A7）。
+
+        `outline.json` / `meta.json` 此前被三个模块各自裸写，既可能写一半被截断，
+        也可能并发互相覆盖。所有读写统一走这里（NovelStore 内部原子写 + 按路径加锁）。
+
+        每次返回新实例：NovelStore **不缓存**数据，磁盘是唯一真相 ——
+        缓存会让"别的进程改了文件"变得不可见。
+        """
+        if not self.current_novel_dir:
+            raise RuntimeError("未打开小说，无法访问数据文件")
+        return NovelStore(self.current_novel_dir, events=getattr(self, "events", None))
 
 
     def _backup_novel(self, label: str = "auto"):

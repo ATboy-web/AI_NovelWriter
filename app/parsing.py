@@ -262,6 +262,45 @@ def _pair_braces(text: str) -> dict:
     return pairs
 
 
+def _extract_complete_objects(text: str) -> dict:
+    """逐个提取 ``"键": { ... }`` 形式的**完整**子对象。
+
+    Strategy 5 与 `parse_characters_payload` 的共用实现（v3 A1/A2 去重）。
+
+    末段对象被截断时尝试补 1~2 个 ``}`` 再解析 —— 这是旧
+    `novel_agent._extract_characters_from_raw` 手写扫描里唯一有价值的能力，
+    收敛实现时必须保留，否则"AI 响应被截断"场景的补救能力会静默退化。
+    """
+    result = {}
+    pairs = _pair_braces(text)
+    pos = 0
+    while True:
+        m = _KEY_OBJECT_RE.search(text, pos)
+        if not m:
+            break
+        pos = m.end()
+        name = m.group(1)
+        if name in _PARSE_SKIP_KEYS:
+            continue
+        brace_start = m.end() - 1
+        close = pairs.get(brace_start)
+        if close is not None:
+            try:
+                result[name] = json.loads(text[brace_start:close + 1])
+            except (json.JSONDecodeError, ValueError):
+                pass
+            continue
+        # 该对象未闭合（响应被截断）→ 补括号后重试
+        tail = text[brace_start:]
+        for closing in ('"}', '}', '}}'):
+            try:
+                result[name] = json.loads(tail + closing)
+                break
+            except (json.JSONDecodeError, ValueError):
+                continue
+    return result
+
+
 def _is_balanced(text: str) -> bool:
     """字符串感知地检查 ``{}`` / ``[]`` 是否配平且引号闭合。"""
     depth = 0
@@ -326,6 +365,18 @@ def parse_characters_payload(raw) -> dict:
                 chars = {k: v for k, v in parsed.items() if isinstance(v, dict)}
                 if chars:
                     return chars
+
+    # 兜底：外层 JSON 被截断、但内部角色对象本身已完整 → 逐个提取。
+    # 只走**保真**变体（不做朴素的弯引号/全角逗号全量替换），
+    # 避免"救回角色"的代价是把值里的中文标点改掉。
+    #
+    # v3 A2：这段能力原先由 `novel_agent._extract_characters_from_raw` 手写
+    # 扫描承担（含"末段对象补括号"），实现收敛到这里后必须保留，
+    # 否则截断响应的补救能力会静默退化。
+    for variant in (clean_ai_json_text(text), _repair_structures(clean_ai_json_text(text))):
+        chars = _extract_complete_objects(variant)
+        if chars:
+            return chars
     return {}
 
 
@@ -393,16 +444,26 @@ def _repair_json_naive(raw: str) -> str:
     return fixed
 
 
-def parse_json_response(response: str, default):
-    """_parse_json_response 的纯逻辑（P2-6 抽取）。"""
+def parse_json_response(response: str, default, is_list: bool = False):
+    """`_parse_json_response` 的纯逻辑（P2-6 抽取）。
+
+    v3 A1：本函数是**唯一实现**。`NovelAgent._parse_json_response` /
+    `GenerationUIMixin._parse_json_response` 都只是薄委托。
+
+    `is_list=True` 时优先按 ``[ ]`` 提取，且**只接受 list 结果**
+    —— 保留旧实现的类型语义（`generate_outline` 等调用点随后按序列遍历，
+    若在期望列表时返回 dict，遍历到的会是键名字符串）。
+    """
     if not response or not isinstance(response, str):
         return default
 
     text = response.strip()
+    # 标记优先次序：期望列表时先找 [ ]，否则先找 { }
+    marker_pairs = [('[', ']'), ('{', '}')] if is_list else [('{', '}'), ('[', ']')]
     strategies = []
 
     # Strategy 1: 直接提取 { } 或 [ ]
-    for marker, end_marker in [('{', '}'), ('[', ']')]:
+    for marker, end_marker in marker_pairs:
         start = text.find(marker)
         end = text.rfind(end_marker) + 1
         if start >= 0 and end > start:
@@ -410,7 +471,7 @@ def parse_json_response(response: str, default):
 
     # Strategy 2: 清理 markdown 后提取
     clean = text.replace('```json', '').replace('```', '')
-    for marker, end_marker in [('{', '}'), ('[', ']')]:
+    for marker, end_marker in marker_pairs:
         start = clean.find(marker)
         end = clean.rfind(end_marker) + 1
         if start >= 0 and end > start:
@@ -427,9 +488,13 @@ def parse_json_response(response: str, default):
     # 依次尝试
     for s in strategies:
         try:
-            return json.loads(s)
+            parsed = json.loads(s)
         except (json.JSONDecodeError, ValueError):
             continue
+        if is_list and not isinstance(parsed, list):
+            # 期望列表却解析出对象 → 这个候选不合格，继续找
+            continue
+        return parsed
 
     # Strategy 4: 尝试补全截断的JSON
     # M4：旧实现无条件把 `'"}', '"}]' …` 拼到候选串尾再 `json.loads`，
@@ -451,32 +516,17 @@ def parse_json_response(response: str, default):
                 continue
             if opener == '[' and not isinstance(parsed, list):
                 continue
+            if is_list and not isinstance(parsed, list):
+                continue
             return parsed
 
     # Strategy 5: 逐个提取已完成的对象
     # M3：改为预计算配对括号（O(n)），不再对每个匹配向后扫到串尾（O(n²)）。
     for s in strategies:
-        chars = {}
-        pairs = _pair_braces(s)
-        pos = 0
-        while True:
-            m = _KEY_OBJECT_RE.search(s, pos)
-            if not m:
-                break
-            pos = m.end()
-            name = m.group(1)
-            if name in _PARSE_SKIP_KEYS:
-                continue
-            brace_start = m.end() - 1
-            close = pairs.get(brace_start)
-            if close is None:
-                continue  # 该对象未闭合，无法提取
-            try:
-                chars[name] = json.loads(s[brace_start:close + 1])
-            except (json.JSONDecodeError, ValueError):
-                pass
+        chars = _extract_complete_objects(s)
         if chars:
-            return chars
+            # BUG-5：is_list=True 时返回 list 而非 dict（保留旧行为）
+            return list(chars.values()) if is_list else chars
 
     return default
 

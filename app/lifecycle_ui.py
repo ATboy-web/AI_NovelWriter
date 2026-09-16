@@ -648,15 +648,11 @@ class NovelLifecycleMixin:
             self.outline.extend(new_chapters)
 
             # 保存更新后的大纲
-            with open(self.current_novel_dir / "outline.json", 'w', encoding='utf-8') as f:
-                json.dump(self.outline, f, indent=2, ensure_ascii=False)
+            self._novel_store().write_outline(self.outline)
 
-            # 更新meta
-            meta_file = self.current_novel_dir / "meta.json"
-            if meta_file.exists():
-                with open(meta_file, 'w', encoding='utf-8') as f:
-                    meta['chapter_count'] = len(self.outline)
-                    json.dump(meta, f, indent=2, ensure_ascii=False)
+            # 更新meta（读-改-写在同一把锁内，避免覆盖并发方的改动）
+            if self._novel_store().exists("meta.json"):
+                self._novel_store().update_meta({"chapter_count": len(self.outline)})
 
             self.current_chapter = current_count
             self._refresh_outline_list()

@@ -72,8 +72,7 @@ class OutlineUIMixin:
         # 兼容：如果AI返回单个对象，包装为列表
         if isinstance(data, dict) and "title" in data:
             data = [data]
-        with open(outline_dir / "overall.json", 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        self._novel_store().write_json("outlines/overall.json", data)
     def _get_story_outlines(self) -> dict:
         """获取所有故事大纲"""
         if not self.current_novel_dir:
@@ -90,8 +89,7 @@ class OutlineUIMixin:
             return
         outline_dir = self.current_novel_dir / "outlines"
         outline_dir.mkdir(exist_ok=True)
-        with open(outline_dir / "stories.json", 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        self._novel_store().write_json("outlines/stories.json", data)
     def _get_outlines_context(self) -> str:
         """获取整体大纲和故事大纲的上下文，用于注入章节生成"""
         parts = []
@@ -225,9 +223,7 @@ class OutlineUIMixin:
             elif outline_type == "章节大纲":
                 ch_num = len(self.outline) + 1
                 self.outline.append({"chapter": ch_num, "title": title, "summary": content})
-                outline_file = self.current_novel_dir / "outline.json"
-                with open(outline_file, 'w', encoding='utf-8') as f:
-                    json.dump(self.outline, f, indent=2, ensure_ascii=False)
+                self._novel_store().write_outline(self.outline)
 
             self._refresh_outline_list()
             dialog.destroy()
@@ -305,9 +301,7 @@ class OutlineUIMixin:
             if outline_type == "章节大纲":
                 self.outline[idx]["title"] = new_title
                 self.outline[idx]["summary"] = new_content
-                outline_file = self.current_novel_dir / "outline.json"
-                with open(outline_file, 'w', encoding='utf-8') as f:
-                    json.dump(self.outline, f, indent=2, ensure_ascii=False)
+                self._novel_store().write_outline(self.outline)
             elif outline_type == "整体大纲":
                 overall = self._get_overall_outline()
                 overall[idx] = {"title": new_title, "description": new_content, "chapter_range": overall[idx].get("chapter_range", "")}
@@ -350,9 +344,7 @@ class OutlineUIMixin:
                 # 重新编号
                 for i, item in enumerate(self.outline):
                     item["chapter"] = i + 1
-                outline_file = self.current_novel_dir / "outline.json"
-                with open(outline_file, 'w', encoding='utf-8') as f:
-                    json.dump(self.outline, f, indent=2, ensure_ascii=False)
+                self._novel_store().write_outline(self.outline)
                 self._log(f"已删除: {removed.get('title', '')}")
         elif outline_type == "整体大纲":
             overall = self._get_overall_outline()

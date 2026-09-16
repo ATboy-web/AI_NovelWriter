@@ -96,12 +96,23 @@ def test_build_body_includes_changelog_section(fixer):
     assert fixer.MARKER in body
 
 
-def test_build_body_without_changelog_uses_factual_note(fixer):
-    """CHANGELOG 没有该版本时，不得编造 —— 只给可核实的说明（或什么都没有）。"""
-    body = fixer.build_body("2.12.1", "## ????\n- ???")
-    assert fixer.changelog_section("2.12.1") is None
-    assert "说明" in body  # FALLBACK_NOTE 提供的可核实内容
+def test_build_body_without_changelog_keeps_only_the_original(fixer):
+    """CHANGELOG 没有该版本时**不得编造**：只保留标记 + 原文折叠块。
+
+    用一个"确定不存在"的版本号，避免测试依赖"当前哪些版本缺条目"这一会变的事实
+    （v2.12.1 原本缺条目，补记后就变了 —— 上一版测试正是因此失效）。
+    """
+    body = fixer.build_body("9.9.9", "## ????\n- ???")
+    assert fixer.changelog_section("9.9.9") is None
+    assert "本版本内容" not in body, "没有 CHANGELOG 条目时不得凭空生成正文"
     assert "???" in body, "原始文本必须保留在折叠块中"
+    assert fixer.MARKER in body
+
+
+def test_build_body_uses_factual_note_when_available(fixer):
+    """有预设的**可核实**说明时必须带上（例如"该版本是 APK 发布"这一事实）。"""
+    body = fixer.build_body("v2.12.1", "## ????\n- ???")
+    assert fixer.FALLBACK_NOTE["v2.12.1"] in body
 
 
 def test_release_notes_script_handles_unknown_version():

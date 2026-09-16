@@ -25,7 +25,7 @@ class ReaderUIMixin:
         tk.Button(
             toolbar,
             text="导入书籍",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -35,7 +35,7 @@ class ReaderUIMixin:
         tk.Button(
             toolbar,
             text="刷新书库",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -45,7 +45,7 @@ class ReaderUIMixin:
         tk.Button(
             toolbar,
             text="搜索",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -58,7 +58,7 @@ class ReaderUIMixin:
         search_entry = tk.Entry(
             toolbar,
             textvariable=self.search_var,
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             width=20,
             bg=C["bg_medium"],
             fg=C["text_primary"],
@@ -74,9 +74,9 @@ class ReaderUIMixin:
         left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         left_frame.pack_propagate(False)
 
-        tk.Label(left_frame, text="书库", font=("微软雅黑", 11, "bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
-            anchor=tk.W, pady=(0, 10)
-        )
+        tk.Label(
+            left_frame, text="书库", font=UIStyle.font("subtitle_bold"), bg=C["bg_dark"], fg=C["accent_light"]
+        ).pack(anchor=tk.W, pady=(0, 10))
 
         # 书库列表框
         list_frame = tk.Frame(left_frame, bg=C["bg_dark"])
@@ -86,7 +86,7 @@ class ReaderUIMixin:
             list_frame,
             bg=C["bg_card"],
             fg=C["text_secondary"],
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             selectbackground=C["accent"],
             relief=tk.FLAT,
             highlightthickness=0,
@@ -102,14 +102,14 @@ class ReaderUIMixin:
         bookmark_frame.pack(fill=tk.X, pady=(10, 0))
 
         tk.Label(
-            bookmark_frame, text="书签", font=("微软雅黑", 10, "bold"), bg=C["bg_dark"], fg=C["accent_light"]
+            bookmark_frame, text="书签", font=UIStyle.font("body_bold"), bg=C["bg_dark"], fg=C["accent_light"]
         ).pack(anchor=tk.W, pady=(0, 5))
 
         self.bookmark_list = tk.Listbox(
             bookmark_frame,
             bg=C["bg_card"],
             fg=C["text_secondary"],
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             height=4,
             relief=tk.FLAT,
             highlightthickness=0,
@@ -123,7 +123,7 @@ class ReaderUIMixin:
         tk.Button(
             bookmark_btn_frame,
             text="导入书签",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -133,7 +133,7 @@ class ReaderUIMixin:
         tk.Button(
             bookmark_btn_frame,
             text="导出书签",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -150,9 +150,9 @@ class ReaderUIMixin:
         read_toolbar.pack(fill=tk.X, pady=(0, 10))
 
         # 字体大小
-        tk.Label(read_toolbar, text="字体:", font=("微软雅黑", 9), bg=C["bg_medium"], fg=C["text_secondary"]).pack(
-            side=tk.LEFT, padx=5
-        )
+        tk.Label(
+            read_toolbar, text="字体:", font=UIStyle.font("label"), bg=C["bg_medium"], fg=C["text_secondary"]
+        ).pack(side=tk.LEFT, padx=5)
         self.font_size_var = tk.StringVar(value="16")
         font_size_spin = tk.Spinbox(
             read_toolbar, from_=10, to=36, width=5, textvariable=self.font_size_var, command=self._update_reader_font
@@ -160,9 +160,9 @@ class ReaderUIMixin:
         font_size_spin.pack(side=tk.LEFT, padx=5)
 
         # 主题选择
-        tk.Label(read_toolbar, text="主题:", font=("微软雅黑", 9), bg=C["bg_medium"], fg=C["text_secondary"]).pack(
-            side=tk.LEFT, padx=5
-        )
+        tk.Label(
+            read_toolbar, text="主题:", font=UIStyle.font("label"), bg=C["bg_medium"], fg=C["text_secondary"]
+        ).pack(side=tk.LEFT, padx=5)
         self.reader_theme_var = tk.StringVar(value="light")
         themes = [("浅色", "light"), ("深色", "dark"), ("护眼", "sepia")]
         for text, value in themes:
@@ -171,7 +171,7 @@ class ReaderUIMixin:
                 text=text,
                 variable=self.reader_theme_var,
                 value=value,
-                font=("微软雅黑", 8),
+                font=UIStyle.font("caption"),
                 bg=C["bg_medium"],
                 fg=C["text_secondary"],
                 selectcolor=C["accent"],
@@ -182,7 +182,7 @@ class ReaderUIMixin:
         tk.Button(
             read_toolbar,
             text="添加书签",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,
@@ -194,7 +194,7 @@ class ReaderUIMixin:
         self.reader_text = tk.Text(
             right_frame,
             wrap=tk.WORD,
-            font=("微软雅黑", 16),
+            font=UIStyle.font("display"),
             bg="#f5f0e8",
             fg="#2c2c2c",
             padx=20,

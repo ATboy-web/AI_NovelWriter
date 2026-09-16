@@ -116,12 +116,22 @@
 | 门禁用例 | `test_panel_ui_quality.py` 由 29 → **35 条**，全绿 |
 | 回归 | 面板相关 456 + 基础/约束 162 全绿；`ruff check` 全绿、`ruff format` 全达标 |
 
-**仍未解决（诚实记录）**：`chapter_analysis` 面板在离屏演示环境里 `select()` 返回 `False`
-（构建抛错，与本次改动无关，第一轮截图同样缺这一张）—— 需要在**真实应用**里点开该面板取证。
+**曾经的"未解项"已结案**：`chapter_analysis` 面板 `select()` 返回 `False` —— **不是缺陷，
+是截图脚本用错了 key**。该面板的真实 key 是 **`chapters`**（标题「章节分析」，分类「结构分析」，
+由迁移适配器按 Mixin 名派生），我此前凭直觉写了 `chapter_analysis`，宿主的
+「未登记的 key」分支便正确返回了 False。修正 key 后 `select("chapters") -> True`，
+截图也补上了（`docs/ui_review/after_06_legacy_chapter.png`）。
+**教训**：核对面板一律用 `registry.load_panels()` 输出的 key，别按文件名猜。
 
-**P5 剩余部分**（不在本轮）：`app/` 下 **385 处**硬编码字体元组的角色化命名与替换（含 55 处计算式）、
-`dialogs.py` 抽取、面板"脱离为独立 Toplevel"。棘轮已就位，可增量推进；清零后把
-`TestFontRatchet` 的"原生面板为 0"收紧为"全仓为 0"。
+**P5 状态（2026-09-17 收尾）**：
+- ✅ **字体令牌化已完成**：枚举发现 385 处字面量**只对应 21 种取值**，其中 15 种已有令牌
+  （覆盖 375 处），补齐 6 个角色后剩余替换全部是**等值替换**（逐条断言令牌值 == 原字面量），
+  因此可安全机械完成。`HARDCODED_FONT_BASELINE` 已清空，门禁收紧为
+  `test_no_hardcoded_fonts_anywhere`（全仓不得再有字面量）。
+  零视觉变化已用 A/B 实验证明（同显示状态下两版代码截图 **MAD = 0.000**，逐像素一致）。
+- ✅ `dialogs.py` **已存在并可用**（435 行，提供 `ask_text` / `edit_items` / `show_text` 等），
+  文档里的"待抽取"表述过期。
+- ⏳ 仍未做：面板"脱离为独立 Toplevel"（`BasePanel.detach()` 已有，但未做成可拖出窗口）。
 
 ### 如何在打包后的 EXE 里确认"面板到底有几个"
 

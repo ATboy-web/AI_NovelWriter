@@ -13,12 +13,14 @@ class MemoryVizPanelMixin:
         C = UIStyle.COLORS
         f = self.tool_content_frame
 
-        tk.Label(f, text="记忆系统可视化", font=("", 11, "bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
-            anchor=tk.W, pady=5
-        )
+        tk.Label(
+            f, text="记忆系统可视化", font=UIStyle.font("default_bold"), bg=C["bg_dark"], fg=C["text_primary"]
+        ).pack(anchor=tk.W, pady=5)
 
         if not self.current_novel_dir:
-            tk.Label(f, text="请先新建或打开小说", font=("", 10), bg=C["bg_dark"], fg=C["text_muted"]).pack(pady=20)
+            tk.Label(
+                f, text="请先新建或打开小说", font=UIStyle.font("system"), bg=C["bg_dark"], fg=C["text_muted"]
+            ).pack(pady=20)
             return
 
         # ⚠️ 必须同时判 `memory`：`current_novel_dir` 与 `memory` 是**两个**状态
@@ -51,18 +53,23 @@ class MemoryVizPanelMixin:
 - 衰减记忆: {len(report.get("stale_chunks", []))}"""
 
         tk.Label(
-            stats_frame, text=stats_text, font=("微软雅黑", 10), bg=C["bg_dark"], fg=C["text_primary"], justify=tk.LEFT
+            stats_frame,
+            text=stats_text,
+            font=UIStyle.font("body"),
+            bg=C["bg_dark"],
+            fg=C["text_primary"],
+            justify=tk.LEFT,
         ).pack(anchor=tk.W, padx=10)
 
         # 建议
         if report.get("recommendations"):
-            tk.Label(f, text="建议:", font=("", 10, "bold"), bg=C["bg_dark"], fg=C["warning"]).pack(
+            tk.Label(f, text="建议:", font=UIStyle.font("system_bold"), bg=C["bg_dark"], fg=C["warning"]).pack(
                 anchor=tk.W, pady=(10, 3)
             )
             for rec in report["recommendations"]:
-                tk.Label(f, text=f"  - {rec}", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_secondary"]).pack(
-                    anchor=tk.W
-                )
+                tk.Label(
+                    f, text=f"  - {rec}", font=UIStyle.font("label"), bg=C["bg_dark"], fg=C["text_secondary"]
+                ).pack(anchor=tk.W)
 
         # 操作按钮
         btn_frame = tk.Frame(f, bg=C["bg_dark"])
@@ -70,7 +77,7 @@ class MemoryVizPanelMixin:
         tk.Button(
             btn_frame,
             text="刷新",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,

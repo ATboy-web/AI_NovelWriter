@@ -8,6 +8,13 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 
+# ⚠️ 必须直接导入 `ui_style` 模块，不能写 `from app import UIStyle`：
+# `app/__init__.py` 在**定义 `UIStyle` 之前**就 `_safe_import("app.fullscreen_writer")`
+# （见 app/__init__.py 的可选导入段），走包级导入会形成循环引用，
+# 而失败会被 `_ImportStub` **静默降级** —— 表现为 FullscreenWriter 变成一个一实例化就报错的桩。
+# `tests/test_import_health.py` 会拦住这类静默降级。
+from .ui_style import UIStyle
+
 try:
     from loguru import logger
 except ImportError:
@@ -77,7 +84,7 @@ class FullscreenWriter:
         tk.Button(
             left_btns,
             text="退出 (Esc)",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg="#e74c3c",
             fg="white",
             relief=tk.FLAT,
@@ -87,7 +94,7 @@ class FullscreenWriter:
         tk.Button(
             left_btns,
             text="保存",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg="#27ae60",
             fg="white",
             relief=tk.FLAT,
@@ -99,7 +106,9 @@ class FullscreenWriter:
         ai_btns = tk.Frame(self.toolbar, bg="#16213e")
         ai_btns.pack(side=tk.LEFT, padx=20, fill=tk.Y)
 
-        tk.Label(ai_btns, text="AI辅助:", font=("微软雅黑", 9), bg="#16213e", fg="#a78bfa").pack(side=tk.LEFT, pady=5)
+        tk.Label(ai_btns, text="AI辅助:", font=UIStyle.font("label"), bg="#16213e", fg="#a78bfa").pack(
+            side=tk.LEFT, pady=5
+        )
 
         ai_features = [
             ("续写 (Tab)", self._ai_continue, "#7c3aed"),
@@ -114,7 +123,7 @@ class FullscreenWriter:
             tk.Button(
                 ai_btns,
                 text=text,
-                font=("微软雅黑", 8),
+                font=UIStyle.font("caption"),
                 bg=color,
                 fg="white",
                 relief=tk.FLAT,
@@ -135,7 +144,7 @@ class FullscreenWriter:
             right_ctrls,
             text="打字机",
             variable=self.tw_var,
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg="#16213e",
             fg="#94a3b8",
             selectcolor="#7c3aed",
@@ -144,14 +153,16 @@ class FullscreenWriter:
         ).pack(side=tk.LEFT, pady=5)
 
         # 字数统计
-        self.word_count_label = tk.Label(right_ctrls, text="字数: 0", font=("微软雅黑", 9), bg="#16213e", fg="#94a3b8")
+        self.word_count_label = tk.Label(
+            right_ctrls, text="字数: 0", font=UIStyle.font("label"), bg="#16213e", fg="#94a3b8"
+        )
         self.word_count_label.pack(side=tk.LEFT, padx=15, pady=5)
 
         # 设置按钮
         tk.Button(
             right_ctrls,
             text="设置",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg="#353548",
             fg="#94a3b8",
             relief=tk.FLAT,
@@ -197,7 +208,7 @@ class FullscreenWriter:
             btn = tk.Button(
                 md_toolbar,
                 text=text,
-                font=("Consolas", 9, "bold"),
+                font=UIStyle.font("mono_small_bold"),
                 bg="#e8e3d8",
                 fg="#5c5647",
                 relief=tk.FLAT,
@@ -215,7 +226,7 @@ class FullscreenWriter:
             md_toolbar,
             text="预览",
             variable=self.preview_var,
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg="#f5f0e8",
             fg="#5c5647",
             selectcolor="#7c3aed",
@@ -279,14 +290,14 @@ class FullscreenWriter:
 
         # AI处理状态标签
         self.ai_status_label = tk.Label(
-            self.inner_frame, text="", font=("微软雅黑", 12), fg="#f59e0b", bg="#f5f0e8", anchor=tk.CENTER
+            self.inner_frame, text="", font=UIStyle.font("title_plain"), fg="#f59e0b", bg="#f5f0e8", anchor=tk.CENTER
         )
 
         # 右键菜单
         self.context_menu = tk.Menu(
             self.text_widget,
             tearoff=0,
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg="#2d2d3f",
             fg="#f8fafc",
             activebackground="#7c3aed",

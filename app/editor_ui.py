@@ -101,12 +101,12 @@ class EditorUIMixin:
         dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(dialog, text="仿写结果", font=("微软雅黑", 12, "bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
+        tk.Label(dialog, text="仿写结果", font=UIStyle.font("title"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
             pady=(10, 5)
         )
 
         result_text = tk.Text(
-            dialog, wrap=tk.WORD, font=("微软雅黑", 11), bg=C["bg_card"], fg=C["text_primary"], padx=15, pady=15
+            dialog, wrap=tk.WORD, font=UIStyle.font("subtitle"), bg=C["bg_card"], fg=C["text_primary"], padx=15, pady=15
         )
         result_text.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
         result_text.insert("1.0", content)
@@ -132,7 +132,7 @@ class EditorUIMixin:
             command=insert_to_editor,
             bg=C["accent"],
             fg="white",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
         ).pack(side=tk.LEFT, padx=5)
         tk.Button(
@@ -141,7 +141,7 @@ class EditorUIMixin:
             command=replace_editor,
             bg=C["warning"],
             fg="white",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
         ).pack(side=tk.LEFT, padx=5)
         tk.Button(
@@ -150,7 +150,7 @@ class EditorUIMixin:
             command=dialog.destroy,
             bg=C["bg_light"],
             fg=C["text_primary"],
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
         ).pack(side=tk.RIGHT, padx=5)
 

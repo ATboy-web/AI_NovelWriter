@@ -19,7 +19,7 @@ class WebSearchPanelMixin:
         tk.Label(
             f,
             text="联网搜索热点改编 - 将网络热点改编为小说桥段",
-            font=("", 11, "bold"),
+            font=UIStyle.font("default_bold"),
             bg=C["bg_dark"],
             fg=C["text_primary"],
         ).pack(anchor=tk.W, pady=5)
@@ -38,7 +38,7 @@ class WebSearchPanelMixin:
                 text=cat,
                 variable=self.ws_category_var,
                 value=cat,
-                font=("微软雅黑", 9),
+                font=UIStyle.font("label"),
                 bg=C["bg_dark"],
                 fg=C["text_secondary"],
                 selectcolor=C["accent"],
@@ -49,7 +49,7 @@ class WebSearchPanelMixin:
         search_frame = tk.Frame(f, bg=C["bg_dark"])
         search_frame.pack(fill=tk.X, pady=5)
         self.ws_search_entry = tk.Entry(
-            search_frame, font=("微软雅黑", 10), width=40, bg=C["bg_medium"], fg=C["text_primary"]
+            search_frame, font=UIStyle.font("body"), width=40, bg=C["bg_medium"], fg=C["text_primary"]
         )
         self.ws_search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
         self.ws_search_entry.insert(0, "输入热点关键词或梗，AI自动改编...")
@@ -57,7 +57,7 @@ class WebSearchPanelMixin:
         tk.Button(
             search_frame,
             text="AI搜索改编",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -69,7 +69,7 @@ class WebSearchPanelMixin:
         tk.Button(
             f,
             text="随机来一个热点",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,
@@ -79,7 +79,7 @@ class WebSearchPanelMixin:
 
         # 内置热点列表
         tk.Label(
-            f, text="内置热点（点击直接生成）：", font=("微软雅黑", 9, "bold"), bg=C["bg_dark"], fg=C["accent_light"]
+            f, text="内置热点（点击直接生成）：", font=UIStyle.font("label_bold"), bg=C["bg_dark"], fg=C["accent_light"]
         ).pack(anchor=tk.W, pady=(10, 3))
 
         items = self.web_search_engine.get_items(self.ws_category_var.get())
@@ -89,7 +89,7 @@ class WebSearchPanelMixin:
             list_frame,
             bg=C["bg_card"],
             fg=C["text_secondary"],
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             height=8,
             selectbackground=C["accent"],
             relief=tk.FLAT,
@@ -106,7 +106,7 @@ class WebSearchPanelMixin:
         tk.Button(
             f,
             text="改编选中热点为小说桥段",
-            font=("微软雅黑", 9, "bold"),
+            font=UIStyle.font("label_bold"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -120,7 +120,7 @@ class WebSearchPanelMixin:
         tk.Button(
             add_btn_frame,
             text="+ 添加自定义热点",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,
@@ -130,7 +130,7 @@ class WebSearchPanelMixin:
         tk.Button(
             add_btn_frame,
             text="删除自定义",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["error"],
             fg="white",
             relief=tk.FLAT,
@@ -143,7 +143,7 @@ class WebSearchPanelMixin:
             f,
             height=12,
             wrap=tk.WORD,
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["bg_card"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -155,7 +155,7 @@ class WebSearchPanelMixin:
         tk.Button(
             f,
             text="插入到章节",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,

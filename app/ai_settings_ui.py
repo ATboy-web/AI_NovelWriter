@@ -20,6 +20,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Callable, Dict, List, Tuple
 
+from app import UIStyle
+
 from .config import AI_PROFILE_LABELS, REASONING_EFFORTS
 from .providers import get_spec, specs_for_ui
 
@@ -511,7 +513,7 @@ class AISettingsMixin:
 
 
 def _label(parent, text: str) -> None:
-    ttk.Label(parent, text=text, font=("微软雅黑", 10, "bold")).pack(anchor=tk.W, padx=20, pady=(8, 2))
+    ttk.Label(parent, text=text, font=UIStyle.font("body_bold")).pack(anchor=tk.W, padx=20, pady=(8, 2))
 
 
 def _label_for(provider_key: str, labels: List[str], key_of: Dict[str, str]) -> str:

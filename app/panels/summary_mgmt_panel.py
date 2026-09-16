@@ -13,12 +13,14 @@ class SummaryMgmtPanelMixin:
         C = UIStyle.COLORS
         f = self.tool_content_frame
 
-        tk.Label(f, text="分层摘要管理", font=("", 11, "bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+        tk.Label(f, text="分层摘要管理", font=UIStyle.font("default_bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
             anchor=tk.W, pady=5
         )
 
         if not self.current_novel_dir:
-            tk.Label(f, text="请先新建或打开小说", font=("", 10), bg=C["bg_dark"], fg=C["text_muted"]).pack(pady=20)
+            tk.Label(
+                f, text="请先新建或打开小说", font=UIStyle.font("system"), bg=C["bg_dark"], fg=C["text_muted"]
+            ).pack(pady=20)
             return
 
         # ⚠️ 同时判 `memory`：与 `memory_viz_panel` 同一个坑 ——
@@ -35,11 +37,11 @@ class SummaryMgmtPanelMixin:
             return
 
         # 全局摘要
-        tk.Label(f, text="全局摘要:", font=("", 10, "bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
+        tk.Label(f, text="全局摘要:", font=UIStyle.font("system_bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
             anchor=tk.W, pady=(5, 2)
         )
         global_text = tk.Text(
-            f, height=3, wrap=tk.WORD, font=("微软雅黑", 9), bg=C["bg_card"], fg=C["text_primary"], relief=tk.FLAT
+            f, height=3, wrap=tk.WORD, font=UIStyle.font("label"), bg=C["bg_card"], fg=C["text_primary"], relief=tk.FLAT
         )
         global_text.pack(fill=tk.X, pady=2)
         gs = self.memory.get_global_summary()
@@ -55,7 +57,7 @@ class SummaryMgmtPanelMixin:
         tk.Button(
             f,
             text="保存全局摘要",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -63,7 +65,7 @@ class SummaryMgmtPanelMixin:
         ).pack(anchor=tk.W, pady=3)
 
         # 卷级摘要列表
-        tk.Label(f, text="卷级摘要:", font=("", 10, "bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
+        tk.Label(f, text="卷级摘要:", font=UIStyle.font("system_bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
             anchor=tk.W, pady=(10, 2)
         )
 
@@ -71,7 +73,7 @@ class SummaryMgmtPanelMixin:
         vol_frame.pack(fill=tk.BOTH, expand=True)
 
         vol_listbox = tk.Listbox(
-            vol_frame, bg=C["bg_card"], fg=C["text_secondary"], font=("微软雅黑", 9), height=6, relief=tk.FLAT
+            vol_frame, bg=C["bg_card"], fg=C["text_secondary"], font=UIStyle.font("label"), height=6, relief=tk.FLAT
         )
         vol_listbox.pack(fill=tk.X, pady=3)
 
@@ -84,7 +86,7 @@ class SummaryMgmtPanelMixin:
 
         # 卷摘要预览
         vol_preview = tk.Text(
-            f, height=3, wrap=tk.WORD, font=("微软雅黑", 9), bg=C["bg_card"], fg=C["text_primary"], relief=tk.FLAT
+            f, height=3, wrap=tk.WORD, font=UIStyle.font("label"), bg=C["bg_card"], fg=C["text_primary"], relief=tk.FLAT
         )
         vol_preview.pack(fill=tk.X, pady=3)
 
@@ -99,12 +101,12 @@ class SummaryMgmtPanelMixin:
         vol_listbox.bind("<<ListboxSelect>>", on_vol_select)
 
         # 弧线摘要
-        tk.Label(f, text="弧线摘要:", font=("", 10, "bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
+        tk.Label(f, text="弧线摘要:", font=UIStyle.font("system_bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
             anchor=tk.W, pady=(10, 2)
         )
 
         arc_listbox = tk.Listbox(
-            f, bg=C["bg_card"], fg=C["text_secondary"], font=("微软雅黑", 9), height=4, relief=tk.FLAT
+            f, bg=C["bg_card"], fg=C["text_secondary"], font=UIStyle.font("label"), height=4, relief=tk.FLAT
         )
         arc_listbox.pack(fill=tk.X, pady=3)
 

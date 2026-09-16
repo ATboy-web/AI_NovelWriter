@@ -16,12 +16,14 @@ class BatchOpsPanelMixin:
         C = UIStyle.COLORS
         f = self.tool_content_frame
 
-        tk.Label(f, text="批量操作", font=("", 11, "bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+        tk.Label(f, text="批量操作", font=UIStyle.font("default_bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
             anchor=tk.W, pady=5
         )
 
         if not self.current_novel_dir:
-            tk.Label(f, text="请先新建或打开小说", font=("", 10), bg=C["bg_dark"], fg=C["text_muted"]).pack(pady=20)
+            tk.Label(
+                f, text="请先新建或打开小说", font=UIStyle.font("system"), bg=C["bg_dark"], fg=C["text_muted"]
+            ).pack(pady=20)
             return
 
         # 批量导入
@@ -31,7 +33,7 @@ class BatchOpsPanelMixin:
         tk.Label(
             import_frame,
             text="从文件夹批量导入章节文件（支持txt/md格式）",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_dark"],
             fg=C["text_secondary"],
         ).pack(anchor=tk.W)
@@ -71,7 +73,7 @@ class BatchOpsPanelMixin:
         tk.Button(
             import_frame,
             text="选择文件夹批量导入",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -83,7 +85,11 @@ class BatchOpsPanelMixin:
         export_frame.pack(fill=tk.X, pady=5)
 
         tk.Label(
-            export_frame, text="导出所有章节到指定文件夹", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_secondary"]
+            export_frame,
+            text="导出所有章节到指定文件夹",
+            font=UIStyle.font("label"),
+            bg=C["bg_dark"],
+            fg=C["text_secondary"],
         ).pack(anchor=tk.W)
 
         def batch_export():
@@ -111,7 +117,7 @@ class BatchOpsPanelMixin:
         tk.Button(
             export_frame,
             text="导出所有章节",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,
@@ -125,7 +131,7 @@ class BatchOpsPanelMixin:
         tk.Label(
             summary_frame,
             text="为所有卷自动生成摘要（需AI配置）",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_dark"],
             fg=C["text_secondary"],
         ).pack(anchor=tk.W)
@@ -153,7 +159,7 @@ class BatchOpsPanelMixin:
         tk.Button(
             summary_frame,
             text="批量生成卷级摘要",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["warning"],
             fg="white",
             relief=tk.FLAT,

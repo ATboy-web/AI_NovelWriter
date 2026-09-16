@@ -295,7 +295,7 @@ class CharacterUIMixin:
         tk.Label(
             word_dialog,
             text=f"生成「{char_name}」个人传记",
-            font=("微软雅黑", 12, "bold"),
+            font=UIStyle.font("title"),
             bg=C["bg_dark"],
             fg=C["accent_light"],
         ).pack(pady=(15, 10))
@@ -450,7 +450,7 @@ class CharacterUIMixin:
             command=start_generate,
             bg=C["accent"],
             fg="white",
-            font=("微软雅黑", 11, "bold"),
+            font=UIStyle.font("subtitle_bold"),
             padx=20,
             pady=5,
         ).pack(pady=15)
@@ -466,13 +466,13 @@ class CharacterUIMixin:
         tk.Label(
             dialog,
             text=f"「{char_name}」个人传记",
-            font=("微软雅黑", 14, "bold"),
+            font=UIStyle.font("heading"),
             bg=C["bg_dark"],
             fg=C["accent_light"],
         ).pack(pady=(10, 5))
 
         bio_text = tk.Text(
-            dialog, wrap=tk.WORD, font=("微软雅黑", 11), bg=C["bg_card"], fg=C["text_primary"], padx=20, pady=15
+            dialog, wrap=tk.WORD, font=UIStyle.font("subtitle"), bg=C["bg_card"], fg=C["text_primary"], padx=20, pady=15
         )
         bio_text.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
         bio_text.insert("1.0", content)
@@ -490,7 +490,7 @@ class CharacterUIMixin:
             command=insert_to_chapter,
             bg=C["accent"],
             fg="white",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
         ).pack(side=tk.LEFT, padx=5)
         tk.Button(
@@ -499,7 +499,7 @@ class CharacterUIMixin:
             command=dialog.destroy,
             bg=C["bg_light"],
             fg=C["text_primary"],
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
         ).pack(side=tk.RIGHT, padx=5)
 
@@ -524,7 +524,7 @@ class CharacterUIMixin:
             tk.Label(
                 self.char_cards_container,
                 text="未创建角色",
-                font=("微软雅黑", 9),
+                font=UIStyle.font("label"),
                 bg=C["bg_medium"],
                 fg=C["text_muted"],
             ).pack(anchor=tk.W)
@@ -556,7 +556,7 @@ class CharacterUIMixin:
                 tk.Label(
                     self.char_detail_frame,
                     text="请选择角色",
-                    font=("微软雅黑", 9),
+                    font=UIStyle.font("label"),
                     bg=C["bg_medium"],
                     fg=C["text_secondary"],
                 ).pack(anchor=tk.W, pady=2)
@@ -601,7 +601,7 @@ class CharacterUIMixin:
             avatar_bg = "#6b7280"  # 灰色
 
         avatar = tk.Label(
-            card, text=name[0], font=("微软雅黑", 10, "bold"), bg=avatar_bg, fg="white", width=2, height=1
+            card, text=name[0], font=UIStyle.font("body_bold"), bg=avatar_bg, fg="white", width=2, height=1
         )
         avatar.pack(side=tk.LEFT, padx=(0, 8))
 
@@ -616,13 +616,19 @@ class CharacterUIMixin:
         elif status == "复活":
             name_text = f"♻{name}"  # 添加复活标记
 
-        tk.Label(info_frame, text=name_text, font=("微软雅黑", 10, "bold"), bg=card_bg, fg=text_color).pack(anchor=tk.W)
+        tk.Label(info_frame, text=name_text, font=UIStyle.font("body_bold"), bg=card_bg, fg=text_color).pack(
+            anchor=tk.W
+        )
 
         # 分类和等级
         level = getattr(char, "level", 1)
         title = getattr(char, "title", "无称号")
         tk.Label(
-            info_frame, text=f"[{category}] Lv.{level} | {title}", font=("微软雅黑", 8), bg=card_bg, fg=C["text_muted"]
+            info_frame,
+            text=f"[{category}] Lv.{level} | {title}",
+            font=UIStyle.font("caption"),
+            bg=card_bg,
+            fg=C["text_muted"],
         ).pack(anchor=tk.W)
 
         # 点击事件
@@ -641,14 +647,14 @@ class CharacterUIMixin:
         tk.Label(
             self.char_detail_frame,
             text=f"「{char.name}」{char.title}",
-            font=("微软雅黑", 10, "bold"),
+            font=UIStyle.font("body_bold"),
             bg=C["bg_medium"],
             fg=C["accent_light"],
         ).pack(anchor=tk.W, pady=2)
         tk.Label(
             self.char_detail_frame,
             text=f"等级: Lv.{char.level}  |  EXP: {char.exp}/{char.exp_to_next}",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_medium"],
             fg=C["text_primary"],
         ).pack(anchor=tk.W)
@@ -657,7 +663,7 @@ class CharacterUIMixin:
         tk.Label(
             self.char_detail_frame,
             text="─ 属性 ─",
-            font=("微软雅黑", 9, "bold"),
+            font=UIStyle.font("label_bold"),
             bg=C["bg_medium"],
             fg=C["text_secondary"],
         ).pack(anchor=tk.W, pady=(5, 2))
@@ -674,7 +680,7 @@ class CharacterUIMixin:
             tk.Label(
                 attrs_frame,
                 text=f"{attr_name}: {attr_val}",
-                font=("微软雅黑", 8),
+                font=UIStyle.font("caption"),
                 bg=C["bg_medium"],
                 fg=C["text_primary"],
             ).pack(side=tk.LEFT, padx=3)
@@ -683,7 +689,7 @@ class CharacterUIMixin:
         tk.Label(
             self.char_detail_frame,
             text="─ 武器 ─",
-            font=("微软雅黑", 9, "bold"),
+            font=UIStyle.font("label_bold"),
             bg=C["bg_medium"],
             fg=C["text_secondary"],
         ).pack(anchor=tk.W, pady=(5, 2))
@@ -694,7 +700,7 @@ class CharacterUIMixin:
             tk.Label(
                 self.char_detail_frame,
                 text=f"⚔ {w_name} [{w_quality}]",
-                font=("微软雅黑", 9),
+                font=UIStyle.font("label"),
                 bg=C["bg_medium"],
                 fg=C["accent_light"],
             ).pack(anchor=tk.W)
@@ -702,7 +708,7 @@ class CharacterUIMixin:
             tk.Label(
                 self.char_detail_frame,
                 text="未装备武器",
-                font=("微软雅黑", 8),
+                font=UIStyle.font("caption"),
                 bg=C["bg_medium"],
                 fg=C["text_secondary"],
             ).pack(anchor=tk.W)
@@ -711,7 +717,7 @@ class CharacterUIMixin:
         tk.Label(
             self.char_detail_frame,
             text="─ 技能 ─",
-            font=("微软雅黑", 9, "bold"),
+            font=UIStyle.font("label_bold"),
             bg=C["bg_medium"],
             fg=C["text_secondary"],
         ).pack(anchor=tk.W, pady=(5, 2))
@@ -722,7 +728,7 @@ class CharacterUIMixin:
                 tk.Label(
                     self.char_detail_frame,
                     text=f"✦ {s_name} Lv.{s_lv}",
-                    font=("微软雅黑", 8),
+                    font=UIStyle.font("caption"),
                     bg=C["bg_medium"],
                     fg=C["text_primary"],
                 ).pack(anchor=tk.W)
@@ -730,7 +736,7 @@ class CharacterUIMixin:
             tk.Label(
                 self.char_detail_frame,
                 text="未学习技能",
-                font=("微软雅黑", 8),
+                font=UIStyle.font("caption"),
                 bg=C["bg_medium"],
                 fg=C["text_secondary"],
             ).pack(anchor=tk.W)
@@ -739,7 +745,7 @@ class CharacterUIMixin:
         tk.Label(
             self.char_detail_frame,
             text="─ 性格/背景 ─",
-            font=("微软雅黑", 9, "bold"),
+            font=UIStyle.font("label_bold"),
             bg=C["bg_medium"],
             fg=C["text_secondary"],
         ).pack(anchor=tk.W, pady=(5, 2))
@@ -750,7 +756,7 @@ class CharacterUIMixin:
             tk.Label(
                 self.char_detail_frame,
                 text=f"性格: {str(personality)[:100]}",
-                font=("微软雅黑", 8),
+                font=UIStyle.font("caption"),
                 bg=C["bg_medium"],
                 fg=C["text_primary"],
                 wraplength=200,
@@ -759,7 +765,7 @@ class CharacterUIMixin:
             tk.Label(
                 self.char_detail_frame,
                 text=f"背景: {str(backstory)[:100]}",
-                font=("微软雅黑", 8),
+                font=UIStyle.font("caption"),
                 bg=C["bg_medium"],
                 fg=C["text_primary"],
                 wraplength=200,
@@ -768,7 +774,7 @@ class CharacterUIMixin:
             tk.Label(
                 self.char_detail_frame,
                 text=f"外貌: {str(appearance)[:80]}",
-                font=("微软雅黑", 8),
+                font=UIStyle.font("caption"),
                 bg=C["bg_medium"],
                 fg=C["text_primary"],
                 wraplength=200,
@@ -778,7 +784,7 @@ class CharacterUIMixin:
         tk.Label(
             self.char_detail_frame,
             text="─ 成长日志 ─",
-            font=("微软雅黑", 9, "bold"),
+            font=UIStyle.font("label_bold"),
             bg=C["bg_medium"],
             fg=C["text_secondary"],
         ).pack(anchor=tk.W, pady=(5, 2))
@@ -798,7 +804,7 @@ class CharacterUIMixin:
                         tk.Label(
                             self.char_detail_frame,
                             text=f"• {ev_text}",
-                            font=("微软雅黑", 7),
+                            font=UIStyle.font("micro"),
                             bg=C["bg_medium"],
                             fg=C["text_secondary"],
                             wraplength=200,
@@ -807,7 +813,7 @@ class CharacterUIMixin:
                     tk.Label(
                         self.char_detail_frame,
                         text="暂无成长记录",
-                        font=("微软雅黑", 7),
+                        font=UIStyle.font("micro"),
                         bg=C["bg_medium"],
                         fg=C["text_muted"],
                     ).pack(anchor=tk.W)
@@ -865,16 +871,16 @@ class CharacterUIMixin:
         ]
 
         for label, key, default in field_list:
-            tk.Label(dialog, text=label, font=("微软雅黑", 10), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+            tk.Label(dialog, text=label, font=UIStyle.font("body"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
                 anchor=tk.W, padx=20, pady=(8, 2)
             )
             if key in ("backstory",):
                 entry = tk.Text(
-                    dialog, width=40, height=4, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"]
+                    dialog, width=40, height=4, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"]
                 )
                 entry.pack(padx=20)
             else:
-                entry = tk.Entry(dialog, width=40, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"])
+                entry = tk.Entry(dialog, width=40, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"])
                 entry.insert(0, default)
                 entry.pack(padx=20)
             fields[key] = entry
@@ -916,7 +922,7 @@ class CharacterUIMixin:
         tk.Button(
             dialog,
             text="创建",
-            font=("微软雅黑", 11),
+            font=UIStyle.font("subtitle"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -990,7 +996,7 @@ class CharacterUIMixin:
         attr_text = tk.Text(
             attr_frame,
             wrap=tk.WORD,
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["bg_card"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -1008,7 +1014,7 @@ class CharacterUIMixin:
         equip_text = tk.Text(
             equip_frame,
             wrap=tk.WORD,
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["bg_card"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -1037,7 +1043,7 @@ class CharacterUIMixin:
         stats_text = tk.Text(
             stats_frame,
             wrap=tk.WORD,
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["bg_card"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -1055,7 +1061,7 @@ class CharacterUIMixin:
         tk.Button(
             btn_frame,
             text="重命名",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -1069,7 +1075,7 @@ class CharacterUIMixin:
         tk.Button(
             btn_frame,
             text="休息恢复",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,
@@ -1079,7 +1085,7 @@ class CharacterUIMixin:
         tk.Button(
             btn_frame,
             text="📖 故事线",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -1149,7 +1155,7 @@ class CharacterUIMixin:
         tk.Label(
             dialog,
             text=f"📖 {char_name} 的故事线",
-            font=("微软雅黑", 12, "bold"),
+            font=UIStyle.font("title"),
             bg=C["bg_dark"],
             fg=C["accent_light"],
         ).pack(pady=(15, 10))
@@ -1162,7 +1168,7 @@ class CharacterUIMixin:
             list_frame,
             bg=C["bg_card"],
             fg=C["text_primary"],
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             selectbackground=C["accent"],
             relief=tk.FLAT,
             height=8,
@@ -1178,7 +1184,7 @@ class CharacterUIMixin:
 
         tk.Label(detail_frame, text="故事详情:", bg=C["bg_dark"], fg=C["text_primary"]).pack(anchor=tk.W)
         detail_text = tk.Text(
-            detail_frame, wrap=tk.WORD, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"], height=6
+            detail_frame, wrap=tk.WORD, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"], height=6
         )
         detail_text.pack(fill=tk.BOTH, expand=True)
         detail_text.insert("1.0", story_data.get("notes", ""))
@@ -1229,7 +1235,7 @@ class CharacterUIMixin:
             all_stories_window.configure(bg=C["bg_dark"])
 
             all_text = tk.Text(
-                all_stories_window, wrap=tk.WORD, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"]
+                all_stories_window, wrap=tk.WORD, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"]
             )
             all_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
@@ -1253,7 +1259,13 @@ class CharacterUIMixin:
             all_text.config(state=tk.DISABLED)
 
         tk.Button(
-            btn_frame, text="添加故事线", command=add_arc, bg=C["accent"], fg="white", font=("微软雅黑", 9), padx=8
+            btn_frame,
+            text="添加故事线",
+            command=add_arc,
+            bg=C["accent"],
+            fg="white",
+            font=UIStyle.font("label"),
+            padx=8,
         ).pack(side=tk.LEFT, padx=3)
         tk.Button(
             btn_frame,
@@ -1261,11 +1273,11 @@ class CharacterUIMixin:
             command=edit_arc,
             bg=C["bg_light"],
             fg=C["text_primary"],
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             padx=8,
         ).pack(side=tk.LEFT, padx=3)
         tk.Button(
-            btn_frame, text="保存", command=save_story, bg=C["success"], fg="white", font=("微软雅黑", 9), padx=8
+            btn_frame, text="保存", command=save_story, bg=C["success"], fg="white", font=UIStyle.font("label"), padx=8
         ).pack(side=tk.LEFT, padx=3)
         tk.Button(
             btn_frame,
@@ -1273,7 +1285,7 @@ class CharacterUIMixin:
             command=view_all_stories,
             bg=C["bg_light"],
             fg=C["text_primary"],
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             padx=8,
         ).pack(side=tk.RIGHT, padx=3)
 
@@ -1289,7 +1301,7 @@ class CharacterUIMixin:
         dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(dialog, text="选择武器:", font=("微软雅黑", 10, "bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+        tk.Label(dialog, text="选择武器:", font=UIStyle.font("body_bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
             pady=(10, 5)
         )
 
@@ -1300,7 +1312,12 @@ class CharacterUIMixin:
         cat_combo.set(cats[0] if cats else "")
 
         weapon_listbox = tk.Listbox(
-            dialog, bg=C["bg_card"], fg=C["text_primary"], font=("微软雅黑", 9), selectbackground=C["accent"], height=10
+            dialog,
+            bg=C["bg_card"],
+            fg=C["text_primary"],
+            font=UIStyle.font("label"),
+            selectbackground=C["accent"],
+            height=10,
         )
         weapon_listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
@@ -1385,12 +1402,12 @@ class CharacterUIMixin:
         btn_frame = tk.Frame(dialog, bg=C["bg_dark"])
         btn_frame.pack(fill=tk.X, padx=10, pady=5)
         tk.Button(
-            btn_frame, text="装备", font=("微软雅黑", 10), bg=C["accent"], fg="white", relief=tk.FLAT, command=equip
+            btn_frame, text="装备", font=UIStyle.font("body"), bg=C["accent"], fg="white", relief=tk.FLAT, command=equip
         ).pack(side=tk.LEFT, padx=5)
         tk.Button(
             btn_frame,
             text="+ 自定义武器",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,
@@ -1409,7 +1426,7 @@ class CharacterUIMixin:
         dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(dialog, text="选择技能:", font=("微软雅黑", 10, "bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+        tk.Label(dialog, text="选择技能:", font=UIStyle.font("body_bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
             pady=(10, 5)
         )
 
@@ -1420,7 +1437,12 @@ class CharacterUIMixin:
         cat_combo.set(cats[0] if cats else "")
 
         skill_listbox = tk.Listbox(
-            dialog, bg=C["bg_card"], fg=C["text_primary"], font=("微软雅黑", 9), selectbackground=C["accent"], height=10
+            dialog,
+            bg=C["bg_card"],
+            fg=C["text_primary"],
+            font=UIStyle.font("label"),
+            selectbackground=C["accent"],
+            height=10,
         )
         skill_listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
@@ -1481,12 +1503,12 @@ class CharacterUIMixin:
         btn_frame = tk.Frame(dialog, bg=C["bg_dark"])
         btn_frame.pack(fill=tk.X, padx=10, pady=5)
         tk.Button(
-            btn_frame, text="学习", font=("微软雅黑", 10), bg=C["accent"], fg="white", relief=tk.FLAT, command=learn
+            btn_frame, text="学习", font=UIStyle.font("body"), bg=C["accent"], fg="white", relief=tk.FLAT, command=learn
         ).pack(side=tk.LEFT, padx=5)
         tk.Button(
             btn_frame,
             text="+ 自定义技能",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,

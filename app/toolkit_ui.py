@@ -249,9 +249,9 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(
-            dialog, text="选择导出格式:", font=("微软雅黑", 12, "bold"), bg=C["bg_dark"], fg=C["text_primary"]
-        ).pack(pady=(15, 10))
+        tk.Label(dialog, text="选择导出格式:", font=UIStyle.font("title"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+            pady=(15, 10)
+        )
 
         # 格式列表
         formats = self.format_converter.get_formats()
@@ -266,14 +266,14 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 text=f"{fmt_info['name']} ({fmt_info['ext']})",
                 variable=format_var,
                 value=fmt_key,
-                font=("微软雅黑", 10),
+                font=UIStyle.font("body"),
                 bg=C["bg_dark"],
                 fg=C["text_primary"],
                 selectcolor=C["accent"],
             ).pack(side=tk.LEFT)
-            tk.Label(frame, text=fmt_info["desc"], font=("微软雅黑", 8), bg=C["bg_dark"], fg=C["text_muted"]).pack(
-                side=tk.RIGHT
-            )
+            tk.Label(
+                frame, text=fmt_info["desc"], font=UIStyle.font("caption"), bg=C["bg_dark"], fg=C["text_muted"]
+            ).pack(side=tk.RIGHT)
 
         # 包含图片选项
         include_images_var = tk.BooleanVar(value=True)
@@ -281,7 +281,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
             dialog,
             text="包含插图（如有）",
             variable=include_images_var,
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["bg_dark"],
             fg=C["text_primary"],
             selectcolor=C["accent"],
@@ -350,7 +350,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         tk.Button(
             dialog,
             text="开始转换",
-            font=("微软雅黑", 11, "bold"),
+            font=UIStyle.font("subtitle_bold"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -516,7 +516,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(dialog, text="云端同步", font=("微软雅黑", 12, "bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+        tk.Label(dialog, text="云端同步", font=UIStyle.font("title"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
             pady=(15, 10)
         )
 
@@ -528,7 +528,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
             tk.Label(
                 dialog,
                 text="未配置云存储\n\n请在 设置 → 云端存储 中配置",
-                font=("微软雅黑", 10),
+                font=UIStyle.font("body"),
                 bg=C["bg_dark"],
                 fg=C["text_muted"],
             ).pack(pady=20)
@@ -540,7 +540,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                     text=p["name"],
                     variable=provider_var,
                     value=p["name"],
-                    font=("微软雅黑", 10),
+                    font=UIStyle.font("body"),
                     bg=C["bg_dark"],
                     fg=C["text_primary"],
                     selectcolor=C["accent"],
@@ -596,7 +596,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
             tk.Button(
                 btn_frame,
                 text="上传到云端",
-                font=("微软雅黑", 10),
+                font=UIStyle.font("body"),
                 bg=C["accent"],
                 fg="white",
                 relief=tk.FLAT,
@@ -606,7 +606,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
             tk.Button(
                 btn_frame,
                 text="从云端下载",
-                font=("微软雅黑", 10),
+                font=UIStyle.font("body"),
                 bg=C["success"],
                 fg="white",
                 relief=tk.FLAT,
@@ -617,7 +617,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         tk.Button(
             dialog,
             text="关闭",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,

@@ -33,7 +33,7 @@ class TimelineMixin:
         C = UIStyle.COLORS
 
         tk.Label(
-            dialog, text="🌐 世界线 / 时间线管理", font=("微软雅黑", 12, "bold"), bg=C["bg_dark"], fg=C["accent_text"]
+            dialog, text="🌐 世界线 / 时间线管理", font=UIStyle.font("title"), bg=C["bg_dark"], fg=C["accent_text"]
         ).pack(pady=10)
 
         # 加载已有世界线
@@ -59,19 +59,19 @@ class TimelineMixin:
         toolbar = tk.Frame(dialog, bg=C["bg_dark"])
         toolbar.pack(fill=tk.X, padx=15, pady=5)
 
-        tk.Label(toolbar, text="选择世界线:", font=("微软雅黑", 10), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+        tk.Label(toolbar, text="选择世界线:", font=UIStyle.font("body"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
             side=tk.LEFT, padx=(0, 8)
         )
 
         tl_var = tk.StringVar(value="主线")
         tl_names = [t.get("name", "未命名") for t in timelines]
         tl_combo = ttk.Combobox(
-            toolbar, textvariable=tl_var, values=tl_names, state="readonly", width=20, font=("微软雅黑", 10)
+            toolbar, textvariable=tl_var, values=tl_names, state="readonly", width=20, font=UIStyle.font("body")
         )
         tl_combo.pack(side=tk.LEFT, padx=(0, 15))
 
         # 统计信息
-        stats_label = tk.Label(toolbar, text="", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_muted"])
+        stats_label = tk.Label(toolbar, text="", font=UIStyle.font("label"), bg=C["bg_dark"], fg=C["text_muted"])
         stats_label.pack(side=tk.LEFT, padx=10)
 
         # 内容区域 - 主面板
@@ -83,7 +83,7 @@ class TimelineMixin:
         main_paned.add(left_frame, width=w // 3)
 
         tk.Label(
-            left_frame, text="📋 决策点列表", font=("微软雅黑", 10, "bold"), bg=C["bg_card"], fg=C["accent_text"]
+            left_frame, text="📋 决策点列表", font=UIStyle.font("body_bold"), bg=C["bg_card"], fg=C["accent_text"]
         ).pack(anchor=tk.W, padx=10, pady=(8, 2))
 
         # 决策点列表使用Canvas+滚动
@@ -108,14 +108,14 @@ class TimelineMixin:
         detail_frame = tk.Frame(right_notebook, bg=C["bg_card"])
         right_notebook.add(detail_frame, text="📖 详情")
 
-        tk.Label(detail_frame, text="决策详情", font=("微软雅黑", 10, "bold"), bg=C["bg_card"], fg=C["warning"]).pack(
+        tk.Label(detail_frame, text="决策详情", font=UIStyle.font("body_bold"), bg=C["bg_card"], fg=C["warning"]).pack(
             anchor=tk.W, padx=10, pady=5
         )
 
         detail_text = tk.Text(
             detail_frame,
             wrap=tk.WORD,
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["bg_medium"],
             fg=C["text_primary"],
             height=12,
@@ -130,13 +130,13 @@ class TimelineMixin:
         right_notebook.add(impact_frame, text="🔍 影响分析")
 
         tk.Label(
-            impact_frame, text="决策影响分析", font=("微软雅黑", 10, "bold"), bg=C["bg_card"], fg=C["warning"]
+            impact_frame, text="决策影响分析", font=UIStyle.font("body_bold"), bg=C["bg_card"], fg=C["warning"]
         ).pack(anchor=tk.W, padx=10, pady=5)
 
         impact_text = tk.Text(
             impact_frame,
             wrap=tk.WORD,
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["bg_medium"],
             fg=C["text_primary"],
             height=12,
@@ -179,11 +179,13 @@ class TimelineMixin:
                 timeline_canvas.create_oval(52, y - 4, 68, y + 12, fill=C["accent"], outline="")
                 # 章节标签
                 ch_num = br.get("chapter", "?")
-                timeline_canvas.create_text(30, y + 4, text=f"第{ch_num}章", fill=C["text_muted"], font=("微软雅黑", 7))
+                timeline_canvas.create_text(
+                    30, y + 4, text=f"第{ch_num}章", fill=C["text_muted"], font=UIStyle.font("micro")
+                )
                 # 决策摘要
                 desc = br.get("decision", "")[:25]
                 timeline_canvas.create_text(
-                    140, y + 4, text=desc, anchor=tk.W, fill=C["text_primary"], font=("微软雅黑", 8)
+                    140, y + 4, text=desc, anchor=tk.W, fill=C["text_primary"], font=UIStyle.font("caption")
                 )
                 # 分支线
                 timeline_canvas.create_line(60, y + 4, 90, y + 4 - 15, fill=C["warning"], width=1)
@@ -211,12 +213,12 @@ class TimelineMixin:
                 detail_text.insert(tk.END, "(点击下方「生成此分支」查看更多what-if故事)", "hint")
 
             # 格式化文本
-            detail_text.tag_config("title", font=("微软雅黑", 12, "bold"), foreground=C["accent"])
-            detail_text.tag_config("section", font=("微软雅黑", 10), foreground=C["text_primary"])
-            detail_text.tag_config("chosen", font=("微软雅黑", 10), foreground=C["success"])
-            detail_text.tag_config("alternative", font=("微软雅黑", 10), foreground=C["warning"])
-            detail_text.tag_config("story", font=("微软雅黑", 10), foreground=C["text_primary"])
-            detail_text.tag_config("hint", font=("微软雅黑", 9), foreground=C["text_muted"])
+            detail_text.tag_config("title", font=UIStyle.font("title"), foreground=C["accent"])
+            detail_text.tag_config("section", font=UIStyle.font("body"), foreground=C["text_primary"])
+            detail_text.tag_config("chosen", font=UIStyle.font("body"), foreground=C["success"])
+            detail_text.tag_config("alternative", font=UIStyle.font("body"), foreground=C["warning"])
+            detail_text.tag_config("story", font=UIStyle.font("body"), foreground=C["text_primary"])
+            detail_text.tag_config("hint", font=UIStyle.font("label"), foreground=C["text_muted"])
 
             # 影响分析
             impact_text.delete("1.0", tk.END)
@@ -235,9 +237,9 @@ class TimelineMixin:
             impact_text.insert(tk.END, f"  • 影响范围: {estimate_scope(br)}\n")
             impact_text.insert(tk.END, f"  • 可逆性: {estimate_reversibility(br)}\n")
 
-            impact_text.tag_config("title", font=("微软雅黑", 12, "bold"), foreground=C["accent"])
-            impact_text.tag_config("section", font=("微软雅黑", 10, "bold"), foreground=C["text_primary"])
-            impact_text.tag_config("alt", font=("微软雅黑", 10, "bold"), foreground=C["warning"])
+            impact_text.tag_config("title", font=UIStyle.font("title"), foreground=C["accent"])
+            impact_text.tag_config("section", font=UIStyle.font("body_bold"), foreground=C["text_primary"])
+            impact_text.tag_config("alt", font=UIStyle.font("body_bold"), foreground=C["warning"])
 
             update_timeline_graph()
 
@@ -291,7 +293,13 @@ class TimelineMixin:
 
                     # 章节标签
                     chapter_lbl = tk.Label(
-                        card, text=f"第{ch}章", font=("微软雅黑", 8, "bold"), bg=C["accent"], fg="white", padx=4, pady=1
+                        card,
+                        text=f"第{ch}章",
+                        font=UIStyle.font("caption_bold"),
+                        bg=C["accent"],
+                        fg="white",
+                        padx=4,
+                        pady=1,
                     )
                     chapter_lbl.pack(side=tk.LEFT, padx=(0, 6))
 
@@ -299,7 +307,7 @@ class TimelineMixin:
                     desc_lbl = tk.Label(
                         card,
                         text=f"{has_story} {desc}",
-                        font=("微软雅黑", 9),
+                        font=UIStyle.font("label"),
                         bg=card["bg"],
                         fg=C["text_primary"],
                         anchor=tk.W,
@@ -309,7 +317,12 @@ class TimelineMixin:
 
                     # 选择标签
                     chosen_lbl = tk.Label(
-                        card, text=f"✅{chosen}", font=("微软雅黑", 8), bg=card["bg"], fg=C["success_text"], padx=4
+                        card,
+                        text=f"✅{chosen}",
+                        font=UIStyle.font("caption"),
+                        bg=card["bg"],
+                        fg=C["success_text"],
+                        padx=4,
                     )
                     chosen_lbl.pack(side=tk.RIGHT)
 
@@ -333,18 +346,18 @@ class TimelineMixin:
                 tk.Label(
                     left_inner,
                     text="暂未检测到决策点\n\n每章创作完成后会自动记录。",
-                    font=("微软雅黑", 9),
+                    font=UIStyle.font("label"),
                     bg=C["bg_card"],
                     fg=C["text_muted"],
                 ).pack(pady=20)
 
             detail_text.delete("1.0", tk.END)
             detail_text.insert(tk.END, "👈 点击左侧决策点查看详情", "hint")
-            detail_text.tag_config("hint", font=("微软雅黑", 11), foreground=C["text_muted"], justify=tk.CENTER)
+            detail_text.tag_config("hint", font=UIStyle.font("subtitle"), foreground=C["text_muted"], justify=tk.CENTER)
 
             impact_text.delete("1.0", tk.END)
             impact_text.insert(tk.END, "👈 点击左侧决策点查看影响分析", "hint")
-            impact_text.tag_config("hint", font=("微软雅黑", 11), foreground=C["text_muted"], justify=tk.CENTER)
+            impact_text.tag_config("hint", font=UIStyle.font("subtitle"), foreground=C["text_muted"], justify=tk.CENTER)
 
             update_timeline_graph()
 
@@ -363,7 +376,7 @@ class TimelineMixin:
         tk.Button(
             btn_frame,
             text="🔄 刷新",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             padx=10,
             bg=C["bg_light"],
             fg=C["text_primary"],
@@ -375,7 +388,7 @@ class TimelineMixin:
         tk.Button(
             btn_frame,
             text="✏️ 编辑决策点",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             padx=10,
             bg=C["bg_light"],
             fg=C["text_primary"],
@@ -387,7 +400,7 @@ class TimelineMixin:
         tk.Button(
             btn_frame,
             text="📖 生成此分支",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=12,
             bg=C["warning"],
             fg="white",
@@ -399,7 +412,7 @@ class TimelineMixin:
         tk.Button(
             btn_frame,
             text="🚀 开始分支创作",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=12,
             bg=C["accent"],
             fg="white",
@@ -409,7 +422,7 @@ class TimelineMixin:
         tk.Button(
             btn_frame,
             text="关闭",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=20,
             bg=C["bg_light"],
             fg=C["text_primary"],
@@ -498,26 +511,36 @@ class TimelineMixin:
         C = UIStyle.COLORS
 
         tk.Label(
-            ask, text="选择决策点创建分支世界线:", font=("微软雅黑", 10, "bold"), bg=C["bg_dark"], fg=C["accent_text"]
+            ask, text="选择决策点创建分支世界线:", font=UIStyle.font("body_bold"), bg=C["bg_dark"], fg=C["accent_text"]
         ).pack(pady=10)
 
-        lb = tk.Listbox(ask, bg=C["bg_card"], fg=C["text_primary"], font=("微软雅黑", 9))
+        lb = tk.Listbox(ask, bg=C["bg_card"], fg=C["text_primary"], font=UIStyle.font("label"))
         lb.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
         for i, b in enumerate(all_branches):
             has_story = "📖" if b.get("story") else "  "
             lb.insert(tk.END, f"{has_story} 第{b['chapter']}章: {b.get('alternative', '')[:40]}")
 
-        tk.Label(ask, text="生成长度:", bg=C["bg_dark"], fg=C["text_primary"], font=("微软雅黑", 9)).pack(
+        tk.Label(ask, text="生成长度:", bg=C["bg_dark"], fg=C["text_primary"], font=UIStyle.font("label")).pack(
             anchor=tk.W, padx=20, pady=(10, 0)
         )
         count_frame = tk.Frame(ask, bg=C["bg_dark"])
         count_frame.pack(fill=tk.X, padx=20)
         chapter_count = tk.StringVar(value="10")
         tk.Spinbox(
-            count_frame, from_=1, to=500, textvariable=chapter_count, width=6, font=("微软雅黑", 9), bg=C["bg_card"]
+            count_frame,
+            from_=1,
+            to=500,
+            textvariable=chapter_count,
+            width=6,
+            font=UIStyle.font("label"),
+            bg=C["bg_card"],
         ).pack(side=tk.LEFT)
         tk.Label(
-            count_frame, text="章（从该决策点继续）", bg=C["bg_dark"], fg=C["text_secondary"], font=("微软雅黑", 9)
+            count_frame,
+            text="章（从该决策点继续）",
+            bg=C["bg_dark"],
+            fg=C["text_secondary"],
+            font=UIStyle.font("label"),
         ).pack(side=tk.LEFT, padx=5)
 
         def start():
@@ -533,7 +556,7 @@ class TimelineMixin:
         tk.Button(
             ask,
             text="开始分支世界线创作",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
             bg=C["accent"],
             fg="white",

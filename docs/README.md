@@ -26,6 +26,7 @@
 | [TEAM_IMPROVEMENT_PLAN.md](TEAM_IMPROVEMENT_PLAN.md) | 团队提升方案 |
 | [project-summary.md](project-summary.md) | 项目总结 |
 | [VERSION_RELEASE_SPEC.md](VERSION_RELEASE_SPEC.md) | 版本发布规范 |
+| [RELEASE_HISTORY_NOTES.md](RELEASE_HISTORY_NOTES.md) | 发布历史异常记录（乱码页修复、缺失标签、标签指向异常） |
 | [AUTH_PAYMENT_SERVICES_EVALUATION.md](AUTH_PAYMENT_SERVICES_EVALUATION.md) | 认证 / 支付服务立项评估（结论：暂不立项） |
 | [FEATURE_VALUE_ASSESSMENT.md](FEATURE_VALUE_ASSESSMENT.md) | 功能实用性与使用价值评估（保留 / 优化 / 删除清单） |
 

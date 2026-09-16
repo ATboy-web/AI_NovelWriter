@@ -4,6 +4,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
+from app import UIStyle
 from app.novel_toolkit import StyleTransferEngine
 
 
@@ -14,7 +15,9 @@ class StylePanelMixin:
         """风格转换界面"""
         f = self.tool_content_frame
 
-        ttk.Label(f, text="风格转换 - 仿写、改写、风格调整", font=("", 11, "bold")).pack(anchor=tk.W, pady=5)
+        ttk.Label(f, text="风格转换 - 仿写、改写、风格调整", font=UIStyle.font("default_bold")).pack(
+            anchor=tk.W, pady=5
+        )
 
         style_frame = ttk.Frame(f)
         style_frame.pack(fill=tk.X, pady=3)
@@ -26,7 +29,7 @@ class StylePanelMixin:
         )
         ttk.Button(style_frame, text="转换当前章节风格", command=self._convert_style).pack(side=tk.LEFT, padx=10)
 
-        self.style_result = scrolledtext.ScrolledText(f, height=12, wrap=tk.WORD, font=("微软雅黑", 10))
+        self.style_result = scrolledtext.ScrolledText(f, height=12, wrap=tk.WORD, font=UIStyle.font("body"))
         self.style_result.pack(fill=tk.BOTH, expand=True, pady=5)
 
     def _convert_style(self):

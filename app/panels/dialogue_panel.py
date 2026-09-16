@@ -4,6 +4,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
+from app import UIStyle
 from app.novel_toolkit import DialogueEngine
 
 
@@ -14,7 +15,9 @@ class DialoguePanelMixin:
         """对话推演界面"""
         f = self.tool_content_frame
 
-        ttk.Label(f, text="情景对话推演 - 角色互动对话生成", font=("", 11, "bold")).pack(anchor=tk.W, pady=5)
+        ttk.Label(f, text="情景对话推演 - 角色互动对话生成", font=UIStyle.font("default_bold")).pack(
+            anchor=tk.W, pady=5
+        )
 
         ttk.Label(f, text="场景描述:").pack(anchor=tk.W)
         self.dlg_scenario = ttk.Entry(f, width=60)
@@ -27,7 +30,7 @@ class DialoguePanelMixin:
         ttk.Button(btn_frame, text="继续推演", command=self._continue_dialogue).pack(side=tk.LEFT, padx=10)
         ttk.Button(btn_frame, text="插入到章节", command=self._insert_dialogue).pack(side=tk.RIGHT)
 
-        self.dlg_result = scrolledtext.ScrolledText(f, height=12, wrap=tk.WORD, font=("微软雅黑", 10))
+        self.dlg_result = scrolledtext.ScrolledText(f, height=12, wrap=tk.WORD, font=UIStyle.font("body"))
         self.dlg_result.pack(fill=tk.BOTH, expand=True, pady=5)
 
     def _start_dialogue(self):

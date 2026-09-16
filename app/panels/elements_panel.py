@@ -4,6 +4,8 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
+from app import UIStyle
+
 
 class ElementsPanelMixin:
     """元素库面板混入 - 提供元素库相关的构建和操作方法"""
@@ -12,7 +14,9 @@ class ElementsPanelMixin:
         """元素库界面"""
         f = self.tool_content_frame
 
-        ttk.Label(f, text="小说元素库 - 选择元素组合生成背景设定", font=("", 11, "bold")).pack(anchor=tk.W, pady=5)
+        ttk.Label(f, text="小说元素库 - 选择元素组合生成背景设定", font=UIStyle.font("default_bold")).pack(
+            anchor=tk.W, pady=5
+        )
 
         # 类别选择
         cat_frame = ttk.Frame(f)
@@ -41,7 +45,7 @@ class ElementsPanelMixin:
         ttk.Button(btn_frame, text="添加", command=self._add_custom_element).pack(side=tk.LEFT)
 
         # 结果（填充剩余空间）
-        self.elem_result = scrolledtext.ScrolledText(f, height=8, wrap=tk.WORD, font=("微软雅黑", 10))
+        self.elem_result = scrolledtext.ScrolledText(f, height=8, wrap=tk.WORD, font=UIStyle.font("body"))
         self.elem_result.pack(fill=tk.BOTH, expand=True, pady=3)
 
         if cats:

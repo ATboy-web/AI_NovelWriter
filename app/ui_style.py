@@ -105,6 +105,16 @@ class UIStyle:
         #: 空字体族 = 沿用 Tk 系统默认字体（历史上写作 `font=("", 10)`）
         "system": ("", 10),
         "system_bold": ("", 10, "bold"),
+        # ── 以下 6 个角色为"字面量全量令牌化"补齐（2026-09-17）──
+        # 它们原本散落在各模块，用量不大但**必须**有令牌，否则棘轮永远清不了零。
+        # 取值与替换前的字面量逐一相等，属等值替换（视觉零变化）。
+        "micro": ("微软雅黑", 7),  # 比 caption 更小的角标
+        "title_plain": ("微软雅黑", 12),  # 非粗体的 12px 标题
+        "heading_small": ("微软雅黑", 13, "bold"),  # 介于 title 与 heading 之间
+        "heading_plain": ("微软雅黑", 14),  # 非粗体小节标题
+        "mono_small_bold": ("Consolas", 9, "bold"),  # 等宽强调
+        #: 品牌/启动页大字（英文大写用 Arial 比中文黑体更合适）
+        "logo": ("Arial", 18, "bold"),
     }
 
     @classmethod

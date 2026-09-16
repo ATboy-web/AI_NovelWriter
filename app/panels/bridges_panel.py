@@ -4,6 +4,8 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
+from app import UIStyle
+
 
 class BridgesPanelMixin:
     """桥段库面板混入 - 提供桥段库相关的构建和操作方法"""
@@ -12,7 +14,7 @@ class BridgesPanelMixin:
         """桥段库界面"""
         f = self.tool_content_frame
 
-        ttk.Label(f, text="角色桥段库 - 经典网文桥段生成", font=("", 11, "bold")).pack(anchor=tk.W, pady=5)
+        ttk.Label(f, text="角色桥段库 - 经典网文桥段生成", font=UIStyle.font("default_bold")).pack(anchor=tk.W, pady=5)
 
         cat_frame = ttk.Frame(f)
         cat_frame.pack(fill=tk.X, pady=3)
@@ -39,7 +41,7 @@ class BridgesPanelMixin:
         self.custom_bridge_entry.pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_frame, text="添加", command=self._add_custom_bridge).pack(side=tk.LEFT)
 
-        self.bridge_result = scrolledtext.ScrolledText(f, height=10, wrap=tk.WORD, font=("微软雅黑", 10))
+        self.bridge_result = scrolledtext.ScrolledText(f, height=10, wrap=tk.WORD, font=UIStyle.font("body"))
         self.bridge_result.pack(fill=tk.BOTH, expand=True, pady=3)
 
         if cats:

@@ -217,20 +217,20 @@ class OutlineUIMixin:
         C = UIStyle.COLORS
 
         tk.Label(
-            dialog, text=f"添加{outline_type}", font=("微软雅黑", 12, "bold"), bg=C["bg_dark"], fg=C["text_primary"]
+            dialog, text=f"添加{outline_type}", font=UIStyle.font("title"), bg=C["bg_dark"], fg=C["text_primary"]
         ).pack(pady=(15, 10))
 
         # 标题输入
         title_frame = tk.Frame(dialog, bg=C["bg_dark"])
         title_frame.pack(fill=tk.X, padx=20, pady=5)
         tk.Label(title_frame, text="标题:", bg=C["bg_dark"], fg=C["text_primary"]).pack(side=tk.LEFT)
-        title_entry = tk.Entry(title_frame, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"])
+        title_entry = tk.Entry(title_frame, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"])
         title_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
         # 内容输入
         tk.Label(dialog, text="内容:", bg=C["bg_dark"], fg=C["text_primary"]).pack(anchor=tk.W, padx=20, pady=(10, 3))
         content_text = tk.Text(
-            dialog, wrap=tk.WORD, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"], height=12
+            dialog, wrap=tk.WORD, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"], height=12
         )
         content_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
 
@@ -259,7 +259,14 @@ class OutlineUIMixin:
             self._log(f"已添加{outline_type}: {title}")
 
         tk.Button(
-            dialog, text="确认添加", command=confirm, bg=C["accent"], fg="white", font=("微软雅黑", 10), padx=20, pady=5
+            dialog,
+            text="确认添加",
+            command=confirm,
+            bg=C["accent"],
+            fg="white",
+            font=UIStyle.font("body"),
+            padx=20,
+            pady=5,
         ).pack(pady=10)
 
     def _edit_outline_item(self):
@@ -305,21 +312,21 @@ class OutlineUIMixin:
         C = UIStyle.COLORS
 
         tk.Label(
-            dialog, text=f"编辑{outline_type}", font=("微软雅黑", 12, "bold"), bg=C["bg_dark"], fg=C["text_primary"]
+            dialog, text=f"编辑{outline_type}", font=UIStyle.font("title"), bg=C["bg_dark"], fg=C["text_primary"]
         ).pack(pady=(15, 10))
 
         # 标题输入
         title_frame = tk.Frame(dialog, bg=C["bg_dark"])
         title_frame.pack(fill=tk.X, padx=20, pady=5)
         tk.Label(title_frame, text="标题:", bg=C["bg_dark"], fg=C["text_primary"]).pack(side=tk.LEFT)
-        title_entry = tk.Entry(title_frame, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"])
+        title_entry = tk.Entry(title_frame, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"])
         title_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         title_entry.insert(0, title)
 
         # 内容输入
         tk.Label(dialog, text="内容:", bg=C["bg_dark"], fg=C["text_primary"]).pack(anchor=tk.W, padx=20, pady=(10, 3))
         content_text = tk.Text(
-            dialog, wrap=tk.WORD, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"], height=12
+            dialog, wrap=tk.WORD, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"], height=12
         )
         content_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
         content_text.insert("1.0", content)
@@ -361,7 +368,14 @@ class OutlineUIMixin:
             self._log(f"已更新{outline_type}: {new_title}")
 
         tk.Button(
-            dialog, text="确认修改", command=confirm, bg=C["accent"], fg="white", font=("微软雅黑", 10), padx=20, pady=5
+            dialog,
+            text="确认修改",
+            command=confirm,
+            bg=C["accent"],
+            fg="white",
+            font=UIStyle.font("body"),
+            padx=20,
+            pady=5,
         ).pack(pady=10)
 
     def _delete_outline_item(self):

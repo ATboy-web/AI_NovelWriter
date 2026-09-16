@@ -1,26 +1,25 @@
-"""字体令牌的**棘轮**（P5 第一步）。
+"""字体令牌的**棘轮** —— P5 已完成，本文件现在是**零容忍门禁**。
 
-## 为什么不一次性替换
+## 历程（值得留档的方法论）
 
-实测（2026-09-16）：全仓 **385 处硬编码字体元组、25 个文件**，其中 55 处是计算式
-（`font=("Consolas", 8 + x)`）。一次性机械替换有两个问题：
+2026-09-16 实测：全仓 **385 处硬编码字体元组、25 个文件**（其中 55 处是计算式
+`font=("Consolas", 8 + x)`）。当时**没有**一次性机械替换，理由是：
 
 1. **命名必须按角色而非按值**：`("微软雅黑", 9)` 出现在说明文字上是「辅助」、
-   出现在按钮上是「按钮文字」—— 按值去重会把 137 处全都叫成同一个名字，
-   令牌层就只剩间接、没有语义。逐个判断是设计工作，不是 sed 工作。
-2. **回归难以定位**：460 处一起改，视觉出问题时无法判断是哪一处。
+   出现在按钮上是「按钮文字」—— 按值去重会把 137 处全都叫成同一个名字；
+2. **回归难以定位**：385 处一起改，视觉出问题时无法判断是哪一处。
 
-因此本文件提供**机制 + 棘轮**：
+于是先落"机制 + 棘轮"：`UIStyle.font(role)` 是唯一入口、每个文件的硬编码数量记进
+`HARDCODED_FONT_BASELINE` 只许减少。
 
-- `UIStyle.font(role)` 是唯一入口，新代码必须用它；
-- 每个文件的硬编码数量记录在 `HARDCODED_FONT_BASELINE`，**只允许减少**；
-- 原生面板（P4b 三个）已经是 **0**，作为参考实现；
-- 等总数降到 0，就把"原生面板为 0"收紧成"全仓为 0"，与 `ruff format` 门禁同款路径。
+**2026-09-17 收尾**：枚举后发现 385 处**只对应 21 种取值**，其中 15 种已有令牌
+（覆盖 375 处），只差 6 种取值 / 10 处。补齐令牌后，剩余替换全部是**等值替换**
+（令牌值 == 原字面量，逐条断言），因此可以机械完成且**视觉零变化可证**。
+棘轮基线随之清空，本文件收紧为"全仓不得有硬编码字体元组"。
 
-## 更新基线的方式
-
-迁移某个文件后，把该文件的数字调小或删掉即可；**绝不要调大**
-（`test_baseline_only_shrinks` 会拦住，并告诉你哪个文件涨了）。
+⚠️ 迁移脚本翻过的车（判据必须自检）：`ast` 的 `col_offset` 是 **UTF-8 字节偏移**，
+按字符切片会在含中文的行上错位，第一版把 25 个文件全写坏了。现在脚本内置换算 +
+**写盘前 `ast.parse` 自检** + "替换前后字体取值多重集必须一致"。
 """
 
 import ast
@@ -34,36 +33,11 @@ REPO_ROOT = Path(__file__).parent.parent
 APP = REPO_ROOT / "app"
 _SKIP_PARTS = {"node_modules", ".git", "dist", "build", "__pycache__"}
 
-#: 2026-09-16 实测：合计 385 处 / 25 个文件。迁移后请**调小**对应数字。
-HARDCODED_FONT_BASELINE: dict[str, int] = {
-    "app/ai_settings_ui.py": 1,
-    "app/character_ui.py": 54,
-    "app/editor_ui.py": 5,
-    "app/fullscreen_writer.py": 11,
-    "app/generation_ui.py": 27,
-    "app/lifecycle_ui.py": 63,
-    "app/outline_ui.py": 8,
-    "app/panels/adapt_panel.py": 2,
-    "app/panels/batch_ops_panel.py": 8,
-    "app/panels/bridges_panel.py": 2,
-    "app/panels/chapter_analysis_panel.py": 15,
-    "app/panels/descriptions_panel.py": 2,
-    "app/panels/dialogue_panel.py": 2,
-    "app/panels/elements_panel.py": 2,
-    "app/panels/memory_viz_panel.py": 6,
-    "app/panels/story_flow_panel.py": 8,
-    "app/panels/style_panel.py": 2,
-    "app/panels/summary_mgmt_panel.py": 10,
-    "app/panels/websearch_panel.py": 12,
-    "app/reader_ui.py": 15,
-    "app/shell_ui.py": 69,
-    "app/timeline_ui.py": 37,
-    "app/toolkit_ui.py": 11,
-    "app/usage_ui.py": 4,
-    "app/writing_skills_panel.py": 9,
-}
+#: **已清零**（2026-09-17）。此后只允许保持空：
+#: 若某文件出现硬编码字体元组，`test_no_hardcoded_fonts_anywhere` 会直接失败。
+HARDCODED_FONT_BASELINE: dict[str, int] = {}
 
-#: 已完成令牌化的文件（参考实现，必须保持 0）
+#: 参考实现（最早完成令牌化的文件），保持 0
 MIGRATED_FILES = (
     "app/panels/timeline_panel.py",
     "app/panels/biography_panel.py",
@@ -192,19 +166,35 @@ class TestNativePanelsAreMigrated:
 
 
 class TestFontRatchet:
-    def test_baseline_only_shrinks(self):
-        """**棘轮**：任何文件的硬编码数量都不得增加。
+    def test_no_hardcoded_fonts_anywhere(self):
+        """**收紧后的零容忍门禁**（P5 已收尾）：全仓不得再出现字体字面量。
 
-        增加到说明新代码在写死字体 —— 请改用 `UIStyle.font(<角色>)`；
-        若确实需要新角色，先在 `UIStyle.FONT_ROLES` 里声明它。
+        新代码一律 `UIStyle.font(<角色>)`；确需新字号时，先在 `UIStyle.FONT_ROLES`
+        声明角色（这样"字号"这件事始终只有一个定义处）。
         """
         current = _current_counts()
-        grew = []
-        for name, number in current.items():
-            allowed = HARDCODED_FONT_BASELINE.get(name, 0)
-            if number > allowed:
-                grew.append(f"{name}: {allowed} → {number}")
+        assert current == {}, "以下文件出现了硬编码字体元组，请改用 UIStyle.font(<角色>)：\n  " + "\n  ".join(
+            f"{name}: {number} 处" for name, number in sorted(current.items())
+        )
+
+    def test_baseline_is_empty(self):
+        """基线必须保持为空 —— 留着旧数字会让棘轮松掉。"""
+        assert HARDCODED_FONT_BASELINE == {}
+
+    def test_baseline_only_shrinks(self):
+        """（保留原判据，基线为空时退化为"任何文件都不得有"）"""
+        current = _current_counts()
+        grew = [
+            f"{name}: {HARDCODED_FONT_BASELINE.get(name, 0)} → {number}"
+            for name, number in current.items()
+            if number > HARDCODED_FONT_BASELINE.get(name, 0)
+        ]
         assert grew == [], "以下文件的硬编码字体数量增加了：\n  " + "\n  ".join(grew)
+
+    def test_total_is_tracked(self):
+        """把总数钉成可比较的数字，便于在提交信息里报告进度（现应为 0）。"""
+        total = sum(_current_counts().values())
+        assert total == 0
 
     def test_baseline_has_no_stale_entries(self):
         """基线里不该留"已经清零"的条目 —— 否则棘轮会松掉。"""
@@ -215,11 +205,6 @@ class TestFontRatchet:
     def test_every_file_in_baseline_still_exists(self):
         missing = [name for name in HARDCODED_FONT_BASELINE if not (REPO_ROOT / name).is_file()]
         assert missing == [], f"基线引用了不存在的文件：{missing}"
-
-    def test_total_is_tracked(self):
-        """把总数钉成可比较的数字，便于在提交信息里报告进度。"""
-        total = sum(_current_counts().values())
-        assert total <= sum(HARDCODED_FONT_BASELINE.values())
 
     def test_app_and_tests_never_use_font_alone_where_a_token_exists(self):
         """新代码的软约束：`app/panels/` 下不得再出现硬编码字体（面板层已全部迁移）。"""

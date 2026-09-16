@@ -18,13 +18,15 @@ class ChapterAnalysisPanelMixin:
         tk.Label(
             f,
             text="章节文件分析 - 浏览章节并推荐适用工具",
-            font=("", 11, "bold"),
+            font=UIStyle.font("default_bold"),
             bg=C["bg_dark"],
             fg=C["text_primary"],
         ).pack(anchor=tk.W, pady=5)
 
         if not self.current_novel_dir:
-            tk.Label(f, text="请先新建或打开小说", font=("", 10), bg=C["bg_dark"], fg=C["text_muted"]).pack(pady=20)
+            tk.Label(
+                f, text="请先新建或打开小说", font=UIStyle.font("system"), bg=C["bg_dark"], fg=C["text_muted"]
+            ).pack(pady=20)
             return
 
         # 章节文件列表
@@ -32,14 +34,14 @@ class ChapterAnalysisPanelMixin:
         list_frame.pack(fill=tk.X, pady=5)
 
         tk.Label(
-            list_frame, text="章节文件:", font=("微软雅黑", 9, "bold"), bg=C["bg_dark"], fg=C["accent_light"]
+            list_frame, text="章节文件:", font=UIStyle.font("label_bold"), bg=C["bg_dark"], fg=C["accent_light"]
         ).pack(anchor=tk.W)
 
         self.ch_file_listbox = tk.Listbox(
             list_frame,
             bg=C["bg_card"],
             fg=C["text_secondary"],
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             height=8,
             selectbackground=C["accent"],
             relief=tk.FLAT,
@@ -51,7 +53,7 @@ class ChapterAnalysisPanelMixin:
         self._refresh_chapter_files()
 
         # 章节内容预览
-        tk.Label(f, text="章节内容预览:", font=("微软雅黑", 9, "bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
+        tk.Label(f, text="章节内容预览:", font=UIStyle.font("label_bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
             anchor=tk.W, pady=(10, 3)
         )
 
@@ -59,7 +61,7 @@ class ChapterAnalysisPanelMixin:
             f,
             height=6,
             wrap=tk.WORD,
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_card"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -73,7 +75,7 @@ class ChapterAnalysisPanelMixin:
         tk.Label(
             f,
             text="智能推荐 - 本章适用的创作工具:",
-            font=("微软雅黑", 9, "bold"),
+            font=UIStyle.font("label_bold"),
             bg=C["bg_dark"],
             fg=C["accent_light"],
         ).pack(anchor=tk.W, pady=(10, 3))
@@ -82,7 +84,7 @@ class ChapterAnalysisPanelMixin:
             f,
             height=10,
             wrap=tk.WORD,
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_card"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -98,7 +100,7 @@ class ChapterAnalysisPanelMixin:
         tk.Button(
             btn_frame,
             text="刷新列表",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -108,7 +110,7 @@ class ChapterAnalysisPanelMixin:
         tk.Button(
             btn_frame,
             text="导入章节文件",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["warning"],
             fg="white",
             relief=tk.FLAT,
@@ -118,7 +120,7 @@ class ChapterAnalysisPanelMixin:
         tk.Button(
             btn_frame,
             text="选择文件夹",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -128,7 +130,7 @@ class ChapterAnalysisPanelMixin:
         tk.Button(
             btn_frame,
             text="分析当前章节",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -138,7 +140,7 @@ class ChapterAnalysisPanelMixin:
         tk.Button(
             btn_frame,
             text="加载到编辑区",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,
@@ -238,10 +240,10 @@ class ChapterAnalysisPanelMixin:
         dialog.transient(self.root)
         dialog.grab_set()
 
-        tk.Label(dialog, text=f"找到 {len(text_files)} 个文本文件:", font=("微软雅黑", 10, "bold")).pack(pady=10)
+        tk.Label(dialog, text=f"找到 {len(text_files)} 个文本文件:", font=UIStyle.font("body_bold")).pack(pady=10)
 
         # 文件列表（可多选）
-        listbox = tk.Listbox(dialog, selectmode=tk.MULTIPLE, font=("微软雅黑", 9))
+        listbox = tk.Listbox(dialog, selectmode=tk.MULTIPLE, font=UIStyle.font("label"))
         listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         for f in text_files:

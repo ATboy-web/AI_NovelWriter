@@ -147,7 +147,7 @@ class UsagePanelMixin:
         tk.Label(
             head,
             textvariable=self.usage_summary_var,
-            font=("微软雅黑", 10, "bold"),
+            font=UIStyle.font("body_bold"),
             bg=C["bg_dark"],
             fg=C["accent_light"],
             anchor=tk.W,
@@ -158,7 +158,7 @@ class UsagePanelMixin:
         tk.Label(
             head,
             textvariable=self.usage_hint_var,
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["bg_dark"],
             fg=C["text_secondary"],
             anchor=tk.W,
@@ -179,7 +179,7 @@ class UsagePanelMixin:
         tk.Label(
             balance_row,
             textvariable=self.usage_balance_var,
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_dark"],
             fg=C["text_primary"],
             anchor=tk.W,
@@ -228,7 +228,7 @@ class UsagePanelMixin:
         button = tk.Button(
             parent,
             text=text,
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=bg,
             fg="white" if bg in (color["accent"], color["success"]) else color["text_primary"],
             relief=tk.FLAT,

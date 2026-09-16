@@ -31,10 +31,10 @@ class ShellMixin:
         title_frame = tk.Frame(header, bg=C["accent"])
         title_frame.pack(side=tk.LEFT, padx=20, fill=tk.Y)
 
-        tk.Label(title_frame, text="AI", font=("Arial", 18, "bold"), bg=C["accent"], fg="white").pack(side=tk.LEFT)
-        tk.Label(title_frame, text=" 小说创作工坊", font=("微软雅黑", 14), bg=C["accent"], fg="white").pack(
-            side=tk.LEFT, padx=(5, 0)
-        )
+        tk.Label(title_frame, text="AI", font=UIStyle.font("logo"), bg=C["accent"], fg="white").pack(side=tk.LEFT)
+        tk.Label(
+            title_frame, text=" 小说创作工坊", font=UIStyle.font("heading_plain"), bg=C["accent"], fg="white"
+        ).pack(side=tk.LEFT, padx=(5, 0))
 
         # 顶部按钮
         btn_frame = tk.Frame(header, bg=C["accent"])
@@ -52,7 +52,7 @@ class ShellMixin:
             tk.Button(
                 btn_frame,
                 text=text,
-                font=("微软雅黑", 10),
+                font=UIStyle.font("body"),
                 bg=C["accent_hover"],
                 fg="white",
                 relief=tk.FLAT,
@@ -64,7 +64,9 @@ class ShellMixin:
             ).pack(side=tk.LEFT, padx=3)
 
         # 状态指示
-        self.status_indicator = tk.Label(btn_frame, text="未配置", font=("微软雅黑", 9), bg=C["accent"], fg="#ffd700")
+        self.status_indicator = tk.Label(
+            btn_frame, text="未配置", font=UIStyle.font("label"), bg=C["accent"], fg="#ffd700"
+        )
         self.status_indicator.pack(side=tk.RIGHT, padx=10)
 
         # ===== 主内容区 - 三栏布局 =====
@@ -78,7 +80,7 @@ class ShellMixin:
 
         # 工具栏左侧 - 标题
         tk.Label(
-            toolbar, text="AI小说创作工坊", font=("微软雅黑", 12, "bold"), bg=C["bg_medium"], fg=C["accent_light"]
+            toolbar, text="AI小说创作工坊", font=UIStyle.font("title"), bg=C["bg_medium"], fg=C["accent_light"]
         ).pack(side=tk.LEFT, padx=15)
 
         # 工具栏中间 - 快速操作按钮
@@ -93,7 +95,7 @@ class ShellMixin:
             btn = tk.Button(
                 quick_btn_frame,
                 text=text,
-                font=("微软雅黑", 9),
+                font=UIStyle.font("label"),
                 bg=color,
                 fg="white" if color == C["accent"] else C["text_primary"],
                 relief=tk.FLAT,
@@ -110,7 +112,7 @@ class ShellMixin:
         status_frame.pack(side=tk.RIGHT, padx=15)
 
         self.ai_status_label = tk.Label(
-            status_frame, text="未连接AI", font=("微软雅黑", 9), bg=C["bg_medium"], fg=C["warning"]
+            status_frame, text="未连接AI", font=UIStyle.font("label"), bg=C["bg_medium"], fg=C["warning"]
         )
         self.ai_status_label.pack(side=tk.RIGHT, padx=10)
 
@@ -148,7 +150,7 @@ class ShellMixin:
 
         self.title_var = tk.StringVar(value="未创建小说")
         tk.Label(
-            info_card, textvariable=self.title_var, font=("微软雅黑", 12, "bold"), bg=C["bg_card"], fg=C["text_primary"]
+            info_card, textvariable=self.title_var, font=UIStyle.font("title"), bg=C["bg_card"], fg=C["text_primary"]
         ).pack(anchor=tk.W)
 
         info_grid = tk.Frame(info_card, bg=C["bg_card"])
@@ -161,19 +163,19 @@ class ShellMixin:
         for i, (label, var) in enumerate(
             [("类型", self.genre_var), ("进度", self.chapter_var), ("字数", self.word_count_var)]
         ):
-            tk.Label(info_grid, text=label, font=("微软雅黑", 9), bg=C["bg_card"], fg=C["text_muted"]).grid(
+            tk.Label(info_grid, text=label, font=UIStyle.font("label"), bg=C["bg_card"], fg=C["text_muted"]).grid(
                 row=i, column=0, sticky=tk.W, pady=2
             )
-            tk.Label(info_grid, textvariable=var, font=("微软雅黑", 9), bg=C["bg_card"], fg=C["text_secondary"]).grid(
-                row=i, column=1, sticky=tk.W, padx=(10, 0), pady=2
-            )
+            tk.Label(
+                info_grid, textvariable=var, font=UIStyle.font("label"), bg=C["bg_card"], fg=C["text_secondary"]
+            ).grid(row=i, column=1, sticky=tk.W, padx=(10, 0), pady=2)
 
         # 左侧 - 模式切换
         mode_frame = tk.Frame(left_panel, bg=C["bg_medium"], padx=10, pady=5)
         mode_frame.pack(fill=tk.X, padx=10)
 
         tk.Label(
-            mode_frame, text="创作模式", font=("微软雅黑", 10, "bold"), bg=C["bg_medium"], fg=C["accent_light"]
+            mode_frame, text="创作模式", font=UIStyle.font("body_bold"), bg=C["bg_medium"], fg=C["accent_light"]
         ).pack(anchor=tk.W, pady=(0, 5))
 
         # 自动创作 + 停止 同一行
@@ -183,7 +185,7 @@ class ShellMixin:
         self.auto_btn = tk.Button(
             btn_row,
             text="自动创作",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -198,7 +200,7 @@ class ShellMixin:
         self.stop_btn = tk.Button(
             btn_row,
             text="停止",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["error"],
             fg="white",
             relief=tk.FLAT,
@@ -214,7 +216,7 @@ class ShellMixin:
         self.assist_btn = tk.Button(
             mode_frame,
             text="AI辅助写作 (F11)",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -230,7 +232,7 @@ class ShellMixin:
         self.continue_btn = tk.Button(
             mode_frame,
             text="续写新章",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,
@@ -249,7 +251,7 @@ class ShellMixin:
         self.regen_chapter_btn = tk.Button(
             regen_row,
             text="重新创作本章",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["warning"],
             fg="white",
             relief=tk.FLAT,
@@ -264,7 +266,7 @@ class ShellMixin:
         self.regen_all_btn = tk.Button(
             regen_row,
             text="全部重新创作",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["error"],
             fg="white",
             relief=tk.FLAT,
@@ -280,7 +282,7 @@ class ShellMixin:
         self.review_btn = tk.Button(
             mode_frame,
             text="章节回顾 (F12)",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["info"] if "info" in C else "#3b82f6",
             fg="white",
             relief=tk.FLAT,
@@ -294,7 +296,7 @@ class ShellMixin:
         self.cover_btn = tk.Button(
             mode_frame,
             text="生成封面",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -308,7 +310,7 @@ class ShellMixin:
         self.timeline_btn = tk.Button(
             mode_frame,
             text="世界线/时间线",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["warning"],
             fg="white",
             relief=tk.FLAT,
@@ -322,7 +324,7 @@ class ShellMixin:
         self.extend_btn = tk.Button(
             mode_frame,
             text="续写小说",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,
@@ -338,12 +340,12 @@ class ShellMixin:
         agent_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
 
         tk.Label(
-            agent_frame, text="创作流程", font=("微软雅黑", 10, "bold"), bg=C["bg_medium"], fg=C["accent_light"]
+            agent_frame, text="创作流程", font=UIStyle.font("body_bold"), bg=C["bg_medium"], fg=C["accent_light"]
         ).pack(anchor=tk.W, pady=(0, 5))
 
         # 基础步骤
         basic_label = tk.Label(
-            agent_frame, text="基础设置", font=("微软雅黑", 8), bg=C["bg_medium"], fg=C["text_muted"]
+            agent_frame, text="基础设置", font=UIStyle.font("caption"), bg=C["bg_medium"], fg=C["text_muted"]
         )
         basic_label.pack(anchor=tk.W, pady=(0, 2))
 
@@ -357,7 +359,7 @@ class ShellMixin:
             btn = tk.Button(
                 agent_frame,
                 text=text,
-                font=("微软雅黑", 9),
+                font=UIStyle.font("label"),
                 bg=C["bg_light"],
                 fg=C["text_secondary"],
                 relief=tk.FLAT,
@@ -372,7 +374,7 @@ class ShellMixin:
 
         # 创作步骤
         write_label = tk.Label(
-            agent_frame, text="章节创作", font=("微软雅黑", 8), bg=C["bg_medium"], fg=C["text_muted"]
+            agent_frame, text="章节创作", font=UIStyle.font("caption"), bg=C["bg_medium"], fg=C["text_muted"]
         )
         write_label.pack(anchor=tk.W, pady=(8, 2))
 
@@ -387,7 +389,7 @@ class ShellMixin:
             btn = tk.Button(
                 agent_frame,
                 text=text,
-                font=("微软雅黑", 9),
+                font=UIStyle.font("label"),
                 bg=C["bg_light"],
                 fg=C["text_secondary"],
                 relief=tk.FLAT,
@@ -402,7 +404,7 @@ class ShellMixin:
 
         # 导入与分析
         import_label = tk.Label(
-            agent_frame, text="导入分析", font=("微软雅黑", 8), bg=C["bg_medium"], fg=C["text_muted"]
+            agent_frame, text="导入分析", font=UIStyle.font("caption"), bg=C["bg_medium"], fg=C["text_muted"]
         )
         import_label.pack(anchor=tk.W, pady=(8, 2))
 
@@ -415,7 +417,7 @@ class ShellMixin:
             btn = tk.Button(
                 agent_frame,
                 text=text,
-                font=("微软雅黑", 9),
+                font=UIStyle.font("label"),
                 bg=C["accent_bg"],
                 fg=C["accent_light"],
                 relief=tk.FLAT,
@@ -437,7 +439,7 @@ class ShellMixin:
         outline_header.pack(fill=tk.X, pady=(0, 5))
 
         tk.Label(
-            outline_header, text="大纲", font=("微软雅黑", 10, "bold"), bg=C["bg_medium"], fg=C["accent_light"]
+            outline_header, text="大纲", font=UIStyle.font("body_bold"), bg=C["bg_medium"], fg=C["accent_light"]
         ).pack(side=tk.LEFT)
 
         # 大纲类型下拉框
@@ -448,7 +450,7 @@ class ShellMixin:
             values=["整体大纲", "章节大纲", "故事大纲"],
             state="readonly",
             width=10,
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
         )
         outline_type_combo.pack(side=tk.RIGHT)
         outline_type_combo.bind("<<ComboboxSelected>>", self._on_outline_type_change)
@@ -460,7 +462,7 @@ class ShellMixin:
         tk.Button(
             outline_btn_frame,
             text="生成",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -470,7 +472,7 @@ class ShellMixin:
         tk.Button(
             outline_btn_frame,
             text="添加",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -480,7 +482,7 @@ class ShellMixin:
         tk.Button(
             outline_btn_frame,
             text="编辑",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -490,7 +492,7 @@ class ShellMixin:
         tk.Button(
             outline_btn_frame,
             text="删除",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["error"],
             fg="white",
             relief=tk.FLAT,
@@ -506,7 +508,7 @@ class ShellMixin:
             list_frame,
             bg=C["bg_dark"],
             fg=C["text_secondary"],
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             selectbackground=C["accent"],
             selectforeground="white",
             relief=tk.FLAT,
@@ -524,7 +526,7 @@ class ShellMixin:
         char_cards_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
 
         tk.Label(
-            char_cards_frame, text="角色", font=("微软雅黑", 10, "bold"), bg=C["bg_medium"], fg=C["accent_light"]
+            char_cards_frame, text="角色", font=UIStyle.font("body_bold"), bg=C["bg_medium"], fg=C["accent_light"]
         ).pack(anchor=tk.W, pady=(0, 5))
 
         # 角色卡片容器
@@ -537,7 +539,7 @@ class ShellMixin:
         tk.Button(
             char_btn_frame,
             text="新建",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -547,7 +549,7 @@ class ShellMixin:
         tk.Button(
             char_btn_frame,
             text="AI生成",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,
@@ -557,7 +559,7 @@ class ShellMixin:
         tk.Button(
             char_btn_frame,
             text="传记",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -569,7 +571,7 @@ class ShellMixin:
         tk.Button(
             char_btn_frame,
             text="详情",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["accent_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -597,7 +599,7 @@ class ShellMixin:
         tk.Label(
             title_bar,
             textvariable=self.chapter_title_var,
-            font=("微软雅黑", 13, "bold"),
+            font=UIStyle.font("heading_small"),
             bg=C["bg_dark"],
             fg=C["text_primary"],
         ).pack(side=tk.LEFT)
@@ -609,7 +611,7 @@ class ShellMixin:
         self.prev_chapter_btn = tk.Button(
             nav_frame,
             text="◀ 上一章",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -622,7 +624,7 @@ class ShellMixin:
 
         self.chapter_select_var = tk.StringVar(value="")
         self.chapter_select = ttk.Combobox(
-            nav_frame, textvariable=self.chapter_select_var, state="readonly", width=12, font=("微软雅黑", 9)
+            nav_frame, textvariable=self.chapter_select_var, state="readonly", width=12, font=UIStyle.font("label")
         )
         self.chapter_select.pack(side=tk.LEFT, padx=2)
         self.chapter_select.bind("<<ComboboxSelected>>", self._on_chapter_select)
@@ -630,7 +632,7 @@ class ShellMixin:
         self.next_chapter_btn = tk.Button(
             nav_frame,
             text="下一章 ▶",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -644,7 +646,7 @@ class ShellMixin:
         self.save_chapter_btn = tk.Button(
             nav_frame,
             text="💾 保存",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -662,7 +664,7 @@ class ShellMixin:
         self.content_text = tk.Text(
             text_frame,
             wrap=tk.WORD,
-            font=("微软雅黑", 11),
+            font=UIStyle.font("subtitle"),
             bg=C["bg_card"],
             fg=C["text_primary"],
             insertbackground=C["accent_light"],
@@ -694,7 +696,7 @@ class ShellMixin:
         char_frame.pack_propagate(False)
 
         tk.Label(
-            char_frame, text="角色面板", font=("微软雅黑", 10, "bold"), bg=C["bg_medium"], fg=C["accent_light"]
+            char_frame, text="角色面板", font=UIStyle.font("body_bold"), bg=C["bg_medium"], fg=C["accent_light"]
         ).pack(anchor=tk.W, pady=(5, 5), padx=5)
 
         # 角色选择下拉框
@@ -711,7 +713,7 @@ class ShellMixin:
         tk.Button(
             char_select_frame,
             text="传",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,
@@ -742,7 +744,7 @@ class ShellMixin:
         tk.Button(
             char_btn_frame,
             text="新建",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -752,7 +754,7 @@ class ShellMixin:
         tk.Button(
             char_btn_frame,
             text="AI",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,
@@ -762,7 +764,7 @@ class ShellMixin:
         tk.Button(
             char_btn_frame,
             text="武器",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -772,7 +774,7 @@ class ShellMixin:
         tk.Button(
             char_btn_frame,
             text="技能",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -784,12 +786,12 @@ class ShellMixin:
         log_toolbar = tk.Frame(log_frame, bg=C["bg_dark"])
         log_toolbar.pack(side=tk.TOP, fill=tk.X, padx=(0, 10), pady=(10, 0))
         tk.Label(
-            log_toolbar, text="运行日志", font=("微软雅黑", 9, "bold"), bg=C["bg_dark"], fg=C["text_secondary"]
+            log_toolbar, text="运行日志", font=UIStyle.font("label_bold"), bg=C["bg_dark"], fg=C["text_secondary"]
         ).pack(side=tk.LEFT, padx=5)
         tk.Button(
             log_toolbar,
             text="导出日志",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -800,7 +802,7 @@ class ShellMixin:
         tk.Button(
             log_toolbar,
             text="清空",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -812,7 +814,7 @@ class ShellMixin:
         self.log_text = tk.Text(
             log_frame,
             wrap=tk.WORD,
-            font=("Consolas", 10),
+            font=UIStyle.font("mono"),
             bg=C["bg_card"],
             fg=C["text_muted"],
             relief=tk.FLAT,
@@ -829,7 +831,7 @@ class ShellMixin:
         self.review_text = tk.Text(
             review_frame,
             wrap=tk.WORD,
-            font=("微软雅黑", 11),
+            font=UIStyle.font("subtitle"),
             bg=C["bg_card"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -853,7 +855,7 @@ class ShellMixin:
                 text=label,
                 variable=self.note_type_var,
                 value=val,
-                font=("微软雅黑", 9),
+                font=UIStyle.font("label"),
                 bg=C["bg_dark"],
                 fg=C["text_secondary"],
                 selectcolor=C["accent"],
@@ -864,7 +866,7 @@ class ShellMixin:
         tk.Button(
             note_type_frame,
             text="+ 新建",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -880,7 +882,7 @@ class ShellMixin:
             note_content_frame,
             bg=C["bg_card"],
             fg=C["text_secondary"],
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             selectbackground=C["accent"],
             relief=tk.FLAT,
             highlightthickness=0,
@@ -892,7 +894,7 @@ class ShellMixin:
         self.note_content = tk.Text(
             note_content_frame,
             wrap=tk.WORD,
-            font=("微软雅黑", 11),
+            font=UIStyle.font("subtitle"),
             bg=C["bg_card"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -908,7 +910,7 @@ class ShellMixin:
         tk.Button(
             note_btn_frame,
             text="保存笔记",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["success"],
             fg="white",
             relief=tk.FLAT,
@@ -918,7 +920,7 @@ class ShellMixin:
         tk.Button(
             note_btn_frame,
             text="删除笔记",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["error"],
             fg="white",
             relief=tk.FLAT,
@@ -928,7 +930,7 @@ class ShellMixin:
         tk.Button(
             note_btn_frame,
             text="发送到工程",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -1132,7 +1134,7 @@ class ShellMixin:
         dialog = tk.Toplevel(self.root)
         dialog.title("使用说明")
         dialog.geometry("500x600")
-        text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, font=("微软雅黑", 11))
+        text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, font=UIStyle.font("subtitle"))
         text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         text.insert("1.0", help_text)
         text.config(state=tk.DISABLED)
@@ -1147,21 +1149,21 @@ class ShellMixin:
         frame = tk.Frame(dialog, padx=20, pady=15)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        tk.Label(frame, text=f"AI自动写小说系统 v{__version__}", font=("微软雅黑", 14, "bold")).pack(anchor=tk.W)
+        tk.Label(frame, text=f"AI自动写小说系统 v{__version__}", font=UIStyle.font("heading")).pack(anchor=tk.W)
         tk.Label(
             frame,
             text="功能：AI API / 长上下文记忆 / 智能体创作 / 文生图 / 名场面检测",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             fg="#666",
             wraplength=380,
             justify=tk.LEFT,
         ).pack(anchor=tk.W, pady=(5, 10))
 
-        tk.Label(frame, text="开源地址：", font=("微软雅黑", 10)).pack(anchor=tk.W)
+        tk.Label(frame, text="开源地址：", font=UIStyle.font("body")).pack(anchor=tk.W)
         link = tk.Label(
             frame,
             text="https://github.com/ATboy-web/AI_NovelWriter",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             fg="#2563eb",
             cursor="hand2",
         )

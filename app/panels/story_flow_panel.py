@@ -16,9 +16,9 @@ class StoryFlowPanelMixin:
         C = UIStyle.COLORS
         f = self.tool_content_frame
 
-        tk.Label(f, text="故事流推演 - 4种模式", font=("", 11, "bold"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
-            anchor=tk.W, pady=5
-        )
+        tk.Label(
+            f, text="故事流推演 - 4种模式", font=UIStyle.font("default_bold"), bg=C["bg_dark"], fg=C["text_primary"]
+        ).pack(anchor=tk.W, pady=5)
 
         self.sf_mode_var = tk.IntVar(value=1)
         modes = [
@@ -35,7 +35,7 @@ class StoryFlowPanelMixin:
                 text=f"{name}",
                 variable=self.sf_mode_var,
                 value=val,
-                font=("微软雅黑", 9),
+                font=UIStyle.font("label"),
                 bg=C["bg_dark"],
                 fg=C["text_secondary"],
                 selectcolor=C["accent"],
@@ -43,7 +43,11 @@ class StoryFlowPanelMixin:
 
         # 提示文字
         self.sf_hint = tk.Label(
-            f, text="模式1: 输入背景和事件，推演故事发展过程", font=("微软雅黑", 8), bg=C["bg_dark"], fg=C["text_muted"]
+            f,
+            text="模式1: 输入背景和事件，推演故事发展过程",
+            font=UIStyle.font("caption"),
+            bg=C["bg_dark"],
+            fg=C["text_muted"],
         )
         self.sf_hint.pack(anchor=tk.W, pady=2)
 
@@ -59,11 +63,11 @@ class StoryFlowPanelMixin:
 
         self.sf_mode_var.trace_add("write", update_hint)
 
-        tk.Label(f, text="输入内容:", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+        tk.Label(f, text="输入内容:", font=UIStyle.font("label"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
             anchor=tk.W, pady=3
         )
         self.sf_input = tk.Text(
-            f, height=5, wrap=tk.WORD, font=("微软雅黑", 10), bg=C["bg_medium"], fg=C["text_primary"]
+            f, height=5, wrap=tk.WORD, font=UIStyle.font("body"), bg=C["bg_medium"], fg=C["text_primary"]
         )
         self.sf_input.pack(fill=tk.X, pady=3)
 
@@ -72,7 +76,7 @@ class StoryFlowPanelMixin:
         tk.Button(
             btn_frame,
             text="开始推演",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -82,7 +86,7 @@ class StoryFlowPanelMixin:
         tk.Button(
             btn_frame,
             text="插入到章节",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_light"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -91,7 +95,7 @@ class StoryFlowPanelMixin:
         ).pack(side=tk.RIGHT)
 
         self.sf_result = tk.Text(
-            f, height=10, wrap=tk.WORD, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"]
+            f, height=10, wrap=tk.WORD, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"]
         )
         self.sf_result.pack(fill=tk.BOTH, expand=True, pady=5)
 

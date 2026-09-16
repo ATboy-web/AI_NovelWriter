@@ -4,6 +4,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
+from app import UIStyle
 from app.novel_toolkit import AdaptEngine
 
 
@@ -14,7 +15,9 @@ class AdaptPanelMixin:
         """智能改编界面"""
         f = self.tool_content_frame
 
-        ttk.Label(f, text="智能改编 - 圈定截取改编，显示匹配率", font=("", 11, "bold")).pack(anchor=tk.W, pady=5)
+        ttk.Label(f, text="智能改编 - 圈定截取改编，显示匹配率", font=UIStyle.font("default_bold")).pack(
+            anchor=tk.W, pady=5
+        )
 
         ttk.Label(f, text="改编指示:").pack(anchor=tk.W)
         self.adapt_instr = ttk.Entry(f, width=60)
@@ -27,7 +30,7 @@ class AdaptPanelMixin:
         ttk.Button(btn_frame, text="随机抽取改编", command=self._adapt_random).pack(side=tk.LEFT, padx=10)
         ttk.Button(btn_frame, text="替换原文", command=self._replace_with_adapted).pack(side=tk.RIGHT)
 
-        self.adapt_result = scrolledtext.ScrolledText(f, height=10, wrap=tk.WORD, font=("微软雅黑", 10))
+        self.adapt_result = scrolledtext.ScrolledText(f, height=10, wrap=tk.WORD, font=UIStyle.font("body"))
         self.adapt_result.pack(fill=tk.BOTH, expand=True, pady=5)
 
     def _adapt_selected(self):

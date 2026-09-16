@@ -25,7 +25,7 @@ class WritingSkillsPanelMixin:
 
         # 标题
         tk.Label(
-            main_frame, text="✍️ 写作技能系统", font=("微软雅黑", 14, "bold"), bg=C["bg_dark"], fg=C["accent_text"]
+            main_frame, text="✍️ 写作技能系统", font=UIStyle.font("heading"), bg=C["bg_dark"], fg=C["accent_text"]
         ).pack(anchor=tk.W, pady=(0, 10))
 
         # 风格配置区
@@ -47,7 +47,7 @@ class WritingSkillsPanelMixin:
             row_frame.pack(fill=tk.X, padx=10, pady=3)
 
             tk.Label(
-                row_frame, text=label, font=("微软雅黑", 10), bg=C["bg_dark"], fg=C["text_primary"], width=10
+                row_frame, text=label, font=UIStyle.font("body"), bg=C["bg_dark"], fg=C["text_primary"], width=10
             ).pack(side=tk.LEFT)
 
             slider = tk.Scale(
@@ -65,7 +65,7 @@ class WritingSkillsPanelMixin:
             slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
             self._style_sliders[key] = slider
 
-            tk.Label(row_frame, text=desc, font=("微软雅黑", 8), bg=C["bg_dark"], fg=C["text_muted"]).pack(
+            tk.Label(row_frame, text=desc, font=UIStyle.font("caption"), bg=C["bg_dark"], fg=C["text_muted"]).pack(
                 side=tk.RIGHT
             )
 
@@ -79,7 +79,7 @@ class WritingSkillsPanelMixin:
             command=self._analyze_current_chapter,
             bg=C["accent"],
             fg="white",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
             pady=5,
         ).pack(side=tk.LEFT, padx=5)
@@ -90,7 +90,7 @@ class WritingSkillsPanelMixin:
             command=self._apply_writing_style,
             bg=C["success"],
             fg="white",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
             pady=5,
         ).pack(side=tk.LEFT, padx=5)
@@ -101,7 +101,7 @@ class WritingSkillsPanelMixin:
             command=self._save_writing_config,
             bg=C["bg_light"],
             fg=C["text_primary"],
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
             pady=5,
         ).pack(side=tk.LEFT, padx=5)
@@ -113,7 +113,7 @@ class WritingSkillsPanelMixin:
         self._analysis_text = tk.Text(
             result_frame,
             wrap=tk.WORD,
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["bg_medium"],
             fg=C["text_primary"],
             height=10,
@@ -126,7 +126,7 @@ class WritingSkillsPanelMixin:
         graph_frame.pack(fill=tk.X, pady=(10, 0))
 
         self._graph_info_label = tk.Label(
-            graph_frame, text="暂无数据", font=("微软雅黑", 10), bg=C["bg_dark"], fg=C["text_secondary"]
+            graph_frame, text="暂无数据", font=UIStyle.font("body"), bg=C["bg_dark"], fg=C["text_secondary"]
         )
         self._graph_info_label.pack(anchor=tk.W, padx=10, pady=5)
 
@@ -136,7 +136,7 @@ class WritingSkillsPanelMixin:
             command=self._update_knowledge_graph,
             bg=C["bg_light"],
             fg=C["text_primary"],
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             padx=10,
             pady=3,
         ).pack(anchor=tk.W, padx=10, pady=5)

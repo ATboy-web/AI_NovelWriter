@@ -502,18 +502,23 @@ class GenerationMixin:
         dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(dialog, text="仿写风格", font=("微软雅黑", 14, "bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
+        tk.Label(dialog, text="仿写风格", font=UIStyle.font("heading"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
             pady=(15, 10)
         )
 
         # 已导入的作者风格列表
         style_frame = tk.LabelFrame(
-            dialog, text=" 已导入的作者风格 ", bg=C["bg_dark"], fg=C["accent_light"], font=("微软雅黑", 10)
+            dialog, text=" 已导入的作者风格 ", bg=C["bg_dark"], fg=C["accent_light"], font=UIStyle.font("body")
         )
         style_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
 
         style_list = tk.Listbox(
-            style_frame, bg=C["bg_card"], fg=C["text_primary"], font=("微软雅黑", 10), height=6, selectmode=tk.EXTENDED
+            style_frame,
+            bg=C["bg_card"],
+            fg=C["text_primary"],
+            font=UIStyle.font("body"),
+            height=6,
+            selectmode=tk.EXTENDED,
         )
         style_list.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
@@ -637,7 +642,7 @@ class GenerationMixin:
             command=import_author_folder,
             bg=C["accent"],
             fg="white",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             padx=10,
         ).pack(side=tk.LEFT, padx=3)
         tk.Button(
@@ -646,7 +651,7 @@ class GenerationMixin:
             command=import_single_file,
             bg=C["bg_light"],
             fg=C["text_primary"],
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             padx=10,
         ).pack(side=tk.LEFT, padx=3)
         tk.Button(
@@ -655,13 +660,13 @@ class GenerationMixin:
             command=remove_selected,
             bg=C["error"],
             fg="white",
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             padx=10,
         ).pack(side=tk.RIGHT, padx=3)
 
         # 创作设置
         write_frame = tk.LabelFrame(
-            dialog, text=" 仿写创作 ", bg=C["bg_dark"], fg=C["accent_light"], font=("微软雅黑", 10)
+            dialog, text=" 仿写创作 ", bg=C["bg_dark"], fg=C["accent_light"], font=UIStyle.font("body")
         )
         write_frame.pack(fill=tk.X, padx=15, pady=5)
 
@@ -670,7 +675,7 @@ class GenerationMixin:
             anchor=tk.W, padx=10, pady=(5, 3)
         )
         prompt_text = tk.Text(
-            write_frame, wrap=tk.WORD, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"], height=3
+            write_frame, wrap=tk.WORD, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"], height=3
         )
         prompt_text.pack(fill=tk.X, padx=10, pady=3)
         prompt_text.insert("1.0", "请用模仿的风格写一段关于...")
@@ -792,7 +797,7 @@ class GenerationMixin:
             command=start_imitation,
             bg=C["success"],
             fg="white",
-            font=("微软雅黑", 11, "bold"),
+            font=UIStyle.font("subtitle_bold"),
             padx=20,
             pady=5,
         ).pack(side=tk.LEFT, padx=5)
@@ -802,7 +807,7 @@ class GenerationMixin:
             command=apply_to_chapter,
             bg=C["warning"],
             fg="white",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
         ).pack(side=tk.LEFT, padx=5)
 
@@ -947,9 +952,9 @@ class GenerationMixin:
         edit_dlg.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(edit_dlg, text="编辑决策点", font=("微软雅黑", 11, "bold"), bg=C["bg_dark"], fg=C["accent_text"]).pack(
-            pady=8
-        )
+        tk.Label(
+            edit_dlg, text="编辑决策点", font=UIStyle.font("subtitle_bold"), bg=C["bg_dark"], fg=C["accent_text"]
+        ).pack(pady=8)
 
         fields = [
             ("决策情境 (decision)", "decision", 60),
@@ -960,7 +965,7 @@ class GenerationMixin:
 
         entries = {}
         for label, key, height in fields:
-            tk.Label(edit_dlg, text=label, font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_primary"]).pack(
+            tk.Label(edit_dlg, text=label, font=UIStyle.font("label"), bg=C["bg_dark"], fg=C["text_primary"]).pack(
                 anchor=tk.W, padx=15, pady=(8, 1)
             )
 
@@ -968,7 +973,7 @@ class GenerationMixin:
                 entry = tk.Text(
                     edit_dlg,
                     height=5,
-                    font=("微软雅黑", 9),
+                    font=UIStyle.font("label"),
                     bg=C["bg_medium"],
                     fg=C["text_primary"],
                     relief=tk.FLAT,
@@ -977,7 +982,7 @@ class GenerationMixin:
                 )
             else:
                 entry = tk.Entry(
-                    edit_dlg, font=("微软雅黑", 9), bg=C["bg_medium"], fg=C["text_primary"], relief=tk.FLAT
+                    edit_dlg, font=UIStyle.font("label"), bg=C["bg_medium"], fg=C["text_primary"], relief=tk.FLAT
                 )
             entry.pack(fill=tk.X, padx=15)
             entries[key] = entry
@@ -1008,7 +1013,7 @@ class GenerationMixin:
         tk.Button(
             edit_dlg,
             text="💾 保存",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=20,
             bg=C["accent"],
             fg="white",
@@ -1332,11 +1337,11 @@ class GenerationMixin:
         dlg.resizable(False, False)
         C = UIStyle.COLORS
 
-        tk.Label(dlg, text="⚠️ 全部重新创作", font=("微软雅黑", 13, "bold"), bg=C["bg_dark"], fg=C["accent_text"]).pack(
-            pady=(12, 3)
-        )
         tk.Label(
-            dlg, text="选择需要重新生成的内容：", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_secondary"]
+            dlg, text="⚠️ 全部重新创作", font=UIStyle.font("heading_small"), bg=C["bg_dark"], fg=C["accent_text"]
+        ).pack(pady=(12, 3))
+        tk.Label(
+            dlg, text="选择需要重新生成的内容：", font=UIStyle.font("label"), bg=C["bg_dark"], fg=C["text_secondary"]
         ).pack(pady=(0, 8))
 
         # 勾选框
@@ -1353,7 +1358,7 @@ class GenerationMixin:
                 parent,
                 text=text,
                 variable=var,
-                font=("微软雅黑", 9),
+                font=UIStyle.font("label"),
                 bg=C["bg_dark"],
                 fg=C["text_primary"],
                 selectcolor=C["bg_card"],
@@ -1374,7 +1379,7 @@ class GenerationMixin:
 
         # 提示
         tk.Label(
-            dlg, text="未勾选的项目将保留现有内容", font=("微软雅黑", 9), bg=C["bg_dark"], fg=C["text_secondary"]
+            dlg, text="未勾选的项目将保留现有内容", font=UIStyle.font("label"), bg=C["bg_dark"], fg=C["text_secondary"]
         ).pack(pady=(10, 5))
 
         result = {"confirmed": False}
@@ -1397,7 +1402,7 @@ class GenerationMixin:
             command=on_confirm,
             bg=C["error"],
             fg="white",
-            font=("微软雅黑", 10, "bold"),
+            font=UIStyle.font("body_bold"),
             padx=20,
             pady=6,
         ).pack(side=tk.LEFT, padx=5)
@@ -1407,7 +1412,7 @@ class GenerationMixin:
             command=on_cancel,
             bg=C["bg_light"],
             fg=C["text_primary"],
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=20,
             pady=6,
         ).pack(side=tk.LEFT, padx=5)
@@ -1959,7 +1964,7 @@ class GenerationMixin:
         tk.Label(
             dialog,
             text=f"📖《{meta.get('title', '小说')}》章节回顾",
-            font=("微软雅黑", 12, "bold"),
+            font=UIStyle.font("title"),
             bg=C["bg_dark"],
             fg=C["accent_text"],
         ).pack(pady=10)
@@ -1967,7 +1972,7 @@ class GenerationMixin:
         review_text = scrolledtext.ScrolledText(
             dialog,
             wrap=tk.WORD,
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["bg_card"],
             fg=C["text_primary"],
             relief=tk.FLAT,
@@ -1993,7 +1998,7 @@ class GenerationMixin:
         tk.Button(
             dialog,
             text="关闭",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=20,
             bg=C["bg_light"],
             fg=C["text_primary"],
@@ -2022,14 +2027,14 @@ class GenerationMixin:
         ask.configure(bg=C["bg_dark"])
 
         tk.Label(
-            ask, text=f"从第{last_ch}章后续写", font=("微软雅黑", 12, "bold"), bg=C["bg_dark"], fg=C["accent_text"]
+            ask, text=f"从第{last_ch}章后续写", font=UIStyle.font("title"), bg=C["bg_dark"], fg=C["accent_text"]
         ).pack(pady=15)
 
         tk.Label(ask, text="新增章节数:", bg=C["bg_dark"], fg=C["text_primary"]).pack()
         add_count = tk.StringVar(value="10")
-        tk.Spinbox(ask, from_=1, to=500, textvariable=add_count, width=8, font=("微软雅黑", 10), bg=C["bg_card"]).pack(
-            pady=5
-        )
+        tk.Spinbox(
+            ask, from_=1, to=500, textvariable=add_count, width=8, font=UIStyle.font("body"), bg=C["bg_card"]
+        ).pack(pady=5)
 
         def start():
             n = int(add_count.get())
@@ -2143,6 +2148,6 @@ class GenerationMixin:
 
             threading.Thread(target=run, daemon=True).start()
 
-        tk.Button(ask, text="开始续写", font=("微软雅黑", 10), padx=20, bg=C["accent"], fg="white", command=start).pack(
-            pady=10
-        )
+        tk.Button(
+            ask, text="开始续写", font=UIStyle.font("body"), padx=20, bg=C["accent"], fg="white", command=start
+        ).pack(pady=10)

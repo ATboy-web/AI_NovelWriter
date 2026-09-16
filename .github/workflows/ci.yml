@@ -47,8 +47,10 @@ jobs:
 
       # 2026-09-16 起为**阻断式**：全仓已完成一次 `ruff format`（143 文件全部达标），
       # 之后任何未格式化的改动都会在这里失败 —— 这条门禁才真正有意义。
+      # 2026-09-17 扩到 `scripts/`：发布脚本（release_notes.py / fix_release_metadata.py）
+      # 也是长期维护的代码，格式一致性不该漏掉它们（`ruff check` 早已覆盖 scripts/）。
       - name: Ruff format check
-        run: ruff format --check app/ tests/
+        run: ruff format --check app/ tests/ scripts/
 
       # ⚠️ 暂为**非阻断**：存量还有约 100 条类型错误，集中在
       # app/providers/*、app/ai_client.py、app/memory_manager.py、app/novel_toolkit.py、

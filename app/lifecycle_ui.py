@@ -70,12 +70,12 @@ class NovelLifecycleMixin:
         top = tk.Frame(dialog, bg=C["bg_dark"])
         top.pack(side=tk.TOP, fill=tk.X, padx=12, pady=(8, 0))
 
-        tk.Label(top, text="小说标题:", bg=C["bg_dark"], fg=C["text_primary"], font=("微软雅黑", 9)).grid(
+        tk.Label(top, text="小说标题:", bg=C["bg_dark"], fg=C["text_primary"], font=UIStyle.font("label")).grid(
             row=0, column=0, sticky=tk.W, pady=3
         )
         title_entry = tk.Entry(
             top,
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             bg=C["bg_card"],
             fg=C["text_primary"],
             insertbackground=C["text_primary"],
@@ -85,7 +85,7 @@ class NovelLifecycleMixin:
         title_entry.grid(row=0, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
 
         # 用户想法输入框
-        tk.Label(top, text="你的想法:", bg=C["bg_dark"], fg=C["warning"], font=("微软雅黑", 9, "bold")).grid(
+        tk.Label(top, text="你的想法:", bg=C["bg_dark"], fg=C["warning"], font=UIStyle.font("label_bold")).grid(
             row=1, column=0, sticky=tk.NW, pady=3
         )
         idea_frame = tk.Frame(top, bg=C["bg_dark"])
@@ -93,7 +93,7 @@ class NovelLifecycleMixin:
 
         idea_text = tk.Text(
             idea_frame,
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_card"],
             fg=C["text_primary"],
             insertbackground=C["text_primary"],
@@ -112,7 +112,7 @@ class NovelLifecycleMixin:
         idea_text.bind("<FocusIn>", clear_placeholder)
 
         # 快速模板
-        tk.Label(top, text="快速模板:", bg=C["bg_dark"], fg=C["text_primary"], font=("微软雅黑", 9)).grid(
+        tk.Label(top, text="快速模板:", bg=C["bg_dark"], fg=C["text_primary"], font=UIStyle.font("label")).grid(
             row=2, column=0, sticky=tk.W, pady=3
         )
         template_var = tk.StringVar(value="无")
@@ -176,11 +176,15 @@ class NovelLifecycleMixin:
             col = 0
             for var_name, (label, default) in vars_def.items():
                 lbl = tk.Label(
-                    template_vars_frame, text=f"{label}:", bg=C["bg_dark"], fg=C["text_primary"], font=("微软雅黑", 8)
+                    template_vars_frame,
+                    text=f"{label}:",
+                    bg=C["bg_dark"],
+                    fg=C["text_primary"],
+                    font=UIStyle.font("caption"),
                 )
                 lbl.grid(row=row, column=col * 2, sticky=tk.W, padx=(0, 3), pady=1)
                 entry = tk.Entry(
-                    template_vars_frame, font=("微软雅黑", 8), bg=C["bg_card"], fg=C["text_primary"], width=12
+                    template_vars_frame, font=UIStyle.font("caption"), bg=C["bg_card"], fg=C["text_primary"], width=12
                 )
                 entry.insert(0, default)
                 entry.grid(row=row, column=col * 2 + 1, padx=(0, 10), pady=1)
@@ -192,7 +196,7 @@ class NovelLifecycleMixin:
 
         template_combo.bind("<<ComboboxSelected>>", on_template_change)
 
-        tk.Label(top, text="小说频道:", bg=C["bg_dark"], fg=C["text_primary"], font=("微软雅黑", 9)).grid(
+        tk.Label(top, text="小说频道:", bg=C["bg_dark"], fg=C["text_primary"], font=UIStyle.font("label")).grid(
             row=4, column=0, sticky=tk.W, pady=3
         )
         channel_var = tk.StringVar(value="male")
@@ -340,7 +344,7 @@ class NovelLifecycleMixin:
             "重生-重生日常",
         ]
 
-        tk.Label(top, text="小说类型:", bg=C["bg_dark"], fg=C["text_primary"], font=("微软雅黑", 9)).grid(
+        tk.Label(top, text="小说类型:", bg=C["bg_dark"], fg=C["text_primary"], font=UIStyle.font("label")).grid(
             row=5, column=0, sticky=tk.W, pady=3
         )
         genre_var = tk.StringVar(value=MALE_GENRES[0])
@@ -598,7 +602,7 @@ class NovelLifecycleMixin:
             pady=5,
             bg=C["bg_dark"],
             fg=C["accent_light"],
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
         )
         tag_outer.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
 
@@ -649,7 +653,7 @@ class NovelLifecycleMixin:
                 cat_label = tk.Label(
                     tags_container,
                     text=cat_name,
-                    font=("微软雅黑", 9, "bold"),
+                    font=UIStyle.font("label_bold"),
                     bg=C["bg_dark"],
                     fg=C["accent_light"],
                     anchor=tk.W,
@@ -664,7 +668,7 @@ class NovelLifecycleMixin:
                         tag_line,
                         text=tag,
                         variable=var,
-                        font=("微软雅黑", 8),
+                        font=UIStyle.font("caption"),
                         bg=C["bg_dark"],
                         fg=C["text_secondary"],
                         selectcolor=C["bg_card"],
@@ -692,7 +696,7 @@ class NovelLifecycleMixin:
                 selectcolor=C["bg_card"],
                 activebackground=C["bg_dark"],
                 activeforeground=C["accent_light"],
-                font=("微软雅黑", 9),
+                font=UIStyle.font("label"),
             )
             rb.pack(side=tk.LEFT, padx=8)
 
@@ -702,12 +706,12 @@ class NovelLifecycleMixin:
         # 自定义标签输入
         custom_frame = tk.Frame(tag_outer, bg=C["bg_dark"])
         custom_frame.pack(fill=tk.X, padx=5, pady=(3, 0))
-        tk.Label(custom_frame, text="自定义:", bg=C["bg_dark"], fg=C["text_secondary"], font=("微软雅黑", 8)).pack(
-            side=tk.LEFT
-        )
+        tk.Label(
+            custom_frame, text="自定义:", bg=C["bg_dark"], fg=C["text_secondary"], font=UIStyle.font("caption")
+        ).pack(side=tk.LEFT)
         custom_tag_entry = tk.Entry(
             custom_frame,
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_card"],
             fg=C["text_primary"],
             insertbackground=C["text_primary"],
@@ -737,7 +741,7 @@ class NovelLifecycleMixin:
                 last_line,
                 text=tag,
                 variable=var,
-                font=("微软雅黑", 8),
+                font=UIStyle.font("caption"),
                 bg=C["bg_card"],
                 fg=C["accent_light"],
                 selectcolor=C["bg_dark"],
@@ -755,7 +759,7 @@ class NovelLifecycleMixin:
             custom_frame,
             text="添加",
             command=add_custom_tag,
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -770,7 +774,7 @@ class NovelLifecycleMixin:
         # 章节数 + 每章字数 + 创建按钮（同一行）
         action_row = tk.Frame(bottom, bg=C["bg_dark"])
         action_row.pack(fill=tk.X, pady=3)
-        tk.Label(action_row, text="章节数:", bg=C["bg_dark"], fg=C["text_primary"], font=("微软雅黑", 9)).pack(
+        tk.Label(action_row, text="章节数:", bg=C["bg_dark"], fg=C["text_primary"], font=UIStyle.font("label")).pack(
             side=tk.LEFT
         )
         chapters_var = tk.StringVar(value="20")
@@ -780,20 +784,20 @@ class NovelLifecycleMixin:
             to=500,
             textvariable=chapters_var,
             width=6,
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_card"],
             fg=C["text_primary"],
         ).pack(side=tk.LEFT, padx=5)
 
-        tk.Label(action_row, text="每章字数:", bg=C["bg_dark"], fg=C["text_primary"], font=("微软雅黑", 9)).pack(
+        tk.Label(action_row, text="每章字数:", bg=C["bg_dark"], fg=C["text_primary"], font=UIStyle.font("label")).pack(
             side=tk.LEFT, padx=(15, 0)
         )
         word_count_var = tk.StringVar(value="10000")
-        word_count_combo = ttk.Combobox(action_row, textvariable=word_count_var, width=8, font=("微软雅黑", 9))
+        word_count_combo = ttk.Combobox(action_row, textvariable=word_count_var, width=8, font=UIStyle.font("label"))
         word_count_combo["values"] = ["1000", "2000", "3000", "5000", "8000", "10000", "15000", "20000"]
         word_count_combo.pack(side=tk.LEFT, padx=5)
 
-        tk.Label(action_row, text="首次生成:", bg=C["bg_dark"], fg=C["text_primary"], font=("微软雅黑", 9)).pack(
+        tk.Label(action_row, text="首次生成:", bg=C["bg_dark"], fg=C["text_primary"], font=UIStyle.font("label")).pack(
             side=tk.LEFT, padx=(15, 0)
         )
         first_batch_var = tk.StringVar(value="0")  # 0=一次性全部生成
@@ -803,13 +807,13 @@ class NovelLifecycleMixin:
             to=100,
             textvariable=first_batch_var,
             width=4,
-            font=("微软雅黑", 9),
+            font=UIStyle.font("label"),
             bg=C["bg_card"],
             fg=C["text_primary"],
         ).pack(side=tk.LEFT, padx=5)
-        tk.Label(action_row, text="章(0=全部)", bg=C["bg_dark"], fg=C["text_secondary"], font=("微软雅黑", 8)).pack(
-            side=tk.LEFT
-        )
+        tk.Label(
+            action_row, text="章(0=全部)", bg=C["bg_dark"], fg=C["text_secondary"], font=UIStyle.font("caption")
+        ).pack(side=tk.LEFT)
 
         def confirm():
             title = title_entry.get().strip()
@@ -907,7 +911,7 @@ class NovelLifecycleMixin:
             action_row,
             text="创建小说",
             command=confirm,
-            font=("微软雅黑", 10, "bold"),
+            font=UIStyle.font("body_bold"),
             bg=C["accent"],
             fg="white",
             relief=tk.FLAT,
@@ -1170,7 +1174,7 @@ class NovelLifecycleMixin:
         tk.Label(
             dialog,
             text=f"《{original_meta.get('title', '')}》续集",
-            font=("微软雅黑", 14, "bold"),
+            font=UIStyle.font("heading"),
             bg=C["bg_dark"],
             fg=C["accent_light"],
         ).pack(pady=(15, 10))
@@ -1179,7 +1183,7 @@ class NovelLifecycleMixin:
         title_frame = tk.Frame(dialog, bg=C["bg_dark"])
         title_frame.pack(fill=tk.X, padx=20, pady=5)
         tk.Label(title_frame, text="续集标题:", bg=C["bg_dark"], fg=C["text_primary"]).pack(side=tk.LEFT)
-        title_entry = tk.Entry(title_frame, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"])
+        title_entry = tk.Entry(title_frame, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"])
         title_entry.insert(0, f"{original_meta.get('title', '')} 第二部")
         title_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
@@ -1188,7 +1192,7 @@ class NovelLifecycleMixin:
             anchor=tk.W, padx=20, pady=(10, 3)
         )
         concept_text = tk.Text(
-            dialog, wrap=tk.WORD, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"], height=5
+            dialog, wrap=tk.WORD, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"], height=5
         )
         concept_text.pack(fill=tk.X, padx=20, pady=5)
         concept_text.insert("1.0", "延续第一部的世界观和角色，展开新的冒险...")
@@ -1199,7 +1203,7 @@ class NovelLifecycleMixin:
                 anchor=tk.W, padx=20, pady=(10, 3)
             )
             summary_preview = tk.Text(
-                dialog, wrap=tk.WORD, font=("微软雅黑", 9), bg=C["bg_card"], fg=C["text_secondary"], height=4
+                dialog, wrap=tk.WORD, font=UIStyle.font("label"), bg=C["bg_card"], fg=C["text_secondary"], height=4
             )
             summary_preview.pack(fill=tk.X, padx=20, pady=5)
             summary_preview.insert("1.0", global_summary[:500] + ("..." if len(global_summary) > 500 else ""))
@@ -1210,7 +1214,7 @@ class NovelLifecycleMixin:
         params_frame.pack(fill=tk.X, padx=20, pady=10)
         tk.Label(params_frame, text="章节数:", bg=C["bg_dark"], fg=C["text_primary"]).pack(side=tk.LEFT)
         chapters_var = tk.StringVar(value=str(original_meta.get("chapter_count", 20)))
-        tk.Spinbox(params_frame, from_=1, to=500, textvariable=chapters_var, width=6, font=("微软雅黑", 9)).pack(
+        tk.Spinbox(params_frame, from_=1, to=500, textvariable=chapters_var, width=6, font=UIStyle.font("label")).pack(
             side=tk.LEFT, padx=5
         )
         tk.Label(params_frame, text="每章字数:", bg=C["bg_dark"], fg=C["text_primary"]).pack(side=tk.LEFT, padx=(15, 0))
@@ -1299,7 +1303,7 @@ class NovelLifecycleMixin:
             command=confirm,
             bg=C["accent"],
             fg="white",
-            font=("微软雅黑", 11, "bold"),
+            font=UIStyle.font("subtitle_bold"),
             padx=30,
             pady=8,
         ).pack(pady=15)
@@ -1332,7 +1336,7 @@ class NovelLifecycleMixin:
         tk.Label(
             dialog,
             text=f"基于《{original_meta.get('title', '')}》的同人作品",
-            font=("微软雅黑", 14, "bold"),
+            font=UIStyle.font("heading"),
             bg=C["bg_dark"],
             fg=C["accent_light"],
         ).pack(pady=(15, 10))
@@ -1341,7 +1345,7 @@ class NovelLifecycleMixin:
         title_frame = tk.Frame(dialog, bg=C["bg_dark"])
         title_frame.pack(fill=tk.X, padx=20, pady=5)
         tk.Label(title_frame, text="作品标题:", bg=C["bg_dark"], fg=C["text_primary"]).pack(side=tk.LEFT)
-        title_entry = tk.Entry(title_frame, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"])
+        title_entry = tk.Entry(title_frame, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"])
         title_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
         # 衍生类型
@@ -1376,7 +1380,7 @@ class NovelLifecycleMixin:
                     bg=C["bg_card"],
                     fg=C["text_primary"],
                     selectcolor=C["bg_dark"],
-                    font=("微软雅黑", 9),
+                    font=UIStyle.font("label"),
                 ).pack(side=tk.LEFT, padx=5)
 
         # 衍生概念
@@ -1384,7 +1388,7 @@ class NovelLifecycleMixin:
             anchor=tk.W, padx=20, pady=(10, 3)
         )
         concept_text = tk.Text(
-            dialog, wrap=tk.WORD, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"], height=6
+            dialog, wrap=tk.WORD, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"], height=6
         )
         concept_text.pack(fill=tk.X, padx=20, pady=5)
         concept_text.insert("1.0", "在这个平行世界中...")
@@ -1394,7 +1398,7 @@ class NovelLifecycleMixin:
         params_frame.pack(fill=tk.X, padx=20, pady=10)
         tk.Label(params_frame, text="章节数:", bg=C["bg_dark"], fg=C["text_primary"]).pack(side=tk.LEFT)
         chapters_var = tk.StringVar(value="10")
-        tk.Spinbox(params_frame, from_=1, to=200, textvariable=chapters_var, width=6, font=("微软雅黑", 9)).pack(
+        tk.Spinbox(params_frame, from_=1, to=200, textvariable=chapters_var, width=6, font=UIStyle.font("label")).pack(
             side=tk.LEFT, padx=5
         )
         tk.Label(params_frame, text="每章字数:", bg=C["bg_dark"], fg=C["text_primary"]).pack(side=tk.LEFT, padx=(15, 0))
@@ -1490,7 +1494,7 @@ class NovelLifecycleMixin:
             command=confirm,
             bg=C["accent"],
             fg="white",
-            font=("微软雅黑", 11, "bold"),
+            font=UIStyle.font("subtitle_bold"),
             padx=30,
             pady=8,
         ).pack(pady=15)
@@ -1591,7 +1595,9 @@ class NovelLifecycleMixin:
         cloud_frame = ttk.Frame(notebook)
         notebook.add(cloud_frame, text="云端存储")
 
-        ttk.Label(cloud_frame, text="云端存储配置", font=("", 11, "bold")).pack(anchor=tk.W, padx=20, pady=(15, 10))
+        ttk.Label(cloud_frame, text="云端存储配置", font=UIStyle.font("default_bold")).pack(
+            anchor=tk.W, padx=20, pady=(15, 10)
+        )
         ttk.Label(cloud_frame, text="支持: WebDAV（坚果云）、百度网盘、夸克网盘、迅雷网盘、阿里云盘").pack(
             anchor=tk.W, padx=20, pady=(0, 10)
         )
@@ -1730,43 +1736,47 @@ class NovelLifecycleMixin:
             command=toggle_adult_visibility,
             relief=tk.FLAT,
             fg="gray",
-            font=("微软雅黑", 8),
+            font=UIStyle.font("caption"),
             anchor=tk.W,
         )
         secret_btn.pack(side=tk.LEFT)
 
         adult_controls = tk.Frame(adult_frame)
 
-        tk.Label(adult_controls, text="⚠️ 以下功能仅供成年用户使用", fg="red", font=("微软雅黑", 9, "bold")).pack(
+        tk.Label(adult_controls, text="⚠️ 以下功能仅供成年用户使用", fg="red", font=UIStyle.font("label_bold")).pack(
             anchor=tk.W, pady=(5, 10)
         )
 
-        adult_check = tk.Checkbutton(adult_controls, text="启用18+内容生成", variable=adult_var, font=("微软雅黑", 10))
+        adult_check = tk.Checkbutton(
+            adult_controls, text="启用18+内容生成", variable=adult_var, font=UIStyle.font("body")
+        )
         adult_check.pack(anchor=tk.W, pady=3)
 
         edge_var = tk.BooleanVar(value=self.config.get("edge_content", False))
-        edge_check = tk.Checkbutton(adult_controls, text="允许擦边内容", variable=edge_var, font=("微软雅黑", 10))
+        edge_check = tk.Checkbutton(adult_controls, text="允许擦边内容", variable=edge_var, font=UIStyle.font("body"))
         edge_check.pack(anchor=tk.W, pady=3)
 
         tk.Label(
-            adult_controls, text="启用后，AI在创作时会根据剧情需要加入相关描写", fg="gray", font=("微软雅黑", 8)
+            adult_controls, text="启用后，AI在创作时会根据剧情需要加入相关描写", fg="gray", font=UIStyle.font("caption")
         ).pack(anchor=tk.W, pady=(5, 0))
 
         # 卷管理设置
         volume_frame = tk.LabelFrame(advanced_frame, text=" 卷管理 ", padx=10, pady=10)
         volume_frame.pack(fill=tk.X, padx=15, pady=10)
 
-        tk.Label(volume_frame, text="每卷默认章节数:", font=("微软雅黑", 10)).pack(anchor=tk.W, pady=3)
+        tk.Label(volume_frame, text="每卷默认章节数:", font=UIStyle.font("body")).pack(anchor=tk.W, pady=3)
         vol_chapters_var = tk.StringVar(value=str(self.config.get("chapters_per_volume", 100)))
         ttk.Spinbox(volume_frame, from_=10, to=500, textvariable=vol_chapters_var, width=10).pack(anchor=tk.W, pady=3)
 
-        tk.Label(volume_frame, text="角色传记默认字数:", font=("微软雅黑", 10)).pack(anchor=tk.W, pady=(10, 3))
+        tk.Label(volume_frame, text="角色传记默认字数:", font=UIStyle.font("body")).pack(anchor=tk.W, pady=(10, 3))
         bio_words_var = tk.StringVar(value=str(self.config.get("biography_word_count", 100000)))
         bio_combo = ttk.Combobox(
             volume_frame, textvariable=bio_words_var, values=["10000", "30000", "50000", "100000", "200000"], width=10
         )
         bio_combo.pack(anchor=tk.W, pady=3)
-        tk.Label(volume_frame, text="生成角色个人传时的默认字数", fg="gray", font=("微软雅黑", 8)).pack(anchor=tk.W)
+        tk.Label(volume_frame, text="生成角色个人传时的默认字数", fg="gray", font=UIStyle.font("caption")).pack(
+            anchor=tk.W
+        )
 
         # 智能体优化
         agent_frame = tk.LabelFrame(advanced_frame, text=" 智能体优化 ", padx=10, pady=10)
@@ -1774,12 +1784,12 @@ class NovelLifecycleMixin:
 
         context_var = tk.BooleanVar(value=self.config.get("smart_context", True))
         tk.Checkbutton(
-            agent_frame, text="智能上下文管理（防止章节过多卡死）", variable=context_var, font=("微软雅黑", 10)
+            agent_frame, text="智能上下文管理（防止章节过多卡死）", variable=context_var, font=UIStyle.font("body")
         ).pack(anchor=tk.W, pady=3)
 
         summary_var = tk.BooleanVar(value=self.config.get("auto_summary", True))
         tk.Checkbutton(
-            agent_frame, text="自动生成章节摘要（改善上下文连贯性）", variable=summary_var, font=("微软雅黑", 10)
+            agent_frame, text="自动生成章节摘要（改善上下文连贯性）", variable=summary_var, font=UIStyle.font("body")
         ).pack(anchor=tk.W, pady=3)
 
         # ===== 保存 =====
@@ -1888,12 +1898,18 @@ class NovelLifecycleMixin:
         dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(dialog, text="书籍简介", font=("微软雅黑", 14, "bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
+        tk.Label(dialog, text="书籍简介", font=UIStyle.font("heading"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
             pady=(15, 10)
         )
 
         synopsis_text = tk.Text(
-            dialog, wrap=tk.WORD, font=("微软雅黑", 12), bg=C["bg_card"], fg=C["text_primary"], padx=20, pady=15
+            dialog,
+            wrap=tk.WORD,
+            font=UIStyle.font("title_plain"),
+            bg=C["bg_card"],
+            fg=C["text_primary"],
+            padx=20,
+            pady=15,
         )
         synopsis_text.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
         synopsis_text.insert("1.0", content)
@@ -1909,7 +1925,7 @@ class NovelLifecycleMixin:
             self._log("书籍简介已保存")
 
         tk.Button(
-            btn_frame, text="保存", command=save, bg=C["success"], fg="white", font=("微软雅黑", 10), padx=20
+            btn_frame, text="保存", command=save, bg=C["success"], fg="white", font=UIStyle.font("body"), padx=20
         ).pack(side=tk.LEFT, padx=5)
         tk.Button(
             btn_frame,
@@ -1917,7 +1933,7 @@ class NovelLifecycleMixin:
             command=dialog.destroy,
             bg=C["bg_light"],
             fg=C["text_primary"],
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
         ).pack(side=tk.RIGHT, padx=5)
 
@@ -1979,15 +1995,15 @@ class NovelLifecycleMixin:
         C = UIStyle.COLORS
 
         tk.Label(
-            dialog, text=f"已导入: {filename}", font=("微软雅黑", 12, "bold"), bg=C["bg_dark"], fg=C["accent_light"]
+            dialog, text=f"已导入: {filename}", font=UIStyle.font("title"), bg=C["bg_dark"], fg=C["accent_light"]
         ).pack(pady=(15, 5))
 
         tk.Label(
-            dialog, text=f"字数: {len(content)}", font=("微软雅黑", 10), bg=C["bg_dark"], fg=C["text_secondary"]
+            dialog, text=f"字数: {len(content)}", font=UIStyle.font("body"), bg=C["bg_dark"], fg=C["text_secondary"]
         ).pack(pady=(0, 10))
 
         preview_text = tk.Text(
-            dialog, wrap=tk.WORD, font=("微软雅黑", 10), bg=C["bg_card"], fg=C["text_primary"], height=15
+            dialog, wrap=tk.WORD, font=UIStyle.font("body"), bg=C["bg_card"], fg=C["text_primary"], height=15
         )
         preview_text.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
         preview_text.insert("1.0", content[:2000] + ("..." if len(content) > 2000 else ""))
@@ -2011,7 +2027,7 @@ class NovelLifecycleMixin:
             command=insert_direct,
             bg=C["accent"],
             fg="white",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
         ).pack(side=tk.LEFT, padx=5)
         tk.Button(
@@ -2020,7 +2036,7 @@ class NovelLifecycleMixin:
             command=ai_analyze,
             bg=C["success"],
             fg="white",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
         ).pack(side=tk.LEFT, padx=5)
         tk.Button(
@@ -2029,7 +2045,7 @@ class NovelLifecycleMixin:
             command=dialog.destroy,
             bg=C["bg_light"],
             fg=C["text_primary"],
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
         ).pack(side=tk.RIGHT, padx=5)
 
@@ -2098,12 +2114,12 @@ class NovelLifecycleMixin:
         dialog.configure(bg=UIStyle.COLORS["bg_dark"])
         C = UIStyle.COLORS
 
-        tk.Label(dialog, text="AI分析报告", font=("微软雅黑", 14, "bold"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
+        tk.Label(dialog, text="AI分析报告", font=UIStyle.font("heading"), bg=C["bg_dark"], fg=C["accent_light"]).pack(
             pady=(15, 10)
         )
 
         result_text = tk.Text(
-            dialog, wrap=tk.WORD, font=("微软雅黑", 11), bg=C["bg_card"], fg=C["text_primary"], padx=20, pady=15
+            dialog, wrap=tk.WORD, font=UIStyle.font("subtitle"), bg=C["bg_card"], fg=C["text_primary"], padx=20, pady=15
         )
         result_text.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
         result_text.insert("1.0", analysis)
@@ -2133,7 +2149,7 @@ class NovelLifecycleMixin:
             command=insert_content,
             bg=C["accent"],
             fg="white",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
         ).pack(side=tk.LEFT, padx=5)
         tk.Button(
@@ -2142,7 +2158,7 @@ class NovelLifecycleMixin:
             command=use_as_reference,
             bg=C["success"],
             fg="white",
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
         ).pack(side=tk.LEFT, padx=5)
         tk.Button(
@@ -2151,6 +2167,6 @@ class NovelLifecycleMixin:
             command=dialog.destroy,
             bg=C["bg_light"],
             fg=C["text_primary"],
-            font=("微软雅黑", 10),
+            font=UIStyle.font("body"),
             padx=15,
         ).pack(side=tk.RIGHT, padx=5)

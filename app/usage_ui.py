@@ -24,9 +24,9 @@ from __future__ import annotations
 
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, ttk
 
-from app import UIStyle
+from app import UIStyle, dialogs
 from app.events import TOPIC_AI_USAGE
 
 from .async_runner import BackgroundRunner
@@ -401,7 +401,7 @@ class UsagePanelMixin:
     def _export_usage_csv(self) -> None:
         rows = usage_tracker.read_records()
         if not rows:
-            messagebox.showinfo("提示", "暂无可导出的用量记录")
+            dialogs.showinfo("提示", "暂无可导出的用量记录")
             return
         target = usage_tracker.novel_dir
         initial = Path(target) if target else Path.home()
@@ -417,15 +417,15 @@ class UsagePanelMixin:
         try:
             saved = usage_tracker.export_csv(path)
         except OSError as exc:
-            messagebox.showerror("导出失败", f"无法写入 {path}\n{exc}")
+            dialogs.showerror("导出失败", f"无法写入 {path}\n{exc}")
             return
         self._log(f"[用量] 已导出 {len(rows)} 条记录 → {saved}")
-        messagebox.showinfo("导出成功", f"已导出 {len(rows)} 条记录：\n{saved}")
+        dialogs.showinfo("导出成功", f"已导出 {len(rows)} 条记录：\n{saved}")
 
     def _open_usage_dir(self) -> None:
         target = usage_tracker.novel_dir
         if target is None:
-            messagebox.showwarning("提示", "请先打开小说")
+            dialogs.showwarning("提示", "请先打开小说")
             return
         path = target / "usage"
         path.mkdir(parents=True, exist_ok=True)
@@ -434,7 +434,7 @@ class UsagePanelMixin:
 
             os.startfile(str(path))  # noqa: S606 - 打开资源管理器
         except (AttributeError, OSError) as exc:
-            messagebox.showinfo("用量目录", f"{path}\n（无法自动打开：{exc}）")
+            dialogs.showinfo("用量目录", f"{path}\n（无法自动打开：{exc}）")
 
     def _copy_usage_summary(self) -> None:
         text = self.usage_summary_var.get()

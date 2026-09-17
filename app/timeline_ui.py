@@ -8,9 +8,9 @@ import re
 import threading
 import tkinter as tk
 from datetime import datetime
-from tkinter import messagebox, ttk
+from tkinter import ttk
 
-from app import UIStyle
+from app import UIStyle, dialogs
 from app.lineage import branch_lineage_record
 
 
@@ -20,7 +20,7 @@ class TimelineMixin:
     def _open_timeline(self):
         """世界线/时间线管理"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先打开小说")
+            dialogs.showwarning("提示", "请先打开小说")
             return
 
         dialog = tk.Toplevel(self.root)
@@ -432,7 +432,7 @@ class TimelineMixin:
     def _generate_branch_story(self, dialog, timeline_dir, timelines, all_branches, detail_text, refresh_callback):
         """为当前选中的决策点生成分支故事"""
         if not all_branches:
-            messagebox.showwarning("提示", "请先在左侧点击选择一个决策点")
+            dialogs.showwarning("提示", "请先在左侧点击选择一个决策点")
             return
 
         # 从dialog的变量中获取selected_idx
@@ -447,7 +447,7 @@ class TimelineMixin:
             # 从detail_text的内容判断是否选中
             content = detail_text.get("1.0", "1.0+5c")
             if not content or "点击左侧" in content:
-                messagebox.showwarning("提示", "请先在左侧点击选择一个决策点")
+                dialogs.showwarning("提示", "请先在左侧点击选择一个决策点")
                 return
         except Exception:
             pass
@@ -461,7 +461,7 @@ class TimelineMixin:
                 break
 
         if idx < 0 or idx >= len(all_branches):
-            messagebox.showwarning("提示", "请先在左侧点击选择一个决策点")
+            dialogs.showwarning("提示", "请先在左侧点击选择一个决策点")
             return
         br = all_branches[idx]
 
@@ -493,14 +493,14 @@ class TimelineMixin:
                 self._log("[世界线] 分支故事已生成")
                 self.root.after(0, lambda: refresh_callback())
             except Exception as e:
-                self.root.after(0, lambda _exc=e: messagebox.showerror("失败", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("失败", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
     def _start_branch_novel(self, dialog, timeline_dir, timelines, all_branches, refresh_callback):
         """基于决策点创建独立分支世界线，可连续创作"""
         if not all_branches:
-            messagebox.showwarning("提示", "没有决策点")
+            dialogs.showwarning("提示", "没有决策点")
             return
 
         # 先让用户选择决策点
@@ -784,14 +784,14 @@ class TimelineMixin:
                 self._log(f"[分支创作] 分支世界线完成: {branch_dir.name}")
                 self.root.after(
                     0,
-                    lambda: messagebox.showinfo(
+                    lambda: dialogs.showinfo(
                         "完成", f"分支世界线创作完成！\n{branch_dir.name}/\n共{n_chapters}章\n\n角色系统/摘要均已生成"
                     ),
                 )
 
             except Exception as e:
                 self._log(f"[分支创作] 失败: {e}")
-                self.root.after(0, lambda _exc=e: messagebox.showerror("失败", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("失败", str(_exc)))
 
         self._stop_flag = False
         threading.Thread(target=run, daemon=True).start()

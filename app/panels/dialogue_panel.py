@@ -2,9 +2,9 @@
 
 import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import scrolledtext, ttk
 
-from app import UIStyle
+from app import UIStyle, dialogs
 from app.novel_toolkit import DialogueEngine
 
 
@@ -35,7 +35,7 @@ class DialoguePanelMixin:
 
     def _start_dialogue(self):
         if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
+            dialogs.showwarning("提示", "请先配置AI")
             return
 
         self.dialogue_engine = DialogueEngine(self.ai_client)
@@ -62,13 +62,13 @@ class DialoguePanelMixin:
                 text = self.dialogue_engine.export_text()
                 self.root.after(0, lambda: self._show_tool_result(self.dlg_result, text))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
     def _continue_dialogue(self):
         if not self.dialogue_engine:
-            messagebox.showinfo("提示", "请先开始推演")
+            dialogs.showinfo("提示", "请先开始推演")
             return
 
         def run():
@@ -77,7 +77,7 @@ class DialoguePanelMixin:
                 text = self.dialogue_engine.export_text()
                 self.root.after(0, lambda: self._show_tool_result(self.dlg_result, text))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 

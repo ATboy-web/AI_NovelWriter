@@ -5,9 +5,8 @@
 
 import json
 import tkinter as tk
-from tkinter import messagebox
 
-from app import UIStyle
+from app import UIStyle, dialogs
 
 from .token_estimator import format_tokens
 
@@ -205,7 +204,7 @@ class OutlineUIMixin:
     def _add_outline_item(self):
         """添加大纲项"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先创建或打开小说")
+            dialogs.showwarning("提示", "请先创建或打开小说")
             return
 
         outline_type = self.outline_type_var.get()
@@ -238,7 +237,7 @@ class OutlineUIMixin:
             title = title_entry.get().strip()
             content = content_text.get("1.0", tk.END).strip()
             if not title:
-                messagebox.showwarning("提示", "请输入标题")
+                dialogs.showwarning("提示", "请输入标题")
                 return
 
             if outline_type == "整体大纲":
@@ -273,7 +272,7 @@ class OutlineUIMixin:
         """编辑大纲项"""
         selection = self.outline_list.curselection()
         if not selection:
-            messagebox.showwarning("提示", "请先选择要编辑的大纲项")
+            dialogs.showwarning("提示", "请先选择要编辑的大纲项")
             return
 
         idx = selection[0]
@@ -335,7 +334,7 @@ class OutlineUIMixin:
             new_title = title_entry.get().strip()
             new_content = content_text.get("1.0", tk.END).strip()
             if not new_title:
-                messagebox.showwarning("提示", "请输入标题")
+                dialogs.showwarning("提示", "请输入标题")
                 return
 
             if outline_type == "章节大纲":
@@ -382,13 +381,13 @@ class OutlineUIMixin:
         """删除大纲项"""
         selection = self.outline_list.curselection()
         if not selection:
-            messagebox.showwarning("提示", "请先选择要删除的大纲项")
+            dialogs.showwarning("提示", "请先选择要删除的大纲项")
             return
 
         idx = selection[0]
         outline_type = self.outline_type_var.get()
 
-        if not messagebox.askyesno("确认", f"确定要删除这个{outline_type}吗？"):
+        if not dialogs.askyesno("确认", f"确定要删除这个{outline_type}吗？"):
             return
 
         if outline_type == "章节大纲":

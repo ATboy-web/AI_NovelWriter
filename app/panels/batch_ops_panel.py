@@ -3,8 +3,9 @@
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 
+from app import dialogs
 from app.ui_style import UIStyle
 
 
@@ -45,7 +46,7 @@ class BatchOpsPanelMixin:
             folder_path = Path(folder)
             text_files = sorted(list(folder_path.glob("*.txt")) + list(folder_path.glob("*.md")))
             if not text_files:
-                messagebox.showinfo("提示", "该文件夹中没有txt/md文件")
+                dialogs.showinfo("提示", "该文件夹中没有txt/md文件")
                 return
 
             chapters_dir = self.current_novel_dir / "chapters"
@@ -68,7 +69,7 @@ class BatchOpsPanelMixin:
                 imported += 1
 
             self._log(f"批量导入 {imported} 个章节文件")
-            messagebox.showinfo("成功", f"已导入 {imported} 个章节文件")
+            dialogs.showinfo("成功", f"已导入 {imported} 个章节文件")
 
         tk.Button(
             import_frame,
@@ -101,7 +102,7 @@ class BatchOpsPanelMixin:
 
             chapters_dir = self.current_novel_dir / "chapters"
             if not chapters_dir.exists():
-                messagebox.showinfo("提示", "没有章节文件")
+                dialogs.showinfo("提示", "没有章节文件")
                 return
 
             chapter_files = sorted(chapters_dir.glob("chapter_*.txt"))
@@ -112,7 +113,7 @@ class BatchOpsPanelMixin:
                 exported += 1
 
             self._log(f"批量导出 {exported} 个章节文件")
-            messagebox.showinfo("成功", f"已导出 {exported} 个章节文件到 {folder}")
+            dialogs.showinfo("成功", f"已导出 {exported} 个章节文件到 {folder}")
 
         tk.Button(
             export_frame,
@@ -138,7 +139,7 @@ class BatchOpsPanelMixin:
 
         def batch_summary():
             if not self.ai_client.is_configured():
-                messagebox.showwarning("提示", "请先配置AI")
+                dialogs.showwarning("提示", "请先配置AI")
                 return
 
             chapters_dir = self.current_novel_dir / "chapters"
@@ -152,7 +153,7 @@ class BatchOpsPanelMixin:
                 for vol in range(1, total_volumes + 1):
                     self.memory.auto_generate_volume_summary(vol)
                     self.root.after(0, lambda v=vol: self._log(f"第{v}卷摘要已生成"))
-                self.root.after(0, lambda: messagebox.showinfo("完成", f"已生成 {total_volumes} 个卷级摘要"))
+                self.root.after(0, lambda: dialogs.showinfo("完成", f"已生成 {total_volumes} 个卷级摘要"))
 
             threading.Thread(target=run, daemon=True).start()
 

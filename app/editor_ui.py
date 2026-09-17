@@ -7,9 +7,8 @@ import json
 import threading
 import time
 import tkinter as tk
-from tkinter import messagebox
 
-from app import FullscreenWriter, SceneDetector, UIStyle
+from app import FullscreenWriter, SceneDetector, UIStyle, dialogs
 
 
 class EditorUIMixin:
@@ -60,7 +59,7 @@ class EditorUIMixin:
                 break
 
         self._log(f"已跳转到 {tab_name.strip()}，选中 {len(text)} 字作为上下文")
-        messagebox.showinfo("已跳转", f"已选中 {len(text)} 字内容\n请在「创作工具」标签页使用对应功能")
+        dialogs.showinfo("已跳转", f"已选中 {len(text)} 字内容\n请在「创作工具」标签页使用对应功能")
 
     def _style_imitation_with_text(self, text: str):
         """用选中文字进行仿写"""
@@ -71,11 +70,11 @@ class EditorUIMixin:
     def _gen_prompt_from_text(self, text: str):
         """从选中文字生成图片提示词"""
         if not self.current_novel_dir:
-            messagebox.showinfo("提示", "请先打开小说")
+            dialogs.showinfo("提示", "请先打开小说")
             return
         scenes = SceneDetector.detect(text)
         if not scenes:
-            messagebox.showinfo("提示", "未检测到适合生成图片的场景")
+            dialogs.showinfo("提示", "未检测到适合生成图片的场景")
             return
         img_dir = self.current_novel_dir / "scene_prompts"
         img_dir.mkdir(exist_ok=True)
@@ -84,7 +83,7 @@ class EditorUIMixin:
             f = img_dir / f"manual_{ts}_{i + 1}_prompt.txt"
             f.write_text(f"场景: {scene.get('text', '')[:200]}\n\n提示词:\n{scene.get('prompt', '')}", encoding="utf-8")
         self._log(f"已保存 {len(scenes)} 个手动提示词到 scene_prompts/")
-        messagebox.showinfo("成功", f"已生成 {len(scenes)} 个提示词\n保存到 scene_prompts/")
+        dialogs.showinfo("成功", f"已生成 {len(scenes)} 个提示词\n保存到 scene_prompts/")
 
     def _display_optimized(self, content):
         """显示优化后的内容"""

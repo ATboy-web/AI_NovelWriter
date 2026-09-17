@@ -180,13 +180,15 @@ class BackgroundRunner:
     def messagebox_on_error(title: str = "操作失败", parent=None):
         """返回一个「弹窗报错」的 `on_error` 回调。
 
-        延迟 import：本模块要能在无 Tk 的服务器/单测环境被导入。
+        ⚠️ 延迟 import（两层都是）：本模块要能在**无 Tk 的服务器/单测环境**被导入，
+        而 `app.dialogs` 顶层 `import tkinter`。所以这里既不能顶层导入 dialogs，
+        也不能在工厂里导入 —— 必须等到真的要弹窗时。
         """
 
         def _show(exc):
-            from tkinter import messagebox
+            from app import dialogs
 
-            messagebox.showerror(title, f"{type(exc).__name__}: {exc}", parent=parent)
+            dialogs.showerror(title, f"{type(exc).__name__}: {exc}", parent=parent)
 
         return _show
 

@@ -2,8 +2,9 @@
 
 import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import scrolledtext, ttk
 
+from app import dialogs
 from app.novel_toolkit import WebSearchAdaptEngine
 from app.ui_style import UIStyle
 
@@ -174,10 +175,10 @@ class WebSearchPanelMixin:
         """AI搜索改编"""
         query = self.ws_search_entry.get().strip()
         if not query or query == "输入热点关键词或梗，AI自动改编...":
-            messagebox.showinfo("提示", "请输入关键词")
+            dialogs.showinfo("提示", "请输入关键词")
             return
         if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
+            dialogs.showwarning("提示", "请先配置AI")
             return
 
         def run():
@@ -186,7 +187,7 @@ class WebSearchPanelMixin:
                 result = engine.search_and_adapt(query)
                 self.root.after(0, lambda: self._show_tool_result(self.ws_result, result))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -237,7 +238,7 @@ class WebSearchPanelMixin:
             desc = desc_entry.get().strip()
             tmpl = template_text.get("1.0", tk.END).strip()
             if not name or not tmpl:
-                messagebox.showwarning("提示", "请填写名称和模板")
+                dialogs.showwarning("提示", "请填写名称和模板")
                 return
             if not self.web_search_engine:
                 self.web_search_engine = WebSearchAdaptEngine(self.ai_client, self.current_novel_dir)
@@ -246,7 +247,7 @@ class WebSearchPanelMixin:
             dialog.destroy()
             # 刷新列表
             self._refresh_ws_list()
-            messagebox.showinfo("成功", f"已保存自定义热点「{name}」")
+            dialogs.showinfo("成功", f"已保存自定义热点「{name}」")
 
         ttk.Button(dialog, text="保存", command=save).pack(pady=15)
 
@@ -254,7 +255,7 @@ class WebSearchPanelMixin:
         """删除自定义热点"""
         sel = self.ws_listbox.curselection()
         if not sel:
-            messagebox.showinfo("提示", "请先选择要删除的热点")
+            dialogs.showinfo("提示", "请先选择要删除的热点")
             return
         if not self.web_search_engine:
             self.web_search_engine = WebSearchAdaptEngine(self.ai_client, self.current_novel_dir)
@@ -263,9 +264,9 @@ class WebSearchPanelMixin:
         idx = sel[0]
         if idx < len(items):
             if not items[idx].get("custom"):
-                messagebox.showinfo("提示", "只能删除自定义添加的热点")
+                dialogs.showinfo("提示", "只能删除自定义添加的热点")
                 return
-            if messagebox.askyesno("确认", f"确定删除「{items[idx].get('name', '')}」？"):
+            if dialogs.askyesno("确认", f"确定删除「{items[idx].get('name', '')}」？"):
                 # 直接从列表中移除并持久化
                 removed = items.pop(idx)
                 self.web_search_engine._save_custom(category, items)

@@ -2,9 +2,9 @@
 
 import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import scrolledtext, ttk
 
-from app import UIStyle
+from app import UIStyle, dialogs
 
 
 class DescriptionsPanelMixin:
@@ -43,7 +43,7 @@ class DescriptionsPanelMixin:
 
     def _gen_description(self):
         if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
+            dialogs.showwarning("提示", "请先配置AI")
             return
 
         def run():
@@ -53,7 +53,7 @@ class DescriptionsPanelMixin:
                 )
                 self.root.after(0, lambda: self._show_tool_result(self.desc_result, result))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -61,13 +61,13 @@ class DescriptionsPanelMixin:
         """添加自定义描写关键词"""
         keyword = self.custom_desc_entry.get().strip()
         if not keyword:
-            messagebox.showinfo("提示", "请输入描写关键词")
+            dialogs.showinfo("提示", "请输入描写关键词")
             return
         cat = self.desc_cat_var.get()
         if not cat:
-            messagebox.showinfo("提示", "请先选择类别")
+            dialogs.showinfo("提示", "请先选择类别")
             return
         self.desc_lib.add_custom_item(cat, keyword)
         self.custom_desc_entry.delete(0, tk.END)
         self._log(f"添加自定义描写关键词: {keyword} (类别: {cat})")
-        messagebox.showinfo("成功", f"已添加自定义关键词: {keyword} 到 {cat}")
+        dialogs.showinfo("成功", f"已添加自定义关键词: {keyword} 到 {cat}")

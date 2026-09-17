@@ -6,13 +6,14 @@
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 
 from loguru import logger
 
-from app import SceneDetector, UIStyle
+from app import SceneDetector, UIStyle, dialogs
 from app.format_converter import FormatConverter, ImageManager
 from app.panels import PanelHost
+from app.panels import layout as panel_layout
 from app.panels import registry as panel_registry
 
 
@@ -20,11 +21,15 @@ class ToolkitUIMixin:
     """工具层：工具面板刷新、格式转换、插图/封面、云同步"""
 
     def _init_panel_host(self, selector_parent):
-        """建立面板宿主：加载注册表 → 渲染分组选择器 → 激活默认面板（v3 §2.2）。
+        """建立面板宿主：加载注册表 → 渲染分组选择器 → **恢复上次布局**（v3 §2.2）。
 
         这一段替代了 v2 的两处硬编码：`shell_ui` 里手写的 12 个 Radiobutton，
         以及本文件里手写的 12 路 `if/elif`。两者表达的是同一份"有哪些面板"的信息，
         写在两个文件里必然漂移；现在都由 `app/panels/registry.py` 渲染。
+
+        布局（单栏/分栏、两个栏各放谁、分隔条比例、哪些面板脱出为独立窗口）
+        由 `app/panels/layout.py` 记忆到 `~/.ai_novel_writer/panel_layout.json`。
+        宿主本身**不碰文件**，只通过 `on_layout_changed` 回调把状态交出来。
         """
         panel_registry.load_panels()
         self.panel_host = PanelHost(
@@ -33,14 +38,27 @@ class ToolkitUIMixin:
             select_var=self.tool_type_var,
             selector_parent=selector_parent,
             bus=getattr(self, "event_bus", None),
+            on_layout_changed=self._save_panel_layout,
         )
         self.panel_host.build_selector()
-        self.panel_host.select(panel_registry.default_key())
+        # 先恢复记忆的布局；`apply_layout` 内部会按当前注册表洗一遍，
+        # 因此面板改名/删除后不会出现"记忆了一个不存在的面板"。
+        remembered = panel_layout.load()
+        self.panel_host.apply_layout(remembered)
         self._log(
             f"面板注册表已加载：{len(panel_registry.PANEL_REGISTRY)} 个面板"
             f"（{len(panel_registry.categories())} 个分组）"
+            f"；布局={'分栏' if self.panel_host.is_split() else '单栏'}"
         )
         self._record_panel_registry()
+
+    def _save_panel_layout(self, layout) -> None:
+        """把布局记忆到磁盘（由宿主在布局变化时回调）。
+
+        ⚠️ 失败**不上报给用户**：布局是"锦上添花"的状态，写不进去也不该打断写作。
+        """
+        if not panel_layout.save(layout):
+            logger.debug("面板布局未能落盘（不影响本次使用）")
 
     def _record_panel_registry(self):
         """把面板注册结果**同时写进磁盘诊断日志**。
@@ -158,7 +176,7 @@ class ToolkitUIMixin:
     def _generate_cover(self):
         """AI生成小说封面"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先打开小说")
+            dialogs.showwarning("提示", "请先打开小说")
             return
 
         meta = self._get_meta()
@@ -201,14 +219,14 @@ class ToolkitUIMixin:
                 self._log("[封面] 已保存到 cover/ 目录")
                 self.root.after(
                     0,
-                    lambda: messagebox.showinfo(
+                    lambda: dialogs.showinfo(
                         "完成",
                         "封面已生成:\n- 提示词: cover/cover_prompt.txt\n- 预览: cover/cover_preview.html\n\n将提示词复制到Midjourney/SD即可生成封面图",
                     ),
                 )
             except Exception as e:
                 self._log(f"[封面] 失败: {e}")
-                self.root.after(0, lambda _exc=e: messagebox.showerror("失败", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("失败", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -237,7 +255,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
     def _show_format_converter(self):
         """显示格式转换对话框"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先新建或打开小说")
+            dialogs.showwarning("提示", "请先新建或打开小说")
             return
 
         if not self.format_converter:
@@ -308,7 +326,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 # 如果没有章节文件，使用编辑区内容
                 content = self.content_text.get("1.0", tk.END).strip()
                 if not content:
-                    messagebox.showwarning("提示", "没有可导出的内容")
+                    dialogs.showwarning("提示", "没有可导出的内容")
                     return
             else:
                 content = "\n\n".join(ch["content"] for ch in chapters)
@@ -335,7 +353,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 dialog.destroy()
 
                 # 询问是否打开
-                if messagebox.askyesno("成功", f"已导出为{formats[fmt]['name']}格式\n\n{result}\n\n是否打开文件？"):
+                if dialogs.askyesno("成功", f"已导出为{formats[fmt]['name']}格式\n\n{result}\n\n是否打开文件？"):
                     # 使用 os.startfile 安全打开文件（不经过 shell，避免命令注入）
                     import os
 
@@ -343,9 +361,9 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                         os.startfile(result)
                     except Exception as e:
                         self._log(f"打开文件失败: {e}")
-                        messagebox.showinfo("提示", f"文件已保存到：\n{result}")
+                        dialogs.showinfo("提示", f"文件已保存到：\n{result}")
             else:
-                messagebox.showerror("错误", "格式转换失败")
+                dialogs.showerror("错误", "格式转换失败")
 
         tk.Button(
             dialog,
@@ -362,7 +380,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
     def _insert_image(self):
         """插入图片到编辑区"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先新建或打开小说")
+            dialogs.showwarning("提示", "请先新建或打开小说")
             return
 
         if not self.image_manager:
@@ -383,7 +401,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
         # 导入图片
         img_path = self.image_manager.import_image(file_path)
         if not img_path:
-            messagebox.showerror("错误", "导入图片失败")
+            dialogs.showerror("错误", "导入图片失败")
             return
 
         # 在编辑区插入图片标记
@@ -507,7 +525,7 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
     def _cloud_sync(self):
         """云端同步对话框"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先新建或打开小说")
+            dialogs.showwarning("提示", "请先新建或打开小说")
             return
 
         dialog = tk.Toplevel(self.root)
@@ -557,12 +575,12 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                             success = self.cloud_storage.upload_novel(self.current_novel_dir, provider_id)
                             if success:
                                 self._log("上传成功！")
-                                self.root.after(0, lambda: messagebox.showinfo("成功", f"小说已上传到 {provider_name}"))
+                                self.root.after(0, lambda: dialogs.showinfo("成功", f"小说已上传到 {provider_name}"))
                             else:
                                 self._log("上传失败")
-                                self.root.after(0, lambda: messagebox.showerror("失败", "上传失败，请检查网络和配置"))
+                                self.root.after(0, lambda: dialogs.showerror("失败", "上传失败，请检查网络和配置"))
                         except Exception as e:
-                            self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                            self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
                     threading.Thread(target=run, daemon=True).start()
 
@@ -579,14 +597,12 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                             )
                             if success:
                                 self._log("下载成功！")
-                                self.root.after(
-                                    0, lambda: messagebox.showinfo("成功", f"小说已从 {provider_name} 下载")
-                                )
+                                self.root.after(0, lambda: dialogs.showinfo("成功", f"小说已从 {provider_name} 下载"))
                             else:
                                 self._log("下载失败")
-                                self.root.after(0, lambda: messagebox.showerror("失败", "下载失败"))
+                                self.root.after(0, lambda: dialogs.showerror("失败", "下载失败"))
                         except Exception as e:
-                            self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                            self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
                     threading.Thread(target=run, daemon=True).start()
 

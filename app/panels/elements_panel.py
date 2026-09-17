@@ -2,9 +2,9 @@
 
 import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import scrolledtext, ttk
 
-from app import UIStyle
+from app import UIStyle, dialogs
 
 
 class ElementsPanelMixin:
@@ -61,11 +61,11 @@ class ElementsPanelMixin:
     def _view_element_detail(self):
         sel = self.elem_listbox.curselection()
         if not sel:
-            messagebox.showinfo("提示", "请先在列表中选择要查看的元素（可多选）")
+            dialogs.showinfo("提示", "请先在列表中选择要查看的元素（可多选）")
             return
         items = self.element_lib.get_items(self.elem_cat_var.get())
         if not items:
-            messagebox.showinfo("提示", "当前类别没有元素")
+            dialogs.showinfo("提示", "当前类别没有元素")
             return
 
         self.elem_result.delete("1.0", tk.END)
@@ -83,14 +83,14 @@ class ElementsPanelMixin:
     def _gen_background_from_elements(self):
         sel = self.elem_listbox.curselection()
         if not sel:
-            messagebox.showinfo("提示", "请先选择元素")
+            dialogs.showinfo("提示", "请先选择元素")
             return
 
         items = self.element_lib.get_items(self.elem_cat_var.get())
         selected = [items[i] for i in sel if i < len(items)]
 
         if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
+            dialogs.showwarning("提示", "请先配置AI")
             return
 
         def run():
@@ -100,7 +100,7 @@ class ElementsPanelMixin:
                 )
                 self.root.after(0, lambda: self._show_tool_result(self.elem_result, result))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -108,14 +108,14 @@ class ElementsPanelMixin:
         """添加自定义元素"""
         name = self.custom_elem_entry.get().strip()
         if not name:
-            messagebox.showinfo("提示", "请输入元素名称")
+            dialogs.showinfo("提示", "请输入元素名称")
             return
         cat = self.elem_cat_var.get()
         if not cat:
-            messagebox.showinfo("提示", "请先选择类别")
+            dialogs.showinfo("提示", "请先选择类别")
             return
         self.element_lib.add_custom_item(cat, {"name": name, "template": f"自定义元素: {name}", "tags": ["自定义"]})
         self._refresh_element_list()
         self.custom_elem_entry.delete(0, tk.END)
         self._log(f"添加自定义元素: {name} (类别: {cat})")
-        messagebox.showinfo("成功", f"已添加自定义元素: {name}")
+        dialogs.showinfo("成功", f"已添加自定义元素: {name}")

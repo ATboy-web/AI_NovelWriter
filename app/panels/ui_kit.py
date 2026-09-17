@@ -17,13 +17,17 @@
 所以这里提供的是**一套组件**，而不是给某个面板打补丁：卡片、工具栏、搜索框、
 空态、状态栏、轻提示、可滚动容器、KPI 小块、徽标、Treeview 主题。
 面板只负责"放什么内容"，"长什么样、怎么交互"由这里统一。
+（上表是 2026-09-16 的体检快照；其中"弹窗打断"一项已于 2026-09-17 处理 ——
+全仓 215 处 `messagebox` 调用收口到 `app/dialogs.py`，可一处治理。）
 
 ## 使用约定
 
 - 颜色/字体一律走 `UIStyle.COLORS` / `UIStyle.font(...)`，**不要写字面值**
   （`tests/test_font_token_ratchet.py` 的棘轮会拦）；
 - 间距一律用 `SPACE`（来自 `UIStyle.SPACING`），不要再写裸数字；
-- 提示优先用 `toast` / `StatusBar`，`messagebox` 只留"需要用户确认"的场景。
+- 提示优先用 `toast` / `StatusBar`；模态只留"需要用户决定"的场景，
+  且**统一走 `app/dialogs.py`**（不要在业务代码里直接调 `messagebox.*`，
+  有源码级门禁 `tests/test_dialogs.py::test_no_direct_messagebox_calls` 拦截）。
 """
 
 from __future__ import annotations
@@ -369,8 +373,8 @@ class StatusBar:
 def toast(widget: tk.Misc, message: str, *, kind: str = "info", ms: int = 2600) -> None:
     """轻提示：浮在主窗口右上角，**不抢焦点、不阻塞**，到点自动消失。
 
-    用来替代"什么都弹一个 messagebox"（全仓 64 处）。需要用户**确认**的场景仍用
-    `messagebox.askyesno` —— 那类弹窗是合理的。
+    用来替代"什么都弹一个模态"（全仓原有 215 处弹窗）。需要用户**确认**的场景
+    仍用 `dialogs.confirm(...)` —— 那类模态是合理的。
     """
     try:
         root = widget.winfo_toplevel()

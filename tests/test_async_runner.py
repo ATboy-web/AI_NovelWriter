@@ -227,12 +227,19 @@ class TestMessageboxFactory:
         assert callable(handler)
 
     def test_imports_tkinter_lazily(self):
-        """工厂本身不能 import tkinter —— 否则无 GUI 环境（服务器/CI）导入即失败。"""
+        """工厂本身不能 import tkinter / dialogs —— 否则无 GUI 环境（服务器/CI）导入即失败。
+
+        ⚠️ 注意是**两层**都要延迟：`app/dialogs.py` 顶层 `import tkinter`，
+        所以既不能在模块顶层导入 dialogs，也不能在工厂里导入 ——
+        必须等到真的要弹窗（`_show` 被调用）时。
+        """
         code = _scan.code_only("app/async_runner.py")
-        assert "from tkinter import messagebox" in code
-        # 顶层（模块级导入区）不得出现 tkinter —— 只允许出现在函数体内
+        assert "from app import dialogs" in code
+        assert "dialogs.showerror(" in code
+        # 顶层（模块级导入区）不得出现 tkinter / dialogs —— 只允许出现在函数体内
         header = code.split("def messagebox_on_error")[0]
         assert "tkinter" not in header
+        assert "dialogs" not in header
 
 
 class TestJoinAll:

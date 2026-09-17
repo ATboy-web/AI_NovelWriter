@@ -2,8 +2,9 @@
 
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 
+from app import dialogs
 from app.ui_style import UIStyle
 
 
@@ -168,7 +169,7 @@ class ChapterAnalysisPanelMixin:
     def _import_chapter_files(self):
         """从任意文件夹导入章节文件"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先新建或打开小说")
+            dialogs.showwarning("提示", "请先新建或打开小说")
             return
 
         file_paths = filedialog.askopenfilenames(
@@ -210,7 +211,7 @@ class ChapterAnalysisPanelMixin:
 
         self._refresh_chapter_files()
         self._log(f"成功导入 {imported} 个章节文件")
-        messagebox.showinfo("成功", f"已导入 {imported} 个章节文件")
+        dialogs.showinfo("成功", f"已导入 {imported} 个章节文件")
 
     def _browse_chapter_folder(self):
         """选择文件夹浏览章节"""
@@ -227,7 +228,7 @@ class ChapterAnalysisPanelMixin:
             text_files.extend(folder.glob(ext))
 
         if not text_files:
-            messagebox.showinfo("提示", "该文件夹中没有找到文本文件")
+            dialogs.showinfo("提示", "该文件夹中没有找到文本文件")
             return
 
         # 显示找到的文件
@@ -253,11 +254,11 @@ class ChapterAnalysisPanelMixin:
         def import_selected():
             selected = listbox.curselection()
             if not selected:
-                messagebox.showwarning("提示", "请选择要导入的文件")
+                dialogs.showwarning("提示", "请选择要导入的文件")
                 return
 
             if not self.current_novel_dir:
-                messagebox.showwarning("提示", "请先新建或打开小说")
+                dialogs.showwarning("提示", "请先新建或打开小说")
                 dialog.destroy()
                 return
 
@@ -289,7 +290,7 @@ class ChapterAnalysisPanelMixin:
 
             self._refresh_chapter_files()
             self._log(f"从文件夹导入 {imported} 个章节文件")
-            messagebox.showinfo("成功", f"已导入 {imported} 个章节文件")
+            dialogs.showinfo("成功", f"已导入 {imported} 个章节文件")
             dialog.destroy()
 
         btn_frame = tk.Frame(dialog)
@@ -417,7 +418,7 @@ class ChapterAnalysisPanelMixin:
         """分析当前编辑区的章节"""
         content = self.content_text.get("1.0", tk.END).strip()
         if not content:
-            messagebox.showinfo("提示", "编辑区没有内容")
+            dialogs.showinfo("提示", "编辑区没有内容")
             return
 
         recommendations = self._analyze_chapter_content(content)
@@ -430,7 +431,7 @@ class ChapterAnalysisPanelMixin:
         """加载选中章节到编辑区"""
         sel = self.ch_file_listbox.curselection()
         if not sel or not self.current_novel_dir:
-            messagebox.showinfo("提示", "请先选择一个章节文件")
+            dialogs.showinfo("提示", "请先选择一个章节文件")
             return
 
         chapters_dir = self.current_novel_dir / "chapters"

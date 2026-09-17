@@ -8,11 +8,11 @@ import time
 import tkinter as tk
 import webbrowser
 from pathlib import Path
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import scrolledtext, ttk
 
 from loguru import logger
 
-from app import UIStyle, __version__
+from app import UIStyle, __version__, dialogs
 
 
 class ShellMixin:
@@ -1018,13 +1018,13 @@ class ShellMixin:
         try:
             content = self.log_text.get("1.0", tk.END).strip()
             if not content:
-                messagebox.showwarning("提示", "日志为空，无需导出")
+                dialogs.showwarning("提示", "日志为空，无需导出")
                 return
             filepath.write_text(content, encoding="utf-8")
             self._log(f"日志已导出: {filepath}")
-            messagebox.showinfo("导出成功", f"日志已保存到桌面:\n{filepath}")
+            dialogs.showinfo("导出成功", f"日志已保存到桌面:\n{filepath}")
         except Exception as e:
-            messagebox.showerror("导出失败", f"无法导出日志:\n{e}")
+            dialogs.showerror("导出失败", f"无法导出日志:\n{e}")
 
     def _clear_log(self):
         """清空运行日志"""
@@ -1062,11 +1062,11 @@ class ShellMixin:
         """检查是否就绪"""
         if not self.ai_client.is_configured():
             if not silent:
-                messagebox.showwarning("提示", "请先配置AI API（设置 → AI配置）")
+                dialogs.showwarning("提示", "请先配置AI API（设置 → AI配置）")
             return False
         if not self.current_novel_dir:
             if not silent:
-                messagebox.showwarning("提示", "请先创建或打开小说")
+                dialogs.showwarning("提示", "请先创建或打开小说")
             return False
         return True
 
@@ -1174,7 +1174,7 @@ class ShellMixin:
 
     def _on_close(self):
         """关闭应用"""
-        if messagebox.askyesno("确认", "确定要退出吗？"):
+        if dialogs.askyesno("确认", "确定要退出吗？"):
             self.root.destroy()
 
     def run(self):

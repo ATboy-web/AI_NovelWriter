@@ -6,9 +6,9 @@
 import json
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 
-from app import UIStyle
+from app import UIStyle, dialogs
 
 
 class ReaderUIMixin:
@@ -238,9 +238,9 @@ class ReaderUIMixin:
             if meta:
                 self._log(f"已导入书籍: {meta['title']}")
                 self._refresh_library()
-                messagebox.showinfo("成功", f"已导入《{meta['title']}》")
+                dialogs.showinfo("成功", f"已导入《{meta['title']}》")
             else:
-                messagebox.showerror("错误", "导入失败，不支持该文件格式")
+                dialogs.showerror("错误", "导入失败，不支持该文件格式")
 
     def _refresh_library(self):
         """刷新书库列表"""
@@ -303,7 +303,7 @@ class ReaderUIMixin:
 
             self._log(f"已加载书籍: {Path(file_path).name}")
         else:
-            messagebox.showerror("错误", "无法读取书籍内容")
+            dialogs.showerror("错误", "无法读取书籍内容")
 
     def _update_reader_font(self):
         """更新阅读字体大小"""
@@ -328,7 +328,7 @@ class ReaderUIMixin:
     def _add_bookmark(self):
         """添加书签"""
         if not self.current_book_path:
-            messagebox.showinfo("提示", "请先打开一本书")
+            dialogs.showinfo("提示", "请先打开一本书")
             return
 
         # 获取当前位置（百分比）
@@ -367,17 +367,17 @@ class ReaderUIMixin:
                         )
                 self._refresh_bookmarks()
                 self._log(f"已导入 {len(bookmarks)} 个书签")
-                messagebox.showinfo("成功", f"已导入 {len(bookmarks)} 个书签")
+                dialogs.showinfo("成功", f"已导入 {len(bookmarks)} 个书签")
             else:
-                messagebox.showerror("错误", "无效的书签文件格式")
+                dialogs.showerror("错误", "无效的书签文件格式")
         except Exception as e:
-            messagebox.showerror("错误", f"导入失败: {str(e)}")
+            dialogs.showerror("错误", f"导入失败: {str(e)}")
 
     def _export_bookmarks(self):
         """导出书签"""
         bm_list = self.reading_manager.get_bookmarks()
         if not bm_list:
-            messagebox.showinfo("提示", "没有可导出的书签")
+            dialogs.showinfo("提示", "没有可导出的书签")
             return
 
         file_path = filedialog.asksaveasfilename(
@@ -390,19 +390,19 @@ class ReaderUIMixin:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(bm_list, f, indent=2, ensure_ascii=False)
             self._log(f"已导出 {len(bm_list)} 个书签")
-            messagebox.showinfo("成功", f"已导出 {len(bm_list)} 个书签")
+            dialogs.showinfo("成功", f"已导出 {len(bm_list)} 个书签")
         except Exception as e:
-            messagebox.showerror("错误", f"导出失败: {str(e)}")
+            dialogs.showerror("错误", f"导出失败: {str(e)}")
 
     def _search_in_book(self):
         """在当前书籍中搜索"""
         if not self.current_book_path:
-            messagebox.showinfo("提示", "请先打开一本书")
+            dialogs.showinfo("提示", "请先打开一本书")
             return
 
         keyword = self.search_var.get().strip()
         if not keyword:
-            messagebox.showinfo("提示", "请输入搜索关键词")
+            dialogs.showinfo("提示", "请输入搜索关键词")
             return
 
         results = self.reading_manager.search_in_book(self.current_book_path, keyword)
@@ -422,4 +422,4 @@ class ReaderUIMixin:
             self.reader_text.see(f"{results[0]['line_number']}.0")
             self._log(f"找到 {len(results)} 个匹配结果")
         else:
-            messagebox.showinfo("搜索", "未找到匹配内容")
+            dialogs.showinfo("搜索", "未找到匹配内容")

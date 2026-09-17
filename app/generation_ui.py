@@ -9,11 +9,11 @@ import threading
 import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from tkinter import filedialog, scrolledtext, ttk
 
 from loguru import logger
 
-from app import UIStyle
+from app import UIStyle, dialogs
 from app.diagnostic_logger import get_logger
 from app.parsing import parse_exp_json, parse_json_response
 
@@ -332,12 +332,12 @@ class GenerationMixin:
             return
         with self._state_lock:
             if not self.outline:
-                messagebox.showwarning("提示", "请先生成大纲")
+                dialogs.showwarning("提示", "请先生成大纲")
                 return
 
             self.current_chapter += 1
             if self.current_chapter > len(self.outline):
-                messagebox.showinfo("提示", "所有章节已生成完毕")
+                dialogs.showinfo("提示", "所有章节已生成完毕")
                 self.current_chapter = len(self.outline)
                 return
 
@@ -422,7 +422,7 @@ class GenerationMixin:
                 self._log(f"第{ch_num}章已保存并定稿")
             except Exception as e:
                 self._log(f"生成失败: {e}")
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -433,7 +433,7 @@ class GenerationMixin:
 
         content = self.content_text.get("1.0", tk.END).strip()
         if not content:
-            messagebox.showwarning("提示", "没有可审校的内容")
+            dialogs.showwarning("提示", "没有可审校的内容")
             return
 
         with self._state_lock:
@@ -447,7 +447,7 @@ class GenerationMixin:
                 self._log(f"审校完成，评分：{review.get('overall_score', 'N/A')}")
             except Exception as e:
                 self._log(f"审校失败: {e}")
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -458,7 +458,7 @@ class GenerationMixin:
 
         content = self.content_text.get("1.0", tk.END).strip()
         if not content:
-            messagebox.showwarning("提示", "没有可优化的内容")
+            dialogs.showwarning("提示", "没有可优化的内容")
             return
 
         def run():
@@ -555,11 +555,11 @@ class GenerationMixin:
                         text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
                         texts.append((f.stem, text))
                     except ImportError:
-                        messagebox.showwarning("提示", "需要安装 python-docx 才能读取 Word 文档")
+                        dialogs.showwarning("提示", "需要安装 python-docx 才能读取 Word 文档")
                         return
 
             if not texts:
-                messagebox.showwarning("提示", "文件夹中没有找到可读取的文本文件")
+                dialogs.showwarning("提示", "文件夹中没有找到可读取的文本文件")
                 return
 
             # 分析每个文件的风格
@@ -575,7 +575,7 @@ class GenerationMixin:
                             ),
                         )
 
-                self.root.after(0, lambda: messagebox.showinfo("完成", f"已导入 {len(texts)} 个作者的风格"))
+                self.root.after(0, lambda: dialogs.showinfo("完成", f"已导入 {len(texts)} 个作者的风格"))
                 self._log(f"已导入 {len(texts)} 个作者的风格特征")
 
             self._log("正在分析作者风格...")
@@ -602,11 +602,11 @@ class GenerationMixin:
                     doc = Document(str(file_path))
                     text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
             except Exception as e:
-                messagebox.showerror("错误", f"读取文件失败: {e}")
+                dialogs.showerror("错误", f"读取文件失败: {e}")
                 return
 
             if len(text) < 100:
-                messagebox.showwarning("提示", "文本内容太少，无法准确分析风格")
+                dialogs.showwarning("提示", "文本内容太少，无法准确分析风格")
                 return
 
             author_name = tk.simpledialog.askstring("作者名称", "请输入作者名称:", initialvalue=file_path.stem)
@@ -622,7 +622,7 @@ class GenerationMixin:
                         tk.END, f"{style.get('author', '未知')} - {style.get('unique_features', '')[:30]}..."
                     ),
                 )
-                self.root.after(0, lambda: messagebox.showinfo("完成", f"已分析 {author_name} 的风格"))
+                self.root.after(0, lambda: dialogs.showinfo("完成", f"已分析 {author_name} 的风格"))
                 self._log(f"已分析 {author_name} 的写作风格")
 
             self._log(f"正在分析 {author_name} 的风格...")
@@ -713,12 +713,12 @@ class GenerationMixin:
         def start_imitation():
             """开始仿写"""
             if not self._imported_styles:
-                messagebox.showwarning("提示", "请先导入至少一个作者的风格")
+                dialogs.showwarning("提示", "请先导入至少一个作者的风格")
                 return
 
             prompt = prompt_text.get("1.0", tk.END).strip()
             if not prompt:
-                messagebox.showwarning("提示", "请输入创作提示")
+                dialogs.showwarning("提示", "请输入创作提示")
                 return
 
             word_count = int(word_count_var.get())
@@ -727,7 +727,7 @@ class GenerationMixin:
 
             if mode == "single":
                 if not selected:
-                    messagebox.showwarning("提示", "请选择一个作者风格")
+                    dialogs.showwarning("提示", "请选择一个作者风格")
                     return
                 style = self._imported_styles[selected[0]]
 
@@ -744,7 +744,7 @@ class GenerationMixin:
             else:
                 # 融合模式
                 if len(selected) < 2:
-                    messagebox.showwarning("提示", "融合模式需要选择至少2个风格")
+                    dialogs.showwarning("提示", "融合模式需要选择至少2个风格")
                     return
                 styles = [self._imported_styles[i] for i in selected]
 
@@ -762,19 +762,19 @@ class GenerationMixin:
         def apply_to_chapter():
             """将仿写结果应用到当前章节"""
             if not self._imported_styles:
-                messagebox.showwarning("提示", "请先导入风格")
+                dialogs.showwarning("提示", "请先导入风格")
                 return
 
             selected = style_list.curselection()
             if not selected:
-                messagebox.showwarning("提示", "请选择一个风格")
+                dialogs.showwarning("提示", "请选择一个风格")
                 return
 
             style = self._imported_styles[selected[0]]
             current_content = self.content_text.get("1.0", tk.END).strip()
 
             if not current_content:
-                messagebox.showwarning("提示", "当前章节没有内容")
+                dialogs.showwarning("提示", "当前章节没有内容")
                 return
 
             def rewrite():
@@ -941,7 +941,7 @@ class GenerationMixin:
         """编辑选中的决策点"""
         idx = selected_idx[0]
         if idx < 0 or idx >= len(all_branches):
-            messagebox.showwarning("提示", "请先在左侧点击选择一个决策点")
+            dialogs.showwarning("提示", "请先在左侧点击选择一个决策点")
             return
 
         br = all_branches[idx]
@@ -1239,16 +1239,16 @@ class GenerationMixin:
         if not self._check_ready(silent=True):
             return
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先打开小说")
+            dialogs.showwarning("提示", "请先打开小说")
             return
 
         # 获取当前章节
         current_ch = self.current_chapter
         if current_ch <= 0:
-            messagebox.showwarning("提示", "没有当前章节")
+            dialogs.showwarning("提示", "没有当前章节")
             return
 
-        result = messagebox.askyesno("重新创作", f"确定要重新创作第{current_ch}章吗？\n当前内容将被覆盖。")
+        result = dialogs.askyesno("重新创作", f"确定要重新创作第{current_ch}章吗？\n当前内容将被覆盖。")
         if not result:
             return
 
@@ -1326,7 +1326,7 @@ class GenerationMixin:
         if not self._check_ready(silent=True):
             return
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先打开小说")
+            dialogs.showwarning("提示", "请先打开小说")
             return
 
         # 构建选择对话框
@@ -1927,10 +1927,10 @@ class GenerationMixin:
                 if generated > 0:
                     self.root.after(
                         0,
-                        lambda: messagebox.showinfo("完成", f"《{meta['title']}》创作完成！\n本次生成 {generated} 章"),
+                        lambda: dialogs.showinfo("完成", f"《{meta['title']}》创作完成！\n本次生成 {generated} 章"),
                     )
                 elif skipped > 0:
-                    self.root.after(0, lambda: messagebox.showinfo("提示", "所有章节已完成，无需继续创作"))
+                    self.root.after(0, lambda: dialogs.showinfo("提示", "所有章节已完成，无需继续创作"))
 
             except Exception as e:
                 self._log(f"自动创作失败: {e}")
@@ -1943,13 +1943,13 @@ class GenerationMixin:
     def _chapter_review(self):
         """章节回顾 - AI生成最近章节摘要"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先打开小说")
+            dialogs.showwarning("提示", "请先打开小说")
             return
 
         meta = self._get_meta()
         total = meta.get("total_chapters", meta.get("chapter_count", 0)) or len(self.outline)
         if total == 0:
-            messagebox.showwarning("提示", "还没有章节")
+            dialogs.showwarning("提示", "还没有章节")
             return
 
         dialog = tk.Toplevel(self.root)
@@ -2008,13 +2008,13 @@ class GenerationMixin:
     def _extend_novel(self):
         """续写已完结的小说"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先打开小说")
+            dialogs.showwarning("提示", "请先打开小说")
             return
 
         chapters_dir = self.current_novel_dir / "chapters"
         existing = sorted([int(f.stem.split("_")[-1]) for f in chapters_dir.glob("chapter_*.txt")])
         if not existing:
-            messagebox.showwarning("提示", "没有已生成的章节")
+            dialogs.showwarning("提示", "没有已生成的章节")
             return
 
         last_ch = existing[-1]
@@ -2139,10 +2139,10 @@ class GenerationMixin:
                         self._log(f"[续写] 第{ch_num}章完成 ({len(content)}字)")
 
                     self._log(f"[续写] 完成！共新增{len(new_outline)}章")
-                    self.root.after(0, lambda: messagebox.showinfo("完成", f"续写完成！新增{len(new_outline)}章"))
+                    self.root.after(0, lambda: dialogs.showinfo("完成", f"续写完成！新增{len(new_outline)}章"))
                 except Exception as e:
                     self._log(f"[续写] 失败: {e}")
-                    self.root.after(0, lambda _exc=e: messagebox.showerror("失败", str(_exc)))
+                    self.root.after(0, lambda _exc=e: dialogs.showerror("失败", str(_exc)))
                 finally:
                     self._auto_running = False
 

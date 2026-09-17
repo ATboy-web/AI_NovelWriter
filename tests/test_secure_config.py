@@ -57,7 +57,8 @@ class TestSecureConfig:
         # 读取原始文件，确认API密钥已加密
         import json
 
-        with open(secure_config.config_file, "r") as f:
+        # 显式 utf-8：不指定的话 Windows 上默认 GBK，配置里有中文/非 ASCII 就解析不了
+        with open(secure_config.config_file, "r", encoding="utf-8") as f:
             raw_config = json.load(f)
 
         # 原始文件中的API密钥应该是加密的

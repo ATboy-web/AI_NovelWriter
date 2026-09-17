@@ -5,8 +5,9 @@
 
 import threading
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 
+from app import dialogs
 from app.events import TOPIC_CHAPTER_SAVED
 
 
@@ -70,12 +71,12 @@ class ChapterUIMixin:
     def _save_chapter(self):
         """保存当前章节"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先创建或打开小说")
+            dialogs.showwarning("提示", "请先创建或打开小说")
             return
 
         content = self.content_text.get("1.0", tk.END).strip()
         if not content:
-            messagebox.showwarning("提示", "没有可保存的内容")
+            dialogs.showwarning("提示", "没有可保存的内容")
             return
 
         chapters_dir = self.current_novel_dir / "chapters"
@@ -86,7 +87,7 @@ class ChapterUIMixin:
 
         self._announce_chapter_saved(self.current_chapter, content)
         self._log(f"第{self.current_chapter}章已保存")
-        messagebox.showinfo("成功", "章节已保存")
+        dialogs.showinfo("成功", "章节已保存")
 
     def _prev_chapter(self):
         """加载上一章"""
@@ -195,7 +196,7 @@ class ChapterUIMixin:
     def _export_txt(self):
         """导出全文TXT"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先创建或打开小说")
+            dialogs.showwarning("提示", "请先创建或打开小说")
             return
 
         meta = self._get_meta()
@@ -216,4 +217,4 @@ class ChapterUIMixin:
                 out.write(content + "\n\n")
 
         self._log(f"全文已导出到: {save_path}")
-        messagebox.showinfo("成功", f"全文已导出到:\n{save_path}")
+        dialogs.showinfo("成功", f"全文已导出到:\n{save_path}")

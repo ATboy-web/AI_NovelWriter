@@ -10,11 +10,11 @@ import time
 import tkinter as tk
 from datetime import datetime
 from pathlib import Path
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, simpledialog, ttk
 
 from loguru import logger
 
-from app import AIClient, ImageGenerator, MemoryManager, NoteManager, NovelAgent, UIStyle
+from app import AIClient, ImageGenerator, MemoryManager, NoteManager, NovelAgent, UIStyle, dialogs
 from app.events import TOPIC_CONFIG_CHANGED, TOPIC_NOVEL_CLOSED, TOPIC_NOVEL_OPENED
 
 
@@ -725,7 +725,7 @@ class NovelLifecycleMixin:
             if not tag:
                 return
             if tag in self.tag_vars:
-                messagebox.showinfo("提示", f"标签 '{tag}' 已存在")
+                dialogs.showinfo("提示", f"标签 '{tag}' 已存在")
                 return
             var = tk.BooleanVar(value=True)
             self.tag_vars[tag] = var
@@ -818,7 +818,7 @@ class NovelLifecycleMixin:
         def confirm():
             title = title_entry.get().strip()
             if not title:
-                messagebox.showwarning("提示", "请输入小说标题")
+                dialogs.showwarning("提示", "请输入小说标题")
                 return
 
             genre_full = genre_var.get().split("-")
@@ -934,7 +934,7 @@ class NovelLifecycleMixin:
         meta_file = novel_dir / "meta.json"
 
         if not meta_file.exists():
-            messagebox.showerror("错误", "该目录不是有效的小说目录")
+            dialogs.showerror("错误", "该目录不是有效的小说目录")
             return
 
         try:
@@ -942,7 +942,7 @@ class NovelLifecycleMixin:
                 meta = json.load(f)
             self._log(f"读取meta.json成功: {meta.get('title')}")
         except Exception as e:
-            messagebox.showerror("错误", f"读取meta.json失败: {e}")
+            dialogs.showerror("错误", f"读取meta.json失败: {e}")
             return
 
         try:
@@ -1069,9 +1069,9 @@ class NovelLifecycleMixin:
                 msg += "1. 点击「自动创作」继续自动生成剩余章节\n"
                 msg += "2. 点击「生成下一章」手动逐章创作\n"
                 msg += "3. 在编辑器中手动编写"
-                self.root.after(500, lambda: messagebox.showinfo("继续创作", msg))
+                self.root.after(500, lambda: dialogs.showinfo("继续创作", msg))
             elif completed_chapters >= total_chapters:
-                result = messagebox.askyesno(
+                result = dialogs.askyesno(
                     "已完成", f"小说《{meta.get('title')}》已全部完成！共 {completed_chapters} 章。\n\n是否续写新章？"
                 )
                 if result:
@@ -1127,24 +1127,24 @@ class NovelLifecycleMixin:
             self.chapter_var.set(f"{current_count}/{len(self.outline)}")
             self._log(f"大纲已扩展到 {len(self.outline)} 章，可以继续创作了")
 
-            messagebox.showinfo(
+            dialogs.showinfo(
                 "续写",
                 f"已添加 {add_count} 章新大纲\n总章数: {len(self.outline)}\n\n点击「自动创作」或「生成下一章」继续写作",
             )
 
         except Exception as e:
             self._log(f"续写大纲生成失败: {e}")
-            messagebox.showerror("错误", f"续写失败: {e}")
+            dialogs.showerror("错误", f"续写失败: {e}")
 
     def _create_sequel(self):
         """基于当前小说创建续集（第二部）"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先打开一部已完成的小说")
+            dialogs.showwarning("提示", "请先打开一部已完成的小说")
             return
 
         meta_file = self.current_novel_dir / "meta.json"
         if not meta_file.exists():
-            messagebox.showerror("错误", "当前目录不是有效的小说目录")
+            dialogs.showerror("错误", "当前目录不是有效的小说目录")
             return
 
         with open(meta_file, "r", encoding="utf-8") as f:
@@ -1155,7 +1155,7 @@ class NovelLifecycleMixin:
         if chapters_dir.exists():
             chapter_count = len(list(chapters_dir.glob("chapter_*.txt")))
             if chapter_count < original_meta.get("chapter_count", 0):
-                if not messagebox.askyesno("提示", "当前小说尚未全部完成，确定要创建续集吗？"):
+                if not dialogs.askyesno("提示", "当前小说尚未全部完成，确定要创建续集吗？"):
                     return
 
         # 读取原始小说的全局摘要
@@ -1226,7 +1226,7 @@ class NovelLifecycleMixin:
         def confirm():
             title = title_entry.get().strip()
             if not title:
-                messagebox.showwarning("提示", "请输入续集标题")
+                dialogs.showwarning("提示", "请输入续集标题")
                 return
 
             concept = concept_text.get("1.0", tk.END).strip()
@@ -1293,9 +1293,7 @@ class NovelLifecycleMixin:
 
             dialog.destroy()
             self._log(f"续集《{title}》已创建，基于原著《{original_meta.get('title', '')}》")
-            messagebox.showinfo(
-                "成功", f"续集《{title}》已创建！\n世界观和角色已继承自原著。\n点击「自动创作」开始生成。"
-            )
+            dialogs.showinfo("成功", f"续集《{title}》已创建！\n世界观和角色已继承自原著。\n点击「自动创作」开始生成。")
 
         tk.Button(
             dialog,
@@ -1311,12 +1309,12 @@ class NovelLifecycleMixin:
     def _create_spinoff(self):
         """基于当前小说创建同人衍生作品"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先打开一部小说作为原著")
+            dialogs.showwarning("提示", "请先打开一部小说作为原著")
             return
 
         meta_file = self.current_novel_dir / "meta.json"
         if not meta_file.exists():
-            messagebox.showerror("错误", "当前目录不是有效的小说目录")
+            dialogs.showerror("错误", "当前目录不是有效的小说目录")
             return
 
         with open(meta_file, "r", encoding="utf-8") as f:
@@ -1410,7 +1408,7 @@ class NovelLifecycleMixin:
         def confirm():
             title = title_entry.get().strip()
             if not title:
-                messagebox.showwarning("提示", "请输入作品标题")
+                dialogs.showwarning("提示", "请输入作品标题")
                 return
 
             concept = concept_text.get("1.0", tk.END).strip()
@@ -1483,7 +1481,7 @@ class NovelLifecycleMixin:
 
             dialog.destroy()
             self._log(f"同人作品《{title}》已创建，类型：{spinoff_type.get()}")
-            messagebox.showinfo(
+            dialogs.showinfo(
                 "成功",
                 f"同人作品《{title}》已创建！\n类型：{spinoff_type.get()}\n角色：{', '.join(selected_chars) or '无'}\n点击「自动创作」开始生成。",
             )
@@ -1699,9 +1697,9 @@ class NovelLifecycleMixin:
 
             # 测试连接
             if self.cloud_storage.connect_provider(provider_id):
-                messagebox.showinfo("成功", f"{provider_name} 连接成功！")
+                dialogs.showinfo("成功", f"{provider_name} 连接成功！")
             else:
-                messagebox.showwarning("失败", f"{provider_name} 连接失败，请检查配置")
+                dialogs.showwarning("失败", f"{provider_name} 连接失败，请检查配置")
 
         ttk.Button(cloud_frame, text="测试连接", command=test_cloud_connection).pack(pady=10)
 
@@ -1817,7 +1815,7 @@ class NovelLifecycleMixin:
                 self.config.set("smart_context", context_var.get())
                 self.config.set("auto_summary", summary_var.get())
             except (ValueError, RuntimeError) as exc:
-                messagebox.showerror("配置未保存", f"输入有误：{exc}", parent=dialog)
+                dialogs.showerror("配置未保存", f"输入有误：{exc}", parent=dialog)
                 return
 
             self.ai_client = AIClient(self.config)
@@ -1966,16 +1964,16 @@ class NovelLifecycleMixin:
                     doc = Document(str(file_path))
                     content = "\n\n".join([para.text for para in doc.paragraphs if para.text.strip()])
                 except ImportError:
-                    messagebox.showerror(
+                    dialogs.showerror(
                         "错误", "需要安装 python-docx 库才能导入 Word 文档\n请运行: pip install python-docx"
                     )
                     return
             else:
-                messagebox.showerror("错误", f"不支持的文件格式: {file_path.suffix}")
+                dialogs.showerror("错误", f"不支持的文件格式: {file_path.suffix}")
                 return
 
             if not content.strip():
-                messagebox.showwarning("提示", "文档内容为空")
+                dialogs.showwarning("提示", "文档内容为空")
                 return
 
             self._imported_content = content
@@ -1984,7 +1982,7 @@ class NovelLifecycleMixin:
             self._show_import_preview(content, file_path.name)
 
         except Exception as e:
-            messagebox.showerror("错误", f"导入失败: {str(e)}")
+            dialogs.showerror("错误", f"导入失败: {str(e)}")
 
     def _show_import_preview(self, content, filename):
         """显示导入内容预览"""
@@ -2052,7 +2050,7 @@ class NovelLifecycleMixin:
     def _ai_analyze_content(self):
         """AI分析导入的内容并给出建议"""
         if not hasattr(self, "_imported_content") or not self._imported_content:
-            messagebox.showwarning("提示", "请先导入文档（创作流程 → 导入文档）")
+            dialogs.showwarning("提示", "请先导入文档（创作流程 → 导入文档）")
             return
 
         if not self._check_ready():

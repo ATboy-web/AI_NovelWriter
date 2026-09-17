@@ -14,6 +14,7 @@ from .descriptions_panel import DescriptionsPanelMixin
 from .dialogue_panel import DialoguePanelMixin
 from .elements_panel import ElementsPanelMixin
 from .host import PanelHost
+from .layout import MODE_SINGLE, MODE_SPLIT, PanelLayout
 from .legacy import LegacyPanelAdapter, register_legacy_panels
 from .lineage_panel import LineagePanel
 from .memory_viz_panel import MemoryVizPanelMixin
@@ -39,9 +40,12 @@ __all__ = [
     # ---- v3 面板框架
     "BasePanel",
     "LegacyPanelAdapter",
+    "MODE_SINGLE",
+    "MODE_SPLIT",
     "NATIVE_PANEL_MODULES",
     "PANEL_REGISTRY",
     "PanelHost",
+    "PanelLayout",
     "PanelSpec",
     "all_panels",
     "create",

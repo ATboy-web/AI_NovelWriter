@@ -898,24 +898,37 @@ class FullscreenWriter:
         ttk.Button(dialog, text="应用", command=apply).pack(pady=20)
 
     def _load_writer_settings(self):
-        """加载写作设置"""
-        if self.config:
-            settings_file = self.config.config_dir / "writer_settings.json"
-            if settings_file.exists():
-                with open(settings_file, "r") as f:
-                    s = json.load(f)
-                self.font_size = s.get("font_size", 18)
-                self.paper_width = s.get("paper_width", 700)
-                self.paper_position = s.get("paper_position", "center")
-                self.bg_opacity = s.get("bg_opacity", 0.85)
-                self.typewriter_mode = s.get("typewriter_mode", True)
-                self.ai_assist_enabled = s.get("ai_assist", True)
+        """加载写作设置。
+
+        ⚠️ 必须显式 `encoding="utf-8"`：不指定的话 Windows 上默认是 GBK，
+        文件里有非 ASCII 就抛 `UnicodeDecodeError`。这里还额外容错 ——
+        设置读不出来不该让全屏写作器打不开（与 `AppConfig` 的"损坏不阻断"同一原则）。
+        """
+        if not self.config:
+            return
+        settings_file = self.config.config_dir / "writer_settings.json"
+        if not settings_file.exists():
+            return
+        try:
+            with open(settings_file, "r", encoding="utf-8") as f:
+                s = json.load(f)
+        except (OSError, ValueError) as e:
+            logger.warning(f"写作设置读取失败，使用默认值: {type(e).__name__}: {e}")
+            return
+        self.font_size = s.get("font_size", 18)
+        self.paper_width = s.get("paper_width", 700)
+        self.paper_position = s.get("paper_position", "center")
+        self.bg_opacity = s.get("bg_opacity", 0.85)
+        self.typewriter_mode = s.get("typewriter_mode", True)
+        self.ai_assist_enabled = s.get("ai_assist", True)
 
     def _save_writer_settings(self):
-        """保存写作设置"""
-        if self.config:
-            settings_file = self.config.config_dir / "writer_settings.json"
-            with open(settings_file, "w") as f:
+        """保存写作设置（与读取用同一种编码：UTF-8，见 `_load_writer_settings`）。"""
+        if not self.config:
+            return
+        settings_file = self.config.config_dir / "writer_settings.json"
+        try:
+            with open(settings_file, "w", encoding="utf-8") as f:
                 json.dump(
                     {
                         "font_size": self.font_size,
@@ -928,6 +941,8 @@ class FullscreenWriter:
                     f,
                     indent=2,
                 )
+        except OSError as e:
+            logger.warning(f"写作设置保存失败（不影响本次写作）: {type(e).__name__}: {e}")
 
     def _save(self):
         """保存内容"""

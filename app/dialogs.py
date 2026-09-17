@@ -1,5 +1,12 @@
 """同构对话框 helper（v3 A8）。
 
+本模块是**所有用户可见对话框的唯一实现处**，分两层：
+
+| 层 | 接口 | 用途 |
+|---|---|---|
+| 自绘 Toplevel | `ask_text` / `edit_items` / `show_text` | 输入、编辑列表、展示长文本 |
+| 消息弹窗 | `showinfo` / `showwarning` / `showerror` / `askyesno`（同 `messagebox` 签名）<br>`info` / `warn` / `error` / `confirm`（语义化，新代码用） | 提示与确认 |
+
 现状：全仓 `tk.Toplevel(` 共 36 处，归纳后只有三类同构形态：
 
 1. **输入框 + 确定/取消** —— 取一个字符串（书名、字数、关键词…）
@@ -16,6 +23,11 @@
 - 颜色/字体一律走 `UIStyle` 令牌
 
 本模块不创建 Tk 根窗口，也不在 import 时触碰任何 Tk API —— 可被无 GUI 环境 import。
+（`tkinter.messagebox` 同样是按需在函数内取得，见 `_messagebox()`。）
+
+⚠️ **使用政策**：操作结果优先用 `ui_kit.toast` / `StatusBar`（不打断操作流）；
+模态只留给**需要用户决定**的场景。这不是风格问题 —— 全仓原有 64 处弹窗
+意味着每个操作都要用户点一下才能继续。
 """
 
 from __future__ import annotations
@@ -25,7 +37,26 @@ from typing import Callable, List, Optional
 
 from .ui_style import UIStyle
 
-__all__ = ["ask_text", "edit_items", "show_text"]
+__all__ = [
+    "APP_TITLE",
+    # 自绘对话框
+    "ask_text",
+    "edit_items",
+    "show_text",
+    # 消息弹窗（同 messagebox 签名）
+    "askyesno",
+    "showerror",
+    "showinfo",
+    "showwarning",
+    # 消息弹窗（语义化）
+    "confirm",
+    "error",
+    "info",
+    "is_silent",
+    "set_silent",
+    "silent_modals",
+    "warn",
+]
 
 _C = UIStyle.COLORS
 _F = UIStyle.FONTS
@@ -433,3 +464,137 @@ def show_text(
 def _non_empty(value: str) -> Optional[str]:
     """校验器：非空。返回错误文案或 None。"""
     return None if value else "内容不能为空"
+
+
+# ====================================================================== 消息弹窗
+#
+# 全仓的 `messagebox.*` 调用**统一走这里**（2026-09-17 收口，此前散落在 27 个文件、
+# 217 处，每个文件各自 `from tkinter import messagebox`）。
+#
+# ## 为什么要收口，而不是"反正只是弹个框"
+#
+# 1. **一个改点**：以后要把原生弹窗换成主题化的自绘对话框、要给弹窗加"不再提示"、
+#    要在弹窗上做埋点 —— 都只改这一个文件，而不是再翻 27 个文件。
+#    （原生 messagebox 在深色主题下是浅色的，这是迟早要做的事。）
+# 2. **自动化可开关**：模态弹窗是自动化的大敌 —— 截图脚本为了不被卡死，
+#    只能去 monkeypatch `tkinter.messagebox` 的内部属性（脆、且要写对每个方法名。
+#    实测漏了 `askinteger` 就被卡 14 分钟）。现在有 `set_silent()` / `silent_modals()`。
+# 3. **使用政策有地方写**：`ui_kit` 的 toast / `StatusBar` 才是"操作结果"的默认表达，
+#    模态只留给**需要用户决定**的场景（删除、覆盖、不可逆操作）。
+#
+# ## 为什么是"与 messagebox 同签名"
+#
+# `showinfo(title, message, **options)` 的参数顺序、返回值、选项名都与
+# `tkinter.messagebox` 完全一致 ⇒ 调用点只需把 `messagebox.` 换成 `dialogs.`，
+# **不改变任何可见行为**，171 处替换因此可以机械完成并逐条复核。
+# 想要更好的默认值（标题、parent）时用下面那组语义化函数（`info` / `warn` / ...）。
+
+#: 语义化接口的默认标题
+APP_TITLE = "AI小说创作工坊"
+
+_silent = False
+_silent_depth = 0
+
+
+def set_silent(value: bool) -> bool:
+    """开关"静默模式"，返回此前的值（便于调用方恢复）。
+
+    静默下：`show*` 直接返回、不弹窗；`ask*` 返回**安全默认**（`False` = 不做那件事）。
+    自动化脚本、UI 冒烟、批量演示用它替代 monkeypatch。
+    """
+    global _silent
+    previous = _silent
+    _silent = bool(value)
+    return previous
+
+
+def is_silent() -> bool:
+    """当前是否静默（供测试与调用方判断）。"""
+    return _silent
+
+
+class silent_modals:
+    """`with silent_modals(): ...` —— 作用域内静默，异常也保证恢复（可嵌套）。"""
+
+    def __enter__(self) -> "silent_modals":
+        global _silent_depth
+        _silent_depth += 1
+        set_silent(True)
+        return self
+
+    def __exit__(self, *_exc) -> bool:
+        global _silent_depth
+        _silent_depth = max(0, _silent_depth - 1)
+        if _silent_depth == 0:
+            set_silent(False)
+        return False
+
+
+def _messagebox():
+    """延迟取得 `tkinter.messagebox`。
+
+    不在模块顶层 import：本模块要能在**无 Tk 的环境**（CI / 服务器 / 单测）被导入，
+    与本文件开头"import 时触碰任何 Tk API"的承诺一致。
+    """
+    from tkinter import messagebox
+
+    return messagebox
+
+
+# ---- 同签名层（迁移用，行为与 messagebox 完全一致）--------------------
+
+
+def showinfo(title: str, message: str = "", **options) -> Optional[str]:
+    """同 `messagebox.showinfo`。"""
+    if _silent:
+        return None
+    return _messagebox().showinfo(title, message, **options)
+
+
+def showwarning(title: str, message: str = "", **options) -> Optional[str]:
+    """同 `messagebox.showwarning`。"""
+    if _silent:
+        return None
+    return _messagebox().showwarning(title, message, **options)
+
+
+def showerror(title: str, message: str = "", **options) -> Optional[str]:
+    """同 `messagebox.showerror`。"""
+    if _silent:
+        return None
+    return _messagebox().showerror(title, message, **options)
+
+
+def askyesno(title: str, message: str = "", **options) -> bool:
+    """同 `messagebox.askyesno`；静默时返回 `False`（不做破坏性动作）。"""
+    if _silent:
+        return False
+    return bool(_messagebox().askyesno(title, message, **options))
+
+
+# ---- 语义化层（新代码用）--------------------------------------------
+
+
+def info(message: str, *, title: str = APP_TITLE, parent=None) -> None:
+    """告知类提示。⚠️ 能用 `ui_kit.toast` / `StatusBar` 就不要用模态（会打断操作流）。"""
+    showinfo(title, message, parent=parent)
+
+
+def warn(message: str, *, title: str = APP_TITLE, parent=None) -> None:
+    """警告类提示（用户需要知道，但无需做决定）。"""
+    showwarning(title, message, parent=parent)
+
+
+def error(message: str, *, title: str = APP_TITLE, parent=None) -> None:
+    """错误类提示。"""
+    showerror(title, message, parent=parent)
+
+
+def confirm(message: str, *, title: str = APP_TITLE, parent=None, default: bool = False) -> bool:
+    """确认类弹窗 —— **模态只该用在这里**（删除 / 覆盖 / 不可逆操作）。
+
+    静默时返回 `default`（默认 `False`），绝不替用户默认"同意"。
+    """
+    if _silent:
+        return default
+    return bool(_messagebox().askyesno(title, message, parent=parent))

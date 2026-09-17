@@ -2,8 +2,8 @@
 
 import threading
 import tkinter as tk
-from tkinter import messagebox
 
+from app import dialogs
 from app.novel_toolkit import StoryFlowEngine
 from app.ui_style import UIStyle
 
@@ -101,14 +101,14 @@ class StoryFlowPanelMixin:
 
     def _run_story_flow(self):
         if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
+            dialogs.showwarning("提示", "请先配置AI")
             return
 
         self.story_flow_engine = StoryFlowEngine(self.ai_client)
         input_text = self.sf_input.get("1.0", tk.END).strip()
 
         if not input_text:
-            messagebox.showinfo("提示", "请输入内容")
+            dialogs.showinfo("提示", "请输入内容")
             return
 
         mode = self.sf_mode_var.get()
@@ -131,6 +131,6 @@ class StoryFlowPanelMixin:
 
                 self.root.after(0, lambda: self._show_tool_result(self.sf_result, result))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()

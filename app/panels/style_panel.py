@@ -2,9 +2,9 @@
 
 import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import scrolledtext, ttk
 
-from app import UIStyle
+from app import UIStyle, dialogs
 from app.novel_toolkit import StyleTransferEngine
 
 
@@ -34,12 +34,12 @@ class StylePanelMixin:
 
     def _convert_style(self):
         if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
+            dialogs.showwarning("提示", "请先配置AI")
             return
 
         current_text = self.content_text.get("1.0", tk.END).strip()
         if not current_text:
-            messagebox.showinfo("提示", "没有可转换的内容")
+            dialogs.showinfo("提示", "没有可转换的内容")
             return
 
         self.style_engine = StyleTransferEngine(self.ai_client)
@@ -49,6 +49,6 @@ class StylePanelMixin:
                 result = self.style_engine.convert_style(current_text, self.style_var.get())
                 self.root.after(0, lambda: self._show_tool_result(self.style_result, result))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()

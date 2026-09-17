@@ -3,8 +3,9 @@
 """
 
 import tkinter as tk
-from tkinter import messagebox
 from typing import TYPE_CHECKING
+
+from app import dialogs
 
 if TYPE_CHECKING:
     from novel_app import NovelWriterApp
@@ -150,16 +151,16 @@ class WritingSkillsPanelMixin:
     def _analyze_current_chapter(self: "NovelWriterApp"):
         """分析当前章节"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先打开小说")
+            dialogs.showwarning("提示", "请先打开小说")
             return
 
         if not hasattr(self, "content_text"):
-            messagebox.showwarning("提示", "请先打开小说")
+            dialogs.showwarning("提示", "请先打开小说")
             return
 
         content = self.content_text.get("1.0", tk.END).strip()
         if not content:
-            messagebox.showwarning("提示", "章节内容为空")
+            dialogs.showwarning("提示", "章节内容为空")
             return
 
         from app.writing_skills import writing_skill_manager
@@ -185,7 +186,7 @@ class WritingSkillsPanelMixin:
     def _apply_writing_style(self: "NovelWriterApp"):
         """应用写作风格到配置"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先打开小说")
+            dialogs.showwarning("提示", "请先打开小说")
             return
 
         from app.writing_skills import writing_skill_manager
@@ -201,13 +202,13 @@ class WritingSkillsPanelMixin:
         except Exception:
             pass
 
-        messagebox.showinfo("成功", "写作风格已更新！\n下次生成章节时将应用新风格。")
+        dialogs.showinfo("成功", "写作风格已更新！\n下次生成章节时将应用新风格。")
         self._log("[写作技能] 风格配置已更新")
 
     def _save_writing_config(self: "NovelWriterApp"):
         """保存写作配置"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先打开小说")
+            dialogs.showwarning("提示", "请先打开小说")
             return
 
         from app.writing_skills import writing_skill_manager
@@ -220,13 +221,13 @@ class WritingSkillsPanelMixin:
         config_dir = self.current_novel_dir / "writing_skills"
         writing_skill_manager.save_all(str(config_dir))
 
-        messagebox.showinfo("成功", "写作配置已保存！")
+        dialogs.showinfo("成功", "写作配置已保存！")
         self._log("[写作技能] 配置已保存")
 
     def _update_knowledge_graph(self: "NovelWriterApp"):
         """更新知识图谱"""
         if not self.current_novel_dir:
-            messagebox.showwarning("提示", "请先打开小说")
+            dialogs.showwarning("提示", "请先打开小说")
             return
 
         from app.writing_skills import writing_skill_manager

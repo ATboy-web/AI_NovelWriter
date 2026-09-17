@@ -9,11 +9,11 @@ import threading
 import tkinter as tk
 import traceback
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import ttk
 
 from loguru import logger
 
-from app import UIStyle
+from app import UIStyle, dialogs
 from app.biography import build_biography_prompt, read_story_arcs, split_sections, structured_biography
 from app.character_system import CharacterSystem
 from app.format_converter import FormatConverter, ImageManager
@@ -272,7 +272,7 @@ class CharacterUIMixin:
         if not char_name:
             characters = self.memory.get_characters() if self.memory else {}
             if not characters:
-                messagebox.showwarning("提示", "请先创建角色")
+                dialogs.showwarning("提示", "请先创建角色")
                 return
 
             # 角色选择对话框
@@ -342,10 +342,10 @@ class CharacterUIMixin:
             try:
                 word_count = int(raw)
             except (TypeError, ValueError):
-                messagebox.showwarning("输入无效", f"传记字数必须是整数，当前输入：{raw!r}")
+                dialogs.showwarning("输入无效", f"传记字数必须是整数，当前输入：{raw!r}")
                 return
             if not (MIN_BIO_WORDS <= word_count <= MAX_BIO_WORDS):
-                messagebox.showwarning(
+                dialogs.showwarning(
                     "输入无效",
                     f"传记字数需在 {MIN_BIO_WORDS} ~ {MAX_BIO_WORDS} 之间，当前输入：{word_count}",
                 )
@@ -830,7 +830,7 @@ class CharacterUIMixin:
         """从角色面板按钮生成选中角色个人传"""
         name = self.char_select_var.get()
         if not name or name == "无角色":
-            messagebox.showwarning("提示", "请先选择一个角色")
+            dialogs.showwarning("提示", "请先选择一个角色")
             return
 
         if not self._check_ready(silent=True):
@@ -892,13 +892,13 @@ class CharacterUIMixin:
                 else fields["name"].get("1.0", tk.END).strip()
             )
             if not name:
-                messagebox.showwarning("提示", "请输入角色名称")
+                dialogs.showwarning("提示", "请输入角色名称")
                 return
             if not self.character_system:
                 self.character_system = CharacterSystem(self.current_novel_dir)
 
             if name in self.character_system.get_character_names():
-                messagebox.showwarning("提示", "角色名已存在")
+                dialogs.showwarning("提示", "角色名已存在")
                 return
 
             def get_val(key):
@@ -934,7 +934,7 @@ class CharacterUIMixin:
     def _ai_create_character(self):
         """AI自动创建角色"""
         if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
+            dialogs.showwarning("提示", "请先配置AI")
             return
 
         # 获取小说上下文
@@ -962,11 +962,11 @@ class CharacterUIMixin:
                         suggestions += f"建议武器: {result['weapon_suggestion']}\n"
                     if result.get("skill_suggestions"):
                         suggestions += f"建议技能: {', '.join(result['skill_suggestions'])}\n"
-                    self.root.after(0, lambda: messagebox.showinfo("AI创建成功", suggestions))
+                    self.root.after(0, lambda: dialogs.showinfo("AI创建成功", suggestions))
                 else:
-                    self.root.after(0, lambda: messagebox.showerror("创建失败", result.get("error", "未知错误")))
+                    self.root.after(0, lambda: dialogs.showerror("创建失败", result.get("error", "未知错误")))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         self._log("AI正在创建角色...")
         threading.Thread(target=run, daemon=True).start()
@@ -974,7 +974,7 @@ class CharacterUIMixin:
     def _show_char_detail(self):
         """显示角色详情"""
         if not self.character_system or not self.character_system.character:
-            messagebox.showinfo("提示", "请先创建角色")
+            dialogs.showinfo("提示", "请先创建角色")
             return
 
         char = self.character_system.character
@@ -1105,7 +1105,7 @@ class CharacterUIMixin:
                 self._log(f"角色已重命名: {old_name} → {new_name}")
                 dialog.destroy()
             else:
-                messagebox.showwarning("提示", "名称已存在或无效")
+                dialogs.showwarning("提示", "名称已存在或无效")
 
     def _delete_character(self, dialog):
         """删除角色（**刻意不接线**，保留以备将来有无损归档需求）
@@ -1117,7 +1117,7 @@ class CharacterUIMixin:
         if not self.character_system or not self.character_system.character:
             return
         name = self.character_system.character.name
-        if messagebox.askyesno("确认", f"确定删除角色「{name}」？"):
+        if dialogs.askyesno("确认", f"确定删除角色「{name}」？"):
             self.character_system.delete_character(name)
             self._update_char_display()
             self._log(f"已删除角色: {name}")
@@ -1212,7 +1212,7 @@ class CharacterUIMixin:
         def edit_arc():
             selection = story_list.curselection()
             if not selection:
-                messagebox.showwarning("提示", "请先选择故事线")
+                dialogs.showwarning("提示", "请先选择故事线")
                 return
             idx = selection[0]
             if idx < len(story_data.get("story_arcs", [])):
@@ -1225,7 +1225,7 @@ class CharacterUIMixin:
             with open(story_file, "w", encoding="utf-8") as f:
                 json.dump(story_data, f, indent=2, ensure_ascii=False)
             self._log(f"已保存 {char_name} 的故事线")
-            messagebox.showinfo("成功", "故事线已保存")
+            dialogs.showinfo("成功", "故事线已保存")
 
         def view_all_stories():
             """查看所有角色的故事线"""
@@ -1292,7 +1292,7 @@ class CharacterUIMixin:
     def _equip_weapon(self):
         """装备武器"""
         if not self.character_system or not self.character_system.character:
-            messagebox.showinfo("提示", "请先创建角色")
+            dialogs.showinfo("提示", "请先创建角色")
             return
 
         dialog = tk.Toplevel(self.root)
@@ -1417,7 +1417,7 @@ class CharacterUIMixin:
     def _learn_skill(self):
         """学习技能"""
         if not self.character_system or not self.character_system.character:
-            messagebox.showinfo("提示", "请先创建角色")
+            dialogs.showinfo("提示", "请先创建角色")
             return
 
         dialog = tk.Toplevel(self.root)
@@ -1469,7 +1469,7 @@ class CharacterUIMixin:
                         self._update_char_display()
                         self._log(f"学会技能: {skill.get('name', '')}")
                     else:
-                        messagebox.showinfo("提示", "已学会该技能")
+                        dialogs.showinfo("提示", "已学会该技能")
                     dialog.destroy()
 
         def add_custom():

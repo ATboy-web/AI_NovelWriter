@@ -154,9 +154,10 @@ class BasePanel:
     def set_status(self, text: str, kind: str = "info") -> None:
         """把操作结果显示在**面板底部状态栏**（由宿主注入）。
 
-        为什么不用 `messagebox`：本仓原有 64 处弹窗，每次都要用户点一下才能继续，
+        为什么不用模态：本仓原有 215 处弹窗，每次都要用户点一下才能继续，
         是"操作难受"的最大来源。状态栏是内联反馈，不打断、也不丢信息。
-        真正需要**确认**的场景（删除、覆盖）仍应使用 `messagebox.askyesno`。
+        真正需要**确认**的场景（删除、覆盖）仍应使用 `dialogs.confirm(...)`
+        （面板里可 `from app import dialogs`，不要在业务代码里直接调 `messagebox`）。
         """
         bar = self.__dict__.get("_status_bar")
         if bar is not None:

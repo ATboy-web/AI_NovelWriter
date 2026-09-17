@@ -2,9 +2,9 @@
 
 import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import scrolledtext, ttk
 
-from app import UIStyle
+from app import UIStyle, dialogs
 from app.novel_toolkit import AdaptEngine
 
 
@@ -35,7 +35,7 @@ class AdaptPanelMixin:
 
     def _adapt_selected(self):
         if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
+            dialogs.showwarning("提示", "请先配置AI")
             return
 
         try:
@@ -44,7 +44,7 @@ class AdaptPanelMixin:
             selected = self.content_text.get("1.0", tk.END).strip()[:500]
 
         if not selected:
-            messagebox.showinfo("提示", "请先选择要改编的文本")
+            dialogs.showinfo("提示", "请先选择要改编的文本")
             return
 
         self.adapt_engine = AdaptEngine(self.ai_client)
@@ -55,18 +55,18 @@ class AdaptPanelMixin:
                 text = f"【匹配率: {result['match_rate']}%】\n\n{result['adapted']}"
                 self.root.after(0, lambda: self._show_tool_result(self.adapt_result, text))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
     def _adapt_random(self):
         if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
+            dialogs.showwarning("提示", "请先配置AI")
             return
 
         current_text = self.content_text.get("1.0", tk.END).strip()
         if not current_text:
-            messagebox.showinfo("提示", "没有可改编的内容")
+            dialogs.showinfo("提示", "没有可改编的内容")
             return
 
         self.adapt_engine = AdaptEngine(self.ai_client)
@@ -80,7 +80,7 @@ class AdaptPanelMixin:
                     text += f"{r['adapted']}\n\n"
                 self.root.after(0, lambda: self._show_tool_result(self.adapt_result, text))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 

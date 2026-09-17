@@ -4,7 +4,8 @@
 """
 
 import tkinter as tk
-from tkinter import messagebox
+
+from app import dialogs
 
 
 class NoteUIMixin:
@@ -66,7 +67,7 @@ class NoteUIMixin:
         """保存当前笔记"""
         selection = self.notes_list.curselection()
         if not selection:
-            messagebox.showinfo("提示", "请先选择一个笔记")
+            dialogs.showinfo("提示", "请先选择一个笔记")
             return
 
         idx = selection[0]
@@ -96,7 +97,7 @@ class NoteUIMixin:
         if not selection:
             return
 
-        if not messagebox.askyesno("确认", "确定删除此笔记？"):
+        if not dialogs.askyesno("确认", "确定删除此笔记？"):
             return
 
         idx = selection[0]
@@ -122,16 +123,16 @@ class NoteUIMixin:
         """将便笺发送到工程笔记"""
         selection = self.notes_list.curselection()
         if not selection:
-            messagebox.showinfo("提示", "请先选择一个便笺")
+            dialogs.showinfo("提示", "请先选择一个便笺")
             return
 
         idx = selection[0]
         if self.note_type_var.get() != "sticky":
-            messagebox.showinfo("提示", "请先切换到便笺本")
+            dialogs.showinfo("提示", "请先切换到便笺本")
             return
 
         notes = self.note_manager.get_sticky_notes()
         if idx < len(notes):
             self.note_manager.send_sticky_to_project(notes[idx]["id"])
             self._log("便笺已发送到工程笔记")
-            messagebox.showinfo("成功", "便笺已发送到工程笔记")
+            dialogs.showinfo("成功", "便笺已发送到工程笔记")

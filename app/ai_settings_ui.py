@@ -17,10 +17,10 @@ URL 预览由 `ProviderSpec.resolved_url` 直接算 —— 三者都不会另写
 """
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk
 from typing import Callable, Dict, List, Tuple
 
-from app import UIStyle
+from app import UIStyle, dialogs
 
 from .config import AI_PROFILE_LABELS, REASONING_EFFORTS
 from .providers import get_spec, specs_for_ui
@@ -123,7 +123,7 @@ class AISettingsMixin:
             try:
                 cfg.switch_profile(name)
             except ValueError as exc:
-                messagebox.showerror("切换失败", str(exc), parent=dialog)
+                dialogs.showerror("切换失败", str(exc), parent=dialog)
                 active_var.set(cfg.active_profile)
                 return
             self._refresh_ai_client()
@@ -136,7 +136,7 @@ class AISettingsMixin:
             try:
                 cfg.create_profile(name, activate=True)
             except ValueError as exc:
-                messagebox.showerror("新建失败", str(exc), parent=dialog)
+                dialogs.showerror("新建失败", str(exc), parent=dialog)
                 return
             self._reopen_settings(dialog, f"已新建并切换到档案《{name}》")
 
@@ -148,13 +148,13 @@ class AISettingsMixin:
             try:
                 cfg.rename_profile(old, name)
             except ValueError as exc:
-                messagebox.showerror("重命名失败", str(exc), parent=dialog)
+                dialogs.showerror("重命名失败", str(exc), parent=dialog)
                 return
             self._reopen_settings(dialog, f"档案已重命名为《{name}》")
 
         def _delete():
             name = active_var.get()
-            if not messagebox.askyesno(
+            if not dialogs.askyesno(
                 "删除配置档案",
                 f"确定删除档案《{name}》？\n该档案单独保存的 API Key 也会一并删除。",
                 parent=dialog,
@@ -163,7 +163,7 @@ class AISettingsMixin:
             try:
                 cfg.delete_profile(name)
             except ValueError as exc:
-                messagebox.showerror("删除失败", str(exc), parent=dialog)
+                dialogs.showerror("删除失败", str(exc), parent=dialog)
                 return
             self._reopen_settings(dialog, f"已删除档案《{name}》")
 
@@ -447,7 +447,7 @@ class AISettingsMixin:
                 try:
                     cfg.set(key, value)
                 except (ValueError, RuntimeError) as exc:
-                    messagebox.showerror(
+                    dialogs.showerror(
                         "配置未保存",
                         f"{AI_PROFILE_LABELS.get(key, key)} 的值不合法：\n{exc}\n\n"
                         "已停止保存，请修正后重试（前面的字段已写入）。",

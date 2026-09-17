@@ -2,9 +2,9 @@
 
 import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import scrolledtext, ttk
 
-from app import UIStyle
+from app import UIStyle, dialogs
 
 
 class BridgesPanelMixin:
@@ -54,7 +54,7 @@ class BridgesPanelMixin:
 
     def _gen_bridge(self):
         if not self.ai_client.is_configured():
-            messagebox.showwarning("提示", "请先配置AI")
+            dialogs.showwarning("提示", "请先配置AI")
             return
 
         # 使用角色系统中的实际角色数据
@@ -77,7 +77,7 @@ class BridgesPanelMixin:
                 )
                 self.root.after(0, lambda: self._show_tool_result(self.bridge_result, result))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: messagebox.showerror("错误", str(_exc)))
+                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -85,13 +85,13 @@ class BridgesPanelMixin:
         """添加自定义桥段"""
         template = self.custom_bridge_entry.get().strip()
         if not template:
-            messagebox.showinfo("提示", "请输入桥段模板")
+            dialogs.showinfo("提示", "请输入桥段模板")
             return
         cat = self.bridge_cat_var.get()
         if not cat:
-            messagebox.showinfo("提示", "请先选择桥段类型")
+            dialogs.showinfo("提示", "请先选择桥段类型")
             return
         self.bridge_lib.add_custom_item(cat, template)
         self.custom_bridge_entry.delete(0, tk.END)
         self._log(f"添加自定义桥段: {template[:30]}... (类型: {cat})")
-        messagebox.showinfo("成功", f"已添加自定义桥段到 {cat}")
+        dialogs.showinfo("成功", f"已添加自定义桥段到 {cat}")

@@ -3,6 +3,50 @@
 > 版本号单一权威源为 `pyproject.toml`，`app.__version__` 与 README 均与之一致
 > （由 `tests/test_version_consistency.py` 守护）。
 
+## 未发布（候选版本 v3.2.0）
+
+> 已进入 `main`，**尚未随发布打包**（最新发布仍是 v3.1.0 的 EXE）。
+> 按仓库流程，打 `v3.2.0` 标签时本节即成为该版本的更新日志。
+
+### 新增
+
+**面板布局可配置：分栏与停靠记忆**
+- 选择器末行新增「布局」控件：**单栏 / 分栏**切换 + **右栏**面板选择。
+  分栏后内容区左右各放一个面板，分隔条可拖动。
+- **停靠记忆**：布局（模式、两个栏各放谁、分隔条比例、哪些面板已脱出为独立窗口）
+  记忆到 `~/.ai_novel_writer/panel_layout.json`，下次启动自动恢复。
+- 进入分栏时自动挑一个右栏面板，**优先同分组**（并排看的通常是同一类工作，
+  如"世界线与时间线 + 角色传记"）。
+- 三种形态共用同一份外壳代码：面板可以**在栏里、在独立窗口里、或单栏显示**，
+  面包屑/状态栏/快捷键始终一致。
+
+### 变更
+
+**弹窗调用统一收口到 `app/dialogs.py`**
+- `app/` 下 **215 处** `messagebox.*` 调用（散落在 25 个文件、每个文件各自
+  `from tkinter import messagebox`）全部改走 `app/dialogs.py`。
+- 新增与 `messagebox` **同签名**的一层（`showinfo` / `showwarning` / `showerror` / `askyesno`），
+  迁移因此是"只换前缀"的等值替换；另提供语义化的 `info` / `warn` / `error` / `confirm`。
+- 新增**静默开关** `dialogs.set_silent(True)` / `dialogs.silent_modals()`：
+  自动化脚本不必再 monkeypatch `tkinter.messagebox` 的内部属性
+  （实测漏打一个 `askinteger` 就被模态弹窗卡住 14 分钟）。
+- 门禁：`tests/test_dialogs.py` 断言业务代码**不得**再直接调用 `messagebox`
+  （用 tokenize 判定，不误伤 docstring 里的政策说明）。
+
+### 修复
+
+- `PanedWindow` 的选项集与 `Frame` 不同（没有 `highlightthickness`），
+  分栏容器按实际支持的选项构造。
+- **比例应用不再用 `after_idle` 自重排**：窗口尚未映射时宽度恒为 1，
+  自重排会变成永不结束的空闲循环，`update()` 直接卡死（实测挂住 7 分钟）。
+  改为由 `<Configure>` 在拿到真实尺寸时应用**一次**（也避免与用户拖动打架）。
+
+### 工程
+
+- 新增测试：`tests/test_panel_layout.py`（43 条）、`tests/test_dialogs.py`（21 条）。
+- 截图：`docs/ui_review/after_12_single_mode.png` → `after_15_back_to_single.png`
+  （分栏前 → 分栏 → 调整比例与右栏 → 收回；**收回后的截图与分栏前字节完全相同**）。
+
 ## v3.1.0 (2026-09-17)
 
 **本次发布的定位**：P5（样式与对话框收敛）收尾 + 面板可脱离为独立窗口。

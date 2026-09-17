@@ -397,7 +397,8 @@ class TestBiographyInputValidation:
     def test_word_count_parse_is_guarded(self):
         body = _method_body("app/character_ui.py", "def start_generate", "def run(")
         assert "except (TypeError, ValueError):" in body
-        assert "messagebox.showwarning(" in body
+        # 2026-09-17：提示类弹窗统一收口到 app/dialogs.py，调用点由 messagebox.* 改为 dialogs.*
+        assert "dialogs.showwarning(" in body
 
     def test_word_dialog_is_destroyed_after_validation_only(self):
         """只有校验通过才关闭对话框：两个失败分支都必须 return，绝不走到 destroy()。

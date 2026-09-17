@@ -1,7 +1,9 @@
 """工具面板混入模块 + v3 面板框架。
 
 v2 的 12 个 `*PanelMixin` 仍在此转出（它们由 `legacy.LegacyPanelAdapter` 适配进新框架，
-面板内代码一行未改）。v3 的面板框架四件套也在此转出，调用方不必知道内部布局。
+面板内代码一行未改）。v3 的面板框架也在此转出，调用方不必知道内部布局：
+`base`（面板契约）· `registry`（注册表）· `legacy`（迁移适配器）· `host`（容器与生命周期）·
+`ui_kit`（统一视觉组件库）· `layout`（分栏与停靠记忆）。
 """
 
 from .adapt_panel import AdaptPanelMixin

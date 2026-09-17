@@ -54,6 +54,8 @@ a = Analysis(
         'app.panels.timeline_panel',
         'app.panels.biography_panel',
         'app.panels.lineage_panel',
+        # 插图工坊面板（同上是按字符串导入，必须显式列出，否则打包后少一块）
+        'app.panels.illustration_panel',
         'app.timeline_store',
         'app.lineage',
         # v2 面板模块（legacy.py 按字符串导入）

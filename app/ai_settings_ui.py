@@ -215,6 +215,65 @@ class AISettingsMixin:
         model_combo = ttk.Combobox(model_box, textvariable=model_var, width=42)
         model_combo.pack(anchor=tk.W, padx=20, pady=2)
 
+        # ---- 本地模型：从服务实际拉取"已安装"的模型
+        # 为什么需要：`AIClient.get_ollama_models()` 早就实现了，但**全仓零界面调用**
+        # ⇒ 用户只能手打模型名，填错了要到生成时才失败。模型候选原先来自注册表里的
+        # **静态建议表**（`_OLLAMA_MODELS`），未必与这台机器上真实装了哪些模型一致。
+        # 显示与否由能力位 `local` 决定（`can_list_local_models`），
+        # 而不是 `provider == "ollama"` —— 以后接 llama.cpp / vLLM 只要声明 local 即可复用。
+        local_var = tk.StringVar(value="")
+        local_row = tk.Frame(model_box)
+        local_row.pack(anchor=tk.W, padx=20, pady=(0, 2))
+
+        def _refresh_local_models():
+            local_var.set("正在读取本地模型…")
+
+            def _after(models):
+                if isinstance(models, dict):  # `_run_in_background` 的异常形状
+                    local_var.set(f"读取失败：{models.get('reason', '未知错误')}")
+                    return
+                names = [m.name for m in (models or [])]
+                if not names:
+                    local_var.set("未读到模型（服务未启动，或尚未拉取任何模型）")
+                    return
+                # 只更新候选列表，**不覆盖用户已填的模型名** —— 覆盖会把配置改掉
+                model_combo["values"] = names
+                local_var.set(f"已读到 {len(names)} 个本地模型，可下拉选择")
+
+            self._run_in_background(_list_local_models, _after, dialog)
+
+        def _list_local_models():
+            return self.ai_client.list_local_models()
+
+        def _check_local_service():
+            local_var.set("正在检测本地服务…")
+
+            def _after(result):
+                if isinstance(result, dict) and "reason" in result:
+                    local_var.set(f"检测失败：{result.get('reason')}")
+                    return
+                ok, message = result if isinstance(result, tuple) else (False, str(result))
+                local_var.set(("✅ " if ok else "❌ ") + str(message))
+
+            self._run_in_background(self.ai_client.check_local_service, _after, dialog)
+
+        local_refresh_btn = ttk.Button(local_row, text="刷新本地模型", command=_refresh_local_models)
+        local_refresh_btn.pack(side=tk.LEFT)
+        local_check_btn = ttk.Button(local_row, text="检测本地服务", command=_check_local_service)
+        local_check_btn.pack(side=tk.LEFT, padx=6)
+        tk.Label(local_row, textvariable=local_var, fg="#666", anchor=tk.W).pack(side=tk.LEFT, padx=6)
+
+        def _sync_local_controls():
+            """按当前服务商的能力决定这一行是否出现。"""
+            try:
+                show = bool(self.ai_client.can_list_local_models(_current_provider()))
+            except Exception:  # noqa: BLE001 - 能力查询失败时按"不显示"处理
+                show = False
+            if show:
+                local_row.pack(anchor=tk.W, padx=20, pady=(0, 2))
+            else:
+                local_row.pack_forget()
+
         _label(model_box, "最大输出 token")
         max_tokens_var = tk.StringVar()
         ttk.Entry(model_box, textvariable=max_tokens_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
@@ -405,6 +464,9 @@ class AISettingsMixin:
                 bal_state.set(f"该服务商有余额接口（{spec.note}）。可直接点「查询余额」。")
             else:
                 bal_state.set(f"该服务商未提供余额接口（{spec.note}）。若你确知自建/代理端点，可在下面填写以启用查询。")
+            # 本地模型控件同样由能力位驱动（`local`）——
+            # 放在这里可以同时覆盖"切换服务商"与"载入档案"两条路径
+            _sync_local_controls()
 
         def _on_provider_change(*_):
             spec_key = _current_provider()

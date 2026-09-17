@@ -37,7 +37,7 @@ from .base import (
     is_transient_error,
     join_url,
 )
-from .ollama import OllamaAdapter
+from .ollama import OLLAMA_PATHS, LocalModel, OllamaAdapter, parse_pull_progress, parse_tags, parse_version
 from .openai_compat import OpenAICompatAdapter
 from .pricing import (
     PRICE_TABLE_VERIFIED_AT,
@@ -77,6 +77,11 @@ __all__ = [
     "ReasoningAdapter",
     "AnthropicAdapter",
     "OllamaAdapter",
+    "OLLAMA_PATHS",
+    "LocalModel",
+    "parse_tags",
+    "parse_version",
+    "parse_pull_progress",
     "THINKING_STYLES",
     "apply_thinking_style",
     # 注册表

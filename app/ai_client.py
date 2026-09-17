@@ -23,9 +23,11 @@ import httpx
 from .config import AppConfig
 from .providers import (
     BALANCE_FALLBACK_PROVIDER,
+    OLLAMA_PATHS,
     AuthStyle,
     BalanceCache,
     ChatRequest,
+    LocalModel,
     OpenAICompatAdapter,
     ProviderAdapter,
     ProviderRegistry,
@@ -34,6 +36,9 @@ from .providers import (
     default_registry,
     has_builtin_probe,
     is_transient_error,
+    parse_pull_progress,
+    parse_tags,
+    parse_version,
 )
 from .token_estimator import estimate_messages_tokens, estimate_tokens
 from .usage_tracker import usage_tracker
@@ -708,19 +713,139 @@ class AIClient:
         return self.client is not None
 
     def get_ollama_models(self) -> List[str]:
+        """兼容旧接口：只返回模型名列表。
+
+        实现委托给 `list_local_models()`（单一来源），这样名字列表与详细信息
+        不会各解析一遍而漂移。
+        """
+        return [m.name for m in self.list_local_models()]
+
+    # ------------------------------------------------------------ 本地模型（Ollama）
+
+    def local_base_url(self, base_url: str = "") -> str:
+        """本地模型服务的地址：显式入参 > 配置的 `api_base` > 服务商默认。"""
+        if base_url:
+            return base_url.rstrip("/")
+        configured = str(self.config.get("api_base", "") or "").strip()
+        if configured:
+            return configured.rstrip("/")
+        spec = self.registry.resolve("ollama")
+        return (getattr(spec, "base_url", "") or "").rstrip("/")
+
+    def list_local_models(self, base_url: str = "") -> List[LocalModel]:
+        """列出本地已安装的模型（`GET /api/tags`）。
+
+        界面用它填下拉框 —— 这样用户不必手打模型名（旧实现只有本方法的
+        名字列表版本，而且**全仓零界面调用**）。
+        连不上服务时返回空列表，由 `check_local_service()` 负责给出原因。
+        """
+        url = f"{self.local_base_url(base_url)}{OLLAMA_PATHS['tags']}"
         try:
-            base_url = self.config.get("api_base", "http://localhost:11434")
-            resp = httpx.get(f"{base_url}/api/tags", timeout=5)
-            return [m["name"] for m in resp.json().get("models", [])] if resp.status_code == 200 else []
-        except Exception:
+            resp = self._http_get(url, {}, self._local_model_timeout())
+        except Exception as exc:  # noqa: BLE001 - 探测失败要安静降级为空列表
+            self._log(f"[本地模型] 拉取模型列表失败：{type(exc).__name__}: {exc}")
+            return []
+        if getattr(resp, "status_code", 0) != 200:
+            return []
+        try:
+            return parse_tags(resp.json())
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"[本地模型] 解析模型列表失败：{exc}")
             return []
 
-    # ============================================================ 能力与预览
+    @staticmethod
+    def _local_model_timeout() -> float:
+        # 本地服务应当秒回；给 5s 是为了"服务没启动"时不要卡住界面
+        return 5.0
+
+    def check_local_service(self, base_url: str = "") -> tuple[bool, str]:
+        """探测本地模型服务是否可用（`GET /api/version`）。
+
+        返回 `(ok, message)`；`message` 直接可展示 ——
+        设计原则同余额：**"连不上"与"没有这个功能"要能分辨**，
+        否则用户无法判断是服务没启动还是功能坏了。
+        """
+        base = self.local_base_url(base_url)
+        if not base:
+            return False, "未配置本地服务地址"
+        url = f"{base}{OLLAMA_PATHS['version']}"
+        try:
+            resp = self._http_get(url, {}, self._local_model_timeout())
+        except Exception as exc:  # noqa: BLE001
+            return False, f"连不上本地服务（{base}）：{type(exc).__name__}"
+        if getattr(resp, "status_code", 0) != 200:
+            return False, f"本地服务返回 HTTP {getattr(resp, 'status_code', 0)}"
+        try:
+            ver = parse_version(resp.json())
+        except Exception:  # noqa: BLE001
+            ver = ""
+        count = len(self.list_local_models(base))
+        return True, f"本地服务可用（Ollama {ver or '未知版本'}，已装 {count} 个模型）"
+
+    def pull_local_model(
+        self,
+        name: str,
+        base_url: str = "",
+        on_progress: Callable[[dict], None] = None,
+    ) -> tuple[bool, str]:
+        """拉取（下载）一个本地模型（`POST /api/pull`，流式返回进度）。
+
+        `on_progress` 每收到一行进度回调一次（形如
+        `{"status": "downloading", "percent": 42.0, ...}`）。
+        为什么要它：本地模型动辄数 GB，没有进度反馈时界面只能干等，
+        用户会以为卡死 —— 与"流式输出"解决的是同一类体感问题。
+        """
+        base = self.local_base_url(base_url)
+        if not base:
+            return False, "未配置本地服务地址"
+        if not name or not name.strip():
+            return False, "未指定模型名"
+
+        url = f"{base}{OLLAMA_PATHS['pull']}"
+        last_status = ""
+        try:
+            with httpx.stream(
+                "POST",
+                url,
+                json={"name": name.strip(), "stream": True},
+                timeout=None,  # 拉取可能很久，不设总超时（由用户中断）
+            ) as resp:
+                if resp.status_code != 200:
+                    return False, f"拉取失败：HTTP {resp.status_code}"
+                for line in resp.iter_lines():
+                    info = parse_pull_progress(line)
+                    if not info:
+                        continue
+                    last_status = info.get("status", "") or last_status
+                    if info.get("error"):
+                        return False, f"拉取失败：{info['error']}"
+                    if on_progress:
+                        try:
+                            on_progress(info)
+                        except Exception as exc:  # noqa: BLE001 - 回调异常不该中断下载
+                            self._log(f"[本地模型] 进度回调异常（忽略）：{exc}")
+                    if info.get("done"):
+                        return True, f"{name} 拉取完成"
+        except Exception as exc:  # noqa: BLE001
+            return False, f"拉取异常：{type(exc).__name__}: {exc}"
+        return False, f"拉取未正常结束（最后状态：{last_status or '未知'}）"
 
     def capabilities(self, provider: str = "") -> dict:
         """当前（或指定）provider 的能力，供 UI 显隐控件。"""
         key = provider or self.config.get("api_provider", "ollama")
         return self.registry.resolve(key).supports.as_dict()
+
+    def can_list_local_models(self, provider: str = "") -> bool:
+        """当前服务商是否支持"列出本地已装模型"。
+
+        判据用能力位 `local` 而不是 `provider == "ollama"` ——
+        与 `Capabilities` 的文档一致："UI 据此显隐控件，不靠 if provider == ..."。
+        以后接入 llama.cpp / vLLM 等本地服务，只要声明 `local=True` 就自动拿到这个按钮。
+        """
+        try:
+            return bool(self.capabilities(provider).get("local"))
+        except ValueError:
+            return False
 
     def preview_url(self, provider: str = "", model: str = "") -> str:
         """预览本次请求实际会发到的 URL（设置页「请求 URL 预览」按钮）。

@@ -62,7 +62,16 @@ class TestRegistration:
         assert {s.key for s in specs} == {"timeline", "biography", "lineage"}
 
     def test_native_modules_listed_in_registry(self):
-        assert set(registry.NATIVE_PANEL_MODULES) == {f"app.panels.{m}" for m in P4B_MODULES}
+        """本组要守的是"**P4b 这三个**必须登记在 `NATIVE_PANEL_MODULES` 里"。
+
+        原写法用 `==`（集合相等），在只有这三个原生面板时恰好成立；
+        但它把"这个列表**不许再长**"也一并断言了 —— 那不是本组意图，
+        而是会拦住任何新增原生面板（插图工坊就是这样被拦的）。
+        改成"包含"：既守住 P4b 的登记，也不禁止将来新增。
+        """
+        registered = set(registry.NATIVE_PANEL_MODULES)
+        expected = {f"app.panels.{m}" for m in P4B_MODULES}
+        assert expected <= registered, f"P4b 面板未登记：{sorted(expected - registered)}"
 
     def test_orders_ascending_within_group(self):
         specs = sorted((s for s in registry.all_panels() if s.category == "世界与世代"), key=lambda s: s.order)

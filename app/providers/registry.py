@@ -28,7 +28,7 @@ from .base import (
     ProviderAdapter,
     ProviderSpec,
 )
-from .ollama import OllamaAdapter
+from .ollama import OLLAMA_PATHS, OllamaAdapter
 from .openai_compat import OpenAICompatAdapter
 from .reasoning import ReasoningAdapter
 
@@ -72,7 +72,8 @@ DEFAULT_SPECS: tuple[ProviderSpec, ...] = (
         default_model="qwen2.5:14b",
         models=_OLLAMA_MODELS,
         auth=AuthStyle.NONE,  # 本地服务，无鉴权
-        chat_path="/api/chat",
+        # 路径取自 `ollama.OLLAMA_PATHS`（唯一来源）—— 避免与适配器各写一份而漂移
+        chat_path=OLLAMA_PATHS["chat"],
         supports=_caps(thinking=False, balance=False, json_mode=True, local=True),
         canonical_order=0,
         # 旧实现写死 300s（本地推理慢，但不必给到 600s）

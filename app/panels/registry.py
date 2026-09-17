@@ -65,6 +65,8 @@ NATIVE_PANEL_MODULES: tuple[str, ...] = (
     "app.panels.timeline_panel",
     "app.panels.biography_panel",
     "app.panels.lineage_panel",
+    # 插图工坊：让文生图从"配置了但没有入口"变成可达（审计项 D10）
+    "app.panels.illustration_panel",
 )
 
 

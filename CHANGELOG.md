@@ -81,6 +81,45 @@
 - 门禁：`tests/test_dialogs.py` 断言业务代码**不得**再直接调用 `messagebox`
   （用 tokenize 判定，不误伤 docstring 里的政策说明）。
 
+### 新增
+
+**插图工坊面板 —— 让文生图真正可达**
+- 背景：`ImageGenerator.generate()` **全仓零调用**（实例只用来拼状态栏文案），
+  `scene_prompts/*.txt`（名场面提示词）也只落盘无人消费 ⇒ 整组 `img_*` 配置喂给一个
+  没人调用的对象。本面板是缺失的调用入口：列出提示词 → 选中 → 生成 → 存进
+  `<作品>/images/`，并支持后端检测与打开图片目录。
+- **不要求 PIL**：打包 EXE 的 spec 有意排除 `PIL`，预览走 `except ImportError` 降级
+  （与 `toolkit_ui` 的插图预览同一处理），拿不到 PIL 时仍能生成并给出文件路径。
+- **不阻塞界面**：生成走 `BackgroundRunner` 回主线程（SD 一张图几十秒）。
+- 面板总数 15 → **16**（5 分组不变），`app/__init__` / `registry` / `spec` 三处同步。
+
+**文生图接口补全**
+- 新增后端注册表 `IMAGE_BACKENDS`（`comfyui` / `sdapi`）：默认地址、健康探测路径、
+  模型列表路径与解析方式集中一处 —— 新增后端只改一处，
+  与 `providers/registry.py`、`providers/balance.py` 同一思路。
+- 新增 `ImageGenResult`（仿 `BalanceResult` 的形状）：**失败终于有可读原因**，
+  区分"未启用 / 连不上 / 模型名不对 / 超时"，不再只有一句"生成失败"。
+- 新增 `check_backend()`（健康探测）、`list_models()`（后端可用模型，供下拉选择）、
+  `generate_result()`（结构化结果）、`generate_to_novel()`（生成 + 落盘一步完成）。
+- 🔴 **`img_api_key` 终于被读取**：它一直被声明为敏感字段（会加密落盘），
+  却全仓零读取 ⇒ 套了反代的远端端点完全不可用。现在按需加 `Authorization: Bearer`，
+  无 key 时不加头（保持本地直连的旧行为）。
+- `generate()` 保持返回 `bytes | None` 的旧契约，并新增 `last_error` 供调用方读取。
+
+**本地模型调用接口补全**
+- 新增 `OLLAMA_PATHS`（chat/tags/version/pull/delete/show）作为**路径唯一来源**；
+  `registry` 的 `chat_path` 改为从它派生，杜绝"同一路径写两处"。
+- 新增 `LocalModel`（name/size/parameter_size/quantization/family + `size_gb` / `label()`）
+  与纯解析函数 `parse_tags` / `parse_version` / `parse_pull_progress`。
+- `AIClient` 新增 `list_local_models()` / `check_local_service()` / `pull_local_model()`
+  （带进度回调）/ `can_list_local_models()`；
+  **`get_ollama_models()` 改为委托前者**，保证名字列表与详细信息只有一处解析。
+- 设置页「模型名称」下方新增「刷新本地模型」+「检测本地服务」，
+  用**实际已安装**的模型填充下拉框（原先的候选来自注册表里的**静态建议表**，
+  未必与这台机器真实装了哪些一致）。显隐由能力位 `local` 驱动
+  （`can_list_local_models`），不是 `provider == "ollama"` ——
+  以后接 llama.cpp / vLLM 只要声明 `local=True` 即可复用。
+
 ### 修复
 
 **全项目一致性审计发现的 7 项问题**

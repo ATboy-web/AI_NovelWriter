@@ -34,12 +34,16 @@
 - `TimeAwareMemory.query` 新增 `chapter` / `chapter_window`：可按"距今章节数"过滤与排序
   （未标注章节的旧数据**不参与过滤**，避免静默清空）。
 
-**待办与缺陷登记册**
+**待办与缺陷登记册与三项决策结案**
 - 新增 `docs/BACKLOG_REGISTER.md`：把散在 33 份文档里的遗留项按
   **每条带可复核证据**（文件:行号）重新登记，分「已修复(文档仍标未处理)」
   「确认未修复」「需决策」三类，并记明与旧文档不一致之处
   （例：`FEATURE_VALUE_ASSESSMENT.md` 说 `diagnostic_logger`/`memory_manager`
   是重复测试重灾区，实测**两者都是 0**，真正的重复量在 `novel_agent` 66 条 + `reading_manager` 23 条）。
+- 三项待决策**全部结案**（详见该文件 §4）：**M1** 六个历史标签保持原状只记录
+  （它们发布过，按仓库纪律不满足重指条件；重指理由见 `RELEASE_HISTORY_NOTES.md §3.1`）；
+  **M2** `mobile-app/webview-app` 保留并补归档 README（不删除）；
+  **M3** `backend/` 冻结 —— 只接缺陷与安全补丁，附可执行的边界表与解冻条件。
 
 ### 变更
 
@@ -102,12 +106,29 @@
 
 ### 工程
 
+**重复测试合并（O4，净删 738 行）**
+- 实测普查：`tests/` 里 **81 组函数体完全相同**的用例重复（`novel_agent` 57 组 +
+  `reading_manager` 20 组 + `agent_orchestrator` 2 组 + `ai_client` 2 组），
+  成因是历次"补覆盖率"时以复制粘贴增文件（`*_mock.py` → `*_deep.py` → `*_full.py` → `*_final.py`）。
+- 合并后 **2420 → 2338** 条（删 82 条真重复 + 16 个随之空掉的测试类），12 个文件净删 738 行。
+- **判据分三层，只删"删掉后不可能少测任何东西"的份数**：
+  ① 同体 + **同类名** + 同函数名（17 组）自动删除；
+  ② 同体 + **异类名**但 `setUp` 绑定同一被测目标（64 组）复核后删除；
+  ③ **同体 + 异类名 + 绑定不同目标（1 组）⇒ 保留**。
+- 第 ③ 类实例：`test_novel_toolkit.py` 里 `TestElementLibrary` / `TestBridgeLibrary` /
+  `TestDescriptionLibrary` 三个类的 `test_get_categories` **一字不差**，
+  但 `self.lib` 分别是三个不同的库 —— 同体纯属巧合，删了就真丢覆盖。
+  已写入合并脚本的 `KNOWN_FALSE_POSITIVES` 白名单，重跑时会**主动跳过并打印**。
+- 新增三个脚本：`scripts/dup_test_census.py`（普查）、
+  `scripts/review_dup_candidates.py`（候选复核报告，对比各类 `setUp` 绑定的目标）、
+  `scripts/dedup_tests.py`（执行合并，带语法自检与假重复白名单）。
+
 - 新增测试：`tests/test_panel_layout.py`（43 条）、`tests/test_dialogs.py`（21 条）、
   `tests/test_parse_convergence_extended.py`（16 条）、`tests/test_self_learning_loop.py`（16 条）、
   `tests/test_wiring_guards.py`（12 条）。
 - 新增的收敛/接线守卫沿用既有模式：**剔除注释与文档字符串后**做源码级断言，
   并**排除测试文件自身**（本文件列举了被删方法名，直接扫原文必然自报假阳性）。
-- 总计 **2547 条测试通过**（桌面端 2419 + 后端 128）。
+- 总计 **2461 条测试**（桌面端 2338 + 后端 128）→ 合并前为 2548；差额即本轮删除的重复。
 - 截图：`docs/ui_review/after_12_single_mode.png` → `after_15_back_to_single.png`
   （分栏前 → 分栏 → 调整比例与右栏 → 收回；**收回后的截图与分栏前字节完全相同**）。
 

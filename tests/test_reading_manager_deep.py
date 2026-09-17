@@ -99,18 +99,6 @@ class TestReadingManagerDeep:
         assert rm.line_spacing == 1.5
         assert rm.theme == "light"
 
-    def test_modify_settings(self, tmp_path):
-        mock_config = type("Config", (), {"config_dir": tmp_path})()
-        rm = ReadingManager(mock_config)
-        rm.font_size = 20
-        rm.font_family = "宋体"
-        rm.line_spacing = 2.0
-        rm.theme = "dark"
-        assert rm.font_size == 20
-        assert rm.font_family == "宋体"
-        assert rm.line_spacing == 2.0
-        assert rm.theme == "dark"
-
     def test_supported_formats_descriptions(self, tmp_path):
         mock_config = type("Config", (), {"config_dir": tmp_path})()
         ReadingManager(mock_config)

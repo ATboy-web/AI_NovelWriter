@@ -350,23 +350,8 @@ class TestParseJsonResponseExtended:
         result = NovelAgent._parse_json_response(text, {})
         assert result == {"key": "value"}
 
-    def test_with_fullwidth_colon(self):
-        text = '{"key"："value"}'
-        result = NovelAgent._parse_json_response(text, {})
-        assert isinstance(result, dict)
-
     def test_with_trailing_comma(self):
         text = '{"key": "value",}'
-        result = NovelAgent._parse_json_response(text, {})
-        assert isinstance(result, dict)
-
-    def test_list_with_markdown(self):
-        text = "```json\n[1, 2, 3]\n```"
-        result = NovelAgent._parse_json_response(text, [], is_list=True)
-        assert result == [1, 2, 3]
-
-    def test_truncated_json(self):
-        text = '{"key": "value", "key2": "value2"'
         result = NovelAgent._parse_json_response(text, {})
         assert isinstance(result, dict)
 

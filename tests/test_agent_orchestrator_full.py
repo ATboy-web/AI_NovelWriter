@@ -22,13 +22,6 @@ class TestAgentOrchestratorFull:
         assert ao.ai == ai_client
         assert ao.metrics == ai_client.metrics
 
-    def test_init_with_log_callback(self):
-        ai_client = MagicMock()
-        ai_client.metrics = MagicMock()
-        log_fn = MagicMock()
-        ao = AgentOrchestrator(ai_client, log_callback=log_fn)
-        assert ao.log == log_fn
-
     def test_shutdown(self):
         ai_client = MagicMock()
         ai_client.metrics = MagicMock()
@@ -48,13 +41,6 @@ class TestAgentOrchestratorFull:
         ao = AgentOrchestrator(ai_client)
         metrics = ao.get_metrics()
         assert metrics == {"total_tokens": 100}
-
-    def test_run_parallel_empty(self):
-        ai_client = MagicMock()
-        ai_client.metrics = MagicMock()
-        ao = AgentOrchestrator(ai_client)
-        results = ao.run_parallel([])
-        assert results == []
 
     def test_run_parallel_single_task(self):
         ai_client = MagicMock()

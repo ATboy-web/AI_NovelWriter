@@ -246,12 +246,6 @@ class TestReadBookExtended:
         content = rm.read_book(str(test_file))
         assert "标题" in content
 
-    def test_read_nonexistent(self, tmp_path):
-        mock_config = type("Config", (), {"config_dir": tmp_path})()
-        rm = ReadingManager(mock_config)
-        content = rm.read_book("/nonexistent/file.txt")
-        assert content is None
-
     def test_read_unsupported(self, tmp_path):
         mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
@@ -259,14 +253,6 @@ class TestReadBookExtended:
         test_file.write_text("content", encoding="utf-8")
         content = rm.read_book(str(test_file))
         assert content is None
-
-    def test_read_empty_txt(self, tmp_path):
-        mock_config = type("Config", (), {"config_dir": tmp_path})()
-        rm = ReadingManager(mock_config)
-        test_file = tmp_path / "empty.txt"
-        test_file.write_text("", encoding="utf-8")
-        content = rm.read_book(str(test_file))
-        assert content is not None
 
     def test_read_unicode(self, tmp_path):
         mock_config = type("Config", (), {"config_dir": tmp_path})()
@@ -298,12 +284,6 @@ class TestImportBookExtended:
         test_file.write_text("# 标题", encoding="utf-8")
         result = rm.import_book(str(test_file))
         assert result is not None
-
-    def test_import_nonexistent(self, tmp_path):
-        mock_config = type("Config", (), {"config_dir": tmp_path})()
-        rm = ReadingManager(mock_config)
-        result = rm.import_book("/nonexistent/file.txt")
-        assert result is None
 
     def test_import_unsupported(self, tmp_path):
         mock_config = type("Config", (), {"config_dir": tmp_path})()

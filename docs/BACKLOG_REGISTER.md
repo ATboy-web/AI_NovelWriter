@@ -20,7 +20,7 @@
 | 已修复（文档仍标未处理） | 3 | F3、F1 基线章节维度、F5 ruff format |
 | 已修复（第二十轮） | 4 | D3、D4、D5、P-04（含 P-04b 自学习读不到） |
 | **已决（第二十一轮，采用建议）** | **3** | M1 保持原状只记录 / M2 保留+补 README / M3 冻结 |
-| 确认未修复 | 1 | O4（重复测试，约 96 条可删） |
+| **已修复（第二十一轮）** | **1** | **O4 重复测试合并（实删 82 条 + 16 个空壳类）** |
 | 本轮新发现 | 5 | 6 处重复解析器（已收敛）、死代码 `CharacterSystem`、自学习读不到（已修）、AST 判据、守卫缺口（已补） |
 
 **核心判断**：项目的待办**不在代码注释里**——`app/` 全树 **0** 个 TODO/FIXME/HACK
@@ -57,6 +57,10 @@
 
 ## 3. 重复测试精确计数（修正 `FEATURE_VALUE_ASSESSMENT.md` D8）
 
+> **✅ 已执行（第二十一轮）**：本节原口径为"约 96 条可删"，实测**确认可删 82 条 + 16 个空壳类**。
+> 差异说明见 §3.2。执行工具：`scripts/dup_test_census.py`（普查）、
+> `scripts/review_dup_candidates.py`（候选复核）、`scripts/dedup_tests.py`（执行合并）。
+
 方法：按**函数体哈希**分组（`ast` 取 body 源码），统计每组的多余份数。
 ⚠️ 注意：同名但**目标类不同**的用例（如 `TestAIClientGetModels::test_get_models_error`
 vs `TestGetOllamaModels::test_get_models_error`）**函数体相同但测的不是同一件事**，
@@ -76,6 +80,65 @@ vs `TestGetOllamaModels::test_get_models_error`）**函数体相同但测的不�
 > ❗ **`FEATURE_VALUE_ASSESSMENT.md` 的 D8 写错了**：它点名 `diagnostic_logger` 与
 > `memory_manager` 是重复重灾区，实测**两者都是 0**；真正的重复质量在
 > **`novel_agent`（66）+ `reading_manager`（23）**。归档报告不改，此处记录修正。
+
+### 3.1 执行结果（第二十一轮）
+
+| 项 | 数值 |
+|---|---|
+| 改动前 `tests/` 收集数 | 2420 |
+| 改动后 `tests/` 收集数 | **2338** |
+| 实删用例 | **82** |
+| 顺带删除的空壳测试类 | 16 |
+| 删除行数 | 738（12 个文件） |
+| 回归结果 | 全绿（见 §3.3） |
+
+**判定分层**（这是本轮最重要的方法论）：
+
+| 层 | 判据 | 数量 | 处理 |
+|---|---|---|---|
+| 确定重复 | **同函数体 + 同类名 + 同函数名** | 17 | 自动删除多余份 |
+| 确认重复 | **同函数体 + 异类名，但 setUp 绑定同一目标** | 64 | 复核后删除多余份 |
+| **假重复** | 同函数体 + 异类名，**setUp 绑定不同目标** | **1** | **保留**（见 §3.4） |
+
+### 3.2 为什么是 82 而不是 96
+
+原估算 96 把三类东西混在一起算：(a) 真重复 81；(b) 计数口径不一致产生的重叠；
+(c) 未扣除"同体但测不同目标"的假重复。实测口径更严：**只删"删掉后不可能少测任何东西"
+的份数**。差额是**保守**方向，符合"宁留勿删"。
+
+### 3.3 回归证据
+
+```
+tests/            2338 collected
+pytest tests/     → 全部通过（含 6 skip）
+ruff check        → All checks passed!
+ruff format --check app/ tests/ scripts/ → 174 files already formatted
+```
+
+### 3.4 捕到的假重复（**必须保留**，这是判据自检的证据）
+
+`tests/test_novel_toolkit.py` 里有三个**函数体完全相同**的用例：
+
+```python
+class TestElementLibrary:      # setUp: self.lib = ElementLibrary()
+    def test_get_categories(self):
+        cats = self.lib.get_categories()
+        self.assertTrue(len(cats) > 0)
+
+class TestBridgeLibrary:       # setUp: self.lib = BridgeLibrary()
+    def test_get_categories(self):   # ← 一字不差
+        ...
+
+class TestDescriptionLibrary:  # setUp: self.lib = DescriptionLibrary()
+    def test_get_categories(self):   # ← 一字不差
+        ...
+```
+
+**它们测的是三个不同的类**，同体纯属巧合 ⇒ **删掉会真丢覆盖**。
+已登记进 `scripts/dedup_tests.py` 的 `KNOWN_FALSE_POSITIVES` 常量（键 `f64eea5cb9052efa`），
+脚本会**主动跳过并打印**，防止未来重跑时误删。
+
+> 这条正是"验证判据本身要先自检"的实例：如果只看函数体哈希就动手，这里就错了。
 
 ---
 

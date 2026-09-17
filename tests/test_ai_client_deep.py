@@ -181,9 +181,6 @@ class TestPromptManagerDeep:
 class TestIsTransientErrorDeep:
     """M1: `_is_transient_error` 深度测试（原 retry_with_backoff 已删除）"""
 
-    def test_timeout_is_transient(self):
-        assert _is_transient_error(httpx.TimeoutException("t")) is True
-
     def test_read_error_is_transient(self):
         assert _is_transient_error(httpx.ReadError("r")) is True
 

@@ -498,18 +498,3 @@ class TestGetOllamaModels:
         models = client.get_ollama_models()
         assert "llama3:8b" in models
         assert "qwen2.5:14b" in models
-
-    @respx.mock
-    def test_get_models_error(self):
-        config = MagicMock()
-        config.get.side_effect = lambda key, default="": {
-            "api_provider": "ollama",
-            "api_key": "",
-            "api_base": "http://localhost:11434",
-        }.get(key, default)
-
-        respx.get("http://localhost:11434/api/tags").mock(return_value=httpx.Response(500))
-
-        client = AIClient(config)
-        models = client.get_ollama_models()
-        assert models == []

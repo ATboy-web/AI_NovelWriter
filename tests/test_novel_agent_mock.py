@@ -276,35 +276,3 @@ class TestHasExcessiveRepetition:
         text = "张三修炼武功。" * 50
         result, msg = agent._has_excessive_repetition(text, 100)
         assert isinstance(result, bool)
-
-
-class TestExtractCharactersFromRaw:
-    """_extract_characters_from_raw 测试"""
-
-    def test_basic(self):
-        result = NovelAgent._extract_characters_from_raw("张三：勇敢的少年\n李四：聪明的少女")
-        assert isinstance(result, dict)
-
-    def test_empty(self):
-        result = NovelAgent._extract_characters_from_raw("")
-        assert isinstance(result, dict)
-
-
-class TestParseJsonResponse:
-    """_parse_json_response 测试"""
-
-    def test_valid_dict(self):
-        result = NovelAgent._parse_json_response('{"key": "value"}', {})
-        assert result == {"key": "value"}
-
-    def test_invalid_returns_default(self):
-        result = NovelAgent._parse_json_response("invalid", {"default": True})
-        assert result == {"default": True}
-
-    def test_valid_list(self):
-        result = NovelAgent._parse_json_response("[1, 2, 3]", [], is_list=True)
-        assert result == [1, 2, 3]
-
-    def test_invalid_list_returns_default(self):
-        result = NovelAgent._parse_json_response("invalid", [0], is_list=True)
-        assert result == [0]

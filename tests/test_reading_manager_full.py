@@ -125,22 +125,6 @@ class TestImportBookExtended:
         assert "format" in result
         assert "size" in result
 
-    def test_import_md(self, tmp_path):
-        mock_config = type("Config", (), {"config_dir": tmp_path})()
-        rm = ReadingManager(mock_config)
-        test_file = tmp_path / "test.md"
-        test_file.write_text("# 标题", encoding="utf-8")
-        result = rm.import_book(str(test_file))
-        assert result is not None
-
-    def test_import_unsupported(self, tmp_path):
-        mock_config = type("Config", (), {"config_dir": tmp_path})()
-        rm = ReadingManager(mock_config)
-        test_file = tmp_path / "test.xyz"
-        test_file.write_text("content", encoding="utf-8")
-        result = rm.import_book(str(test_file))
-        assert result is None
-
 
 class TestReadingSettings:
     """阅读设置测试"""
@@ -164,40 +148,3 @@ class TestReadingSettings:
         mock_config = type("Config", (), {"config_dir": tmp_path})()
         rm = ReadingManager(mock_config)
         assert rm.theme == "light"
-
-    def test_modify_settings(self, tmp_path):
-        mock_config = type("Config", (), {"config_dir": tmp_path})()
-        rm = ReadingManager(mock_config)
-        rm.font_size = 20
-        rm.font_family = "宋体"
-        rm.line_spacing = 2.0
-        rm.theme = "dark"
-        assert rm.font_size == 20
-        assert rm.font_family == "宋体"
-        assert rm.line_spacing == 2.0
-        assert rm.theme == "dark"
-
-
-class TestSupportedFormats:
-    """支持格式测试"""
-
-    def test_all_formats(self):
-        formats = ReadingManager.SUPPORTED_FORMATS
-        assert ".txt" in formats
-        assert ".epub" in formats
-        assert ".pdf" in formats
-        assert ".docx" in formats
-        assert ".md" in formats
-
-    def test_format_descriptions(self):
-        assert ReadingManager.SUPPORTED_FORMATS[".txt"] == "TXT文本文件"
-        assert ReadingManager.SUPPORTED_FORMATS[".epub"] == "EPUB电子书"
-        assert ReadingManager.SUPPORTED_FORMATS[".pdf"] == "PDF文档"
-        assert ReadingManager.SUPPORTED_FORMATS[".docx"] == "Word文档"
-        assert ReadingManager.SUPPORTED_FORMATS[".md"] == "Markdown文件"
-
-    def test_get_supported_formats(self, tmp_path):
-        mock_config = type("Config", (), {"config_dir": tmp_path})()
-        rm = ReadingManager(mock_config)
-        formats = rm.get_supported_formats()
-        assert len(formats) == 5

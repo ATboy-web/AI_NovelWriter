@@ -14,11 +14,6 @@ from app.note_manager import NoteManager
 class TestNoteManagerDeep:
     """NoteManager 深度测试"""
 
-    def test_init_with_config(self, tmp_path):
-        mock_config = type("Config", (), {"config_dir": tmp_path})()
-        nm = NoteManager(config=mock_config)
-        assert nm.sticky_file == tmp_path / "sticky_notes.json"
-
     def test_init_without_config(self):
         nm = NoteManager()
         assert nm.sticky_file.exists() or True  # Path may not exist yet

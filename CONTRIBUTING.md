@@ -187,8 +187,8 @@ ai-novel-writer/
 │   ├── ai-service/         # AI 模型服务
 │   └── novel-service/      # 小说生成服务
 ├── mobile-app/             # 手机版
-│   ├── novel-app/          # Kotlin 原生应用
-│   └── webview-app/        # WebView 应用
+│   ├── novel-app/          # Kotlin + Compose 原生应用（现行，CI 构建）
+│   └── webview-app/        # WebView 壳应用（已归档，不再维护，见其 README）
 ├── tests/                  # Python 测试
 ├── docs/                   # 文档
 └── scripts/                # 工具脚本

@@ -67,15 +67,18 @@ class ToolkitUIMixin:
         而打包成 windowed EXE 后**没有控制台**，那条日志就永远看不到 ——
         面板少了几块却毫无痕迹。落到 `~/.ai_novel_writer/diagnostic_logs/*.jsonl`
         之后，无论界面怎么显示，"这次到底注册了哪些面板"都能事后核对。
+        目录由 `resolve_log_dir()` 决定（可用 `AI_NOVEL_DIAGNOSTIC_DIR` 覆盖），
+        这样测试里的面板注册记录不会混进真实使用日志。
         """
         try:
-            from app.diagnostic_logger import get_logger
+            from app.diagnostic_logger import get_logger, resolve_log_dir
 
             specs = panel_registry.all_panels()
             get_logger().log(
                 "SYSTEM",
                 "panel_registry",
                 {
+                    "log_dir": str(resolve_log_dir()),
                     "total": len(specs),
                     "by_category": {
                         category: [spec.key for spec in group] for category, group in panel_registry.grouped()

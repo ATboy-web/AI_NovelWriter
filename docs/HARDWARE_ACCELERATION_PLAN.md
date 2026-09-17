@@ -63,36 +63,60 @@
 
 ## 2. 首要任务：先把「卡顿」变成可归因的数字（T1）
 
-**当前无法定位卡顿**——诊断日志没有耗时字段，这是必须先补的观测缺口。
+> **⚠️ 本节已在实施中修正（2026-09-17）。** 初版写的"诊断日志没有耗时字段"是**错的**
+> —— 实测 `DiagnosticLogger.log()` / `api_call()` **都接受 `duration_ms`**，
+> 且 `ai_client.py:945`/`:985` 的出口记录**早就在传**。真实的两个缺口是
+> **章节级归因缺失** 与 **测试污染**，详见 §2.0 的修正记录与 `docs/BACKLOG_REGISTER.md` §5.6 R3。
 
-### T1.1 给 `API_CALL` 事件加 latency（必做，改动极小）
+### 2.0 修正记录：真正的缺口是什么
 
-在 `app/ai_client.py` 的三个出网位置（`:769` httpx.get、`:815` httpx.post、
-`_stream` 的 `:1278`）包一层计时，写进已有的诊断事件：
+| 初版判断 | 实测结论 | 修正依据 |
+|---|---|---|
+| 「诊断日志没有耗时字段」 | **错**。字段一直在，出口记录也一直在传 | 读 `diagnostic_logger.py:130`、`ai_client.py:945` |
+| — | **真缺口 A：无章节级归因** —— `chapter_event()`（`diagnostic_logger.py:213`）存在，但全仓唯一调用者是 `generation_ui.py` 的 **EXP 降级分支**，生成主流程从不调用 | `grep chapter_event` 的全部 6 处调用点 |
+| — | **真缺口 B：测试污染真实日志** —— `__init__` 硬编码 `~/.ai_novel_writer/diagnostic_logs`，而 `ai_client`/`generation_ui`/`novel_agent` 都在**模块级**建单例 | 实测：连续 3 天 3126 条 `API_CALL` 全是同一测试指纹，`CHAPTER` 事件 **0** 条 |
 
-```python
-# 伪代码：与现有 _diag_logger.log 的签名一致，不新增模块
-t0 = time.perf_counter()
-resp = httpx.post(...)
-_diag_logger.log("API_CALL", f"{provider}::{model}",
-                 duration_ms=round((time.perf_counter() - t0) * 1000, 1),
-                 ttfb_ms=..., status=resp.status_code)
+**修正后的工作量比初版估计的小得多**：不需要在 `ai_client` 铺计时（已有），
+只需要（A）把章节级段落耗时记进 `chapter_event`，（B）给日志目录加环境变量覆盖。
+
+### T1.1 段级耗时归因（✅ 已实施）
+
+`app/novel_agent.py` 新增 `_PhaseTimer`，在 `generate_with_collaboration` 的
+每个 Phase 前后打点，收尾发一条 `CHAPTER/chNNNN/complete`：
+
+```json
+{"category":"CHAPTER","event":"ch0007/complete","duration_ms":1824.4,
+ "data":{"total_ms":1824.4,
+         "phases_ms":{"plot_design":120.4,"context":0.3,"world_build":0.2,
+                      "write":901.0,"review":502.0,"revise":301.0},
+         "round_trips":5,"unaccounted_ms":0.12,"revision_rounds":1,
+         "quality":90,"chars":805}}
 ```
 
-**为什么这是第一步**：不做这一步，后面所有优化都是猜。做完之后可以回答
-「一次生成到底卡在哪一段」——是远端推理慢、是重试、还是本地某个环节。
+**验证方式**：`python scripts/verify_chapter_timing.py` —— 用假 `AIClient` 注入
+已知延迟，对账"记录值 vs 注入值"。实测四个阶段偏差均 ≤ 2 ms，未归因余量 0.12 ms。
 
-### T1.2 把已有但沉睡的 `PerformanceMonitor` 接到主流程
+### T1.2 测试/真实使用日志隔离（✅ 已实施）
+
+`app/diagnostic_logger.py` 新增 `resolve_log_dir()` 与环境变量 `AI_NOVEL_DIAGNOSTIC_DIR`；
+`tests/conftest.py` 在**模块级**（早于任何 `app.*` 导入）指向临时目录。
+`shell_ui` / `toolkit_ui` 两处各自硬编码的目录也一并收口到该函数 ——
+否则隔离只对 `.jsonl` 生效，性能报告与面板注册记录仍会漏回真实目录。
+
+**验证方式**：跑任意测试前后对比真实日志目录字节数，必须**零变化**（实测 0）。
+
+### T1.3 把已有但沉睡的 `PerformanceMonitor` 接到主流程
 
 `app/performance_monitor.py` **功能完整**（`record_request` / `get_slow_requests` /
 `save_report` / `export_metrics`），`D5` 已修好落盘（`shell_ui.py:1205`），
 但它目前记录的是 **FastAPI 后端中间件**（`PerformanceMiddleware`），
 **桌面端主流程根本没有埋点**。⇒ 把它也接进 `ai_client` 的计时路径。
 
-### T1.3 建立基线（必做）
+### T1.4 建立基线（必做，尚未做）
 
-跑 3 次「生成 1 章」，记录：总耗时 / 每 Agent 段耗时 / 每个 API 往返耗时 /
-是否存在重试。**没有这组数字，§4 的收益预期都无法验证。**
+跑 3 次「生成 1 章真实章节」，记录：总耗时 / 每 Agent 段耗时 / 每个 API 往返耗时 /
+是否存在重试。**必须在隔离修好之后再跑** —— 之前的所有日志都无法区分测试与真实数据。
+**没有这组数字，§4 的收益预期都无法验证。**
 
 ---
 
@@ -281,16 +305,19 @@ T6 文档解析后台化
 
 ## 7. 验收口径（避免"做了但说不清效果"）
 
-| # | 验收标准 |
-|---|---|
-| T1 | `diagnostic-*.jsonl` 的 `API_CALL` 事件含 `duration_ms`；一份基线报告含**每次往返**耗时分布（应能看出 3–9 次往返各占多少） |
-| T2 | 正文生成时**首字 < 1.5 s** 出现；生成中可点"停止"并在 1 s 内响应 |
-| T4 | `ollama ps` 显示 `100% GPU`；**eval rate ≥ 40 tok/s**；且**不出现内存换页** |
-| T5 | 辅助环节全部走本地；主流程质量评分（`QUALITY_THRESHOLD = 75` 机制）**不下降** |
-| T6 | 导入 100 万字以上文档时，界面**保持可响应**（不出现"未响应"标题） |
+| # | 验收标准 | 状态 |
+|---|---|---|
+| T1-A | `diagnostic-*.jsonl` 出现 `CHAPTER/chNNNN/complete`，含 `phases_ms`（各段毫秒）+ `round_trips` + `unaccounted_ms` | ✅ 已达成（`scripts/verify_chapter_timing.py` 实测偏差 ≤ 2 ms） |
+| T1-B | 跑测试**前后**真实日志目录字节数**零变化** | ✅ 已达成（实测 0；`tests/test_diagnostic_isolation.py` 29 条门禁） |
+| T1-C | 一份真实生成的基线报告（3 次「生成 1 章」的段耗时分布） | ⬜ 待做 —— 需先跑一次真实生成 |
+| T2 | 正文生成时**首字 < 1.5 s** 出现；生成中可点"停止"并在 1 s 内响应 | ⬜ 未开始 |
+| T4 | `ollama ps` 显示 `100% GPU`；**eval rate ≥ 40 tok/s**；且**不出现内存换页** | ⬜ 未开始（前提：换一个 ≤ 10 GB 的模型） |
+| T5 | 辅助环节全部走本地；主流程质量评分（`QUALITY_THRESHOLD = 75` 机制）**不下降** | ⬜ 未开始 |
+| T6 | 导入 100 万字以上文档时，界面**保持可响应**（不出现"未响应"标题） | ⬜ 未开始 |
 
 > **共同前提**：所有涉及时间的验收，都必须在**同一台机器、同一次会话配置**下与
-> `T1.3` 基线对比 —— 否则数字不可比。
+> `T1-C` 基线对比 —— 否则数字不可比。而 T1-C 之前必须先有 T1-B：
+> 隔离没做的日子里，日志里混着 3126 条测试记录，基线根本无从谈起。
 
 ---
 
@@ -304,12 +331,22 @@ GPU 只在「低价值辅助任务」上有位置（且必须先解决现装模�
 
 ## 9. 本方案的自我修正记录
 
-本文件在撰写过程中**推翻了自己的一个结论**，留档以免后人重犯：
+本文件在撰写与实施过程中**两次推翻了自己的结论**，留档以免后人重犯：
 
 | 原判断 | 实测结论 | 修正依据 |
 |---|---|---|
 | T3「PlotDesigner 与 WorldBuilder 可并发，省一次往返」 | **作废**：`_world_builder_build` 不发网络请求（`novel_agent.py:790-799`），且出网 3 段严格串行 | `ast` 静态统计各方法内 `ai.chat()` 调用数 |
 | 「5 个 Agent 各一次往返」 | 实际 **3 段出网、单章 3–9 次往返** | 同上 |
+| T1.1「诊断日志没有耗时字段，要在 `ai_client` 铺垫计时」 | **作废**：字段一直在（`diagnostic_logger.py:130`），出口记录也一直在传（`ai_client.py:945`）。真缺口是**章节级归因缺失**+**测试污染** | 读源码 + 统计真实日志（`CHAPTER` 事件 3 天内 **0** 条） |
 
-> **教训**：判断"哪几段出网""能不能并行"**不能看方法名或 Agent 数量**，
+> **教训一**：判断"哪几段出网""能不能并行"**不能看方法名或 Agent 数量**，
 > 必须用 AST 数调用点。本次若跳过这一步，会写出一个"并行两个不存在的请求"的方案。
+>
+> **教训二**：**"我认为缺什么"必须去读代码确认**。初版 T1.1 凭印象断言"没有耗时字段"，
+> 实际字段与调用都在，只是**记的东西不是我们需要的**（记 API 往返，没记章节分段）。
+> 凭印象写方案会凭空造出一堆不需要改的改动，而真正该改的被漏掉。
+>
+> **教训三**：**观测能力"建了一半"比没建更危险**。`DurationLogger` 早就支持
+> `duration_ms`、`chapter_event()` 也早就存在，但生成主流程从不调用 ——
+> 于是日志看着很丰富，却回答不了唯一重要的那个问题（"这一章为什么慢"）。
+> 判断观测是否可用，标准是"**能否回答一个具体的决策问题**"，不是"字段是否存在"。

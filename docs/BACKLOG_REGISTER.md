@@ -362,13 +362,20 @@ class TestDescriptionLibrary:  # setUp: self.lib = DescriptionLibrary()
 |---|---|---|---|---|
 | **R1** | 记忆淘汰用**自然日**（`days_old/30`），检索过滤用**章节距离** —— 两套时间尺度并存 | `writing_skills.py:556-577`（`_cleanup`）vs `:612-633`（`query`） | 改淘汰语义会让**现存数据**被不同方式清理，属数据行为变更，须单独评估 | 当出现"章节推进快但写作间隔长"的真实使用场景，或 `time_memory.json` 达到 `max_memories=1000` 上限时 |
 | **R2** | **流式 API 已实现但生产零调用** —— 33 个调用点全走阻塞 `chat()` | `ai_client.py:1223`（`chat_stream` 定义，含多厂商 SSE 适配）vs 全仓 `ai.chat(` 33 处 | 改动面涉及 UI 线程模型（Tk 非线程安全，须经 `async_runner` 回主线程），应作为独立任务 | **立即** —— 这是当前"卡顿"体感的最大来源，详见 `docs/HARDWARE_ACCELERATION_PLAN.md` §3 T2 |
-| **R3** | **诊断日志不记录 API 耗时** ⇒ 卡顿无法归因 | `diagnostic-*.jsonl` 的 `API_CALL` 事件仅含 `provider/endpoint/request/response` | 需改动 `ai_client.py` 三处出网点（`:769` / `:815` / `:1278`） | **立即**（先于 R2）—— 没有耗时数据，任何性能优化都无法验证 |
+| **R3** | ~~诊断日志不记录 API 耗时~~ → **已修正并实施**：`duration_ms` 字段**一直存在**（`diagnostic_logger.py:130`），出口记录也一直在传（`ai_client.py:945`）。真缺口是 ① **无章节级归因**（`chapter_event()` 存在但生成主流程从不调用，唯一调用者是 EXP 降级分支）② **测试污染真实日志** | `novel_agent.py`（新增 `_PhaseTimer` + `_emit_chapter_timing`）；`diagnostic_logger.py`（新增 `resolve_log_dir()` / `AI_NOVEL_DIAGNOSTIC_DIR` / `reset_logger()`） | ✅ **已完成**：`CHAPTER/chNNNN/complete` 携带 `phases_ms`/`round_trips`/`unaccounted_ms`；测试实现在临时目录 | 已达成的验收：`scripts/verify_chapter_timing.py`（注入延迟对账，实测偏差 ≤ 2 ms） |
+| **R5** | **真实生成基线尚未采集** —— 观测能力已就绪，但还没有一份真实章节的段耗时样本 | 诊断日志 `CHAPTER/*/complete` | 需要用户实际跑一次生成（本会话无法代跑真实 API） | **立即** —— 跑 1 章后即可回答"这一章慢在哪"，也是 T2 流式改造的前后对比基准 |
 | **R4** | `agent_orchestrator` 的 `ThreadPoolExecutor(max_workers=3)` 是否正确/必要**未验证** | `agent_orchestrator.py:19` | 它与 `novel_agent.generate_with_collaboration` 是**两条不同入口**，本轮未厘清二者关系 | 需要梳理 Agent 编排入口时 |
 
 > **R2–R4 来自 2026-09-17 的硬件加速方案调研**（`docs/HARDWARE_ACCELERATION_PLAN.md`）。
 > 该调研的一个副产物是**否定了"给本项目上 GPU 加速"这一前提**：实测单章生成链
 > 只有 3 段出网且严格串行，本地计算占比极低 ⇒ **GPU 对主流程几乎无收益**。
 > 真正该先做的是 R3（补耗时观测）+ R2（流式上主流程），两者都不需要 GPU。
+>
+> **R3 的修正值得单独记一笔**：本文件原先写的是"日志里没有耗时字段，要在 `ai_client`
+> 铺垫计时"。实施时读源码发现**字段和调用都早就有了**，只是记的不是我们需要的粒度。
+> 凭印象登记缺陷会造出一批不需要的改动，同时漏掉真正该改的地方 ——
+> 登记缺陷时也要给出**可验证的判据**（"跑一次生成，日志里能否查到分段耗时"），
+> 而不是给出一个印象。
 
 ---
 

@@ -10,6 +10,29 @@
 
 ### 新增
 
+**单章生成的段级耗时归因（可观测性打底）**
+- `generate_with_collaboration` 现在给每个 Phase 打点，收尾发一条
+  `CHAPTER/chNNNN/complete`，含 `total_ms` / `phases_ms`（各段毫秒）/
+  `round_trips`（**只数真的出网的阶段**）/ `unaccounted_ms` / `revision_rounds`。
+- 新增 `_PhaseTimer`（`app/novel_agent.py`）：同名阶段**累加**（审校跑 2 轮合成一段），
+  `calls` 保留逐次明细。用 `time.perf_counter` 而非 `time.time`。
+- **`round_trips` 不按 Agent 数量数**：`world_build` 与 `context` 都不出网
+  （`_world_builder_build` 只读本地 settings 就返回）⇒ 单章实际 3–9 次往返。
+  按"5 个 Agent"推断会直接误导优化方向，故把出网阶段提升为常量 `_NETWORK_PHASES`。
+- 新增 `scripts/verify_chapter_timing.py`：用假 `AIClient` **注入已知延迟**，
+  对账"日志记录值 vs 实际注入值"。实测四段偏差 ≤ 2 ms、未归因余量 0.12 ms。
+
+**测试诊断日志与真实使用日志隔离**
+- `DiagnosticLogger` 的目录此前**硬编码** `~/.ai_novel_writer/diagnostic_logs`，
+  而 `ai_client`/`generation_ui`/`novel_agent` 都在**模块级**建单例
+  ⇒ 测试与真实使用写进同一个文件。实测后果：连续 3 天 3126 条 `API_CALL`
+  **全是同一份测试指纹**，而真实生成才会产生的 `CHAPTER` 事件 **0 条**。
+- 新增 `resolve_log_dir()` 与环境变量 `AI_NOVEL_DIAGNOSTIC_DIR`；
+  `tests/conftest.py` 在**模块级**（早于任何 `app.*` 导入）指向临时目录。
+- `shell_ui`（性能报告）与 `toolkit_ui`（面板注册记录）两处**各自硬编码**的目录
+  一并收口到 `resolve_log_dir()` —— 否则隔离只对 `.jsonl` 生效，这两处仍会漏回真实目录。
+- 新增 `reset_logger()`：单例一旦建立就忽略后续 `log_dir`，切目录必须显式重置。
+
 **面板布局可配置：分栏与停靠记忆**
 - 选择器末行新增「布局」控件：**单栏 / 分栏**切换 + **右栏**面板选择。
   分栏后内容区左右各放一个面板，分隔条可拖动。
@@ -105,6 +128,27 @@
   ⇒ 自搬入 `scripts/` 起就 `ModuleNotFoundError`，从未跑通过。改为先定位仓库根，现 15/15 通过。
 
 ### 工程
+
+**「观测能力建了一半」：`duration_ms` 一直存在，但没人记章节分段**
+- 排查"运行卡顿"时发现：`DiagnosticLogger.log()` / `api_call()` **都接受 `duration_ms`**，
+  `ai_client` 的出口记录也**一直在传**。真正的缺口是 ① 生成主流程从不调用
+  `chapter_event()`（全仓唯一调用者是 `generation_ui` 的 **EXP 降级分支**）
+  ② 测试日志污染真实日志。**原先登记的缺陷描述是错的，已修正**（见 §5.6 R3）。
+- 教训：登记缺陷必须带**可验证的判据**（"跑一次生成，能否查到分段耗时"），
+  而不是给一个印象 —— 凭印象登记会造出一批不需要的改动，同时漏掉真正该改的地方。
+
+**测试日志污染：修隔离要连"另外两处硬编码"一起改**
+- `shell_ui._flush_performance_report` 与 `toolkit_ui._record_panel_registry`
+  **各自**拼了一遍 `~/.ai_novel_writer/diagnostic_logs`。只改 `diagnostic_logger`
+  的话，隔离对 `.jsonl` 生效而这两处仍写真实目录 —— 又一处"同一事实写两处必然漂移"。
+  已收口到 `resolve_log_dir()`，并加 AST 门禁禁止 `app/` 下再次出现该字面量。
+- 门禁初版用**关键字扫描**，把 docstring 里的路径说明误判成硬编码；
+  已改为 AST 取"代码中"的字符串字面量，并补两条反证用例（能抓真硬编码、不误报注释）。
+
+**`_emit_chapter_timing` 的异常处理里踩了自己的坑**
+- 初版把诊断 logger 绑定到局部名 `logger`，然后异常分支里写 `logger.debug(...)`
+  —— `DiagnosticLogger` **没有 `.debug`**，于是"日志失败"被升级成"整章生成失败"。
+  这正是要防的那类故障，被自己的守卫测试抓住。已改回模块级 loguru `logger`。
 
 **弹窗静默开关的嵌套语义缺陷**
 - `dialogs.silent_modals()` 用 `_silent_depth` 计数，`__exit__` 在深度归零时**无条件**

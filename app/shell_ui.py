@@ -1186,12 +1186,14 @@ class ShellMixin:
         进程一退就没了，等于"可观测"能力建了一半。
         现在退出时写 `~/.ai_novel_writer/diagnostic_logs/performance-<时间戳>.json`
         （与面板诊断日志同目录，便于一起排查）。
+        目录不再在此硬编码，而是问 `diagnostic_logger.resolve_log_dir()` —— 否则
+        测试隔离（`AI_NOVEL_DIAGNOSTIC_DIR`）只对 `.jsonl` 生效，性能报告仍会漏进真实目录。
         容错：任何异常都只记日志、不阻止退出。
         """
         try:
             from datetime import datetime
-            from pathlib import Path
 
+            from .diagnostic_logger import resolve_log_dir
             from .performance_monitor import get_performance_monitor
 
             monitor = get_performance_monitor()
@@ -1200,7 +1202,7 @@ class ShellMixin:
             # 没有任何请求记录时不落盘，避免留下一堆空报告
             if not summary.get("total_requests"):
                 return
-            out_dir = Path.home() / ".ai_novel_writer" / "diagnostic_logs"
+            out_dir = resolve_log_dir()
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             monitor.save_report(str(out_dir / f"performance-{stamp}.json"))
         except Exception as e:

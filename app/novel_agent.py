@@ -41,6 +41,92 @@ except Exception:
     _diag = None
 
 
+def _diag_logger():
+    """取当前诊断日志实例。
+
+    **不要**在别处缓存 `_diag` 的返回值来记新增的日志：模块级 `_diag` 是导入那一刻
+    的单例快照，而 `reset_logger()`（测试隔离、目录切换）会把全局单例换掉，
+    快照就会指向**旧目录** —— 现象是"日志明明该写却没写"，且只在跑测试时才出现。
+    `_diag` 保留是为了兼容既有调用点；新增的段级归因走这个函数。
+    """
+    if _diag is None:
+        return None
+    try:
+        return get_logger()
+    except Exception:
+        return _diag
+
+
+class _PhaseTimer:
+    """单章生成的段级耗时归因。
+
+    为什么需要它：单章生成要发 **3–9 次网络往返**（`_plot_designer_analyze` 1 次、
+    `_writer_generate` 1 次、`_reviewer_evaluate` 每轮 1 次、`_writer_revise` 不达标才发），
+    而本地计算量与这些往返相比可以忽略。于是"这一章慢"**必定**能拆成"哪个 Agent 慢"，
+    但没有分段数据就只能猜 —— 这也是先做观测、后做优化的原因。
+
+    用累加而不是记录每次调用，是因为"第 2 轮审校"单独看没有意义，
+    有用的是"审校总共占了这一章的多少毫秒"。逐轮明细另外记在 `calls` 里备查。
+
+    ⚠️ 刻意不做的事：不 import `ai_client` / 不读全局状态 / 不抛异常。
+    它只做算术，唯一的输出是给 `chapter_event` 的一组数字。
+    """
+
+    __slots__ = ("_t0", "total_ms", "phases", "calls")
+
+    def __init__(self):
+        self._t0 = time.perf_counter()
+        self.total_ms = 0.0
+        self.phases: Dict[str, float] = {}
+        self.calls: List[Dict[str, Any]] = []
+
+    def phase(self, name: str, started_at: float) -> float:
+        """记录一段耗时（毫秒）并累加进同名阶段。
+
+        用 `perf_counter` 而非 `time.time`：后者会被系统时钟调整影响，
+        而我们要的是"这一段实际过了多久"。
+        """
+        elapsed = (time.perf_counter() - started_at) * 1000
+        self.phases[name] = self.phases.get(name, 0.0) + elapsed
+        self.calls.append({"phase": name, "ms": round(elapsed, 2)})
+        return elapsed
+
+    def breakdown(self) -> Dict[str, float]:
+        """各阶段耗时（毫秒，四舍五入到 0.01）。"""
+        return {k: round(v, 2) for k, v in self.phases.items()}
+
+    def summary(self) -> Dict[str, Any]:
+        """可日志化的汇总：总时长 + 各段 + 网络往返次数 + 未归因余量。"""
+        self.total_ms = (time.perf_counter() - self._t0) * 1000
+        accounted = sum(self.phases.values())
+        return {
+            "total_ms": round(self.total_ms, 2),
+            "phases_ms": self.breakdown(),
+            "round_trips": sum(1 for c in self.calls if c["phase"] in _NETWORK_PHASES),
+            "unaccounted_ms": round(self.total_ms - accounted, 2),
+            "calls": self.calls,
+        }
+
+
+#: 交付给下游消费者的关键阶段名（顺序即执行顺序，也是"最慢在哪"的阅读顺序）。
+#: 之所以单独列出来，是因为 `novel_agent` 与 `generation_ui` 要对同一组名字达成一致 ——
+#: 名字写两处必然漂移，所以由这里导出。
+PHASE_PLOT = "plot_design"
+PHASE_CONTEXT = "context"
+PHASE_WORLD = "world_build"
+PHASE_WRITE = "write"
+PHASE_REVIEW = "review"
+PHASE_REVISE = "revise"
+
+#: 真正**会发网络请求**的阶段。数错这个数会直接误导"该优化哪里"。
+#: 实测依据（AST 静态统计 `ai.chat()` 调用点）：
+#:   plot_design / write / review / revise 各 1 次；`world_build` **0 次**
+#:   （`_world_builder_build` 只读本地 settings 就返回，连 `ai` 都不碰）；
+#:   `context` 也是纯本地组装。
+#: 这正是"5 个 Agent"听起来像 5 次往返、实际不是的原因 —— 别按 Agent 数量推断。
+_NETWORK_PHASES = frozenset({PHASE_PLOT, PHASE_WRITE, PHASE_REVIEW, PHASE_REVISE})
+
+
 # ===== 标准化通信协议 (参考 MCP/A2A) =====
 
 
@@ -651,6 +737,10 @@ class NovelAgent:
             self._conversation_log = []
         self.log(f"[编排器] 5Agent协作启动: 第{chapter_num}章「{chapter_title}」")
 
+        # 📊 段级耗时归因：全程只建一个计时器，每个 Phase 结束记一笔。
+        # 收尾时统一发一条 `CHAPTER/.../complete`，含总时长与各段明细。
+        timer = _PhaseTimer()
+
         # 🔑 提取前一章结尾（在压缩前保存，确保不丢失）
         prev_ending = ""
         if prev_context and "【前一章" in str(prev_context):
@@ -663,17 +753,23 @@ class NovelAgent:
         # Phase 1: PlotDesigner - 分析大纲，管理伏笔
         self.log("[PlotDesigner] 分析大纲与伏笔...")
         self._record_conversation("PlotDesigner", "analyze", f"分析第{chapter_num}章大纲")
+        _t = time.perf_counter()
         plot_analysis = self._plot_designer_analyze(chapter_num, chapter_title, chapter_outline)
+        timer.phase(PHASE_PLOT, _t)
 
         # 注入前几章内容上下文
         plot_type = plot_analysis.get("type", "writing")
+        _t = time.perf_counter()
         context = self._build_context(chapter_num, prev_context, writing_phase=plot_type)
+        timer.phase(PHASE_CONTEXT, _t)
         self.log(f"[PlotDesigner] 情节类型: {plot_type}, 上下文已注入(全局摘要+卷摘要+角色+近期章节+创作指引)")
 
         # Phase 2: WorldBuilder - 场景与世界一致性
         self.log("[WorldBuilder] 构建场景描写...")
         self._record_conversation("WorldBuilder", "build", f"构建第{chapter_num}章场景")
+        _t = time.perf_counter()
         world_context = self._world_builder_build(chapter_num, plot_analysis)
+        timer.phase(PHASE_WORLD, _t)
 
         # 🔧 BUG-1修复: 将WorldBuilder输出注入Writer上下文
         if world_context:
@@ -682,9 +778,11 @@ class NovelAgent:
         # Phase 3: Writer - 创作内容
         self.log(f"[Writer] 正在创作第{chapter_num}章初稿...")
         self._record_conversation("Writer", "generate", f"开始创作第{chapter_num}章")
+        _t = time.perf_counter()
         content = self._writer_generate(
             chapter_num, chapter_title, chapter_outline, word_count, context=context, prev_ending=prev_ending
         )
+        timer.phase(PHASE_WRITE, _t)
 
         # Phase 4-5: Reviewer → Editor 迭代修订
         prev_feedback = ""
@@ -692,7 +790,9 @@ class NovelAgent:
         for round_num in range(1, self.MAX_REVISION_ROUNDS + 1):
             self.log(f"[Reviewer] 审校第{chapter_num}章（第{round_num}轮）...")
             self._record_conversation("Reviewer", "review", f"第{round_num}轮审校")
+            _t = time.perf_counter()
             review = self._reviewer_evaluate(chapter_num, content, previous_feedback=prev_feedback)
+            timer.phase(PHASE_REVIEW, _t)
             # R21 修复：这里紧接着就用 `review.setdefault(...)` / `review.get(...)`，
             # 而 `_reviewer_evaluate` 的解析结果**可能是 list**
             # （`parse_json_response` 在期望 dict 但 AI 返回顶层数组时会返回 list）。
@@ -743,11 +843,19 @@ class NovelAgent:
 
             self.log("[Writer] 正在根据审校意见修订...")
             self._record_conversation("Writer", "revise", f"第{round_num}轮修订")
+            _t = time.perf_counter()
             content = self._writer_revise(
                 chapter_num, content, review, chapter_outline, context=context, prev_ending=prev_ending
             )
+            timer.phase(PHASE_REVISE, _t)
 
         self.log(f"[编排器] 第{chapter_num}章5Agent协作完成 ({len(content)}字)")
+
+        # 📊 段级耗时归因落盘。放在这里而不是 `finally` 里：
+        # 生成中途抛异常时**不该**报一个"看起来正常"的总时长 —— 失败的耗时
+        # 由调用方的异常处理各自记录，两处混在一起会互相掩盖。
+        self._emit_chapter_timing(chapter_num, timer, review, content)
+
         # P-04：把本轮真实评分记在实例上，供 `finalize_chapter` 作为学习信号。
         # 此前这个分数在生成流程里算出来、写进对话日志、然后**被丢掉**：
         # 定稿学习时只能硬编码 `success=True`，无论这一章是 92 分还是 41 分。
@@ -756,6 +864,40 @@ class NovelAgent:
         # 记在实例上让"有评分时用评分、没有时按未知处理"成为统一行为。
         self.last_chapter_quality = review.get("overall_score") if isinstance(review, dict) else None
         return content
+
+    def _emit_chapter_timing(self, chapter_num: int, timer: "_PhaseTimer", review: Any, content: str) -> None:
+        """把一章的段级耗时写进诊断日志。
+
+        为什么值得单独一个方法：这段逻辑要"绝不因为日志失败而影响生成"，
+        而 `generate_with_collaboration` 已经在收尾阶段、任何异常都会让**整章**白写。
+        所以异常在这里就地吞掉并降级为 debug 日志。
+
+        记录内容刻意做成可机读的形状（`phases_ms` 是 `{阶段: 毫秒}`），
+        这样"近 30 天哪个阶段最慢"可以纯靠 jq/脚本统计，不需要人来读日志。
+        """
+        diag = _diag_logger()
+        if diag is None:
+            return
+        try:
+            summary = timer.summary()
+            score = review.get("overall_score") if isinstance(review, dict) else None
+            diag.chapter_event(
+                chapter_num,
+                "complete",
+                {
+                    "chars": len(content),
+                    "quality": score,
+                    "threshold": self.QUALITY_THRESHOLD,
+                    "revision_rounds": sum(1 for c in summary["calls"] if c["phase"] == PHASE_REVISE),
+                    **summary,
+                },
+                duration_ms=summary["total_ms"],
+            )
+        except Exception as e:  # noqa: BLE001 - 计时/落盘失败绝不能影响生成结果
+            # ⚠️ 这里必须用模块级的 loguru `logger`，不能写成上面那个 `diag`
+            # （`DiagnosticLogger` 没有 `.debug`，一写就在异常处理里再抛一次，
+            # 反而把"日志失败"升级成"整章生成失败"）。测试已钉住这条。
+            logger.debug(f"[novel_agent] 章节耗时归因落盘失败（忽略）: {e}")
 
     def _plot_designer_analyze(self, chapter_num: int, title: str, outline: str) -> Dict:
         """PlotDesigner: 分析情节类型、节奏、伏笔"""

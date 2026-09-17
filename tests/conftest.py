@@ -2,6 +2,7 @@
 Pytest配置文件 - 共享fixtures和测试工具
 """
 
+import os
 import shutil
 import sys
 import tempfile
@@ -14,6 +15,26 @@ import pytest
 # 添加项目路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
+
+
+# ── 诊断日志隔离 ──────────────────────────────────────
+# 必须在**本文件被 import 时**立刻执行，不能放进 fixture 或 pytest_* 钩子：
+# `app/ai_client.py:47`、`app/generation_ui.py:20`、`app/novel_agent.py:39` 都在
+# **模块级**调用 `get_logger()` 建单例，而 `DiagnosticLogger` 的目录一旦确定就不再改变。
+# 只要等收集阶段去 import 测试模块，`app.ai_client` 早已把单例钉在真实目录上了。
+#
+# 事故背景（2026-09-17 实测）：`~/.ai_novel_writer/diagnostic_logs/diagnostic-*.jsonl`
+# 连续 3 天共 3126 条 `API_CALL` **全部是同一份测试指纹**（llama3:8b×14 / gpt-4o×10 /
+# deepseek-v4-flash×8 …，44 行完全一致），而真实生成才产出的 `CHAPTER` 事件数为 **0**。
+# 结论：真实使用数据被测试淹没且**不可还原** —— 想回答"单章生成到底慢在哪"
+# 时，日志里找不到一份真实样本。
+#
+# 用环境变量而不是直接改单例，是因为 `app/` 下的生产代码本来就有 3 处各自硬编码
+# 这个目录（`diagnostic_logger` / `shell_ui` / `toolkit_ui`）；环境变量是唯一
+# 一处生效、三处同时被纠正的切点。
+DIAGNOSTIC_LOG_DIR_ENV = "AI_NOVEL_DIAGNOSTIC_DIR"
+_TEST_DIAGNOSTIC_DIR = Path(tempfile.mkdtemp(prefix="ai-novel-diag-test-"))
+os.environ[DIAGNOSTIC_LOG_DIR_ENV] = str(_TEST_DIAGNOSTIC_DIR)
 
 
 def pytest_collection_finish(session):
@@ -53,6 +74,30 @@ def mock_ai_client():
     client.chat.return_value = "这是模拟的AI回复"
     client.is_configured.return_value = True
     return client
+
+
+@pytest.fixture
+def diagnostic_log_dir(tmp_path) -> Generator[Path, None, None]:
+    """把诊断日志单例指向本用例的临时目录，并保证用例后还原。
+
+    少数用例要看"日志文件里到底写了什么"（例如面板注册记录、性能报告落盘），
+    它们需要逐用例的干净目录；默认的全局隔离目录是**整场会话共享**的，
+    前一个用例写的行会串进后一个用例的断言。
+    """
+    from app import diagnostic_logger
+
+    previous = os.environ.get(DIAGNOSTIC_LOG_DIR_ENV)
+    target = tmp_path / "diagnostic_logs"
+    os.environ[DIAGNOSTIC_LOG_DIR_ENV] = str(target)
+    diagnostic_logger.reset_logger()
+    try:
+        yield target
+    finally:
+        if previous is None:
+            os.environ.pop(DIAGNOSTIC_LOG_DIR_ENV, None)
+        else:
+            os.environ[DIAGNOSTIC_LOG_DIR_ENV] = previous
+        diagnostic_logger.reset_logger()
 
 
 @pytest.fixture
@@ -105,6 +150,27 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "slow: 标记为慢速测试")
     config.addinivalue_line("markers", "integration: 集成测试")
     config.addinivalue_line("markers", "unit: 单元测试")
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """会话结束前**验证隔离真的生效**，然后清掉临时目录。
+
+    这一条不是仪式：隔离靠的是"环境变量在任何 `app.*` 被 import 之前就设好"，
+    而这件事**没有任何类型系统能保证**。所以这里直接去问运行中的单例要答案 ——
+    如果它落在真实目录，就大声报错，而不是安静地把污染当成正常。
+    """
+    from app import diagnostic_logger
+
+    logger = diagnostic_logger.get_logger()
+    actual = Path(logger.get_log_dir()).resolve()
+    expected = _TEST_DIAGNOSTIC_DIR.resolve()
+    if actual != expected:
+        print(
+            f"\n[tests/conftest] ⚠️ 诊断日志未隔离：单例目录为 {actual}，应为 {expected}。\n"
+            "  真实使用数据可能已被本次测试污染，请检查 import 顺序是否早于本 conftest。"
+        )
+
+    shutil.rmtree(_TEST_DIAGNOSTIC_DIR, ignore_errors=True)
 
 
 # 测试收集钩子

@@ -17,6 +17,27 @@ from typing import Any, Dict, Optional
 _logger_instance: Optional["DiagnosticLogger"] = None
 _lock = threading.Lock()
 
+#: 日志目录的环境变量覆盖名。
+#: 存在的理由：`__init__` 原本**硬编码** `~/.ai_novel_writer/diagnostic_logs`，
+#: 而 `ai_client` / `generation_ui` / `novel_agent` 都在**模块级**调用 `get_logger()` 建单例，
+#: 于是测试进程与真实使用**写进同一个文件**，真实数据被淹没（实测：连续 3 天
+#: `CHAPTER` 事件数为 0，而 `API_CALL` 有 3126 条全是同一份测试指纹）。
+#: 有了它，`tests/conftest.py` 可以在任何 `app.*` 模块被导入之前把目录指向临时目录。
+DIAGNOSTIC_LOG_DIR_ENV = "AI_NOVEL_DIAGNOSTIC_DIR"
+
+
+def resolve_log_dir(explicit: Optional[Path] = None) -> Path:
+    """决定诊断日志目录：显式参数 > 环境变量 > 默认 `~/.ai_novel_writer/diagnostic_logs`。
+
+    抽成函数是为了让"目录从哪来"只有一处实现 —— 面板导出、性能报告落盘都要用同一个答案。
+    """
+    if explicit is not None:
+        return Path(explicit)
+    from_env = os.environ.get(DIAGNOSTIC_LOG_DIR_ENV)
+    if from_env:
+        return Path(from_env)
+    return Path.home() / ".ai_novel_writer" / "diagnostic_logs"
+
 
 class DiagnosticLogger:
     """结构化诊断日志记录器
@@ -30,7 +51,7 @@ class DiagnosticLogger:
     MAX_BACKUP_FILES = 5
 
     def __init__(self, log_dir: Path = None):
-        self.log_dir = log_dir or Path.home() / ".ai_novel_writer" / "diagnostic_logs"
+        self.log_dir = resolve_log_dir(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self._current_file = self._get_log_file()
         self._write_lock = threading.Lock()
@@ -210,9 +231,18 @@ class DiagnosticLogger:
         """记录函数退出"""
         self.log("FUNC_EXIT", func_name, {"result": result_summary} if result_summary else {}, duration_ms=duration_ms)
 
-    def chapter_event(self, chapter_num: int, event: str, data: dict = None):
-        """记录章节相关事件"""
-        self.log("CHAPTER", f"ch{chapter_num:04d}/{event}", {"chapter": chapter_num, **(data or {})})
+    def chapter_event(self, chapter_num: int, event: str, data: dict = None, duration_ms: float = None):
+        """记录章节相关事件
+
+        `duration_ms` 用于**段级耗时归因**：单章生成会发 3–9 次网络往返，
+        只有把"这一段花了多久"落到同一行，才可能回答"这一章为什么慢"。
+        """
+        self.log(
+            "CHAPTER",
+            f"ch{chapter_num:04d}/{event}",
+            {"chapter": chapter_num, **(data or {})},
+            duration_ms=duration_ms,
+        )
 
     def character_event(self, char_name: str, event: str, data: dict = None):
         """记录角色相关事件"""
@@ -301,12 +331,27 @@ class DiagnosticLogger:
 
 
 def get_logger(log_dir: Path = None) -> DiagnosticLogger:
-    """获取诊断日志单例"""
+    """获取诊断日志单例
+
+    注意：单例**忽略后续传入的 `log_dir`**（一旦建好就固定）。因此切换日志目录
+    必须走 `reset_logger()`，这也是测试隔离与"面板导出"能拿到正确目录的前提。
+    """
     global _logger_instance
     with _lock:
         if _logger_instance is None:
             _logger_instance = DiagnosticLogger(log_dir)
         return _logger_instance
+
+
+def reset_logger() -> None:
+    """丢弃单例，使下一次 `get_logger()` 按当前环境重新决定目录。
+
+    仅给测试隔离（`tests/conftest.py`）与诊断工具的目录切换用；
+    生产代码不要调用 —— 中途换目录会让一次会话的日志分裂成两个文件。
+    """
+    global _logger_instance
+    with _lock:
+        _logger_instance = None
 
 
 # ── 装饰器 ──────────────────────────────────────────

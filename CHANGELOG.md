@@ -106,6 +106,38 @@
 
 ### 工程
 
+**弹窗静默开关的嵌套语义缺陷**
+- `dialogs.silent_modals()` 用 `_silent_depth` 计数，`__exit__` 在深度归零时**无条件**
+  `set_silent(False)`。后果：外层已经 `set_silent(True)` 时，内层退出会把**外层也解开**
+  —— 自动化脚本的"全局静默"会在第一个 `with` 块结束时失效，后面的模态弹窗真的会弹出来。
+- 改为进入时**记住进入前的状态**、退出时**恢复该状态**（而非硬编码 `False`）。
+  反证验证：退回旧实现，新加的守卫测试确实失败；恢复后通过。
+
+**自我学习：失败样本整条链路缺失**
+- `learn_from_chapter` 只有 `if success:` 分支 —— `success=False` 时**什么都不写**。
+  而 `QUALITY_THRESHOLD = 75` 确实可达，等于"写砸的章节从不进入记忆"，
+  下回开写时也就没有任何"这里容易翻车"的提示。
+- 现补齐 `else` 分支写入 `memory_type="failure_pattern"`，权重随评分下降而上升
+  （`max(0.5, min(0.9, 0.5 + (75 - quality) / 100))`，60 分 → 0.65，75 分 → 0.5）。
+- `get_writing_context` 相应新增「近期未达标章节（应避开同类问题）」段，
+  按章节窗口取最近 3 条回灌 —— 否则写了仍然没人读，等于回到"只写不读"。
+- **空/纯空白章节文本**原先会写出 3 条垃圾记忆（实测 `0 → 3`），现在提前 return。
+- 角色提及计数原本被包在 `if success:` 里，**失败章节提及的角色不计入** —— 已移出，
+  因为"这章写了谁"与"这章写得好不好"无关。
+- 注意：记忆条目里存分数的键是 `"type"` 而非 `"memory_type"`（自学习测试写错一次后修正）。
+
+**解析器类型契约：守卫写在所有使用之后**
+- 收敛后 `parse_json_response` 的语义是**单向**的：`is_list=True` 拒绝 dict，
+  而 `is_list=False` 只**偏好** `{`、**不拒绝**顶层数组。当模型只回一个 JSON 数组时，
+  期望 dict 的调用方会拿到 `list`。
+- 实测三处受影响：`novel_agent._world_builder_build`（`save_settings(list)` → 崩）、
+  `novel_agent.analyze_style`（按 dict 取键）、`_format_settings_md`
+  （`settings.items()` → `AttributeError: 'list' object has no attribute 'items'`）。
+- 最值得记的是 `novel_agent.generate_with_collaboration`：**守卫存在**，
+  但位置在**所有使用点之后**（第 748 行，首次使用在第 695 行）—— 光看 grep 会以为没问题。
+  现改为拿到 `review` 后立刻规范化。
+- 新增 `tests/test_parse_type_contract.py`（31 条）钉住这些契约，含上述全域元守卫。
+
 **重复测试合并（O4，净删 738 行）**
 - 实测普查：`tests/` 里 **81 组函数体完全相同**的用例重复（`novel_agent` 57 组 +
   `reading_manager` 20 组 + `agent_orchestrator` 2 组 + `ai_client` 2 组），
@@ -123,12 +155,31 @@
   `scripts/review_dup_candidates.py`（候选复核报告，对比各类 `setUp` 绑定的目标）、
   `scripts/dedup_tests.py`（执行合并，带语法自检与假重复白名单）。
 
-- 新增测试：`tests/test_panel_layout.py`（43 条）、`tests/test_dialogs.py`（21 条）、
-  `tests/test_parse_convergence_extended.py`（16 条）、`tests/test_self_learning_loop.py`（16 条）、
-  `tests/test_wiring_guards.py`（12 条）。
+- 新增测试：`tests/test_panel_layout.py`（43 条）、`tests/test_dialogs.py`（23 条）、
+  `tests/test_parse_convergence_extended.py`（16 条）、`tests/test_self_learning_loop.py`（20 条）、
+  `tests/test_parse_type_contract.py`（31 条）、`tests/test_wiring_guards.py`（12 条）。
 - 新增的收敛/接线守卫沿用既有模式：**剔除注释与文档字符串后**做源码级断言，
   并**排除测试文件自身**（本文件列举了被删方法名，直接扫原文必然自报假阳性）。
-- 总计 **2461 条测试**（桌面端 2338 + 后端 128）→ 合并前为 2548；差额即本轮删除的重复。
+- 总计 **2483 条测试**（桌面端 2355 + 后端 128）→ 合并前为 2548；差额即本轮删除的重复。
+
+**六轮「测试 → 发现 → 修复 → 回归」迭代（R21）**
+- 用四个探针脚本（`scripts/boundary_probe.py`、`iteration_probe2.py`、`iteration_probe3.py`、
+  `scripts/dup_test_census.py`）反复打主要路径与边界，**每轮都真的抓到了缺陷**：
+  | 轮次 | 抓到的缺陷 | 性质 |
+  |---|---|---|
+  | 1–3 | 重复合并脚本自身三处错误 | 工具缺陷（已回滚重做 + 加语法自检） |
+  | 4 | `dialogs.silent_modals` 退出时**丢掉外层的静默状态** | 真缺陷（嵌套静默被内层解开） |
+  | 5 | 自学习：**失败章节什么都不写**、空文本**写入垃圾记忆** | 真缺陷（学习回路断一半） |
+  | 5 | 解析器**类型契约**：3 处调用方收到 `list` 会崩或静默丢数据 | 真缺陷（其中 1 处是"守卫写在所有使用之后"） |
+  | 6 | 事件总线 / 布局往返 / 弹窗门禁 / 版本权威 / 根文档 / 字体门禁 | 全部通过，无新缺陷 |
+- **每处真缺陷都用「反证」验证过**：临时把修复退回去，确认守卫测试**确实转红**，再恢复。
+  否则无法排除"测试恒绿、其实什么都没测"。
+- 新增 `tests/test_parse_type_contract.py` 的**全域元守卫**：它扫描 `parse_json_response`
+  的**每一个**调用点，要求"要么旁边有 `isinstance` 守卫、要么是薄转发、要么立刻 return"。
+  价值在于它会拦住**将来新加的**未守卫调用点 —— 这是一条测试，胜过 N 条逐点测试。
+- 6 轮结束后全量回归：桌面端 **2348 通过 / 0 失败**，后端 **128 通过**，
+  `ruff check` 与 `ruff format --check`（178 文件）全绿。
+
 - 截图：`docs/ui_review/after_12_single_mode.png` → `after_15_back_to_single.png`
   （分栏前 → 分栏 → 调整比例与右栏 → 收回；**收回后的截图与分栏前字节完全相同**）。
 

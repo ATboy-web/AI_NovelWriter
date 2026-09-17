@@ -356,6 +356,28 @@ class TestDescriptionLibrary:  # setUp: self.lib = DescriptionLibrary()
 > `parse_exp_json` 管"把 AI 响应变成合法的 EXP 条目"——**职责不同**，
 > 不属于 §5.1 那种"同一件事写六遍"。**不收敛是正确的。**
 
+### 5.7 运行时审计新发现（2026-09-17，来自《快速统治》实跑）
+
+> **完整报告**：`docs/RUNTIME_AUDIT_20260917.md`（含每条的证据与验证方式）。
+> **共同前提**：本次实跑用的是 **v3.1.0 发布版**（非本轮新构建），
+> 因此"新功能未生效"属预期；但下列缺陷**与构建版本无关，当前 HEAD 仍在**。
+
+| ID | 事项 | 位置 | 严重度 / 说明 |
+|---|---|---|---|
+| **D1** | **主角名被"整份覆盖"抹掉** —— `_auto_generate` 在 `:1481` 只读一次 `meta`，`:1537` 用 `update_meta` 写入 `protagonist`，`:1566` 又用**那份不含 protagonist 的旧副本** `write_meta` 整份覆盖 | `generation_ui.py:1481 / 1537 / 1566`（读取方 `:133`、`novel_agent.py:962/1142/1373`） | 🔴 **最高**。铁证：`meta.json.bak` 有 `protagonist:"陆昭"`，`meta.json` 没有，唯一差异即此字段。后果① 整体大纲/故事大纲读不到主角 ⇒ 各自编出「苏妩」「沈夜/姜姒」（三份大纲主角全不同）；后果② **磁盘上再无该字段 ⇒ 第 2 章起写作/修订全部失去主角锁定**，缺陷会持续恶化 |
+| **D2** | **摘要把模型思维链当了摘要** —— `max_tokens=1000` 恰好等于 `THINKING_MIN_TOKENS`，而判据是严格小于 ⇒ 思考模式未被禁用但预算不够输出 ⇒ `content` 空 ⇒ `_finalize_text` 兜底返回 `reasoning` ⇒ 原始推理落盘为摘要 | 写入 `novel_agent.py:1795`；咬合 `providers/reasoning.py:27/84`、`ai_client.py:1124` | 🔴 高。产物 `summaries/chapter_00001_summary.txt` 1789 字符即思维链。诊断日志实证：入口 `max_tokens=1000` → 出口 `result_len=1782`，与文件 1789（含 7 字符前缀）完全吻合 |
+| **D3** | **同一段思维链污染记忆库** —— `memory/chunks/page_0000.json` 里 `type:"plot"` 的条目内容就是 D2 的思维链，类型标注也与内容不符 | 记忆分块落盘路径 | 🟠 中高。后续检索会把推理当剧情片段回灌 |
+| **D4** | **"摘要"实为正文截断** —— `content[:500]` 直接当摘要，且用了 **4 位**补零，与 D2 的 5 位文件同名章号 | `chapter_ui.py:57-65`（另 `:85` 写 4 位章节） | 🟠 中。`summaries/` 因此同章两份文件、两种命名 |
+| **D5** | **世界线记录的是提示词示例** —— 落盘内容 `"当时的情况"/"主角选择了什么"/"可能的另一种选择"` 就是 `:842` 提示词里的 few-shot 示例，模型原样返回且未校验，日志却报"记录1个决策点"（**假成功**） | `generation_ui.py:842` 附近 | 🟠 中。同类"示例泄漏成结果"值得全仓排查 |
+| **D6** | **角色双 schema** —— 3 个 AI 档案（13 字段）vs 自动创建的苏倾颜 RPG 模板（28 字段，属性全默认 10、`personality`/`appearance`/`backstory` 皆空） | 角色自动创建路径 | 🟡 中。同目录两种结构，读取方须同时兼容 |
+| **D7** | **知识图谱信息量近空** —— `entities` 只有 3 个角色（**缺苏倾颜**），`relations`/`events` 皆空，`attributes` 皆空，每实体 `mentions:1`；而角色档案里明确有"陆昭↔赵无咎"的从属关系 | `writing_skills/knowledge_graph.json` 落盘路径 | 🟡 中 |
+| **D8** | **世界观与三份大纲各说各话** —— 设定是「玄元界」（`settings.json`），而 `outline.json`、`overall.json`、`stories.json` 及正文都写「九州/帝印/九霄宗」；正文首句「玄元界，中州。」之后「九州」出现 18 次，**同篇混用两套地理** | 章节大纲提示词 | 🟡 中 |
+| **D9** | **1 级角色负向 EXP 提示误导** —— `add_exp` 有"最低保障 `exp>=0`"地板（注释明确），故 `-30` 在 1 级无任何变化，但日志仍打印「-30EXP」，看起来像已扣减 | `generation_ui.py:1175`、`character_system.py:255-259` | 🟢 低。行为正确，仅提示误导 |
+
+> **D-命名**（可与 D4 合并处理）：章节/摘要补零位数不统一 —— `chapters/` 用 4 位
+> （`chapter_ui.py:85`）、`memory/chapters/` 与 `memory_manager.py:378` 用 5 位、
+> `summaries/` **两种并存**；`generation_ui.py:1950` 只读 5 位 ⇒ 与用户先看到的 4 位文件不是同一份。
+
 ### 5.6 观察项登记（本轮新增）
 
 | ID | 事项 | 位置 | 为何本轮不动 | 何时该动 |

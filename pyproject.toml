@@ -79,6 +79,10 @@ ignore = ["E501", "E701", "E702", "W291", "W293"]
 # 启动器同样用 try/except ImportError 探测 tkinter 子模块与 psutil 是否可用
 # （`HAS_TKINTER` / `HAS_PSUTIL` 这两个开关就是探测结果），导入即探测，不能删除。
 "installer/launcher.py" = ["F401"]
+# 冒烟脚本必须**先**把 backend/novel-service/app 插进 sys.path，
+# 否则 `from generators...` 找不到模块（该目录下的包名也叫 `app`，
+# 不能提前导入）。导入顺序是运行前提，不是风格问题。
+"scripts/smoke_generators.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.11"

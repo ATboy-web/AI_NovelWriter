@@ -20,6 +20,27 @@
 - 三种形态共用同一份外壳代码：面板可以**在栏里、在独立窗口里、或单栏显示**，
   面包屑/状态栏/快捷键始终一致。
 
+**自我学习的"信号"从假变真**
+- 「自我学习」此前实测是 **L0（只写不读）**，三个断点各有明确位置：
+  **信号假**（`finalize_chapter` 的 `success=True` 硬编码，而 `if success:` 包住全部学习逻辑
+  ⇒ 形参等于没有，负样本永远进不来）、**内容贫**（只写 `success_pattern`、权重恒 0.6）、
+  **读不到**（`get_writing_context` 完全忽略自己的 `chapter` 形参；`query()` 无时间维度）。
+- `finalize_chapter` / `learn_from_chapter` 新增 `quality` 形参：评审得到的真实分数
+  经实例属性 `last_chapter_quality` 传入并按 `QUALITY_THRESHOLD` 判定 `success`，
+  **权重随评分浮动**（60 分→0.5，100 分→0.9）。
+  未拿到评分时（编辑器 / 全屏写作两条定稿路径）行为与旧版一致，按成功处理。
+- `success_pattern` 从"写完全仓无人读"变为**真的被回灌**：`get_writing_context`
+  新增「近期成功模式」段，按章节窗口取最近的高分经验。
+- `TimeAwareMemory.query` 新增 `chapter` / `chapter_window`：可按"距今章节数"过滤与排序
+  （未标注章节的旧数据**不参与过滤**，避免静默清空）。
+
+**待办与缺陷登记册**
+- 新增 `docs/BACKLOG_REGISTER.md`：把散在 33 份文档里的遗留项按
+  **每条带可复核证据**（文件:行号）重新登记，分「已修复(文档仍标未处理)」
+  「确认未修复」「需决策」三类，并记明与旧文档不一致之处
+  （例：`FEATURE_VALUE_ASSESSMENT.md` 说 `diagnostic_logger`/`memory_manager`
+  是重复测试重灾区，实测**两者都是 0**，真正的重复量在 `novel_agent` 66 条 + `reading_manager` 23 条）。
+
 ### 变更
 
 **弹窗调用统一收口到 `app/dialogs.py`**
@@ -35,15 +56,58 @@
 
 ### 修复
 
+**JSON 解析器全面收敛（6 处手写实现 → 单一权威）**
+- `app/parsing.py` 的 `parse_json_response` 本就是唯一实现，但另有 **6 处各自手写解析**：
+  `character_system.ai_create_character`（**最弱**：`json.loads(切片)` 无 try/except、无尾逗号修复）、
+  `character_ui._auto_detect_characters`（字符串数组）、
+  `novel_agent._plot_designer_analyze`、`generation_ui._auto_detect_decisions`、
+  `generation_ui._auto_generate`（列表）、`novel_agent._update_character_progression`。
+  `novel_agent` + `generation_ui` 合计约 250 行重复的 JSON 修复机器。
+- 收敛后**每处解析失败都少丢一次数据**：旧实现拿到带全角冒号（`{"a"：1}`）或
+  尾逗号、markdown 围栏的响应会直接放弃（跳角色成长 / 跳大纲批量更新 / 跳新角色识别）。
+- `generation_ui._auto_generate` 顺手修掉一个**潜在 `UnboundLocalError`**：
+  旧写法在 `re.search` 未命中时不会给 `new_batch` 赋值，而紧接着就 `if new_batch:`。
+- 两处**统一解析器覆盖不到**的策略有意保留：`"decisions"` 数组定点抽取、
+  `"updates"` 逐字段抽取（针对"AI 返回大段思考文本 + 夹着不合法数组"的极端情况）。
+
+**`parse_json_response` 的候选优先级缺陷（本轮由收敛暴露）**
+- 旧实现把"修复版本"**整体追加到所有原文之后**，使优先级失效。实测回归：
+  `{"type":"action",...,"foreshadowing":[],}`（尾逗号）期望 dict 时，候选顺序是
+  `[{..,}(失败), [](成功!), 修复1, 修复2]` ⇒ **返回了内嵌的空数组**，
+  而调用方按 dict 使用。现改为"每个原文紧跟自己的两个修复版本"。
+- 同一修复顺带解决 markdown 围栏响应返回 `None` 的问题。
+
+**"注册即遗忘"三处（功能建好却没人调用）**
+- **D3**：`FullscreenWriter._toggle_ai` 一直存在且正确，`ai_assist_enabled`
+  也有三处消费（决定是否给提示、状态栏、配置持久化），但**没有任何控件能改它**
+  ⇒ 开关永远停在 `True`。工具栏按"打字机"同款补上「AI辅助」复选框，
+  并在读回配置时同步复选框状态（否则界面显示与实际生效值不符）。
+- **D4**：删除 `UIStyle.create_styled_button/entry/text/listbox` 四个工厂 ——
+  `app/`、`tests/`、`scripts/`、`installer/`、`backend/` 五处共 **0 引用**，
+  且它们是**第二套视觉来源**（项目已定 `panels/ui_kit.py` 为唯一来源）、
+  还绕过字体令牌门禁（用 `(family, size)` 拼字面量）。随之移除不再使用的 `import tkinter`。
+- **D5**：`PerformanceMonitor` 一直在 `ai_client` 里**记录**指标，
+  但 `save_report()` 全仓零调用 ⇒ 数据只活在内存、进程一退就没。
+  现退出时写 `~/.ai_novel_writer/diagnostic_logs/performance-<时间戳>.json`
+  （与面板诊断日志同目录）；零请求时不写空文件；保存失败只记日志、不阻止退出。
+
 - `PanedWindow` 的选项集与 `Frame` 不同（没有 `highlightthickness`），
   分栏容器按实际支持的选项构造。
 - **比例应用不再用 `after_idle` 自重排**：窗口尚未映射时宽度恒为 1，
   自重排会变成永不结束的空闲循环，`update()` 直接卡死（实测挂住 7 分钟）。
   改为由 `<Configure>` 在拿到真实尺寸时应用**一次**（也避免与用户拖动打架）。
+- `scripts/smoke_generators.py` 的仓库根解析：文件在 `scripts/` 下却按
+  `Path(__file__).parent / "backend" / ...` 找模块（指向不存在的 `scripts/backend/`）
+  ⇒ 自搬入 `scripts/` 起就 `ModuleNotFoundError`，从未跑通过。改为先定位仓库根，现 15/15 通过。
 
 ### 工程
 
-- 新增测试：`tests/test_panel_layout.py`（43 条）、`tests/test_dialogs.py`（21 条）。
+- 新增测试：`tests/test_panel_layout.py`（43 条）、`tests/test_dialogs.py`（21 条）、
+  `tests/test_parse_convergence_extended.py`（16 条）、`tests/test_self_learning_loop.py`（16 条）、
+  `tests/test_wiring_guards.py`（12 条）。
+- 新增的收敛/接线守卫沿用既有模式：**剔除注释与文档字符串后**做源码级断言，
+  并**排除测试文件自身**（本文件列举了被删方法名，直接扫原文必然自报假阳性）。
+- 总计 **2547 条测试通过**（桌面端 2419 + 后端 128）。
 - 截图：`docs/ui_review/after_12_single_mode.png` → `after_15_back_to_single.png`
   （分栏前 → 分栏 → 调整比例与右栏 → 收回；**收回后的截图与分栏前字节完全相同**）。
 

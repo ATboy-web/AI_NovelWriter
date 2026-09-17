@@ -514,19 +514,36 @@ def is_silent() -> bool:
 
 
 class silent_modals:
-    """`with silent_modals(): ...` —— 作用域内静默，异常也保证恢复（可嵌套）。"""
+    """`with silent_modals(): ...` —— 作用域内静默，异常也保证恢复（可嵌套）。
+
+    ❗ **只恢复自己见过的状态，不无条件置回 `False`**。
+    旧实现用 `_silent_depth` 计数，`__exit__` 在深度归零时直接 `set_silent(False)`。
+    于是下面这种用法会**丢掉外层的静默**：
+
+        set_silent(True)            # 用户在别处开了全局静默
+        with silent_modals():       # depth 0→1
+            ...
+        # __exit__：depth 归零 → set_silent(False)  ⇒ 外层那个 True 被抹掉
+
+    对"全局静默了却突然弹出模态框"的自动化脚本，这正是最伤的场景。
+    改为像 BLAS 那样**只置位自己那一层**：进入前记下原值，退出时恢复原值。
+    """
+
+    def __init__(self) -> None:
+        self._previous: bool | None = None
 
     def __enter__(self) -> "silent_modals":
         global _silent_depth
         _silent_depth += 1
-        set_silent(True)
+        self._previous = set_silent(True)
         return self
 
     def __exit__(self, *_exc) -> bool:
         global _silent_depth
         _silent_depth = max(0, _silent_depth - 1)
-        if _silent_depth == 0:
-            set_silent(False)
+        # 恢复进入前的状态：若外层本来就是静默的，退出后仍然是静默的。
+        if self._previous is not None:
+            set_silent(self._previous)
         return False
 
 

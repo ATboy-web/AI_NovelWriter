@@ -223,6 +223,31 @@ class TestSilentMode:
             assert dialogs.is_silent() is True, "内层退出不应解除外层的静默"
         assert dialogs.is_silent() is False
 
+    def test_context_manager_keeps_an_outer_set_silent(self, fake_messagebox):
+        """回归：`set_silent(True)` 之后的 `with silent_modals()` 退出时**不得**解除静默。
+
+        旧实现用深度计数，`__exit__` 在深度归零时无条件 `set_silent(False)`，
+        于是会把进入之前就存在的全局静默一起抹掉。对"关了全局静默去做自动化"
+        的脚本，这等于在作用域结束后又开始弹模态框。
+        """
+        previous = dialogs.set_silent(True)
+        try:
+            with dialogs.silent_modals():
+                assert dialogs.is_silent() is True
+            assert dialogs.is_silent() is True, "外层 set_silent(True) 必须仍然生效"
+        finally:
+            dialogs.set_silent(previous)
+
+    def test_context_manager_does_not_enable_silent_afterwards(self, fake_messagebox):
+        """反向边界：原本非静默时，退出后必须是非静默（不能反过来粘住）。"""
+        previous = dialogs.set_silent(False)
+        try:
+            with dialogs.silent_modals():
+                assert dialogs.is_silent() is True
+            assert dialogs.is_silent() is False
+        finally:
+            dialogs.set_silent(previous)
+
     def test_set_silent_returns_previous(self, fake_messagebox):
         assert dialogs.set_silent(True) is False
         assert dialogs.set_silent(True) is True

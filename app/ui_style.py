@@ -3,7 +3,8 @@ UI样式管理模块 - 现代化UI样式
 AI小说创作工坊 v2.0 设计系统
 """
 
-import tkinter as tk
+# D4：`import tkinter as tk` 随四个 `create_styled_*` 工厂一起移除 ——
+# 本模块现在只用 `ttk`（`ttk.Style()` 配置全局主题）。
 from tkinter import ttk
 
 
@@ -403,85 +404,14 @@ class UIStyle:
 
         return style
 
-    @classmethod
-    def create_styled_button(cls, parent, text, command=None, style="Accent", **kwargs):
-        """创建样式化按钮"""
-        C = cls.COLORS
-        btn = tk.Button(
-            parent,
-            text=text,
-            command=command,
-            font=(cls.FONTS["family"], cls.FONTS["size_base"]),
-            relief=tk.FLAT,
-            cursor="hand2",
-            **kwargs,
-        )
-
-        if style == "Accent":
-            btn.configure(bg=C["accent"], fg="white", activebackground=C["accent_hover"])
-        elif style == "Secondary":
-            btn.configure(bg=C["bg_light"], fg=C["text_primary"], activebackground=C["hover_light"])
-        elif style == "Success":
-            btn.configure(bg=C["success"], fg="white", activebackground="#059669")
-        elif style == "Danger":
-            btn.configure(bg=C["error"], fg="white", activebackground="#dc2626")
-        elif style == "Ghost":
-            btn.configure(bg=C["bg_dark"], fg=C["accent_light"], activebackground=C["hover"])
-
-        return btn
-
-    @classmethod
-    def create_styled_entry(cls, parent, **kwargs):
-        """创建样式化输入框"""
-        C = cls.COLORS
-        entry = tk.Entry(
-            parent,
-            font=(cls.FONTS["family"], cls.FONTS["size_base"]),
-            bg=C["bg_medium"],
-            fg=C["text_primary"],
-            insertbackground=C["text_primary"],
-            relief=tk.FLAT,
-            **kwargs,
-        )
-        entry.configure(highlightbackground=C["border"], highlightcolor=C["border_focus"], highlightthickness=1)
-        return entry
-
-    @classmethod
-    def create_styled_text(cls, parent, **kwargs):
-        """创建样式化文本框"""
-        C = cls.COLORS
-        text = tk.Text(
-            parent,
-            font=(cls.FONTS["family"], cls.FONTS["size_base"]),
-            bg=C["bg_card"],
-            fg=C["text_primary"],
-            insertbackground=C["text_primary"],
-            selectbackground=C["accent"],
-            selectforeground="white",
-            relief=tk.FLAT,
-            padx=16,
-            pady=16,
-            spacing1=2,
-            spacing3=2,
-            undo=True,
-            **kwargs,
-        )
-        return text
-
-    @classmethod
-    def create_styled_listbox(cls, parent, **kwargs):
-        """创建样式化列表框"""
-        C = cls.COLORS
-        listbox = tk.Listbox(
-            parent,
-            bg=C["bg_card"],
-            fg=C["text_secondary"],
-            font=(cls.FONTS["family"], cls.FONTS["size_sm"]),
-            selectbackground=C["accent"],
-            selectforeground="white",
-            relief=tk.FLAT,
-            highlightthickness=0,
-            borderwidth=0,
-            **kwargs,
-        )
-        return listbox
+    # D4（2026-09-17）：删除 `create_styled_button` / `create_styled_entry` /
+    # `create_styled_text` / `create_styled_listbox` 四个工厂方法。
+    # 理由（三条都经实测确认，缺一不可）：
+    # 1. **全仓零引用**：`app/`、`tests/`、`scripts/`、`installer/`、`backend/`
+    #    五处共 0 命中（定义本身除外），也无 getattr/command= 之类的动态调用；
+    # 2. **是第二套视觉来源**：项目已确立 `app/panels/ui_kit.py` 为唯一视觉来源
+    #    （card/toolbar/empty_state/…），保留这四只会在两处各写一遍配色，
+    #    正是"同一事实写两处必然漂移"的高发区；
+    # 3. **绕过字体令牌门禁**：它们用 `font=(cls.FONTS["family"], cls.FONTS["size_base"])`
+    #    拼字面量，而全仓 385 处硬编码已统一迁到 `UIStyle.font(<角色>)`，
+    #    门禁要求"全仓不得再有字面量" —— 这四只属于漏网。

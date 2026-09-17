@@ -480,9 +480,21 @@ def parse_json_response(response: str, default, is_list: bool = False):
     # 每个候选原文产出两个修复版本并**按保真度排序**：先字符串感知版本
     # （保留字符串内部的中文标点与弯引号），再朴素全量替换版本（兜底 AI 把
     # 弯引号当作 JSON 分隔符的极端情况）。先解析成功者胜出。
-    for raw in list(strategies):
-        strategies.append(_repair_json_preserving_strings(raw))
-        strategies.append(_repair_json_naive(raw))
+    #
+    # P2-7 修复：修复版本必须**紧跟在自己的原文之后**，不能像旧实现那样
+    # 把全部修复版本追加到**所有**原文之后 —— 那会让优先级失效。
+    # 实测回归：`'{"type": "action", ..., "foreshadowing": [],}'`（尾逗号）期望
+    # dict 时，旧顺序是
+    #   [ `{…,}`(失败), `[]`(成功!) , 修复1(`{…}`), 修复2 ]
+    # 于是 `[]` 先被返回 —— 期望 dict 却拿到 list，调用方遍键名成空。
+    # 新顺序是
+    #   [ `{…,}`(失败), 修复1(`{…}`)(成功) ]  ⇒ 返回正确的 dict。
+    ordered: list = []
+    for raw in strategies:
+        ordered.append(raw)
+        ordered.append(_repair_json_preserving_strings(raw))
+        ordered.append(_repair_json_naive(raw))
+    strategies = ordered
 
     # 依次尝试
     for s in strategies:

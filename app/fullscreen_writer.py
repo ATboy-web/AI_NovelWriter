@@ -152,6 +152,25 @@ class FullscreenWriter:
             command=self._toggle_typewriter,
         ).pack(side=tk.LEFT, pady=5)
 
+        # AI 辅助开关（D3 修复）。
+        # 此前 `ai_assist_enabled` 有三处消费（`:395` 决定是否给提示、
+        # 状态栏显示、`writer_settings` 持久化），但**没有任何控件能改它** ——
+        # `_toggle_ai` 虽然存在且正确，却全仓只有定义、零调用，
+        # 于是这个开关永远停在 `True`，用户看得见状态、改不了状态。
+        # 这里按"打字机"同款补上入口。
+        self.ai_var = tk.BooleanVar(value=self.ai_assist_enabled)
+        tk.Checkbutton(
+            right_ctrls,
+            text="AI辅助",
+            variable=self.ai_var,
+            font=UIStyle.font("label"),
+            bg="#16213e",
+            fg="#94a3b8",
+            selectcolor="#7c3aed",
+            activebackground="#16213e",
+            command=self._toggle_ai,
+        ).pack(side=tk.LEFT, pady=5)
+
         # 字数统计
         self.word_count_label = tk.Label(
             right_ctrls, text="字数: 0", font=UIStyle.font("label"), bg="#16213e", fg="#94a3b8"
@@ -471,6 +490,10 @@ class FullscreenWriter:
     def _toggle_ai(self):
         """切换AI辅助"""
         self.ai_assist_enabled = not self.ai_assist_enabled
+        # 同步复选框：本方法既可能被复选框回调触发（值已一致），
+        # 也可能被快捷键/程序化调用（值需要拉齐）。
+        if hasattr(self, "ai_var"):
+            self.ai_var.set(self.ai_assist_enabled)
         self._update_status()
 
     def _toggle_typewriter(self):
@@ -921,6 +944,12 @@ class FullscreenWriter:
         self.bg_opacity = s.get("bg_opacity", 0.85)
         self.typewriter_mode = s.get("typewriter_mode", True)
         self.ai_assist_enabled = s.get("ai_assist", True)
+        # D3：把读回来的值同步到复选框，否则工具栏显示的还是默认勾选状态，
+        # 与实际生效值不一致（用户会以为设置没保存）。
+        if hasattr(self, "tw_var"):
+            self.tw_var.set(self.typewriter_mode)
+        if hasattr(self, "ai_var"):
+            self.ai_var.set(self.ai_assist_enabled)
 
     def _save_writer_settings(self):
         """保存写作设置（与读取用同一种编码：UTF-8，见 `_load_writer_settings`）。"""

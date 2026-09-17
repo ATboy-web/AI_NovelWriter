@@ -16,6 +16,7 @@ except ImportError:
     logger = logging.getLogger(__name__)
 
 import json
+import re
 import threading
 import time
 from datetime import datetime
@@ -161,6 +162,10 @@ class NovelAgent:
 
         # 修订记忆（记录每次修订的原因）
         self._revision_memory: List[Dict] = []
+
+        # P-04：最近一次生成章节的真实质量评分（None = 未知/非生成流程）。
+        # `generate_chapter_v3` 写、`finalize_chapter` 读，作为自我学习的真信号。
+        self.last_chapter_quality: int | None = None
 
         # 线程锁保护共享列表
         self._log_lock = threading.Lock()
@@ -442,7 +447,10 @@ class NovelAgent:
         try:
             from .writing_skills import writing_skill_manager
 
-            skills_context = writing_skill_manager.get_writing_context()
+            # P-04b：传入 `chapter_num`，让学习到的经验按"距今章节数"检索。
+            # 旧实现不传 ⇒ `get_writing_context` 的 `chapter` 形参恒为默认 0
+            # ⇒ 第 87 章写下的成功模式在第 120 章读不到。
+            skills_context = writing_skill_manager.get_writing_context(chapter=chapter_num)
             if skills_context and len(skills_context) > 20:
                 skill_budget = max(0, min(500, max_chars - used))
                 text = self._compress_text(skills_context, skill_budget, keep_tail=False)
@@ -680,6 +688,7 @@ class NovelAgent:
 
         # Phase 4-5: Reviewer → Editor 迭代修订
         prev_feedback = ""
+        review: Dict = {}  # P-04：显式初始化，供结尾记录评分（循环至少跑一轮）
         for round_num in range(1, self.MAX_REVISION_ROUNDS + 1):
             self.log(f"[Reviewer] 审校第{chapter_num}章（第{round_num}轮）...")
             self._record_conversation("Reviewer", "review", f"第{round_num}轮审校")
@@ -730,6 +739,13 @@ class NovelAgent:
             )
 
         self.log(f"[编排器] 第{chapter_num}章5Agent协作完成 ({len(content)}字)")
+        # P-04：把本轮真实评分记在实例上，供 `finalize_chapter` 作为学习信号。
+        # 此前这个分数在生成流程里算出来、写进对话日志、然后**被丢掉**：
+        # 定稿学习时只能硬编码 `success=True`，无论这一章是 92 分还是 41 分。
+        # 这里不直接把分数传给 finalize_chapter，是因为定稿有 4 个调用点
+        # （生成流程 / 编辑器 / 全屏写作），只有本流程拿得到评分；
+        # 记在实例上让"有评分时用评分、没有时按未知处理"成为统一行为。
+        self.last_chapter_quality = review.get("overall_score") if isinstance(review, dict) else None
         return content
 
     def _plot_designer_analyze(self, chapter_num: int, title: str, outline: str) -> Dict:
@@ -747,38 +763,17 @@ class NovelAgent:
         prompt = f"第{chapter_num}章: {title}\n大纲: {outline[:500]}"
         try:
             response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=1000)
-            if response:
-                import re
-
-                # Strategy 1: 括号深度追踪（最可靠）
-                start = response.find("{")
-                if start >= 0:
-                    depth = 0
-                    end_idx = -1
-                    for i in range(start, len(response)):
-                        if response[i] == "{":
-                            depth += 1
-                        elif response[i] == "}":
-                            depth -= 1
-                            if depth == 0:
-                                end_idx = i + 1
-                                break
-                    if end_idx > start:
-                        json_str = response[start:end_idx]
-                        json_str = re.sub(r",\s*}", "}", json_str)
-                        json_str = re.sub(r",\s*]", "]", json_str)
-                        try:
-                            return json.loads(json_str)
-                        except json.JSONDecodeError as _silent_e:
-                            logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
-
-                # Strategy 2: 正则匹配
-                match = re.search(r"\{[\s\S]*\}", response)
-                if match:
-                    try:
-                        return json.loads(match.group())
-                    except json.JSONDecodeError as _silent_e:
-                        logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
+            # P2-7 收敛：此前这里是手写的「括号深度追踪 + 正则兜底」两段解析
+            # （约 30 行，含 `import re`、两处 `re.sub` 尾逗号修复）。
+            # 改为走全仓唯一实现 `parse_json_response`：其 Strategy 1（截取 `{…}`）/
+            # Strategy 2（去 markdown 后截取）/ Strategy 3（字符串感知 + 朴素两种修复）
+            # 是本处逻辑的**严格超集**，且额外覆盖单引号、弯引号、
+            # 截断补全（Strategy 4）。原来的「括号深度追踪」在此场景没有额外收益：
+            # 期望结果是 dict，`parse_json_response` 的 Strategy 1 已按
+            # `text.find("{")` + `text.rfind("}")` 取同一区间。
+            parsed = self._parse_json_response(response, None)
+            if isinstance(parsed, dict):
+                return parsed
         except Exception as e:
             self.log(f"[PlotDesigner] 分析失败: {e}")
         return {"type": "writing", "pace": "medium", "foreshadowing": []}
@@ -1629,7 +1624,7 @@ class NovelAgent:
             ]
         return outline
 
-    def finalize_chapter(self, chapter_num: int, content: str):
+    def finalize_chapter(self, chapter_num: int, content: str, quality: int | None = None):
         """定稿章节 + 更新记忆 + 角色属性变化"""
         summary = content[:200]  # 默认摘要
 
@@ -1693,12 +1688,25 @@ class NovelAgent:
             # 提取角色名
             chars = list(self.memory.get_characters().keys())[:10]
             novel_dir = str(self.memory.novel_dir) if self.memory else None
-            writing_skill_manager.learn_from_chapter(content, chapter_num, chars, success=True, novel_dir=novel_dir)
+            # P-04 修复：`success` 不再硬编码 True。
+            # 评分来源优先级：显式入参 → `self.last_chapter_quality`（生成流程写入）
+            # → None（未知）。None 时按成功处理，**保持旧行为不变**；
+            # 只有拿到真实评分时才按 QUALITY_THRESHOLD 判定，
+            # 让"质量不达标的章节"不再污染学习库。
+            # 详情见 docs/AGENT_OPTIMIZATION_PLAN.md 的 P-04。
+            effective_quality = quality if quality is not None else self.last_chapter_quality
+            success = True if effective_quality is None else (effective_quality >= self.QUALITY_THRESHOLD)
+            writing_skill_manager.learn_from_chapter(
+                content, chapter_num, chars, success=success, novel_dir=novel_dir, quality=effective_quality
+            )
             # 更新知识图谱
             for char_name in chars:
                 if char_name not in writing_skill_manager.knowledge_graph.entities:
                     writing_skill_manager.knowledge_graph.add_entity(char_name, "character")
-            self.log(f"[写作技能] 已学习第{chapter_num}章模式")
+            score_note = (
+                "" if effective_quality is None else f"（评分{effective_quality}{'' if success else '·未达标'}）"
+            )
+            self.log(f"[写作技能] 已学习第{chapter_num}章模式{score_note}")
         except Exception as e:
             self.log(f"[写作技能] 学习失败: {e}")
 
@@ -1783,74 +1791,18 @@ class NovelAgent:
             if not response:
                 return
 
-            import re
+            # P2-7 收敛：此前这里有 **Strategy 1–3 三段共 60 余行手写解析**
+            # （括号深度追踪 → 正则 + 再追踪一次 → 去 markdown 重试），
+            # 全部是 `parse_json_response` Strategy 1/2/3 的真子集。
+            # 行为只可能**变好**：本处的失败路径是直接 `[角色成长] JSON解析失败，跳过本章`
+            # 丢数据，而统一解析器额外覆盖单引号、弯引号、截断补全（Strategy 4）。
+            data = self._parse_json_response(response, None)
 
-            data = None
-
-            # Strategy 1: 括号深度追踪（最可靠，提取完整外层JSON）
-            start = response.find("{")
-            if start >= 0:
-                depth = 0
-                end_idx = -1
-                for i in range(start, len(response)):
-                    if response[i] == "{":
-                        depth += 1
-                    elif response[i] == "}":
-                        depth -= 1
-                        if depth == 0:
-                            end_idx = i + 1
-                            break
-                if end_idx > start:
-                    json_str = response[start:end_idx]
-                    json_str = re.sub(r",\s*}", "}", json_str)
-                    json_str = re.sub(r",\s*]", "]", json_str)
-                    try:
-                        data = json.loads(json_str)
-                    except json.JSONDecodeError as _silent_e:
-                        logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
-
-            # Strategy 2: 如果括号追踪失败，尝试正则提取
-            if not data:
-                match = re.search(r"\{[\s\S]*\}", response)
-                if match:
-                    s_start = match.start()
-                    depth = 0
-                    end_idx = -1
-                    for i in range(s_start, len(response)):
-                        if response[i] == "{":
-                            depth += 1
-                        elif response[i] == "}":
-                            depth -= 1
-                            if depth == 0:
-                                end_idx = i + 1
-                                break
-                    if end_idx > s_start:
-                        json_str = response[s_start:end_idx]
-                        json_str = re.sub(r",\s*}", "}", json_str)
-                        json_str = re.sub(r",\s*]", "]", json_str)
-                        try:
-                            data = json.loads(json_str)
-                        except json.JSONDecodeError as _silent_e:
-                            logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
-
-            # Strategy 3: 移除markdown代码块后重试
-            if not data:
-                cleaned = response.strip()
-                if cleaned.startswith("```json"):
-                    cleaned = cleaned[7:]
-                elif cleaned.startswith("```"):
-                    cleaned = cleaned[3:]
-                if cleaned.endswith("```"):
-                    cleaned = cleaned[:-3]
-                match = re.search(r"\{[\s\S]*\}", cleaned.strip())
-                if match:
-                    try:
-                        data = json.loads(match.group())
-                    except json.JSONDecodeError as _silent_e:
-                        logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
-
-            # Strategy 4: 逐字段提取（处理AI返回思考文本+JSON混合的情况）
-            if not data:
+            # Strategy 4（**保留**）：逐字段提取。
+            # 这一策略统一解析器覆盖不到 —— 它针对的是"AI 返回大段思考文本 +
+            # 其中夹着一个**本身就不合法**的 updates 数组"的极端情况：
+            # 只能靠正则把每个 `{..."name":..."}` 单独捞出来重建。
+            if not isinstance(data, dict):
                 try:
                     # 提取 "updates" 数组内容
                     updates_match = re.search(r'"updates"\s*:\s*\[([\s\S]*?)\]', response)

@@ -19,8 +19,13 @@ import asyncio
 import sys
 from pathlib import Path
 
-# 添加项目路径
-sys.path.insert(0, str(Path(__file__).parent / "backend" / "novel-service" / "app"))
+# 添加项目路径。
+# 修复：本文件在 `scripts/` 下，而 `backend/` 在**仓库根** ——
+# 原写法 `Path(__file__).parent / "backend" / ...` 指向
+# `scripts/backend/...`（不存在）⇒ `from generators...` 直接 ModuleNotFoundError，
+# 脚本从搬进 `scripts/` 起就没能跑起来过。改为先定位仓库根。
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_REPO_ROOT / "backend" / "novel-service" / "app"))
 
 from generators.novel_generator import (
     ApocalypseNovelGenerator,

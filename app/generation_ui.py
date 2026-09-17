@@ -848,61 +848,24 @@ class GenerationMixin:
             if not response:
                 return
 
-            # 多策略JSON解析
-            data = None
+            # P2-7 收敛：此前这里是手写的三段式解析（约 55 行：括号深度追踪 →
+            # 去 markdown 重试 → `"decisions"` 数组正则 + `"[{" + … + "}]"` 拼接）。
+            # 前两段由 `parse_json_response` 的 Strategy 1/2/3 等价覆盖。
+            data = self._parse_json_response(response, None)
 
-            # Strategy 1: 括号深度追踪
-            start = response.find("{")
-            if start >= 0:
-                depth = 0
-                end_idx = -1
-                for i in range(start, len(response)):
-                    if response[i] == "{":
-                        depth += 1
-                    elif response[i] == "}":
-                        depth -= 1
-                        if depth == 0:
-                            end_idx = i + 1
-                            break
-                if end_idx > start:
-                    json_str = response[start:end_idx]
-                    # 修复常见JSON问题
-                    json_str = re.sub(r",\s*}", "}", json_str)
-                    json_str = re.sub(r",\s*]", "]", json_str)
-                    # 修复未转义的引号
-                    json_str = json_str.replace("\n", "\\n").replace("\r", "\\r")
-                    try:
-                        data = json.loads(json_str)
-                    except json.JSONDecodeError:
-                        pass
-
-            # Strategy 2: 清理markdown后重试
-            if not data:
-                cleaned = response.strip()
-                if cleaned.startswith("```json"):
-                    cleaned = cleaned[7:]
-                elif cleaned.startswith("```"):
-                    cleaned = cleaned[3:]
-                if cleaned.endswith("```"):
-                    cleaned = cleaned[:-3]
-                match = re.search(r"\{[\s\S]*\}", cleaned.strip())
-                if match:
-                    try:
-                        data = json.loads(match.group())
-                    except json.JSONDecodeError:
-                        pass
-
-            # Strategy 3: 正则提取decisions数组
-            if not data:
+            # Strategy 3（**保留**）：`"decisions"` 数组单独抽取。
+            # 这一策略是 `parse_json_response` 覆盖不到的：当 AI 把
+            # `"decisions": [...]` 内联在一段**本身就是坏 JSON** 的文本里时，
+            # 只能靠正则定点捞出来再单独补成合法的 `{"decisions": [...]}`。
+            if not isinstance(data, dict) or "decisions" not in data:
                 match = re.search(r'"decisions"\s*:\s*\[([\s\S]*?)\]', response)
                 if match:
-                    try:
-                        decisions_str = "[{" + match.group(1) + "}]"
-                        decisions_str = re.sub(r",\s*}", "}", decisions_str)
-                        decisions_str = re.sub(r",\s*]", "]", decisions_str)
-                        data = {"decisions": json.loads(decisions_str)}
-                    except json.JSONDecodeError:
-                        pass
+                    decisions_str = "[{" + match.group(1) + "}]"
+                    decisions_str = re.sub(r",\s*}", "}", decisions_str)
+                    decisions_str = re.sub(r",\s*]", "]", decisions_str)
+                    parsed_decisions = self._parse_json_response(decisions_str, None, is_list=True)
+                    if isinstance(parsed_decisions, list):
+                        data = {"decisions": parsed_decisions}
 
             if not data:
                 return
@@ -1760,39 +1723,39 @@ class GenerationMixin:
                                     [{"role": "user", "content": gen_prompt}], system=gen_system, max_tokens=2000
                                 )
                                 if resp:
-                                    m = re.search(r"\[[\s\S]*\]", resp)
-                                    if m:
-                                        try:
-                                            # 修复常见JSON问题
-                                            json_str = m.group()
-                                            json_str = re.sub(r",\s*}", "}", json_str)
-                                            json_str = re.sub(r",\s*]", "]", json_str)
-                                            new_batch = json.loads(json_str)
-                                        except json.JSONDecodeError:
-                                            self._log("[大纲] JSON解析失败，跳过批量更新")
-                                            new_batch = []
+                                    # P2-7 收敛：此前是手写 `re.search(r"\[[\s\S]*\]")` +
+                                    # 两处 `re.sub` 修尾逗号 + `json.loads`。
+                                    # 额外修掉一个**潜在 NameError**：旧写法在
+                                    # `re.search` 未命中时不会给 `new_batch` 赋值，
+                                    # 而紧接着就 `if new_batch:` → 抛 UnboundLocalError。
+                                    # `is_list=True` 保证拿到的是列表（下游按下标遍历）。
+                                    new_batch = self._parse_json_response(resp, [], is_list=True)
+                                    if not isinstance(new_batch, list):
+                                        new_batch = []
+                                    if not new_batch and resp.strip() not in ("[]", ""):
+                                        self._log("[大纲] JSON解析失败，跳过批量更新")
 
-                                        if new_batch:
-                                            with self._state_lock:
-                                                for item in new_batch:
-                                                    if not isinstance(item, dict) or "chapter" not in item:
-                                                        continue
-                                                    idx = item["chapter"] - 1
-                                                    if idx < len(self.outline):
-                                                        self.outline[idx]["title"] = item.get(
-                                                            "title", f"第{item['chapter']}章"
-                                                        )
-                                                        self.outline[idx]["summary"] = item.get(
-                                                            "summary", f"第{item['chapter']}章情节"
-                                                        )
-                                            # 保存已更新的 outline.json
-                                            self._novel_store().write_outline(self.outline)
-                                        # 用新生成的大纲
-                                        cur_item = next((x for x in new_batch if x["chapter"] == ch_num), None)
-                                        if cur_item:
-                                            chapter_title = cur_item.get("title", chapter_title)
-                                            chapter_summary = cur_item.get("summary", chapter_summary)
-                                            self._log(f"大纲已批量生成: 第{ch_num}章 {chapter_title}")
+                                    if new_batch:
+                                        with self._state_lock:
+                                            for item in new_batch:
+                                                if not isinstance(item, dict) or "chapter" not in item:
+                                                    continue
+                                                idx = item["chapter"] - 1
+                                                if idx < len(self.outline):
+                                                    self.outline[idx]["title"] = item.get(
+                                                        "title", f"第{item['chapter']}章"
+                                                    )
+                                                    self.outline[idx]["summary"] = item.get(
+                                                        "summary", f"第{item['chapter']}章情节"
+                                                    )
+                                        # 保存已更新的 outline.json
+                                        self._novel_store().write_outline(self.outline)
+                                    # 用新生成的大纲
+                                    cur_item = next((x for x in new_batch if x["chapter"] == ch_num), None)
+                                    if cur_item:
+                                        chapter_title = cur_item.get("title", chapter_title)
+                                        chapter_summary = cur_item.get("summary", chapter_summary)
+                                        self._log(f"大纲已批量生成: 第{ch_num}章 {chapter_title}")
 
                                 if not chapter_summary or chapter_summary == "待规划":
                                     # 注入世界观和概念到大纲，让 AI 有明确创作方向

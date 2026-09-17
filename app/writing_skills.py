@@ -577,9 +577,23 @@ class TimeAwareMemory:
         self.memories = [m for _, m in scored_memories[: self.max_memories]]
 
     def query(
-        self, query_text: str = None, memory_type: str = None, tags: List[str] = None, limit: int = 10
+        self,
+        query_text: str = None,
+        memory_type: str = None,
+        tags: List[str] = None,
+        limit: int = 10,
+        chapter: int = None,
+        chapter_window: int = 200,
     ) -> List[Dict]:
-        """查询记忆"""
+        """查询记忆。
+
+        P-04b 修复（"读不到"断点）：
+        - 旧实现只按 `importance` 排序，**无任何时间/章节衰减** ⇒ 在第 120 章
+          检索时，第 87 章写下的经验与第 3 章写下的经验排序完全相同，
+          而 `max_memories` 上限会先淘汰旧的 —— 经验永远"读不到最近发生的"。
+        - 新增 `chapter` + `chapter_window`：只保留"距今不超过 window 章"的记忆。
+          记 `chapter=0`（未标注章节）的记忆**不参与过滤**，以免旧数据被静默清空。
+        """
         results = []
 
         for memory in self.memories:
@@ -595,14 +609,27 @@ class TimeAwareMemory:
             if query_text and query_text not in memory["content"]:
                 continue
 
+            # 章节窗口过滤（只对有章节标注的记忆生效）
+            if chapter is not None:
+                mem_chapter = memory.get("chapter") or 0
+                if mem_chapter and abs(chapter - mem_chapter) > chapter_window:
+                    continue
+
             # 更新访问信息
             memory["last_accessed"] = datetime.now().isoformat()
             memory["access_count"] += 1
 
             results.append(memory)
 
-        # 按重要性排序
-        results.sort(key=lambda x: x["importance"], reverse=True)
+        # 按重要性排序；同分时**章节更近的优先**（P-04b：旧实现同分完全按插入序，
+        # 等同于"先写的优先"，与"最近经验更相关"的直觉相反）。
+        if chapter is not None:
+            results.sort(
+                key=lambda x: (x["importance"], -(abs(chapter - (x.get("chapter") or chapter)))),
+                reverse=True,
+            )
+        else:
+            results.sort(key=lambda x: x["importance"], reverse=True)
         return results[:limit]
 
     def get_recent(self, limit: int = 10) -> List[Dict]:
@@ -610,9 +637,12 @@ class TimeAwareMemory:
         sorted_memories = sorted(self.memories, key=lambda x: x["created_at"], reverse=True)
         return sorted_memories[:limit]
 
-    def get_context_string(self, query: str = None, limit: int = 5) -> str:
-        """获取上下文字符串"""
-        memories = self.query(query_text=query, limit=limit)
+    def get_context_string(self, query: str = None, limit: int = 5, chapter: int = None) -> str:
+        """获取上下文字符串。
+
+        P-04b：透传 `chapter`，让检索能按"距今章节数"过滤/排序（见 `query`）。
+        """
+        memories = self.query(query_text=query, limit=limit, chapter=chapter)
 
         if not memories:
             return ""
@@ -670,7 +700,14 @@ class WritingSkillManager:
         return text, improvements
 
     def get_writing_context(self, character: str = None, chapter: int = 0) -> str:
-        """获取写作上下文"""
+        """获取写作上下文。
+
+        P-04b 修复（自我学习"读不到"断点）：旧实现**完全忽略 `chapter` 形参** ——
+        签名上收着章节号，函数体里一次都没用，于是
+        `learn_from_chapter` 写下的 `success_pattern`（带 `chapter=`）在检索时
+        丢失了时间维度，第 87 章的经验在第 120 章要么读不到、要么与第 3 章
+        的经验等价。现在把 `chapter` 传进检索。
+        """
         context_parts = []
 
         # 风格配置
@@ -681,30 +718,61 @@ class WritingSkillManager:
         if kg_context:
             context_parts.append(f"\n{kg_context}")
 
-        # 时间感知记忆
-        memory_context = self.time_memory.get_context_string(query=character)
+        # 时间感知记忆（P-04b：带章节号检索，近章经验优先）
+        memory_context = self.time_memory.get_context_string(query=character, chapter=chapter or None)
         if memory_context:
             context_parts.append(f"\n{memory_context}")
+
+        # P-04b：把"近期高分成功模式"单独喂进去 —— 旧实现里
+        # `success_pattern` 写入后**全仓无任何读取方**（只在 learn 里出现一次），
+        # 等于学完就丢。这里按评分取最近的高分章节经验作为正样本。
+        recent_wins = self.time_memory.query(
+            memory_type="success_pattern", limit=3, chapter=chapter or None, chapter_window=50
+        )
+        if recent_wins:
+            wins = [f"- {m['content'][:100]}" for m in recent_wins]
+            context_parts.append("\n【近期成功模式】\n" + "\n".join(wins))
 
         return "\n".join(context_parts)
 
     def learn_from_chapter(
-        self, chapter_content: str, chapter_num: int, characters: List[str], success: bool = True, novel_dir: str = None
+        self,
+        chapter_content: str,
+        chapter_num: int,
+        characters: List[str],
+        success: bool = True,
+        novel_dir: str = None,
+        quality: int = None,
     ):
-        """从章节学习，创建写作技能"""
+        """从章节学习，创建写作技能。
+
+        P-04：新增 `quality`（评分，None 表示未知）。此前 `success` 由调用方
+        硬编码为 True ⇒ `if success:` 包住全部学习逻辑 ⇒ 形参等于没有，
+        **负样本永远进不来**，这是自我学习"信号假"的根源。
+        现在调用方按真实评分传入 `success`，并把 `quality` 记进记忆，
+        使"哪一章多少分"成为可检索、可回灌的信号。
+        """
         if success:
             # 提取成功的写作模式
             # 分析对话比例
             dialogue_lines = [line for line in chapter_content.split("\n") if '"' in line or '"' in line]
             dialogue_ratio = len(dialogue_lines) / max(1, len(chapter_content.split("\n")))
 
-            # 记录到记忆
+            # 记录到记忆。P-04：带上真实评分，并让 importance 随评分浮动
+            # （旧实现恒为 0.6，好章节与勉强过关的章节权重完全一样）。
+            if quality is None:
+                score_part = ""
+                importance = 0.6
+            else:
+                score_part = f"，评分{quality}"
+                # 评分映射到 0.5–0.9：60 分是下限，100 分是上限
+                importance = max(0.5, min(0.9, 0.5 + (quality - 60) / 100))
             self.time_memory.add_memory(
-                content=f"第{chapter_num}章成功生成，对话比例{dialogue_ratio:.1%}",
+                content=f"第{chapter_num}章成功生成{score_part}，对话比例{dialogue_ratio:.1%}",
                 memory_type="success_pattern",
-                importance=0.6,
+                importance=importance,
                 chapter=chapter_num,
-                tags=["success", "dialogue"],
+                tags=["success", "dialogue"] + ([f"score:{quality}"] if quality is not None else []),
             )
 
             # 更新角色关系

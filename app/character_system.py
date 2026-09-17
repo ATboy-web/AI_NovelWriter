@@ -15,6 +15,7 @@ except ImportError:
 
     logger = logging.getLogger(__name__)
 
+from .parsing import parse_json_response
 from .storage import atomic_write_json, safe_filename
 
 
@@ -705,12 +706,13 @@ class CharacterSystem:
         try:
             response = ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=1000)
 
-            # 解析JSON
-            json_start = response.find("{")
-            json_end = response.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                data = json.loads(response[json_start:json_end])
-
+            # 解析JSON（P2-7 收敛：此前这里是最弱的一份手写解析器 ——
+            # `json.loads(response[json_start:json_end])` 没有 try/except，
+            # 连 `{"a":1,}` 这种尾逗号都救不回来。改为走全仓唯一的解析实现，
+            # 策略 1–5 一致。解析失败时 `data` 为 None，直接返回失败（与旧行为
+            # 「抛异常→被外层捕获→返回 success:False」等价但更精确）。
+            data = parse_json_response(response, None)
+            if isinstance(data, dict):
                 # 创建角色
                 char = self.create_character(
                     name=data.get("name", "未命名"),

@@ -1175,7 +1175,36 @@ class ShellMixin:
     def _on_close(self):
         """关闭应用"""
         if dialogs.askyesno("确认", "确定要退出吗？"):
+            self._flush_performance_report()
             self.root.destroy()
+
+    def _flush_performance_report(self):
+        """D5 修复：退出前把性能报告落盘。
+
+        此前 `PerformanceMonitor` 一直在 `ai_client._record_performance`
+        里**记录**指标，但 `save_report()` **全仓零调用** ⇒ 数据只活在内存里，
+        进程一退就没了，等于"可观测"能力建了一半。
+        现在退出时写 `~/.ai_novel_writer/diagnostic_logs/performance-<时间戳>.json`
+        （与面板诊断日志同目录，便于一起排查）。
+        容错：任何异常都只记日志、不阻止退出。
+        """
+        try:
+            from datetime import datetime
+            from pathlib import Path
+
+            from .performance_monitor import get_performance_monitor
+
+            monitor = get_performance_monitor()
+            report = monitor.export_metrics()
+            summary = report.get("summary", {}) if isinstance(report, dict) else {}
+            # 没有任何请求记录时不落盘，避免留下一堆空报告
+            if not summary.get("total_requests"):
+                return
+            out_dir = Path.home() / ".ai_novel_writer" / "diagnostic_logs"
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            monitor.save_report(str(out_dir / f"performance-{stamp}.json"))
+        except Exception as e:
+            logger.debug(f"[性能报告] 退出时保存失败: {e}")
 
     def run(self):
         """运行应用"""

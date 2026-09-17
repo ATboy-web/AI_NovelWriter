@@ -4,7 +4,6 @@
 """
 
 import json
-import re
 import threading
 import tkinter as tk
 import traceback
@@ -18,7 +17,7 @@ from app.biography import build_biography_prompt, read_story_arcs, split_section
 from app.character_system import CharacterSystem
 from app.format_converter import FormatConverter, ImageManager
 from app.memory_manager import CharacterDataCorruptError, CharacterDataGuardError
-from app.parsing import extract_characters_payload, strip_ai_json_fences
+from app.parsing import extract_characters_payload, parse_json_response, strip_ai_json_fences
 from app.storage import atomic_write_json, atomic_write_text, safe_filename
 from app.timeline_store import TimelineStore
 
@@ -163,10 +162,15 @@ class CharacterUIMixin:
             if not response:
                 return
 
-            match = re.search(r"\[[\s\S]*\]", response)
-            if not match:
+            # P2-7 收敛：此前这里是手写的 `re.search(r"\[[\s\S]*\]")` +
+            # `json.loads(match.group())` —— 拿到 `[` 到最后一个 `]` 之间的原文，
+            # 一旦 AI 在数组前后赘述、或数组元素带尾逗号就直接抛异常。
+            # 必须 `is_list=True`：本处期望的是**字符串数组**，不是对象；
+            # 且只保留 `str` 元素（AI 偶尔会返回 `[{"name": "张三"}]`）。
+            parsed = parse_json_response(response, [], is_list=True)
+            new_names = [n for n in parsed if isinstance(n, str) and n.strip()] if isinstance(parsed, list) else []
+            if not new_names:
                 return
-            new_names = json.loads(match.group())
 
             if new_names and self.memory:
                 # V3: 必须走锁内「读-改-写」。旧实现是

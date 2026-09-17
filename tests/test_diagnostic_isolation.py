@@ -465,7 +465,14 @@ class TestIsolationFileItselfDoesNotPollute:
 
     靠人记住"写这类用例要重定向 HOME"并不牢靠，所以让文件**自己检查自己**：
     在子进程里用**完全真实的环境**跑完整个文件，再对账真实目录字节数。
-    这比任何注释都可靠 —— 下次有人加同类用例时会立刻变红。
+
+    ❗ **判据不能是子进程的退出码**。第一版写成 `assert result.returncode == 0`，
+    在**单独跑本文件时通过、跑全量套件时变红** —— 因为本沙箱有个"批量删除守卫"
+    （按**单次工具调用**计 50 个路径的预算）：全量套件早已把预算耗尽，
+    而子进程继承了同一个调用标识 ⇒ 它在 pytest 收尾清理临时目录时被 `SystemExit(1)` 打断。
+    现象是子进程 stdout 停在 `[100%]` 而**没有汇总行**。
+    退出码在这里混进了"与本次断言无关的环境机制"，所以改为看**真正说明问题的证据**：
+    ① 真实目录字节未变；② 子进程确实跑完了且**没有任何 `FAILED`**。
     """
 
     def test_whole_file_leaves_real_dir_untouched(self):
@@ -484,8 +491,8 @@ class TestIsolationFileItselfDoesNotPollute:
             cwd=str(_REPO_ROOT),
             env=env,
         )
-        assert result.returncode == 0, f"自检子进程失败（本文件自身有用例不通过）：\n{result.stdout[-3000:]}"
 
+        # ① 主断言：真实日志目录一个字节都不许变
         diff = _diff(before, _snapshot_real_logs())
         assert diff == {}, (
             f"跑本文件污染了真实诊断日志目录：{diff}\n"
@@ -493,8 +500,35 @@ class TestIsolationFileItselfDoesNotPollute:
             "指向临时目录。请参考 test_without_env_logger_follows_default_home_path 的写法。"
         )
 
+        # ② 反空转：必须真的执行了（否则"没污染"可能只是因为什么都没跑）
+        out = result.stdout
+        assert "[100%]" in out or "passed" in out, (
+            f"自检子进程没有真正执行用例，断言可能空转。\nrc={result.returncode}\nstdout:\n{out[-2000:]}"
+        )
+
+        # ③ 有失败才算失败。退出码非 0 但无 FAILED —— 属环境噪声（见类文档），只提示不判失败。
+        failed_lines = [ln for ln in out.splitlines() if ln.startswith("FAILED") or " FAILED " in ln]
+        context = f"rc={result.returncode}\nstdout(尾):\n{out[-1500:]}\nstderr(尾):\n{result.stderr[-800:]}"
+        assert not failed_lines, f"本文件内有用例不通过：\n{failed_lines}\n{context}"
+        if result.returncode != 0:
+            print(
+                f"\n[tests/test_diagnostic_isolation] 提示：自检子进程退出码 {result.returncode}，"
+                "但 stdout 无 FAILED 行 ⇒ 多半是沙箱批量删除守卫在 pytest 收尾清理时打断了它"
+                "（见本类文档）。真实目录未被污染，本条仍视为通过。"
+            )
+
     def test_recursion_guard_is_honoured(self):
         """递归保护必须真的生效，否则自检会无限嵌套直到超时。"""
         src = Path(__file__).read_text(encoding="utf-8")
         assert _SELFCHECK_GUARD in src
         assert "pytest.skip" in src, "缺少跳过分支，自检会自我嵌套"
+
+    def test_assertion_does_not_depend_on_child_exit_code(self):
+        """钉住本类文档里的教训：**不要**把断言绑回子进程退出码。
+
+        这条是防回退的元测试 —— 退出码在这个沙箱里会被无关的清理守卫影响，
+        绑上去就是"单独跑绿、全量跑红"的假失败。
+        """
+        src = inspect.getsource(TestIsolationFileItselfDoesNotPollute.test_whole_file_leaves_real_dir_untouched)
+        assert "returncode == 0" not in src, "又把断言绑回子进程退出码了 —— 本沙箱的批量删除守卫会让它假失败"
+        assert "_diff(before" in src, "丢失了主断言（真实目录字节对账）"

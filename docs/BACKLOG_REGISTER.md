@@ -383,6 +383,22 @@ class TestDescriptionLibrary:  # setUp: self.lib = DescriptionLibrary()
 | **D8** | **世界观与三份大纲各说各话** —— 设定是「玄元界」（`settings.json`），而 `outline.json`、`overall.json`、`stories.json` 及正文都写「九州/帝印/九霄宗」；正文首句「玄元界，中州。」之后「九州」出现 18 次，**同篇混用两套地理** | 章节大纲提示词 | 🟡 中 |
 | **D9** | **1 级角色负向 EXP 提示误导** —— `add_exp` 有"最低保障 `exp>=0`"地板（注释明确），故 `-30` 在 1 级无任何变化，但日志仍打印「-30EXP」，看起来像已扣减 | `generation_ui.py:1175`、`character_system.py:255-259` | 🟢 低。行为正确，仅提示误导 |
 
+### 5.8 一致性审计新发现（2026-09-17，全项目扫描）
+
+> **完整报告**：`docs/CONSISTENCY_AUDIT_20260917.md`。守卫 `tests/test_config_consistency.py`（25 条）。
+
+**已修**（本轮）：敏感字段清单重复定义（安全类）· `fpdf2` 未声明致 PDF 导出静默变 TXT ·
+`img_width/img_height` 两端未接通 · `theme/auto_save` 声明但无效 · DeepSeek 余额地址在
+`api_base` 带 `/v1` 时 404 · 余额查询未回退 DeepSeek 官方接口 · 回退结果不说明归属。
+
+| ID | 事项 | 位置 | 严重度 / 说明 |
+|---|---|---|---|
+| **D10** | 🔴 **文生图能力完全不可达** —— `ImageGenerator.generate()` **全仓零调用**。实例只在 `lifecycle_ui.py:1822` 创建，唯一使用是 `shell_ui.py:1041` 为状态栏拼 `" + 文生图"`。**状态栏因此是虚假承诺**；`img_provider`/`img_api_base`/`img_model`/`img_width`/`img_height`/`img_api_key` 整组配置喂给一个没人调用的对象。界面只有"生成图片提示词"（存到 `scene_prompts/`），**没有把提示词变成图片的入口** | `app/image_generator.py`、`shell_ui.py:1041`、`lifecycle_ui.py:1822` | 🔴 **高（功能缺口，非配置问题）**。补入口属**新增功能**，需先定产品意图：① 章节配图按钮，还是 ② 名场面面板里每个提示词配"生成"按钮？未确认前不动 |
+| **D11** | `img_api_key` / `secret_key` 在敏感字段清单里，但 `app/` **零读取** ⇒ 需要密钥的图片服务商无法鉴权；`secret_key` 完全是遗留 | `config.py:84` | 🟡 中。不构成安全漏洞（不会被误存），但会让人误以为"这两个字段是活的" |
+| **D12** | 桌面端 `httpx>=0.24` 约束**过宽** —— 跨 0.25→0.28 的破坏性变更（`proxies`→`proxy` 等）。当前实装 0.28.1 测试全绿，但干净环境重装拉到更晚版本可能出问题 | `pyproject.toml` | 🟡 中。建议收紧为 `>=0.24,<0.29`（后端 `requirements.txt` 钉的是 `==0.25.2`，两者独立部署故非硬冲突） |
+| **D13** | `markdown` / `beautifulsoup4` 声明了但 `app/` 零 import（`bs4` 是被 lxml 的可选 `html.soupparser` 带进包的）。删除可减 EXE 体积 | `pyproject.toml` | 🟢 低。属产品决策 |
+| **D14** | 本地不带 `--distpath` 构建时，EXE 会落到**仓库根目录**（`novel_app.spec` 的 `name='../AI_NovelWriter'`）⇒ 又一处"旧构建被误当新版"的来源 | `installer/novel_app.spec:116` | 🟢 低。已在内存与审计报告写明：构建必须带 `--distpath "%TEMP%\…"` |
+
 > **D-命名**（可与 D4 合并处理）：章节/摘要补零位数不统一 —— `chapters/` 用 4 位
 > （`chapter_ui.py:85`）、`memory/chapters/` 与 `memory_manager.py:378` 用 5 位、
 > `summaries/` **两种并存**；`generation_ui.py:1950` 只读 5 位 ⇒ 与用户先看到的 4 位文件不是同一份。

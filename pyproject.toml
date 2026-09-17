@@ -17,6 +17,11 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "Pillow>=9.0",
     "cryptography>=41.0",
+    # PDF **导出**用（`app/format_converter.py` 的 `_to_pdf` 里 `from fpdf import FPDF`）。
+    # ❗ 原先漏声明：`_to_pdf` 对 ImportError 是**静默降级成 TXT**，
+    # 于是"选 PDF 导出"会得到一个 .txt 且不报错（审计实测：fpdf 未安装也未声明）。
+    # 包名是 fpdf2，import 名是 fpdf —— 两者不同名，别写错。
+    "fpdf2>=2.7.0",
 ]
 
 [project.optional-dependencies]

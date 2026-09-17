@@ -83,6 +83,30 @@
 
 ### 修复
 
+**全项目一致性审计发现的 7 项问题**
+- 完整报告 `docs/CONSISTENCY_AUDIT_20260917.md`，守卫 `tests/test_config_consistency.py`（25 条）。
+- 🔴 **敏感字段清单重复定义**（安全类）：`config.py` 与 `secure_config.py` 各写了一份
+  `("api_key","img_api_key","secret_key")`，而**两份注释都声称"共用同一定义"**——
+  实际既没 import 也没测试锁定相等。任一处改动都会静默漂移，后果是"某密钥该加密却明文落盘"。
+  已改为单一来源 + 别名，并加守卫禁止再次出现字面量副本。这是本项目第 5 次撞上
+  「同一事实写两处必然漂移」。
+- 🔴 **PDF 导出静默降级成 TXT**：`format_converter._to_pdf` 用 `fpdf`（包名 `fpdf2`），
+  **既未声明也未安装**，而它的降级分支是 `except ImportError: return self._to_txt(...)`
+  ⇒ 用户选"导出 PDF"得到一个 .txt 且不报错。已在 `pyproject.toml` 声明并安装。
+- 🔴 **DeepSeek 余额地址在 `api_base` 带 `/v1` 时 404**：探针拼装是
+  `url = base + path`，而 `base` 取用户配置的 `api_base`；填
+  `https://api.deepseek.com/v1`（常见）就拼出 `/v1/user/balance`，而官方余额接口
+  **不在 `/v1` 之下**。改为使用**绝对 URL** 常量 `DEEPSEEK_BALANCE_URL`，单一来源且不受影响。
+- **余额查询现在会回退到 DeepSeek 官方接口**：当前服务商无内置探针且用户未自定义地址时
+  （`BALANCE_FALLBACK_PROVIDER`），改用 DeepSeek 官方接口；`BalanceResult` 新增 `note`
+  并在 `format_total()` 中展示，**明确说明"这是 DeepSeek 的余额"**——
+  否则 GLM 用户会以为那是自己的余额。用户自定义 `balance_url` 仍优先。
+- **4 个"声明了却完全无效"的配置项**：`img_width`/`img_height` **两端接通**
+  （`generate()` 从配置取 + 设置页补输入框与校验）；`theme`（无主题控件，`theme_use("clam")`
+  写死）与 `auto_save`（章节保存无条件执行）**移除**——留着只会让"改了没用"变成无声的失望。
+- ❗ 附带修正：`ImageGenerator.generate()` 先判后端再读尺寸，并对坏配置值做防御性转换
+  —— 否则一个无关的坏值会把这条件正常路径变成异常。
+
 **运行时审计发现的 5 项数据缺陷（来自《快速统治》实跑）**
 - 详见 `docs/RUNTIME_AUDIT_20260917.md`、登记 `docs/BACKLOG_REGISTER.md §5.7`。
   这些缺陷的共同特征：**全程无异常、日志还显示成功**，只有核对落盘内容才能发现。

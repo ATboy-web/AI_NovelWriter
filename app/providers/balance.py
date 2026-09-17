@@ -29,10 +29,13 @@ __all__ = [
     "BalanceProbe",
     "BalanceResult",
     "BALANCE_PROBES",
+    "BALANCE_FALLBACK_PROVIDER",
+    "DEEPSEEK_BALANCE_URL",
     "BalanceCache",
     "CACHE_TTL_SECONDS",
     "extract_path",
     "fetch_balance",
+    "has_builtin_probe",
     "probe_for",
     "capability_text",
 ]
@@ -121,11 +124,27 @@ class BalanceProbe:
         }
 
 
+#: DeepSeek 官方余额接口（**绝对 URL，单一来源**）。
+#:
+#: 为什么要写成绝对 URL 而不是只给 `/user/balance`：探针的拼装规则是
+#: `url = probe_path if probe_path.startswith("http") else effective_base + probe_path`，
+#: 而 `effective_base` 会取用户配置的 `api_base`。一旦用户把地址填成
+#: `https://api.deepseek.com/v1`（很常见——不少教程这么写），
+#: 拼出来的就是 `https://api.deepseek.com/v1/user/balance` ⇒ **404**。
+#: 官方的余额接口**不在 `/v1` 之下**，所以这里直接写死绝对地址，
+#: 既修掉上面的 404，也让"官方接口到底是哪个"只有一个定义处。
+#: 依据：https://api-docs.deepseek.com/zh-cn/api/get-user-balance
+DEEPSEEK_BALANCE_URL = "https://api.deepseek.com/user/balance"
+
+#: 当前服务商**没有内置余额接口**时的回退目标。
+#: DeepSeek 是少数提供公开余额接口的服务商，作为通用回退。
+BALANCE_FALLBACK_PROVIDER = "deepseek"
+
 #: 余额探针表。**只收录已核实的**。
 BALANCE_PROBES: dict[str, BalanceProbe] = {
     "deepseek": BalanceProbe(
         key="deepseek",
-        path="/user/balance",
+        path=DEEPSEEK_BALANCE_URL,
         currency_path="balance_infos.0.currency",
         total_path="balance_infos.0.total_balance",
         granted_path="balance_infos.0.granted_balance",
@@ -173,6 +192,7 @@ class BalanceResult:
         "raw",
         "error",
         "message",
+        "note",
     )
 
     def __init__(
@@ -188,6 +208,7 @@ class BalanceResult:
         raw: dict = None,
         error: str = "",
         message: str = "",
+        note: str = "",
     ):
         self.provider = provider
         self.supported = supported
@@ -200,6 +221,9 @@ class BalanceResult:
         self.raw = raw or {}
         self.error = error
         self.message = message
+        #: 附加说明。当前用于"回退到别的服务商查询"时**讲清这是谁的余额** ——
+        #: 否则 GLM 用户看到一串金额会以为那是自己的 GLM 余额。
+        self.note = note
 
     # ------------------------------------------------------------ 构造
 
@@ -236,6 +260,9 @@ class BalanceResult:
             text += f"（含赠金 {self.granted}）"
         if self.cached:
             text += "（缓存）"
+        # 回退查询时必须带上说明，否则用户会以为这是当前服务商的余额
+        if self.note:
+            text += f"　[{self.note}]"
         return text
 
     def as_dict(self) -> dict:
@@ -250,6 +277,7 @@ class BalanceResult:
             "cached": self.cached,
             "error": self.error,
             "message": self.message,
+            "note": self.note,
         }
 
     def __repr__(self) -> str:  # pragma: no cover - 调试用
@@ -315,6 +343,12 @@ def capability_text(provider: str) -> str:
     if note:
         return f"❌ {note}"
     return "❓ 未内置余额接口，可在设置中填写"
+
+
+def has_builtin_probe(provider: str) -> bool:
+    """这家是否有**已内置且可用**的余额探针（即"能不能直接查"）。"""
+    probe = BALANCE_PROBES.get(provider)
+    return probe is not None and probe.configured
 
 
 def probe_for(provider: str, override_url: str = "", override_paths: dict = None):

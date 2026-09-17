@@ -1578,6 +1578,21 @@ class NovelLifecycleMixin:
         img_model_entry.insert(0, self.config.get("img_model", "sd_xl_base_1.0.safetensors"))
         img_model_entry.pack(padx=20, pady=3)
 
+        # 尺寸：审计发现 `img_width` / `img_height` 原先既**不可编辑**也**不被读取**
+        # （`ImageGenerator.generate` 的默认值写死 1024）—— 属"声明了但完全无效"的配置项。
+        # 这里补上输入框，并让 `generate()` 从配置取，两端才接通。
+        size_row = tk.Frame(img_frame)
+        size_row.pack(anchor=tk.W, padx=20, pady=(8, 3))
+        tk.Label(size_row, text="图片宽:").pack(side=tk.LEFT)
+        img_width_entry = ttk.Entry(size_row, width=8)
+        img_width_entry.insert(0, str(self.config.get("img_width", 1024)))
+        img_width_entry.pack(side=tk.LEFT, padx=(4, 16))
+        tk.Label(size_row, text="高:").pack(side=tk.LEFT)
+        img_height_entry = ttk.Entry(size_row, width=8)
+        img_height_entry.insert(0, str(self.config.get("img_height", 1024)))
+        img_height_entry.pack(side=tk.LEFT, padx=4)
+        tk.Label(size_row, text="（像素，须为正整数且是 8 的倍数）").pack(side=tk.LEFT, padx=8)
+
         auto_detect_var = tk.BooleanVar(value=self.config.get("auto_detect_scene", True))
         ttk.Checkbutton(img_frame, text="生成章节后自动检测名场面并提醒生成插图", variable=auto_detect_var).pack(
             anchor=tk.W, padx=20, pady=15
@@ -1807,6 +1822,17 @@ class NovelLifecycleMixin:
                 self.config.set("img_provider", img_provider_var.get())
                 self.config.set("img_api_base", img_base_entry.get().strip())
                 self.config.set("img_model", img_model_entry.get().strip())
+                # 尺寸：与 `ImageGenerator._dimension` 的读取端配套。
+                # 8 的倍数是 SD 系后端的硬要求（不满足会生成失败或出怪图），
+                # 所以在入口就拦住并明确报错，而不是让它到生成时才失败。
+                for _entry, _key, _label in (
+                    (img_width_entry, "img_width", "图片宽"),
+                    (img_height_entry, "img_height", "图片高"),
+                ):
+                    _v = _num(_entry, int, _label)
+                    if _v <= 0 or _v % 8:
+                        raise ValueError(f"{_label}须为正整数且是 8 的倍数（当前 {_v}）")
+                    self.config.set(_key, _v)
                 self.config.set("auto_detect_scene", auto_detect_var.get())
                 self.config.set("adult_content", adult_var.get())
                 self.config.set("edge_content", edge_var.get())

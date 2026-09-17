@@ -7,7 +7,7 @@ v3 的 `config.json` 结构::
       "api_provider": "ollama",     # ← 顶层扁平键：活跃 Profile 的镜像（向后兼容）
       "model": "qwen2.5:14b",
       "temperature": 0.8,
-      "theme": "light",             # ← 与 AI 无关的普通键，照旧扁平存放
+      "adult_content": false,       # ← 与 AI 无关的普通键，照旧扁平存放
 
       "ai": {                       # ← v3 新增：AI 连接档案
         "schema_version": 2,
@@ -68,8 +68,12 @@ DEFAULT_CONFIG = {
     "balance_total_path": "",
     "balance_currency_path": "",
     # ---- 非 AI 参数（扁平存放）----
-    "auto_save": True,
-    "theme": "light",
+    # ❗ 已移除两个**声明了却完全没有对应功能**的键（审计发现，属"看起来能调其实没用"）：
+    #   - `theme`：全仓无主题选择控件，`UIStyle.apply_theme` 里 `theme_use("clam")` 是写死的
+    #     —— 只有一套主题。留着会让"设置里改了没用"变成一次无声的失望。
+    #   - `auto_save`：章节保存是无条件执行的（`chapter_ui` 里没有读这个键做分支），
+    #     所以它既不能开也不能关。
+    # 移除是安全的：配置读取用 `.get(key, default)`，旧配置文件里多出来的键会被忽略。
     "adult_content": False,
     "edge_content": False,
     "img_provider": "comfyui",

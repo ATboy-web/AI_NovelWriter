@@ -12,12 +12,15 @@ from __future__ import annotations
 
 from .anthropic import AnthropicAdapter
 from .balance import (
+    BALANCE_FALLBACK_PROVIDER,
     BALANCE_PROBES,
+    DEEPSEEK_BALANCE_URL,
     BalanceCache,
     BalanceProbe,
     BalanceResult,
     extract_path,
     fetch_balance,
+    has_builtin_probe,
 )
 from .base import (
     CONNECT_TIMEOUT,
@@ -88,6 +91,9 @@ __all__ = [
     "BalanceProbe",
     "BalanceCache",
     "BALANCE_PROBES",
+    "BALANCE_FALLBACK_PROVIDER",
+    "DEEPSEEK_BALANCE_URL",
+    "has_builtin_probe",
     "fetch_balance",
     "extract_path",
     # 价目

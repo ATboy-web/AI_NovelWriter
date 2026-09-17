@@ -29,13 +29,19 @@ from typing import Dict, List, Optional
 
 from cryptography.fernet import Fernet
 
-from .config import AI_KEYS_FIELD, DEFAULT_CONFIG, DEFAULT_PROFILE_NAME
+from .config import AI_KEYS_FIELD, DEFAULT_CONFIG, DEFAULT_PROFILE_NAME, SENSITIVE_CONFIG_FIELDS
 from .storage import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
-#: 需要加密落盘的字段（与 AppConfig 共用同一定义）
-_SENSITIVE_FIELDS = ("api_key", "img_api_key", "secret_key")
+#: 需要加密落盘的字段。
+#: ❗ 这里**必须**从 `config` 导入，不能再抄一份字面量。
+#: 原先写的是 `_SENSITIVE_FIELDS = ("api_key", "img_api_key", "secret_key")`，
+#: 注释还声称"与 AppConfig 共用同一定义"—— 但实际是**另抄的一份**，
+#: 既没有 import 也没有测试锁定两者相等 ⇒ 任一处改动都会静默漂移，
+#: 后果是"某个密钥该加密却以明文落盘"或反之（安全后果，且不会报错）。
+#: 这是本项目第 5 次撞上「同一事实写两处必然漂移」，保留别名只为不动调用点。
+_SENSITIVE_FIELDS = SENSITIVE_CONFIG_FIELDS
 
 
 class _WindowsDPAPI:

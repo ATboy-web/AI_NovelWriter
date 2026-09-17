@@ -22,6 +22,7 @@ import httpx
 
 from .config import AppConfig
 from .providers import (
+    BALANCE_FALLBACK_PROVIDER,
     AuthStyle,
     BalanceCache,
     ChatRequest,
@@ -31,6 +32,7 @@ from .providers import (
     ProviderSpec,
     UsageData,
     default_registry,
+    has_builtin_probe,
     is_transient_error,
 )
 from .token_estimator import estimate_messages_tokens, estimate_tokens
@@ -746,22 +748,51 @@ class AIClient:
         """
         provider = provider or self.config.get("api_provider", "ollama")
         spec = self.registry.resolve(provider)
-        adapter = self._adapter_for(spec)
         api_key = self.config.get("api_key", "") or ""
         api_base = self.config.get("api_base", "") or ""
         base = api_base or spec.base_url
+        override_url = self.config.get("balance_url", "") or ""
 
-        return adapter.query_balance(
+        # 回退：当前服务商**没有内置余额接口**且用户也没自定义地址时，
+        # 改用 DeepSeek 官方接口（`DEEPSEEK_BALANCE_URL`）。
+        #
+        # 为什么这么设计：全仓只有 DeepSeek 有**已核实的公开**余额接口，
+        # 其余（GLM/Qwen/OpenAI…）都没有 ⇒ 不回退的话，"查询余额"这个按钮
+        # 在默认配置（ollama）和大多数服务商下都只会显示"未提供余额接口"，
+        # 功能形同不存在。
+        #
+        # ⚠️ 两处必须讲清楚，否则会误导用户：
+        #   1. 回退后查的是**DeepSeek 的账户余额**，不是当前服务商的 ⇒ 结果里带 note 说明；
+        #   2. 凭据仍是当前 Profile 的 API Key。密钥在本仓是**按 Profile 存**的
+        #      （不是按服务商），所以无法在这里判断"有没有 DeepSeek Key"；
+        #      若不是 DeepSeek 的 Key，接口会返回 401，note 里已提前说明需要 DeepSeek Key。
+        fallback_from = ""
+        if not override_url and not has_builtin_probe(provider):
+            fallback_spec = self.registry.resolve(BALANCE_FALLBACK_PROVIDER)
+            if fallback_spec is not None and has_builtin_probe(BALANCE_FALLBACK_PROVIDER):
+                fallback_from = provider
+                provider = BALANCE_FALLBACK_PROVIDER
+                spec = fallback_spec
+                # 回退时必须用 DeepSeek 的地址，不能沿用当前服务商的 api_base
+                base = fallback_spec.base_url
+
+        adapter = self._adapter_for(spec)
+        result = adapter.query_balance(
             self._http_get,
             api_key=api_key,
             base_url=base,
-            override_url=self.config.get("balance_url", "") or "",
+            override_url=override_url,
             override_paths={
                 "total": self.config.get("balance_total_path", "") or "",
                 "currency": self.config.get("balance_currency_path", "") or "",
             },
             cache=self._balance_cache if use_cache else None,
         )
+        if fallback_from:
+            result.note = (
+                f"当前服务商（{fallback_from}）无内置余额接口，已回退查询 DeepSeek 官方接口；需 DeepSeek API Key"
+            )
+        return result
 
     @staticmethod
     def _http_get(url: str, headers: dict, timeout: float):

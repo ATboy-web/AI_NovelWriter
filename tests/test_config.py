@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
 
-from app.config import AppConfig
+from app.config import DEFAULT_CONFIG, AppConfig
 
 
 class TestAppConfig:
@@ -50,10 +50,24 @@ class TestAppConfig:
         assert app_config.get("model") == "qwen2.5:14b"
         assert app_config.get("max_tokens") == 4096
         assert app_config.get("temperature") == 0.8
-        assert app_config.get("auto_save") is True
-        assert app_config.get("theme") == "light"
         assert app_config.get("adult_content") is False
         assert app_config.get("edge_content") is False
+        # 图片尺寸：原先声明了却没人读（`generate()` 默认值写死 1024），
+        # 现已接通两端 —— 这里钉住它有默认值且能被读到。
+        assert app_config.get("img_width") == 1024
+        assert app_config.get("img_height") == 1024
+
+    def test_removed_dead_keys_stay_removed(self, app_config):
+        """`auto_save` / `theme` 已被**有意移除**：它们声明了却完全没有对应功能。
+
+        - `theme`：全仓无主题选择控件，`UIStyle.apply_theme` 里 `theme_use("clam")` 写死；
+        - `auto_save`：章节保存是无条件执行的，这个键既不能开也不能关。
+
+        留着的唯一效果是"设置里改了没用" ⇒ 移除更诚实。
+        这条守卫防的是有人不加思考地把它们加回来。
+        """
+        assert "auto_save" not in DEFAULT_CONFIG
+        assert "theme" not in DEFAULT_CONFIG
 
     def test_get_existing_key(self, app_config):
         """测试获取已存在的键"""

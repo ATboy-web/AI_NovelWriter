@@ -28,17 +28,48 @@ class ImageGenerator:
         provider = self.config.get("img_provider", "disabled")
         return provider != "disabled"
 
-    def generate(
-        self, prompt: str, negative_prompt: str = "", width: int = 1024, height: int = 1024
-    ) -> Optional[bytes]:
-        """生成图片，返回图片字节数据"""
-        provider = self.config.get("img_provider", "comfyui")
+    def _dimension(self, explicit: int | None, key: str, default: int = 1024) -> int:
+        """取尺寸：显式入参优先，否则读配置，读不到/读坏了退回默认。
 
+        ❗ 必须做防御性转换：配置里的值可能来自 Entry 控件（**字符串**）、
+        可能是 `None`、也可能被手工改成了任意文本。直接 `int()` 会抛 ValueError，
+        而这是在生成图片的主路径上 —— 宁可退回默认尺寸，也不要让一张图都生不出来。
+        """
+        if explicit is not None:
+            try:
+                value = int(explicit)
+            except (TypeError, ValueError):
+                return default
+            return value if value > 0 else default
+        raw = self.config.get(key, default)
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return default
+        return value if value > 0 else default
+
+    def generate(
+        self, prompt: str, negative_prompt: str = "", width: int | None = None, height: int | None = None
+    ) -> Optional[bytes]:
+        """生成图片，返回图片字节数据。
+
+        `width` / `height` 为 `None` 时**从配置取**（`img_width` / `img_height`）。
+        原先两者的默认值是写死的 1024，于是"图片宽/高"填了也不生效
+        —— 属于"声明了但无效"的配置项（审计发现）。
+        显式传参仍然优先，保持调用方可覆盖。
+        """
+        provider = self.config.get("img_provider", "comfyui")
+        # 先判后端：未启用/未知后端直接返回，**不要**去读尺寸配置 ——
+        # 否则一个无关的坏配置值（例如 MagicMock 或空串）会让本函数抛错，
+        # 把"未启用"这种正常情况变成异常（单测正是这么发现的）。
+        if provider not in ("comfyui", "sdapi"):
+            return None
+
+        width = self._dimension(width, "img_width")
+        height = self._dimension(height, "img_height")
         if provider == "comfyui":
             return self._generate_comfyui(prompt, negative_prompt, width, height)
-        elif provider == "sdapi":
-            return self._generate_sdapi(prompt, negative_prompt, width, height)
-        return None
+        return self._generate_sdapi(prompt, negative_prompt, width, height)
 
     def _generate_comfyui(self, prompt, negative_prompt, width, height) -> Optional[bytes]:
         """通过ComfyUI生成图片"""

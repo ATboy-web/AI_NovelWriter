@@ -85,13 +85,26 @@ jobs:
         # 历史上写成 `pytest tests/` 导致 backend/tests 从未在 CI 中执行。
         run: |
           python -m pytest tests/ backend/tests/ -v --tb=short \
-            --cov=app --cov-report=xml --cov-report=term-missing
+            --cov=app --cov-report=xml --cov-report=json --cov-report=term-missing
+
+      - name: Coverage gate
+        # 2026-09-17 起为**阻断式**。此前覆盖率可以任意下降而无人拦截：
+        # `[tool.coverage.report]` 没有 fail_under，且下面的 codecov 步骤写了
+        # `fail_ci_if_error: false` ⇒ 连上传失败都不拦。
+        #
+        # 阈值**只在 pyproject.toml 里定义一处**，本步骤不重复写数字
+        # （"同一事实写两处必然漂移"已被本项目验证过三次）。
+        # 该脚本还会反向检查「实测高出阈值 2 个百分点就失败并提示收紧」，
+        # 避免真实覆盖率上涨后阈值长期不动、门禁退化成橡皮图章。
+        run: python scripts/check_coverage.py --report coverage.json
 
       - name: Upload coverage
         if: matrix.python-version == '3.13'
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
+          # 上传失败不阻断（本次由 Coverage gate 承担判定职责）；
+          # 若哪天 codecov 不可用，覆盖率门禁仍然有效。
           fail_ci_if_error: false
 
   # ---------- Android 构建验证 ----------

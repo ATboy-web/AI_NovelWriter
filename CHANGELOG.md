@@ -129,6 +129,22 @@
 
 ### 工程
 
+**打包产物的依赖完整性校验（新增 `scripts/check_bundle.py`）**
+- 背景是本仓库的一个已知陷阱：`app/__init__` 对导入失败**降级为 `_ImportStub`** 而非崩溃，
+  于是**缺依赖的 EXE 不报错、只静默丢功能**（发布史上真发生过——release 作业只装
+  `pyinstaller loguru`，EXE 里缺 httpx/Pillow/cryptography，程序照常启动）。
+  **"构建成功"不等于"功能齐全"**，此前没有任何检查。
+- 新脚本解析 `Analysis-00.toc` 核对实际打包内容。判据刻意分三类，因为三者来源不同：
+  **直接 import**（从源码推导）/ **传递依赖**（`lxml` 由 python-docx 需要）/
+  **声明但未用**（`markdown`、`bs4` 在 `pyproject` 声明但 `app/` 零 import）。
+- ❗ 两个踩过的判据陷阱已写进脚本注释：**① 不能用字符串匹配** —— PyInstaller 的 TOC
+  typecode 里有一个就叫 `PIL`，会把"有 PIL 这个**标签**"误当成"有 PIL 这个**包**"；
+  **② 不能把 `pyproject` 声明当"代码用到"** —— 会把"声明了"报成假缺口。
+- 新增 `tests/test_bundle_manifest.py`（13 条）**从源码重新推导清单并对账**，
+  清单过期即变红。写它当场就抓出两处错误：`lxml` 被误分类成直接 import、
+  `beautifulsoup4` 用发行名当键（会让断言空转）。已验证 `bs4` 是被 lxml 的
+  **可选** `html.soupparser` 带进来的。
+
 **「观测能力建了一半」：`duration_ms` 一直存在，但没人记章节分段**
 - 排查"运行卡顿"时发现：`DiagnosticLogger.log()` / `api_call()` **都接受 `duration_ms`**，
   `ai_client` 的出口记录也**一直在传**。真正的缺口是 ① 生成主流程从不调用

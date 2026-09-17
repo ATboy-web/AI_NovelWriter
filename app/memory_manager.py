@@ -1302,7 +1302,16 @@ class MemoryManager:
         atomic_write_json(meta_file, meta, indent=2)
 
     def _format_settings_md(self, settings: dict, level: int = 0) -> str:
-        """将settings字典格式化为Markdown"""
+        """将settings字典格式化为Markdown
+
+        R21：入参**不再假定一定是 dict**。本函数是 `save_settings` 的最后一跳，
+        一旦这里抛异常，整个世界观保存都会失败（JSON 已写、Markdown 没写，
+        用户看到的是"保存了一半"）。而"AI 返回顶层数组"是可复现的输入
+        （`parse_json_response` 期望 dict 时也会返回 list）。
+        调用点已加守卫，这里再做一层兜底，非 dict 直接给出可读提示而不是崩。
+        """
+        if not isinstance(settings, dict):
+            return f"（无法格式化为 Markdown：期望字典，实际收到 {type(settings).__name__}）\n"
         lines = []
         for key, value in settings.items():
             if isinstance(value, dict):

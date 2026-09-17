@@ -693,6 +693,15 @@ class NovelAgent:
             self.log(f"[Reviewer] 审校第{chapter_num}章（第{round_num}轮）...")
             self._record_conversation("Reviewer", "review", f"第{round_num}轮审校")
             review = self._reviewer_evaluate(chapter_num, content, previous_feedback=prev_feedback)
+            # R21 修复：这里紧接着就用 `review.setdefault(...)` / `review.get(...)`，
+            # 而 `_reviewer_evaluate` 的解析结果**可能是 list**
+            # （`parse_json_response` 在期望 dict 但 AI 返回顶层数组时会返回 list）。
+            # 旧代码的守卫在第 748 行 —— **在所有使用之后**，等于没有；
+            # 一旦命中，崩的是 `list.setdefault`（`AttributeError`），
+            # 而且是在生成主流程里，整章生成失败。归一化必须在使用之前。
+            if not isinstance(review, dict):
+                self.log("[Editor] ⚠️ 审校返回的不是 JSON 对象，按默认评分处理")
+                review = {"overall_score": 70, "issues": [], "suggestions": []}
 
             # 工具调用: 一致性检查
             self.tools.call("check_consistency", content=content[:500])
@@ -1192,7 +1201,15 @@ class NovelAgent:
         response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
         settings = self._parse_json_response(response, {"raw": response})
         # ERR-2修复: 验证settings不为空或None
-        if not settings or (isinstance(settings, dict) and len(settings) == 0):
+        # R21 修复：`parse_json_response` 在 **期望 dict 但 AI 返回顶层数组** 时会
+        # 返回 list（它只在 `is_list=True` 时拒收 dict，反向不拒）。而下游
+        # `memory.save_settings` → `_format_settings_md` 会执行 `settings.items()`
+        # ⇒ `AttributeError: 'list' object has no attribute 'items'`（已实测复现）。
+        # 这里显式要求 dict，非 dict 一律走降级分支，与"解析失败"同等处理。
+        if not isinstance(settings, dict):
+            self.log("[警告] 世界观返回的不是 JSON 对象，忽略")
+            settings = {"raw": response, "world": {}, "rules": {}, "factions": {}}
+        elif not settings:
             self.log("[警告] 世界观生成失败，使用空设定")
             settings = {"raw": response, "world": {}, "rules": {}, "factions": {}}
         self.memory.save_settings(settings)
@@ -1963,6 +1980,11 @@ class NovelAgent:
 
         result = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
         style = self._parse_json_response(result, {"author": author_name, "raw": result})
+        # R21 修复：同 `_world_builder` —— 期望 dict 但拿到 list 时必须降级，
+        # 否则这个 list 会被当成"风格配置"返回并参与后续拼装（下游多处按 dict 取值）。
+        if not isinstance(style, dict):
+            self.log("[警告] 风格分析返回的不是 JSON 对象，改用降级结果")
+            style = {"author": author_name, "raw": result}
 
         self.log(f"[智能体] {author_name} 风格分析完成")
         return style

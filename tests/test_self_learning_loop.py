@@ -74,10 +74,49 @@ class TestQualityAffectsImportance:
         mgr.learn_from_chapter("内容", 1, [], success=True, quality=None)
         assert mgr.time_memory.memories[0]["importance"] == 0.6
 
-    def test_failure_records_nothing(self):
+    def test_failure_is_recorded_as_failure_pattern(self):
+        """R21 变更：未达标章节**不再什么都不做**。
+
+        旧契约（`test_failure_records_nothing`）认为"不写入"就是对的，但那只把
+        "信号假"从"假装成功"换成了"假装学了" —— 调用点会打印
+        "已学习第N章模式（评分60·未达标）"，实际一条都没写，**负样本仍然进不来**。
+        新契约：成败分开存放，成功进 `success_pattern`（用于照做），
+        失败进 `failure_pattern`（用于避开）。
+        """
         mgr = self._mgr()
         mgr.learn_from_chapter("内容", 1, [], success=False, quality=10)
-        assert mgr.time_memory.memories == [], "未达标章节不应写入学习库"
+        types = [m["type"] for m in mgr.time_memory.memories]
+        assert types == ["failure_pattern"], f"未达标章节应记为 failure_pattern，实际 {types}"
+
+    def test_failure_not_mixed_into_success_pattern(self):
+        """负样本绝不能混进成功库，否则"照做"会照做错的。"""
+        mgr = self._mgr()
+        mgr.learn_from_chapter("好内容", 1, [], success=True, quality=90)
+        mgr.learn_from_chapter("差内容", 2, [], success=False, quality=30)
+        wins = mgr.time_memory.query(memory_type="success_pattern", limit=10)
+        assert all("第2章" not in m["content"] for m in wins), "失败章节混进了 success_pattern"
+
+    def test_failure_weight_rises_as_score_drops(self):
+        """分数越低越该被记住（权重反向浮动）。"""
+        bad, worse = self._mgr(), self._mgr()
+        bad.learn_from_chapter("内容", 1, [], success=False, quality=70)
+        worse.learn_from_chapter("内容", 1, [], success=False, quality=10)
+        b = bad.time_memory.memories[0]["importance"]
+        w = worse.time_memory.memories[0]["importance"]
+        assert w > b, f"10 分({w}) 应比 70 分({b}) 更该被记住"
+
+    def test_empty_content_writes_nothing(self):
+        """R21：空/空白正文不产生学习价值，不得写入脏记忆。"""
+        mgr = self._mgr()
+        for bad in ("", "   ", "\n\n"):
+            mgr.learn_from_chapter(bad, 1, [], success=True, quality=90)
+        assert mgr.time_memory.memories == [], f"空正文写入了 {len(mgr.time_memory.memories)} 条脏记忆"
+
+    def test_characters_counted_even_on_failure(self):
+        """角色提及与成败无关 —— 旧实现把它放在 `if success:` 里，失败章节不计。"""
+        mgr = self._mgr()
+        mgr.learn_from_chapter("内容", 1, ["张三"], success=False, quality=10)
+        assert "张三" in mgr.knowledge_graph.entities, "失败章节也应记录角色提及"
 
     def test_score_recorded_in_content_and_tags(self):
         mgr = self._mgr()

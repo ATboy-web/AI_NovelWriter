@@ -733,6 +733,15 @@ class WritingSkillManager:
             wins = [f"- {m['content'][:100]}" for m in recent_wins]
             context_parts.append("\n【近期成功模式】\n" + "\n".join(wins))
 
+        # P-04c：负样本也要被读回来 —— 否则 `failure_pattern` 会重蹈
+        # `success_pattern` 的覆辙（写完无人读）。这里给出"近期需避开的写法"。
+        recent_misses = self.time_memory.query(
+            memory_type="failure_pattern", limit=3, chapter=chapter or None, chapter_window=50
+        )
+        if recent_misses:
+            misses = [f"- {m['content'][:100]}" for m in recent_misses]
+            context_parts.append("\n【近期未达标章节（应避开同类问题）】\n" + "\n".join(misses))
+
         return "\n".join(context_parts)
 
     def learn_from_chapter(
@@ -751,7 +760,20 @@ class WritingSkillManager:
         **负样本永远进不来**，这是自我学习"信号假"的根源。
         现在调用方按真实评分传入 `success`，并把 `quality` 记进记忆，
         使"哪一章多少分"成为可检索、可回灌的信号。
+
+        P-04c：`success=False` 时**不再什么都不做**。
+        旧实现只在 `if success:` 分支里写记忆，于是"不达标"这件事的唯一结果
+        是**什么都不发生** —— 调用点还会打印"已学习第N章模式（评分60·未达标）"，
+        实际一条都没写。负样本因此仍然进不来，只是从"假装成功"变成了"假装学了"。
+        现在改成**记录失败模式**（`memory_type="failure_pattern"`），
+        与成功模式分开存放：成功经验用于"照做"，失败经验用于"避开"。
+        两者的写入路径共用同一套校验与落盘逻辑。
         """
+        # 空/无内容不产生学习价值。旧实现会把 `""` 也算作成功章节，
+        # 写入一条"对话比例0.0%"的垃圾记忆（实测 3 次空输入 = 3 条脏数据）。
+        if not chapter_content or not chapter_content.strip():
+            return
+
         if success:
             # 提取成功的写作模式
             # 分析对话比例
@@ -774,27 +796,44 @@ class WritingSkillManager:
                 chapter=chapter_num,
                 tags=["success", "dialogue"] + ([f"score:{quality}"] if quality is not None else []),
             )
+        else:
+            # 负样本：记录"这一章没达标"。importance 同样随评分反向浮动 ——
+            # 分数越低越值得记住（越该避开）。
+            dialogue_lines = [line for line in chapter_content.split("\n") if '"' in line or '"' in line]
+            dialogue_ratio = len(dialogue_lines) / max(1, len(chapter_content.split("\n")))
+            if quality is None:
+                score_part = ""
+                importance = 0.6
+            else:
+                score_part = f"，评分{quality}"
+                importance = max(0.5, min(0.9, 0.5 + (75 - quality) / 100))
+            self.time_memory.add_memory(
+                content=f"第{chapter_num}章未达标{score_part}，对话比例{dialogue_ratio:.1%}",
+                memory_type="failure_pattern",
+                importance=importance,
+                chapter=chapter_num,
+                tags=["failure", "dialogue"] + ([f"score:{quality}"] if quality is not None else []),
+            )
 
-            # 更新角色关系
-            for char in characters:
-                if char not in self.knowledge_graph.entities:
-                    self.knowledge_graph.add_entity(char, "character")
-                self.knowledge_graph.entities[char]["mentions"] = (
-                    self.knowledge_graph.entities[char].get("mentions", 0) + 1
-                )
+        # 以下与成败无关：角色被提到过就记一次，失败章节同样提供了角色信息。
+        # 旧实现把它放在 `if success:` 里面 ⇒ 不达标的章节连角色提及都不计。
+        for char in characters:
+            if char not in self.knowledge_graph.entities:
+                self.knowledge_graph.add_entity(char, "character")
+            self.knowledge_graph.entities[char]["mentions"] = self.knowledge_graph.entities[char].get("mentions", 0) + 1
 
-            # 自动保存到磁盘
-            if novel_dir:
-                try:
-                    import os
+        # 自动保存到磁盘
+        if novel_dir:
+            try:
+                import os
 
-                    skills_dir = os.path.join(novel_dir, "writing_skills")
-                    os.makedirs(skills_dir, exist_ok=True)
+                skills_dir = os.path.join(novel_dir, "writing_skills")
+                os.makedirs(skills_dir, exist_ok=True)
 
-                    self.knowledge_graph.save(os.path.join(skills_dir, "knowledge_graph.json"))
-                    self.time_memory.save(os.path.join(skills_dir, "time_memory.json"))
-                except Exception as e:
-                    print(f"[写作技能] 自动保存失败: {e}")
+                self.knowledge_graph.save(os.path.join(skills_dir, "knowledge_graph.json"))
+                self.time_memory.save(os.path.join(skills_dir, "time_memory.json"))
+            except Exception as e:
+                print(f"[写作技能] 自动保存失败: {e}")
 
     def save_all(self, base_dir: str):
         """保存所有数据"""

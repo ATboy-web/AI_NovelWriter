@@ -83,6 +83,40 @@
 
 ### 修复
 
+**运行时审计发现的 5 项数据缺陷（来自《快速统治》实跑）**
+- 详见 `docs/RUNTIME_AUDIT_20260917.md`、登记 `docs/BACKLOG_REGISTER.md §5.7`。
+  这些缺陷的共同特征：**全程无异常、日志还显示成功**，只有核对落盘内容才能发现。
+- 🔴 **主角名被"整份覆盖"抹掉**（数据会持续恶化）：`_auto_generate` 在开头读一次 `meta`，
+  中途用 `update_meta` 写入 `protagonist`，随后又用**那份不含 protagonist 的旧快照**
+  `write_meta` 整份覆盖。铁证是 `meta.json.bak` 有 `protagonist:"陆昭"` 而 `meta.json` 没有。
+  后果：整体大纲与故事大纲读不到主角，各自编出「苏妩」「沈夜/姜姒」——**三份大纲主角全不同**；
+  且磁盘上再无该字段，第 2 章起章节大纲/写作/修订全部失去主角锁定。
+  修法：改为 `update_meta`（锁内读-改-写合并，保住磁盘独有键）+ 把 protagonist
+  **同步回内存副本**供两个大纲生成使用。
+- 🔴 **摘要把模型思维链当了摘要**：摘要调用 `max_tokens=1000` 恰好等于
+  `reasoning.THINKING_MIN_TOKENS`，而判据是**严格小于** ⇒ 思考模式没被禁用但预算不够输出
+  ⇒ `content` 为空 ⇒ `ai_client._finalize_text` 的兜底返回 `reasoning_content`
+  ⇒ 1782 字的推理原文被存成摘要，并作为记忆块回灌后续章节。
+  修法三道防线：**显式关思考** + **预算提到阈值以上**（2000）+
+  **`_looks_like_chain_of_thought()` 校验**（超长或命中思维链特征词即弃用，退回正文截断）。
+  同一防线覆盖全局摘要与关键词提取——它们同样是"输出被原样落盘"的调用。
+- **思维链污染记忆库**：记忆块类型原写作 `"plot"`，但内容其实是章节摘要（实测那条还是思维链）。
+  已改为 `"summary"`（确认全仓无检索方依赖 `"plot"` 字符串）。
+- **正文截断冒充摘要**：`chapter_ui._save_chapter_summary` 用 `content[:500]` 当摘要，
+  且用 **4 位**补零，与 `memory_manager` 的 **5 位**摘要同名章号 ⇒ 同一章在 `summaries/`
+  下有两份文件。而 4 位那份**只写不读**（唯一读取方读的是 5 位）。已删除该死写入。
+- **世界线落盘提示词示例**：`timelines/main.json` 里记的是提示词中的 few-shot 示例
+  （"当时的情况"/"主角选择了什么"/"可能的另一种选择"），日志却报"记录1个决策点"= **假成功**。
+  修法：提示词示例加「示例·勿照抄」标记并显式禁止照抄 + 解析后按值比对丢弃回声
+  （含旧示例措辞）+ 日志改为如实汇报"记录 N 条 / 跳过 M 条示例回声"。
+- **附带发现**：`novel_dir = str(self.memory.novel_dir) if self.memory else None`
+  在 `novel_dir` 为 None 时得到**真值字符串 `"None"`** ⇒ 在当前工作目录真的建出
+  `None/writing_skills/`。判据改为落在值上（`if _nd` 而非 `if self.memory`）。
+
+**验证方式**：新增 `tests/test_finalize_integrity.py`（45 条）。全部按"落盘/传入的内容"
+断言，而非"有没有抛错"——因为这类缺陷不会抛错。已用**退回修复 ⇒ 测试变红**的方式
+反证 D1/D2 两条守卫确有咬合力。
+
 **JSON 解析器全面收敛（6 处手写实现 → 单一权威）**
 - `app/parsing.py` 的 `parse_json_response` 本就是唯一实现，但另有 **6 处各自手写解析**：
   `character_system.ai_create_character`（**最弱**：`json.loads(切片)` 无 try/except、无尾逗号修复）、

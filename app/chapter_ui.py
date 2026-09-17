@@ -3,7 +3,6 @@
 从 novel_app.py (P2-1 巨石拆分) 自动产生；方法体逐字节复制自原 NovelWriterApp，行为保持不变。
 """
 
-import threading
 import tkinter as tk
 from tkinter import filedialog
 
@@ -40,33 +39,16 @@ class ChapterUIMixin:
         total = meta.get("total_chapters", meta.get("chapter_count", "?"))
         self.chapter_var.set(f"{self.current_chapter}/{total}")
 
-        # 后台线程保存摘要（避免UI线程I/O）
-        if hasattr(self, "current_novel_dir") and self.current_novel_dir:
-            threading.Thread(target=self._save_chapter_summary, args=(num, title, content), daemon=True).start()
-
-    def _save_chapter_summary(self, chapter_num: int, title: str, content: str):
-        """保存章节摘要到文件"""
-        if not self.current_novel_dir:
-            return
-
-        try:
-            # 创建摘要目录
-            summary_dir = self.current_novel_dir / "summaries"
-            summary_dir.mkdir(exist_ok=True)
-
-            # 提取前500字作为摘要
-            summary_text = content[:500]
-            if len(content) > 500:
-                summary_text += "..."
-
-            # 保存摘要文件
-            summary_file = summary_dir / f"chapter_{chapter_num:04d}_summary.txt"
-            summary_content = f"章节: 第{chapter_num}章 {title}\n字数: {len(content)}\n\n摘要:\n{summary_text}"
-            summary_file.write_text(summary_content, encoding="utf-8")
-
-            self._log(f"[摘要] 已保存第{chapter_num}章摘要")
-        except Exception as e:
-            self._log(f"[摘要] 保存失败: {e}")
+        # ⛔ 这里曾启动一个后台线程写 `summaries/chapter_%04d_summary.txt`，
+        # 内容是 `content[:500]`（正文前 500 字）冒充"摘要"。已删除，理由三条：
+        #   1. **它不是摘要** —— 只是正文截断，"摘要:"这个标签是错的；
+        #   2. **没有任何读取方** —— 全仓只有 `generation_ui.py:1964` 读 `summaries/`，
+        #      而它读的是 **05d** 命名；`04d` 那份**只写不读**（死写入）；
+        #   3. **制造重复与漂移** —— 与 `memory_manager.save_chapter_summary`（05d）
+        #      写同一逻辑内容却不同文件名，于是同一章在 `summaries/` 下有两个文件
+        #      （实测《快速统治》第 1 章同时存在 `chapter_0001_summary.txt` 1789 字符的
+        #      思维链与 `chapter_0001_summary.txt` 535 字符的正文截断）。
+        # 权威摘要只有一个来源：`MemoryManager.save_chapter_summary`（`memory_manager.py:371`）。
 
     def _save_chapter(self):
         """保存当前章节"""

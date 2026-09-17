@@ -255,19 +255,30 @@ summary_content = f"章节: …\n字数: …\n\n摘要:\n{summary_text}"
 
 ## 5. 后续处理建议（按优先级）
 
-| 优先级 | 动作 | 具体位置 |
-|---|---|---|
-| **P0** | 修正桌面备份文件的命名，改用**不可双击执行**的形式（如 `AI_NovelWriter.exe.old-<时间戳>`），并在分发脚本里固化 | 分发流程（本轮用的是临时脚本） |
-| **P0** | 关闭旧实例，改用 `Desktop\AI_NovelWriter.exe`（sha `e82520f2…`）重新验证 | — |
-| **P0** | 修 D1：把 `:1566` 的 `write_meta(meta)` 改为 `update_meta({"chapter_count": outline_count})`，并让 `_generate_overall_outline` / `_generate_story_outlines` 从**磁盘**取 protagonist | `app/generation_ui.py:1481/1566/1591/1600` |
-| **P1** | 修 D2：摘要调用把 `max_tokens` 提到阈值以上（如 2000）；并对"返回内容像思维链"做校验（长度上限 + 特征词） | `app/novel_agent.py:1795`；可考虑把 `reasoning.py:84` 的 `<` 改为 `<=` |
-| **P1** | 修 D4：删除 `chapter_ui._save_chapter_summary` 的"截正文"实现，统一改调 `memory.save_chapter_summary`（顺带解决命名不一致 D-命名） | `app/chapter_ui.py:47-69` |
-| **P1** | 修 D5：解析 `decisions` 后过滤掉与提示词示例完全相同的项；日志区分"记录成功/记录到示例" | `app/generation_ui.py:842` 附近 |
-| **P2** | 统一章节/摘要补零位数为 5 位（`04d` → `05d`），并加一条"同一章只允许一份摘要"的门禁 | `chapter_ui.py:63/85`、`generation_ui.py:1950`、`timeline_ui.py:747` |
-| **P2** | 自动创建的角色补齐档案字段（或统一到一种 schema） | 角色自动创建路径 |
-| **P2** | 知识图谱抽取覆盖全部角色，并落 `relations` | `writing_skills` 落盘路径 |
-| **P3** | 大纲/正文统一世界观：既然设定是「玄元界」，章节大纲不应产出"九州" | 章节大纲提示词 |
-| **P3** | 1 级角色的负向 EXP 提示改为"已到下限"，避免报「-30EXP」却无变化 | `app/generation_ui.py:1175` |
+> **状态更新（2026-09-17 稍晚）**：**D1–D5 已修复**（见 `CHANGELOG.md`「修复」一节，
+> 守卫 `tests/test_finalize_integrity.py` 45 条）。下面保留原始优先级表以便对照；
+> 已修项在「状态」列标注。**P0 的第 1、2 条（换构建重验）仍待用户执行**
+> —— 那一步会决定 D1–D5 之外的观察是否可信。
+
+| 优先级 | 动作 | 具体位置 | 状态 |
+|---|---|---|---|
+| **P0** | 修正桌面备份文件的命名，改用**不可双击执行**的形式（如 `AI_NovelWriter.exe.old-<时间戳>`），并在分发脚本里固化 | 分发流程（本轮用的是临时脚本） | ⬜ **待用户执行**（旧实例仍在运行，文件被占用） |
+| **P0** | 关闭旧实例，改用 `Desktop\AI_NovelWriter.exe`（sha `e82520f2…`）重新验证 | — | ⬜ **待用户执行** |
+| **P0** | 修 D1：把 `:1566` 的 `write_meta(meta)` 改为 `update_meta`，并让内存副本同步 protagonist | `app/generation_ui.py:1481/1537/1566/1591/1600` | ✅ **已修** |
+| **P1** | 修 D2：摘要调用关思考 + 提高 `max_tokens` + 校验返回内容 | `app/novel_agent.py`、新增 `_looks_like_chain_of_thought` | ✅ **已修** |
+| **P1** | 修 D4：删除 `chapter_ui._save_chapter_summary` 的"截正文"实现 | `app/chapter_ui.py` | ✅ **已修** |
+| **P1** | 修 D5：过滤提示词示例回声；日志区分"记录成功/记录到示例" | `app/generation_ui.py` | ✅ **已修** |
+| **P2** | 统一章节/摘要补零位数并加"同一章只允许一份摘要"的门禁 | `chapter_ui.py`、`generation_ui.py:1964` | ⚠️ **部分**：4 位摘要写入点已删除；`chapters/`(4) 与 `memory/chapters/`(5) 分属不同存储且各自自洽，**未改**（改名会孤立既有数据） |
+| **P2** | 自动创建的角色补齐档案字段（或统一到一种 schema） | 角色自动创建路径 | ⬜ 未做（D6） |
+| **P2** | 知识图谱抽取覆盖全部角色，并落 `relations` | `writing_skills` 落盘路径 | ⬜ 未做（D7） |
+| **P3** | 大纲/正文统一世界观：既然设定是「玄元界」，章节大纲不应产出"九州" | 章节大纲提示词 | ⬜ 未做（D8） |
+| **P3** | 1 级角色的负向 EXP 提示改为"已到下限" | `app/generation_ui.py` | ⬜ 未做（D9） |
+| — | **附带发现**：`str(None)` 建出 `None/` 目录 | `app/novel_agent.py` | ✅ **已修** |
+
+> **D3 的说明**：思维链污染记忆库的**源头**随 D2 一并消失（摘要不再是思维链），
+> 且记忆块类型已由 `plot` 改为 `summary`。但**已经落盘的污染数据**
+> （`memory/chunks/page_0000.json` 里那条 `type:"plot"` 的思维链）属于用户作品数据，
+> **未自动清理** —— 如需清理请单独确认。
 
 > **建议顺序**：先做 P0 的第 1、2 条（换构建重新验证）—— 因为
 > 目前无法区分"新功能没生效"与"新功能有 bug"。换构建后 D1/D2 仍可复现，

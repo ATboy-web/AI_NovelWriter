@@ -127,6 +127,60 @@ PHASE_REVISE = "revise"
 _NETWORK_PHASES = frozenset({PHASE_PLOT, PHASE_WRITE, PHASE_REVIEW, PHASE_REVISE})
 
 
+# ===== 定稿辅助调用的输出校验 =====
+# 为什么需要：`ai_client._finalize_text` 有一条**刻意的**兜底 —— 思考模式把 token
+# 预算耗尽时（`finish_reason == "length"` 且 `content` 为空），它**返回
+# `reasoning_content`** 而不是报错。对"生成正文"这是对的（有分析总比崩了好），
+# 但对**结果会被原样落盘**的调用（摘要、关键词、全局摘要）就是污染源。
+#
+# 实测事故（2026-09-17《快速统治》第 1 章）：
+#   摘要调用用 `max_tokens=1000`，而 `providers/reasoning.py` 的
+#   `THINKING_MIN_TOKENS` 恰好也是 **1000**，且判据是 `max_tokens < THINKING_MIN_TOKENS`
+#   （**严格小于**）⇒ `1000 < 1000` 为假 ⇒ 思考模式**没被禁用**，但预算只够思考、
+#   不够输出 ⇒ `content` 为空 ⇒ 兜底返回 reasoning ⇒ 摘要文件里存进了
+#   **1782 字的推理原文**（含 "Let's count…" 这类自我计字），并被当作 `plot` 类型
+#   灌进记忆库。日志全程显示"已保存第1章摘要"，**没有任何异常**。
+#
+# 所以三道防线一起上：显式关思考 → 给足预算 → 再校验返回内容。
+
+#: 摘要类返回的长度上限。提示词要求 100–200 字，给足余量后仍超出即视为异常。
+_SUMMARY_MAX_CHARS = 600
+
+#: 思维链特征词。命中**开头 300 字**内任意一个，就认为返回的是推理过程而非成品。
+#: 只扫开头是因为成品摘要不会以"我们需要回答用户"这类话起头，
+#: 而推理过程几乎必然以它起头；扫全文反而会误伤正当引用。
+_COT_MARKERS = (
+    "我们需要回答",
+    "用户要求",
+    "用户之前给",
+    "用户给了一个任务",
+    "Let's ",
+    "Let me ",
+    "Count:",
+    "应提取关键剧情",
+    "通常字数",
+    "要计数",
+    "Need ensure",
+    "首先，我需要",
+    "让我先",
+)
+
+
+def _looks_like_chain_of_thought(text: str) -> bool:
+    """判断返回文本是否像模型的**推理过程**而不是成品。
+
+    用于"结果会被原样落盘"的调用：命中即弃用，退回安全的降级值。
+    判据取"超长 OR 命中特征词"，两者都宁松勿严 —— 因为一旦把推理过程落盘，
+    它会继续污染记忆库并回灌到后续章节，代价远大于偶尔弃用一段合格摘要。
+    """
+    t = (text or "").strip()
+    if not t:
+        return False
+    if len(t) > _SUMMARY_MAX_CHARS:
+        return True
+    return any(marker in t[:300] for marker in _COT_MARKERS)
+
+
 # ===== 标准化通信协议 (参考 MCP/A2A) =====
 
 
@@ -1791,12 +1845,23 @@ class NovelAgent:
         try:
             result = self.ai.chat(
                 [{"role": "user", "content": f"请生成摘要（100-200字）：\n{content[:2000]}"}],
-                system="你是故事摘要助手。",
-                max_tokens=1000,
+                system="你是故事摘要助手。只输出摘要正文，不要输出思考过程、不要解释、不要自我校对。",
+                # `max_tokens` 必须**显著高于** `reasoning.THINKING_MIN_TOKENS`(1000)：
+                # 原本写成 1000 恰好等于该阈值，而阈值判据是严格小于 ⇒ 思考没被禁用
+                # 但预算不够输出 ⇒ 兜底把推理原文当摘要返回（见 `_looks_like_chain_of_thought`
+                # 上方的实测事故记录）。
+                max_tokens=2000,
+                # 摘要不需要推理，显式关闭思考，从源头避免"预算被思考吃光"。
+                thinking_enabled=False,
             )
-            if result:
+            if result and not _looks_like_chain_of_thought(result):
                 summary = result
-                self.memory.save_chapter_summary(chapter_num, summary)
+            else:
+                # 返回疑似推理过程（或为空）⇒ 弃用，退回正文截断。
+                # 宁可摘要糙一点，也不能把推理过程落盘 —— 它会经 add_chunk
+                # 进入记忆库并回灌到后续章节。
+                self.log(f"[定稿] 摘要返回异常(len={len(result) if result else 0})，改用正文截断")
+            self.memory.save_chapter_summary(chapter_num, summary)
         except Exception as e:
             self.log(f"[定稿] 摘要生成失败: {e}")
             self.memory.save_chapter_summary(chapter_num, summary)
@@ -1806,11 +1871,16 @@ class NovelAgent:
             old = self.memory.get_global_summary()
             new = self.ai.chat(
                 [{"role": "user", "content": f"更新全局摘要：\n旧：{old}\n新章节：{summary}"}],
-                system="你是故事摘要助手。",
-                max_tokens=1500,
+                system="你是故事摘要助手。只输出摘要正文，不要输出思考过程。",
+                # 同章节摘要：给足预算 + 关思考 + 校验返回
+                max_tokens=2000,
+                thinking_enabled=False,
             )
-            if new:
+            if new and not _looks_like_chain_of_thought(new):
                 self.memory.save_global_summary(new)
+            elif new:
+                # 保留旧摘要比写入推理过程安全 —— 全局摘要会被注入每一章的上下文
+                self.log(f"[定稿] 全局摘要返回疑似推理(len={len(new)})，保留旧值")
         except Exception as e:
             self.log(f"[定稿] 全局摘要更新失败: {e}")
 
@@ -1818,18 +1888,28 @@ class NovelAgent:
         try:
             kw = self.ai.chat(
                 [{"role": "user", "content": f"提取10个关键词，逗号分隔：\n{content[:1000]}"}],
-                system="提取关键词。",
-                max_tokens=1000,
+                system="提取关键词。只输出关键词本身，用逗号分隔。",
+                # 关键词同样会被原样落盘进索引，同享三道防线
+                max_tokens=2000,
+                thinking_enabled=False,
             )
-            keywords = [k.strip() for k in (kw or "").split(",") if k.strip()]
-            self.memory.update_index(chapter_num, keywords)
+            if kw and _looks_like_chain_of_thought(kw):
+                self.log("[定稿] 关键词返回疑似推理，跳过索引更新")
+                keywords = []
+            else:
+                keywords = [k.strip() for k in (kw or "").split(",") if k.strip()]
+                self.memory.update_index(chapter_num, keywords)
         except Exception as e:
             self.log(f"[定稿] 关键词提取失败: {e}")
             keywords = []
 
         # 添加记忆块
         try:
-            self.memory.add_chunk("plot", summary, importance=8, tags=keywords[:5] if keywords else [])
+            # 类型标为 `summary`：这里存的**就是章节摘要**。旧代码写 `"plot"`（情节），
+            # 与内容不符 —— 实测日志里出现过 `type:"plot"` 但 content 是摘要（且当时
+            # 还是思维链原文）的条目，类型错标会让后续按类型检索时语义失真。
+            # 全仓对 `"plot"` 的引用仅此一处，无检索方依赖该字符串，改名安全。
+            self.memory.add_chunk("summary", summary, importance=8, tags=keywords[:5] if keywords else [])
             self.memory.add_event(chapter_num, summary, "story")
         except Exception as e:
             self.log(f"[定稿] 记忆块添加失败: {e}")
@@ -1846,7 +1926,13 @@ class NovelAgent:
 
             # 提取角色名
             chars = list(self.memory.get_characters().keys())[:10]
-            novel_dir = str(self.memory.novel_dir) if self.memory else None
+            # ❗ 不能写成 `str(self.memory.novel_dir) if self.memory else None`：
+            # `novel_dir` 为 None 时 `str(None)` 得到**真值字符串 `"None"`**，
+            # 而 `writing_skills` 的判据是 `if novel_dir:` ⇒ 会在**当前工作目录**下
+            # 真的建出 `None/writing_skills/` 两个文件（实测已复现）。
+            # 判据必须落在"值"上，而不是"对象是否存在"。
+            _nd = getattr(self.memory, "novel_dir", None)
+            novel_dir = str(_nd) if _nd else None
             # P-04 修复：`success` 不再硬编码 True。
             # 评分来源优先级：显式入参 → `self.last_chapter_quality`（生成流程写入）
             # → None（未知）。None 时按成功处理，**保持旧行为不变**；

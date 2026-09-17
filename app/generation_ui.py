@@ -838,8 +838,25 @@ class GenerationMixin:
             if chapter_num in main_data.get("chapters", []):
                 return
 
-            system = """你是专业故事分析师。提取本章的关键决策点，输出JSON:
-{"decisions": [{"desc": "当时的情况", "chosen": "主角选择了什么", "alternative": "可能的另一种选择"}]}
+            # ⚠️ 提示词里的示例**必须能被识别并在解析后过滤掉**。
+            # 实测事故：原先示例写成 `{"desc": "当时的情况", "chosen": "主角选择了什么",
+            # "alternative": "可能的另一种选择"}` —— 模型把这串**原样当结果返回**，
+            # 于是 `timelines/main.json` 里落盘的就是提示词的回声：
+            # `events: ["第1章: 当时的情况 → 选择了「主角选择了什么」"]`，
+            # 而日志还打"记录1个决策点" —— **假成功**：看着记下了真实决策，其实是示例。
+            # 现改两处：① 示例值带上"示例/勿照抄"字样，抄了也一眼能认出来；
+            # ② 解析后按值比对丢弃回声。
+            example = {
+                "desc": "【示例·勿照抄】此条仅示范 JSON 结构，请替换为本章真实情况",
+                "chosen": "【示例·勿照抄】主角实际做出的选择",
+                "alternative": "【示例·勿照抄】未被选中的另一条路",
+            }
+
+            system = f"""你是专业故事分析师。提取本章的关键决策点，输出JSON:
+{{"decisions": [{{"desc": "...", "chosen": "...", "alternative": "..."}}]}}
+字段含义：desc=决策发生时的情况；chosen=主角实际选择；alternative=未被选中的另一条路。
+下面这行**只是格式示例**，其内容与本章无关，**禁止**原样输出或改写后输出：
+{json.dumps([example], ensure_ascii=False)}
 如果没有明显的决策点，输出[]。只检测真正影响故事走向的选择。"""
 
             response = self.ai_client.chat(
@@ -874,6 +891,14 @@ class GenerationMixin:
             if not decisions:
                 return
 
+            example_values = {v for v in example.values()}
+            #: 老提示词留下的回声值。旧数据里已经落盘过这些，新章节若再出现同样要拦。
+            #: 保留是因为模型有惯性：改了提示词后它仍可能沿用上一版示例的措辞。
+            legacy_example_values = {"当时的情况", "主角选择了什么", "可能的另一种选择"}
+            blocked_values = example_values | legacy_example_values
+
+            kept = 0
+            skipped_as_example = 0
             for d in decisions:
                 if not isinstance(d, dict):
                     continue
@@ -881,6 +906,13 @@ class GenerationMixin:
                 chosen = d.get("chosen", d.get("choice", ""))
                 alternative = d.get("alternative", d.get("other", ""))
                 if not desc or not chosen:
+                    continue
+                # 丢掉提示词示例的回声：值完全相同，或带上了示例标记
+                if desc.strip() in blocked_values or chosen.strip() in blocked_values:
+                    skipped_as_example += 1
+                    continue
+                if "示例" in desc and "勿照抄" in desc:
+                    skipped_as_example += 1
                     continue
                 main_data["events"].append(f"第{chapter_num}章: {desc[:80]} → 选择了「{chosen[:30]}」")
                 main_data.setdefault("branches", []).append(
@@ -892,10 +924,19 @@ class GenerationMixin:
                         "story": "",  # 分支故事，初始为空
                     }
                 )
+                kept += 1
 
             main_data.setdefault("chapters", []).append(chapter_num)
             main_file.write_text(json.dumps(main_data, indent=2, ensure_ascii=False), encoding="utf-8")
-            self._log(f"[世界线] 第{chapter_num}章 记录{len(decisions)}个决策点")
+            # 日志要如实反映"到底记了几条"：旧实现打印的是 `len(decisions)`（AI 返回的条数），
+            # 即使全部是示例回声也会显示"记录1个决策点"，属于假成功。
+            if kept:
+                self._log(f"[世界线] 第{chapter_num}章 记录{kept}个决策点")
+            elif skipped_as_example:
+                self._log(
+                    f"[世界线] 第{chapter_num}章 未记录决策点"
+                    f"（AI 返回 {len(decisions)} 条，其中 {skipped_as_example} 条是提示词示例的回声，已跳过）"
+                )
 
         except Exception as e:
             self._log(f"[世界线] 决策检测异常: {type(e).__name__}: {e}")
@@ -1535,6 +1576,14 @@ class GenerationMixin:
                                 # 一次读-改-写同时落 both 字段（原先写两次 meta.json，
                                 # 中间存在"只写了其中一半"的窗口）
                                 self._novel_store().update_meta({"protagonist": protagonist})
+                                # 🔴 必须**同时同步内存副本**：`meta` 是 `:1481` 读进来的快照，
+                                # 不含 protagonist，而本函数末尾（见下方 `update_meta(meta)`）
+                                # 以及整体/故事大纲生成（`:1591` / `:1600`）用的都是这个副本。
+                                # 不同步的后果实测过：两份大纲失去主角约束，各自编出了不同的
+                                # 主角名（「苏妩」/「沈夜」），而章节大纲与正文是「陆昭」。
+                                # 注意是**逐键赋值**而不是 `meta = update_meta(...)` ——
+                                # 后者会用磁盘旧值覆盖掉上面刚注入的 `concept` 擦边提示。
+                                meta["protagonist"] = protagonist
                                 self._log(f"[角色] 主角已锁定: {protagonist}")
                         else:
                             self._log("[错误] 角色生成完全失败，无法恢复")
@@ -1563,7 +1612,13 @@ class GenerationMixin:
                                 json.dump(self.outline, f, indent=2, ensure_ascii=False)
                         # 更新meta中的章节数，保持total_chapters不变
                         meta["chapter_count"] = outline_count
-                        self._novel_store().write_meta(meta)
+                        # ❗ 用 `update_meta`（读-改-写合并）而不是 `write_meta`（整份覆盖）。
+                        # 这里曾用 `write_meta(meta)`，而 `meta` 是 `:1481` 的旧快照 ——
+                        # 实测把 `:1537` 刚写好的 `protagonist` **整份覆盖抹掉了**
+                        # （铁证：`meta.json.bak` 有 `protagonist:"陆昭"`，`meta.json` 没有）。
+                        # `update_meta` 会在锁内先读盘再合并，磁盘独有的键不会被覆盖，
+                        # 而本函数要持久化的 `concept` 擦边提示仍在内存副本里，拼接结果不变。
+                        self._novel_store().update_meta(meta)
                         self.root.after(0, self._refresh_outline_list)
                         self._log(f"大纲已生成: {len(self.outline)}章 (总计划{real_total}章)")
                     except Exception as e:
@@ -2027,7 +2082,8 @@ class GenerationMixin:
                     total = last_ch + n
                     meta["chapter_count"] = total
                     meta["total_chapters"] = total  # 同步更新 total_chapters
-                    self._novel_store().write_meta(meta)
+                    # 同 `_auto_generate`：合并写，别用整份覆盖（会抹掉磁盘独有键）
+                    self._novel_store().update_meta(meta)
 
                     # 合并大纲
                     existing_outline = list(self.outline) if self.outline else []

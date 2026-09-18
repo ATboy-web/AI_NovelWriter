@@ -1,13 +1,14 @@
-# AI小说创作工坊 v3.1.0
+# AI小说创作工坊 v3.2.0
 
 [![CI](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml/badge.svg)](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ATboy-web/AI_NovelWriter?label=release&color=blue)](https://github.com/ATboy-web/AI_NovelWriter/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT%20Modified-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-2295%20collected-brightgreen.svg)](#开发)
+[![Tests](https://img.shields.io/badge/tests-2985%20collected-brightgreen.svg)](#开发)
 
-基于 AI 的长篇小说创作工坊 —— **15 种题材**、**5 Agent 协作**、**面板化工作台**、
-**世界线分支与世代传承**、**多 AI 服务适配与用量成本统计**。
+基于 AI 的长篇小说创作工坊 —— **135 类内置题材（可自定义）**、**5 Agent 协作**、
+**18 面板工作台**、**世界线分支与世代传承**、**多 AI 服务适配与用量成本统计**、
+**插件扩展与 MCP 接入**。
 
 桌面端为 Windows 单文件 EXE；另有 Android 应用、FastAPI 后端集群与 React Web 前端。
 
@@ -17,7 +18,7 @@
 
 | 平台 | 版本 | 大小 | 链接 |
 |------|------|------|------|
-| **Windows** | **v3.1.0** | ~25 MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
+| **Windows** | **v3.2.0** | ~25 MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
 | Android | v4.0.1（沿用上一次构建） | ~10.9 MB | [AI_NovelWriter_v4.0.1.apk](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.16.0) |
 
 > 单文件免安装：下载后直接双击运行。首次启动需在 **设置** 里配置 AI 服务。
@@ -36,19 +37,21 @@
 - **一键自动生成**：大纲 → 角色 → 章节全流程自动化
 - **5 Agent 协作**：PlotDesigner → WorldBuilder → Writer → Reviewer → Editor
 - **多轮迭代修订**：AI 审校反馈自动回流修订，质量阈值判定
-- **15 种题材**：科幻 / 悬疑 / 言情 / 奇幻 / 都市 / 历史 / 武侠 / 仙侠 / 恐怖 / 军事 / 游戏 /
-  体育 / 穿越 / 系统流 / 末日
+- **135 类内置题材 + 自定义**：男频 78 条 / 女频 57 条（玄幻 / 仙侠 / 都市 / 历史 / 科幻 /
+  悬疑 / 游戏 / 军事 / 武侠 / 轻小说 / 无限流 / 系统流 / 末日 / 克苏鲁 / 赛博朋克 /
+  古代言情 / 现代言情 / 幻想言情 / 纯爱 / 年代文 / 穿书 / 重生 …），
+  并配 204 条创作标签（8 大类）。**可在「管理题材…」里任意增删**，配置存于本地 `genres.json`。
 - **续写**：已完成的作品可续写新章，上下文无缝衔接
 
-### 面板化工作台（15 个面板 / 5 个分组）
+### 面板化工作台（18 个面板 / 5 个分组）
 
 | 分组 | 面板 |
 |------|------|
-| 创作素材（7） | 元素库 · 事物描写 · 情景对话 · 故事流推演 · 风格转换 · 桥段库 · 联网检索 |
-| 结构分析（2） | 章节分析 · 批量操作 |
+| 创作素材（8） | 元素库 · 桥段库 · 描写库 · 对话推演 · 风格转换 · 智能改编 · 热点改编 · **插图工坊** |
+| 结构分析（2） | 故事流 · 章节分析 |
 | 记忆与摘要（2） | 记忆可视化 · 摘要管理 |
 | **世界与世代（3）** | **世界线与时间线 · 角色传记 · 世代传承** |
-| 运维（1） | 用量与成本 |
+| 运维（3） | 批量操作 · **插件中心** · **MCP 服务器** |
 
 - 面板框架统一提供**面包屑 + 刷新按钮 + 状态栏 + F5 / Ctrl+F / Esc**，
   新增面板只需在注册表加一行。
@@ -57,6 +60,39 @@
 - 任何面板都能**脱离为独立窗口**（面包屑右上角「独立窗口」），可与主窗口并排摆放；
   关掉窗口即自动收回，换书时窗口里的内容同步重建。
 - 基于线程感知事件总线联动：某处写入成功后，相关面板自动刷新。
+
+### 题材与标签（可扩展）
+
+- 题材清单**不再写死在界面里**，而是三层分离：纯数据 `app/genres_data.py` →
+  注册表 `app/genres.py` → 界面只读注册表。新增题材**不需要改代码**。
+- **管理题材…**（新建小说对话框内）：直接在最终清单上增删。
+  删除**自定义**题材即移除；删除**内置**题材只是**隐藏**（不动源码），
+  再次添加同名即可恢复。
+- 配置唯一来源 `~/.ai_novel_writer/genres.json`：损坏时**自动降级**为内置清单（不会启动失败），
+  写入走原子替换。
+- 作品在用的题材即使被删也**仍会出现在选择器里** —— 避免界面空白后一保存就把作品题材改掉。
+
+### 插件与 MCP（v3.2 新增）
+
+- **插件中心**（运维分组）：支持从**目录 / ZIP / 直链 URL** 安装，
+  可启用 / 停用 / 卸载（状态持久化）。插件可提供写作技能包、素材库扩充、导出格式等。
+- 🔒 **安全默认**：插件**默认不启用**；启用前做**静态体检**（AST 扫描，列出它会 import 什么、
+  是否触碰 `os.system` / `subprocess` / `eval` / `socket` 等 14 类高危符号）并按
+  低 / 中 / 高分级展示；解压做 Zip Slip 防护。
+  仓库自带示例插件 `examples/plugins/demo_writing_skill/` 可直接试用。
+- **MCP 服务器**（运维分组）：支持 **stdio**（本地进程）与 **http** 两种传输，
+  可连通性测试、发现工具、启用/停用。本应用既能**作为客户端**调用外部 MCP 工具，
+  也能**作为服务端**把自己的工具（`detect_scenes` / `get_characters` 等）按 MCP 规范暴露出去。
+  配置存于 `~/.ai_novel_writer/mcp_servers.json`。
+
+### 稳定性（v3.2 加固）
+
+- **可中断的生成**：点「停止」现在能中断**正在生成的那一章**（此前只在两章之间生效，
+  表现为"点了停止没反应"）。取消是协作式的，不会留下半写文件。
+- **重要数据原子写**：章节、`meta.json`、记忆索引、摘要等一律"先写临时文件再原子替换"，
+  中途崩溃不会留下截断的半截文件。
+- **不静默失败**：所有"吞掉异常"的位置都改为**记日志**或**显式登记理由** ——
+  避免"某个功能悄悄失灵、而用户只看到 AI 写错"这类查不出来的问题。
 
 ![面板分栏](docs/ui_review/after_14_split_ratio.png)
 
@@ -195,6 +231,12 @@ docker-compose ps            # 查看状态
 |------|------|
 | [QUICKSTART.md](QUICKSTART.md) | 快速上手 |
 | [USAGE.md](USAGE.md) | 使用说明 |
+| [docs/GENRE_SYSTEM.md](docs/GENRE_SYSTEM.md) | **题材系统**：自定义题材 / 标签 / 配置格式 |
+| [docs/PLUGIN_SYSTEM.md](docs/PLUGIN_SYSTEM.md) | **插件系统**：插件类型、接口约定、安装与安全边界 |
+| [docs/MCP_SUPPORT.md](docs/MCP_SUPPORT.md) | **MCP 支持**：客户端/服务端、配置、安全边界 |
+| [docs/MODULE_DEPENDENCY_MAP.md](docs/MODULE_DEPENDENCY_MAP.md) | **模块依赖关系图**（由脚本从源码生成） |
+| [docs/BACKLOG_REGISTER.md](docs/BACKLOG_REGISTER.md) | 待办 / 遗留问题 / 已知缺陷总登记册 |
+| [docs/PACKAGING_AND_PANEL_PLAYBOOK.md](docs/PACKAGING_AND_PANEL_PLAYBOOK.md) | 打包与新增面板的操作手册 |
 | [docs/ROADMAP_V3_PANELS_AND_PROVIDERS.md](docs/ROADMAP_V3_PANELS_AND_PROVIDERS.md) | v3 改造方案与实施进度 |
 | [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md) | 下一步行动计划 |
 | [docs/API.md](docs/API.md) | 后端 API |

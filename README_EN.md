@@ -1,13 +1,14 @@
-# AI NovelWriter v3.1.0
+# AI NovelWriter v3.2.0
 
 [![CI](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml/badge.svg)](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ATboy-web/AI_NovelWriter?label=release&color=blue)](https://github.com/ATboy-web/AI_NovelWriter/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT%20Modified-green.svg)](LICENSE)
 
-An AI-powered long-form novel writing studio: **15 genres**, a **5-agent pipeline**, a
-**panel-based workbench** (15 panels), **alternate-worldline branches with generational
-inheritance**, and **multi-provider AI support with usage/cost accounting**.
+An AI-powered long-form novel writing studio: **135 built-in genres (fully customisable)**, a
+**5-agent pipeline**, a **panel-based workbench** (18 panels), **alternate-worldline branches
+with generational inheritance**, **multi-provider AI support with usage/cost accounting**,
+plus **plugin extension and MCP integration**.
 
 Windows desktop ships as a single-file EXE. The repository also contains an Android app
 (Kotlin + Compose), a FastAPI backend cluster, and a React web frontend.
@@ -20,7 +21,7 @@ Windows desktop ships as a single-file EXE. The repository also contains an Andr
 
 | Platform | Version | Size | Link |
 |----------|---------|------|------|
-| **Windows** | **v3.1.0** | ~25 MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
+| **Windows** | **v3.2.0** | ~25 MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
 | Android | v4.0.1 (previous build) | ~10.9 MB | [AI_NovelWriter_v4.0.1.apk](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.16.0) |
 
 Portable — no installation required. Configure an AI provider on first launch
@@ -30,8 +31,9 @@ Portable — no installation required. Configure an AI provider on first launch
 
 - **Creation engine** — outline → characters → chapters, fully automated.
   5 collaborating agents (PlotDesigner / WorldBuilder / Writer / Reviewer / Editor),
-  multi-round AI review and revision, 15 genres, seamless continuation of finished novels.
-- **Panel workbench** — 15 panels in 5 groups (materials, structure analysis, memory &
+  multi-round AI review and revision, 135 built-in genres (78 male-lead / 57 female-lead,
+  freely editable in-app), 204 creation tags, seamless continuation of finished novels.
+- **Panel workbench** — 18 panels in 5 groups (materials, structure analysis, memory &
   summaries, **world-lines & generations**, operations). Every panel gets a breadcrumb bar,
   refresh button, status bar, and F5 / Ctrl+F / Esc shortcuts, provided by the panel host;
   registering a new panel is a one-line change. Any panel can also be **detached into its
@@ -42,6 +44,18 @@ Portable — no installation required. Configure an AI provider on first launch
   to the parent is refused by a path guard).
 - **Character system** — five-dimension profiles, structured biographies (sections, arcs,
   provenance, token attribution), trope library, activity tracking.
+- **Customisable genres** — the genre catalogue lives in a registry
+  (`app/genres_data.py` + `app/genres.py`), not hard-coded in the UI. Add, hide or restore
+  genres and tags from **Manage genres…**; the config is a plain JSON file that degrades
+  gracefully to the built-ins if it is ever corrupted.
+- **Plugins** — install from a folder, a ZIP or a URL; enable / disable / uninstall with
+  persisted state. A static AST audit runs **before** enabling and reports which modules a
+  plugin imports and whether it touches high-risk symbols (`os.system`, `subprocess`,
+  `eval`, `socket`, …). Plugins are **disabled by default**; a sample plugin ships in
+  `examples/plugins/demo_writing_skill/`.
+- **MCP (Model Context Protocol)** — both directions: call external MCP servers over
+  **stdio** or **http**, and expose this app's own tools as an MCP server. Includes a
+  connection test, tool discovery, and per-server enable/disable.
 - **Multi-provider AI** — provider registry with adapters for Ollama, OpenAI-compatible
   endpoints, Anthropic, DeepSeek, GLM, Qwen and Kimi; multiple saved API profiles;
   token usage, tiered pricing and cost estimation, plus balance queries where the vendor
@@ -80,7 +94,7 @@ cp .env.example .env && docker-compose up -d
 ```
 novel_app.py          thin desktop entry point
 app/                  desktop application package
-  panels/             panel framework (registry / host / legacy / ui_kit) + 15 panels
+  panels/             panel framework (registry / host / legacy / ui_kit) + 18 panels
   providers/          multi-provider adapters, pricing, balance, reasoning models
   events/             thread-aware event bus
   timeline_store.py   unified timeline storage (fingerprint cache)

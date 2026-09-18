@@ -67,6 +67,10 @@ NATIVE_PANEL_MODULES: tuple[str, ...] = (
     "app.panels.lineage_panel",
     # 插图工坊：让文生图从"配置了但没有入口"变成可达（审计项 D10）
     "app.panels.illustration_panel",
+    # 插件中心：让插件系统从"实现了但零引用"变成可达（重新启用，见 plugin_system 模块文档）
+    "app.panels.plugin_panel",
+    # MCP 服务器：让 MCP 客户端/服务端从"只有内部形状"变成用户可配置、可验证
+    "app.panels.mcp_panel",
 )
 
 

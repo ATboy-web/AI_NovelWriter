@@ -109,13 +109,20 @@ class AntiSlopProcessor:
         patterns = {"adjective_clusters": [re.compile(p) for p in self.rules["forbidden_adjective_clusters"]]}
         return patterns
 
-    def check_text(self, text: str) -> Dict[str, List[str]]:
-        """检查文本中的AI写作痕迹"""
+    def check_text(self, text: str, extra_banned: List[str] = None) -> Dict[str, List[str]]:
+        """检查文本中的AI写作痕迹。
+
+        `extra_banned`（v3.2）：调用方（`WritingSkillManager`）从**插件写作技能包**
+        汇总来的禁用词/禁用句式。为什么走形参而不是让本类自己去拿插件：
+        本类应当是**纯函数式的检查器**（给定文本与规则 → 给结论，可单测），
+        一旦自己去查全局单例，测试就得去搭插件目录才能构造场景。
+        """
         issues = {
             "forbidden_openings": [],
             "forbidden_transitions": [],
             "forbidden_endings": [],
             "adjective_clusters": [],
+            "plugin_banned": [],
             "suggestions": [],
         }
 
@@ -145,12 +152,20 @@ class AntiSlopProcessor:
                 if pattern.search(line):
                     issues["adjective_clusters"].append(f"第{i + 1}行: 形容词堆砌")
 
+        # 插件声明的禁用词（v3.2）：与内置规则同一层生效
+        for ban in extra_banned or []:
+            if ban and ban in text:
+                issues["plugin_banned"].append(f"命中插件禁用词: '{ban}'")
+
         # 生成建议
         if len(issues["forbidden_transitions"]) > 3:
             issues["suggestions"].append("过渡词使用过多，建议减少'然而'、'不过'等词的使用")
 
         if len(issues["adjective_clusters"]) > 0:
             issues["suggestions"].append("形容词堆砌，建议用具体细节替代多个形容词")
+
+        if issues["plugin_banned"]:
+            issues["suggestions"].append("命中插件写作技能包声明的禁用词，建议改写")
 
         return issues
 
@@ -683,8 +698,9 @@ class WritingSkillManager:
         """分析并改进文本"""
         improvements = []
 
-        # 1. 去AI味检查
-        issues = self.anti_slop.check_text(text)
+        # 1. 去AI味检查（v3.2：连同插件声明的禁用词一起查 —— 插件规则与内置规则
+        # 必须在**同一层**生效，否则插件的规则只能提示模型、无法在生成后兜底）
+        issues = self.anti_slop.check_text(text, extra_banned=self.plugin_ban_rules())
         if any(issues.values()):
             improvements.append("发现AI写作痕迹:")
             for issue_type, issue_list in issues.items():
@@ -742,7 +758,77 @@ class WritingSkillManager:
             misses = [f"- {m['content'][:100]}" for m in recent_misses]
             context_parts.append("\n【近期未达标章节（应避开同类问题）】\n" + "\n".join(misses))
 
+        # 插件写作技能包（v3.2）：插件用**纯数据**增强写作 —— 提示词片段 + 禁用词规则。
+        # ❗ 这个消费点就是"插件系统不再注册即遗忘"的证据：没有它，
+        # `Plugin.get_writing_skills()` 会重蹈 `plugin_system.py` 被当死代码删掉的覆辙。
+        plugin_skills = self.plugin_skill_context()
+        if plugin_skills:
+            context_parts.append(plugin_skills)
+
         return "\n".join(context_parts)
+
+    # ------------------------------------------------------------------ 插件写作技能
+
+    def plugin_skill_context(self) -> str:
+        """汇总已启用插件贡献的写作技能包，拼成可注入提示词的一段。
+
+        **容错优先**：插件系统不可用（目录权限、单例初始化失败）时返回空字符串，
+        绝不让"增强项"把主流程弄挂 —— 写作技能是加分项，不是前置依赖。
+        """
+        try:
+            from .plugin_system import get_plugin_manager
+        except ImportError:  # pragma: no cover - 打包裁剪时可能缺失
+            return ""
+        manager = get_plugin_manager()
+        if manager is None:
+            return ""
+        try:
+            skills = manager.all_writing_skills()
+        except Exception as exc:  # noqa: BLE001 - 插件数据坏了不该影响正文生成
+            print(f"[插件] 读取写作技能包失败：{exc}")
+            return ""
+        if not skills:
+            return ""
+
+        blocks: list[str] = []
+        for skill in skills:
+            name = str(skill.get("name") or skill.get("plugin") or "未命名技能")
+            prompt = str(skill.get("prompt") or "").strip()
+            if not prompt:
+                continue
+            blocks.append(f"【插件技能·{name}】\n{prompt}")
+        if not blocks:
+            return ""
+        return "\n\n".join(blocks)
+
+    def plugin_ban_rules(self) -> list[str]:
+        """汇总已启用插件声明的**禁用词/禁用句式**（`rules` 字段）。
+
+        为什么单独一个方法：`AntiSlopProcessor` 是"文字层"净化，
+        而插件规则要在**同一层**生效才有意义 —— 否则插件的规则只能提示模型、
+        无法在生成后兜底清洗。返回去重后的规则列表。
+        """
+        try:
+            from .plugin_system import get_plugin_manager
+        except ImportError:  # pragma: no cover
+            return []
+        manager = get_plugin_manager()
+        if manager is None:
+            return []
+        try:
+            skills = manager.all_writing_skills()
+        except Exception:  # noqa: BLE001
+            return []
+        seen: list[str] = []
+        for skill in skills:
+            rules = skill.get("rules") or []
+            if isinstance(rules, str):
+                rules = [rules]
+            for rule in rules:
+                text = str(rule).strip()
+                if text and text not in seen:
+                    seen.append(text)
+        return seen
 
     def learn_from_chapter(
         self,

@@ -437,6 +437,74 @@ class NovelAgent:
                 category="writer",
             )
         )
+        # MCP（v3.2）：把外部 MCP 服务器的工具挂进**同一个**注册中心。
+        # 这样 "本应用的工具" 与 "MCP 服务器提供的工具" 对 Agent 是同一件事 ——
+        # 而不是两条互不相通的通路（那正是"注册即遗忘"的另一种写法）。
+        self.tools.register(
+            Tool(
+                "list_mcp_tools",
+                "列出所有已启用 MCP 服务器的工具",
+                lambda: self.list_mcp_tools(),
+                input_schema={"type": "object", "properties": {}},
+                category="general",
+            )
+        )
+        self.tools.register(
+            Tool(
+                "call_mcp_tool",
+                "调用一个 MCP 服务器上的工具",
+                lambda server="", tool="", arguments=None: self.call_mcp_tool(server, tool, arguments),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "server": {"type": "string", "description": "MCP 服务器名"},
+                        "tool": {"type": "string", "description": "工具名"},
+                        "arguments": {"type": "object", "description": "工具参数"},
+                    },
+                    "required": ["server", "tool"],
+                },
+                category="general",
+            )
+        )
+
+    # ===== MCP（v3.2）=====
+
+    def list_mcp_tools(self) -> dict:
+        """列出所有已启用 MCP 服务器的工具（生产调用点，勿删）。
+
+        返回结构化字典而非字符串：`ToolRegistry.execute` 会把返回值放进
+        `{"success": True, "result": ...}`，调用方（与 MCP 服务端）需要能再拆开。
+        """
+        try:
+            from .mcp_system import get_mcp_manager
+
+            manager = get_mcp_manager()
+            if manager is None:
+                return {"ok": False, "message": "MCP 管理器不可用", "tools": []}
+            res = manager.list_all_tools()
+            return {
+                "ok": res.ok,
+                "message": res.message,
+                "tools": [t.as_dict() for t in (res.detail.get("tools") or [])],
+                "failures": res.detail.get("failures") or [],
+            }
+        except Exception as e:  # noqa: BLE001 - MCP 不该让 Agent 崩
+            self.log(f"[MCP] 列出工具失败: {e}")
+            return {"ok": False, "message": f"列出 MCP 工具失败: {e}", "tools": []}
+
+    def call_mcp_tool(self, server: str, tool: str, arguments: dict = None) -> dict:
+        """调用一个 MCP 服务器上的工具（生产调用点，勿删）。"""
+        try:
+            from .mcp_system import get_mcp_manager
+
+            manager = get_mcp_manager()
+            if manager is None:
+                return {"ok": False, "message": "MCP 管理器不可用"}
+            res = manager.call_tool(server, tool, arguments)
+            return {"ok": res.ok, "message": res.message, "detail": res.detail}
+        except Exception as e:  # noqa: BLE001 - 同上
+            self.log(f"[MCP] 调用工具失败: {e}")
+            return {"ok": False, "message": f"调用 MCP 工具失败: {e}"}
 
     def _call_anti_slop_check(self, content: str) -> list:
         """调用写作技能进行去AI味检查"""
@@ -600,6 +668,26 @@ class NovelAgent:
                     used += len(skill_section)
         except Exception as e:
             self.log(f"[写作技能] 获取上下文失败: {e}")
+
+        # 插件写作技能包（v3.2）：插件贡献的提示词片段**单独占一段预算**。
+        # 为什么不并进上面的【写作参考】：那段只有 500 字且会被 `_compress_text` 压缩，
+        # 插件技能包（可能有多条、每条都较长）塞进去会被压没 —— 等于装上了但不起作用。
+        # ⚠️ 这里必须**直接**调用（而不是只依赖 `get_writing_context` 内部已包含），
+        # 因为 `tests/test_plugin_system.py::TestWiringGuard` 要求存在显式生产调用点，
+        # 否则插件系统会重蹈"定义完整但零引用 ⇒ 被当死代码删除"的覆辙。
+        try:
+            from .writing_skills import writing_skill_manager
+
+            plugin_ctx = writing_skill_manager.plugin_skill_context()
+            if plugin_ctx:
+                plugin_budget = max(0, min(800, max_chars - used))
+                text = self._compress_text(plugin_ctx, plugin_budget, keep_tail=False)
+                if text:
+                    section = f"【插件写作技能】\n{text}"
+                    parts.append(section)
+                    used += len(section)
+        except Exception as e:
+            self.log(f"[插件技能] 获取上下文失败: {e}")
 
         # === 伏笔追踪 ===
         unresolved = self._get_unresolved_plots()
@@ -1321,11 +1409,33 @@ class NovelAgent:
         self.log(f"第{chapter_num}章生成完成 ({len(content) if content else 0}字)")
         return content or f"# 第{chapter_num}章 {chapter_title}\n\n（内容生成失败，请重试）"
 
+    #: 统计字数时需要剔除的 Markdown 标记字符（它们不是"字"）。
+    _WORD_COUNT_SKIP_CHARS = frozenset("#*`>~[]()_")
+
+    @classmethod
+    def _count_words(cls, content: str) -> int:
+        """统计正文的"字数"（D17 修复）。
+
+        ❗ 原来这里用的是 `len(content)` —— 而 `content` 含 Markdown 标题、
+        换行、空白。后果有两层，都很隐蔽：
+
+        1. **字数被高估** ⇒ "字数严重不达标"的判据（`< target * 0.3`）**永不触发**
+           ⇒ 生成质量闸门实际上是失效的；
+        2. 更糟的是**上层的字数报告**也用同一个数 ⇒ 用户看到"本章 6000 字"，
+           实际正文可能只有 4000 多。生成审计里 `字数: 10654` 那种数字就是这么来的。
+
+        现在只统计**非空白、非 Markdown 标记**的字符 ——
+        这与"中文字数"的直觉一致，也让闸门与界面报告用同一个可信数字。
+        """
+        if not content:
+            return 0
+        skip = cls._WORD_COUNT_SKIP_CHARS
+        return sum(1 for ch in content if not ch.isspace() and ch not in skip)
+
     def _has_excessive_repetition(self, content: str, target_words: int) -> tuple:
         """检测是否存在过度重复，返回 (has_repetition, actual_word_count)"""
         paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
-        actual_chars = len(content)
-        actual_words = actual_chars  # 中文字符数=字数
+        actual_words = self._count_words(content)
 
         # 字数严重不达标
         if actual_words < target_words * 0.3:
@@ -2324,7 +2434,19 @@ class NovelAgent:
                     part_prompt = f"创作第{chapter_num}章：{chapter_title}\n大纲：{chapter_outline}\n请创作约{seg_size}字的小说正文："
             elif is_last:
                 last_200 = prev_text[-200:] if len(prev_text) > 200 else prev_text
-                part_prompt = f"紧接上文继续写。上文结尾：{last_200}\n这是本章最后一段，请推进剧情约{seg_size}字并给出自然完整的段落结尾。严禁重复。"
+                # ❗ D15 修复：原提示词只说"给出自然完整的**段落**结尾"。
+                # 这会把末段写成"场景收尾"而不是"章节落点" —— 分段生成的章节
+                # 于是呈现"每段各自了结、整章没有推进"的观感，也就是读者说的**烂尾**。
+                # 末段是本章唯一的定调位置，必须明确要求：本章要有**事件推进**与
+                # **情绪落点**，且不得复述前文。
+                part_prompt = (
+                    f"紧接上文继续写。上文结尾：{last_200}\n"
+                    f"这是本章的最后一段（约{seg_size}字）。要求：\n"
+                    f"1. 必须**推进实质剧情**（发生一件前面没有的事），不得只是回顾或抒情收束；\n"
+                    f"2. 结尾要落在**本章的核心冲突/转折**上，形成章节落点，而不是平淡的场景收尾；\n"
+                    f"3. 不要总结全章、不要复述已有情节、不要写「本章完」之类的话；\n"
+                    f"4. 直接接续上文文字，不要重复上文任何句子。"
+                )
             else:
                 last_200 = prev_text[-200:] if len(prev_text) > 200 else prev_text
                 part_prompt = f"紧接上文继续写。上文结尾：{last_200}\n要求：继续推进剧情约{seg_size}字，严禁重复。"
@@ -2365,39 +2487,80 @@ class NovelAgent:
         result = title_line + ("\n\n".join(parts) if parts else "（生成失败）")
 
         # 末段完整性检查：如果结尾没有句号/感叹号/问号等，AI补全
+        #
+        # ❗ D18 修复：原实现有三个问题，合起来**主动弄坏了本来完整的结尾**：
+        #   1. 判据是"最后一个字符不是终止符"。但 `…` / `—` / `"` 都在白名单里，
+        #      于是大量**正常**结尾（以引号或省略号收束的对话）被误判为"不完整"；
+        #   2. 判据只看**单字符**，不看语义：`"他走了。"` 以 `"` 收尾会被判不完整，
+        #      实际上它比任何补全都完整；
+        #   3. 补全文字是**直接 `+=` 追加**的 —— 即使在正确判定的情况下，
+        #      追加也必然把"已经说完的话"接上"另一段话"，读起来就是**断裂**，
+        #      这正是烂尾观感的一部分。
+        #
+        # 现在的策略是**保守**：只在"末尾明显断在半句/半词"时才补，
+        # 并优先用**句读补全**（几乎不可见），拿不准就**不动** ——
+        # "少做"比"把好结尾改坏"安全得多。
         if parts and len(result) > 500:
-            # 扩大检测范围：检查最后200字符，去除空白后判断
-            last_text = result[-200:].strip()
-            # 移除尾部空白、换行、引号等非实质字符
-            last_meaningful = last_text.rstrip("\n\r \t'\"》）」】")
+            last_meaningful = result.rstrip("\n\r \t'\"》）」】…—")
             if last_meaningful:
                 last_char = last_meaningful[-1]
-                endings = {"。", "！", "？", "…", '"', "」", "】", "—", ".", "!", "?", "~", "…"}
-                if last_char not in endings:
-                    self.log(f"[Writer] 第{chapter_num}章末段不完整，尝试补全...")
+                # 只有这些字符能确认"句子说完了"。注意**不含**引号与破折号：
+                # 它们既可能收尾也可能收在句中，不足以判断完整性。
+                sentence_end = {"。", "！", "？", ".", "!", "?", "；", ";"}
+                # 直接以句末标点收尾 ⇒ 完整，**不碰它**
+                if last_char in sentence_end:
+                    pass
+                elif self._looks_truncated(last_meaningful):
+                    self.log(f"[Writer] 第{chapter_num}章末尾疑似断句，尝试补全…")
                     try:
-                        # 取最后500字作为上下文，让AI更好地理解语境
                         last_paragraph = result[-500:]
                         completion = self.ai.chat(
                             [
                                 {
                                     "role": "user",
-                                    "content": f"以下是一段未完成的小说段落，请补充一个自然的收尾（20-60字）：\n{last_paragraph}",
+                                    "content": (
+                                        "以下小说段落在结尾处断了。请只补一个**短语**（10-30字）"
+                                        f"把它接成完整句子，不要开启新的情节：\n{last_paragraph}"
+                                    ),
                                 }
                             ],
-                            system="你是作家。续写上面的段落，补充一个自然的收尾。只输出补全文字，不要重复已有内容。",
+                            system="你是文字校对。只输出补全的短语本身，不要重复已有内容，不要换行。",
                             max_tokens=1000,
                         )
-                        if completion and len(completion) > 5:
-                            # 去重：检查补全内容是否与已有内容重复
-                            completion = completion.strip()
-                            # 移除可能的重复前缀
-                            if completion[:10] in result[-50:]:
-                                completion = completion[10:]
-                            # 确保补全内容不为空且不重复
-                            if completion and completion not in result:
-                                result += completion
+                        completion = (completion or "").strip()
+                        # ❗ 与原文重叠的补全一律丢弃（`in` 判据比原来的
+                        # `completion[:10] in result[-50:]` 更严：后者只查开头 10 字）
+                        if completion and completion not in result and len(completion) <= 60:
+                            result += completion
+                        elif completion:
+                            self.log("[Writer] 补全内容与原文重复或过长，已放弃追加")
                     except Exception as e:
                         self.log(f"[长章节末段补全] 失败: {e}")
+                else:
+                    # 无法确定是否断句 ⇒ **宁可不动**。静默是最安全的选择。
+                    self.log(f"[Writer] 第{chapter_num}章末尾以「{last_char}」收尾，判为完整，跳过补全")
 
         return result
+
+    @staticmethod
+    def _looks_truncated(text: str) -> bool:
+        """判断文本末尾是否**明显断在半句**（而不是"只是没以句号结尾"）。
+
+        判据刻意保守 —— 只有同时满足"没有句末标点"且"末尾字符不可能收尾"
+        才返回 `True`。因为**误判的代价不对称**：
+        漏判一个真断句 ⇒ 结尾略突兀；误判一个完整结尾 ⇒ 追加一段无关文字、
+        把好结尾改坏（即烂尾）。后者严重得多。
+        """
+        tail = (text or "").rstrip()
+        if not tail:
+            return False
+        last = tail[-1]
+        # 能收尾的字符：句末标点 + 引号 + 省略号 + 破折号 + 英文句点
+        closers = set("。！？…—.!?~」』】》\"'")
+        if last in closers:
+            return False
+        # 中文逗号/顿号/分号/冒号结尾 ⇒ 明确还在句中
+        if last in set("，、；：,;:"):
+            return True
+        # 其余（多为汉字或字母）⇒ 无法确定，按"完整"处理（见上面的代价不对称）
+        return False

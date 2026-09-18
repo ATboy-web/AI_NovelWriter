@@ -756,8 +756,10 @@ class CharacterSystem:
                     data = json.load(f)
                 self.custom_weapons = data.get("weapons", [])
                 self.custom_skills = data.get("skills", [])
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError, AttributeError) as e:
+                # ❗ 不静默：文件损坏时用户会看到"我自定义的武器/技能全没了"，
+                # 而没有任何线索指向"文件坏了"。至少留下可查的日志。
+                logger.warning(f"[角色系统] 自定义武器/技能文件无法读取，已跳过：{e}")
 
     def _save_custom(self):
         if self.custom_file:

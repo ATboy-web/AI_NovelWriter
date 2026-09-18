@@ -25,25 +25,41 @@ class ElementLibrary:
         self._loaded_categories = self._load_categories_from_json()
 
     def _load_categories_from_json(self) -> Dict:
-        """尝试从JSON文件加载CATEGORIES，如果失败则返回None"""
-        # 尝试多个可能的路径
-        possible_paths = [
-            # 相对于当前模块的路径
+        """尝试从JSON文件加载CATEGORIES，如果失败则返回None
+
+        ❗ 曾经这里第三条是**写死的绝对路径**
+        （`C:/Users/Administrator/WorkBuddy/<会话ID>/ai-novel-writer/novel_data/...`）。
+        后果有两层：
+        1. 换台机器 / 换用户名 / 换安装位置 ⇒ 静默失效，回落到硬编码 `CATEGORIES`；
+        2. 它把**开发机的一次性目录**当成了产品的数据位置 —— 分发出去毫无意义。
+
+        正确的解析顺序是「随包数据 → 当前工作目录 → 用户数据目录」，
+        全部基于**运行时可变**的锚点，不含任何机器专有路径。
+        """
+        import os
+
+        candidates = [
+            # 1) 随包分发（`app/novel_data/`）
             Path(__file__).parent / "novel_data" / "elements.json",
-            # 相对于工作目录的路径
+            # 2) 仓库根（源码运行时 `app/../novel_data/`）
+            Path(__file__).parent.parent / "novel_data" / "elements.json",
+            # 3) 当前工作目录（用户从自己那儿启动）
             Path("novel_data") / "elements.json",
-            # 绝对路径
-            Path("C:/Users/Administrator/WorkBuddy/2026-05-30-16-50-56/ai-novel-writer/novel_data/elements.json"),
+            # 4) 用户数据目录（可覆盖 —— 环境变量优先，便于测试与自定义安装）
+            Path(os.environ.get("AI_NOVEL_DATA_DIR", "") or (Path.home() / ".ai_novel_writer" / "novel_data"))
+            / "elements.json",
         ]
 
-        for json_path in possible_paths:
+        for json_path in candidates:
+            if not str(json_path).strip() or str(json_path) == "elements.json":
+                continue  # 环境变量为空时不要退化成当前目录下的裸文件名
             try:
                 if json_path.exists():
                     with open(json_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
                     if data:  # 确保数据不为空
                         return data
-            except (json.JSONDecodeError, Exception):
+            except (json.JSONDecodeError, OSError):
                 continue
 
         return None

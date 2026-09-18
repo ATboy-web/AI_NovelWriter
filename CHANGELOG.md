@@ -439,6 +439,72 @@
   低价值高频辅助任务（摘要/角色名抽取/格式转换）走本地 7–8B Q4，正文创作仍用云端大模型。
 - 登记 **R2 / R3 / R4** 到 `BACKLOG_REGISTER.md §5.6`。
 
+### 新增（题材系统 / MCP / 插件 / 稳定性 —— 第二十三~二十四轮）
+
+**题材与标签：从"内联在 UI 里"改为可扩展注册表 + 用户自定义**
+- `MALE_GENRES`(78) / `FEMALE_GENRES`(57) / `MALE_TAGS`(100) / `FEMALE_TAGS`(104)
+  原先**全部内联在 `lifecycle_ui.py` 的一个 UI 构建函数里**（约 370 行）
+  ⇒ 用户想加题材必须改源码；数据藏在 GUI 函数内无法单测。
+  现拆为三层：`app/genres_data.py`（纯数据）→ `app/genres.py`（`GenreRegistry`）→ UI 只读注册表。
+  `lifecycle_ui.py` **净减 357 行**。
+- 新增「管理题材…」界面：在**最终清单**上增删，按**差集**回写注册表 ——
+  新增项存为自定义题材；删除内置题材只是**隐藏**（不动源码），再次添加同名即恢复。
+- 配置唯一来源 `~/.ai_novel_writer/genres.json`（`custom_genres` / `custom_tags` / `removed_genres`）。
+  **宽松读、严格写**：损坏配置一律降级为内置清单（绝不抛）；写入走原子替换。
+- `with_novel_genre()` 保证**某本小说在用的题材即使已被删/隐藏也仍出现在选择器里** ——
+  否则 `ttk.Combobox` 值不在候选内 ⇒ 界面空白 ⇒ 一保存就把作品题材静默改掉。
+- 顺手修掉 2 个真缺陷：`add_genre` 判序错误致"恢复隐藏项"被拒；`_load` 用 `or {}` 兜底
+  在字段为列表时抛异常（违反"绝不抛"契约）。
+
+**MCP 支持（双向）**
+- 本仓早有 MCP 形状的内部约定（`AgentMessage` / `Tool` / `ToolRegistry` 的注释就写着"参考MCP协议"），
+  缺的是**传输层**。新增 `app/mcp_system.py`：`MCPClient`（stdio 起本地进程 / http）
+  + `MCPServer`（把本应用 `ToolRegistry` 按规范暴露）+ `MCPManager`。
+- `NovelAgent` 注册 `list_mcp_tools` / `call_mcp_tool`，与既有工具**同一个注册中心** ——
+  对外是"本应用的工具"，对内是"可调用的 MCP 工具"，不是两条互不相通的通路。
+- 新增「MCP 服务器」面板（第 18 个面板）；配置 `~/.ai_novel_writer/mcp_servers.json`。
+- 修掉：`_call_stdio` 未兜 `Popen` 失败（命令不存在时 `FileNotFoundError` 冒到调用方）；
+  stdio 调用加超时 + `kill`（挂死的 server 不得拖住调用方）。
+
+**插件系统重新启用**
+- 因"全仓零引用"被删的 `plugin_system.py` 重新建成**两端接通**的形态：
+  写端 `PluginManager` + 4 个真实消费点 + 「插件中心」面板（第 17 个面板）+ 守卫测试。
+- 改良：注册表驱动的类型表、结构化 `PluginResult`、**默认不启用**、
+  启用前 `audit_plugin` 静态体检（列出 import 与 14 类高危符号）、Zip Slip 加固。
+- 新增示例插件 `examples/plugins/demo_writing_skill/` —— 全新安装时 plugins 目录为空，
+  它是**唯一可验证"插件功能真的生效"**的对象。
+- 修掉：中文插件名里的间隔号 `·` 曾被判非法 ⇒ **合法插件装不上**。
+
+**稳定性：协作式取消 + 原子写 + 静默吞异常登记**
+- `app/async_runner.py` 新增 `CancelToken` / `CancelledError` / `submit_cancellable` /
+  `current_token()` / 看门狗。原先点「停止」只在**两章之间**生效，
+  已发出的那一章必须跑完 —— 用户感知就是"点了停止没反应"。
+  取消走 `on_cancelled` 而**非** `on_error`（否则"停止"会弹成"生成失败"）；
+  协作式而非强杀线程（强杀会留下半开文件与未释放的锁）。
+- **重要数据原子写收口**：`meta.json`×3、`sequel/spinoff_concept.txt`×2、
+  `scores.json`、`index.json`、分支摘要、章节×3 —— 共 10 处裸 `open(...,"w")` 改为原子写。
+  中途被杀不会留下半截文件（对章节而言，那意味着原文不可恢复）。
+- **静默吞异常登记制**：所有 `except: pass` 必须登记并写明理由，且登记项必须仍存在（双向断言）。
+  修掉 6 处会造成实际损失的静默吞 —— 其中 `editor_ui` 的「主角锁定」注入失败
+  会让 AI 中途换主角（审计里那本出现 4 个主角名，正是此类失败）。
+- 结尾质量：尾段提示词改为要求"剧情推进 + 章节落点 + 禁止总结全章"；
+  新增 `_count_words()`（剔空白与 Markdown 标记，原用 `len()` 使质量闸门永不触发）；
+  新增 `_looks_truncated()` 保守判据（只在明确断句时补全，避免把**完整结尾**追加成断裂文字）。
+
+### 工程（依赖梳理 / 打包 / 生成审计）
+
+- 新增 `scripts/module_graph.py`：AST 分析 + Tarjan 求强连通分量，生成
+  `docs/MODULE_DEPENDENCY_MAP.md`。**实测 89 模块 / 250 边 / 2 个环，hard=0**。
+  环分级是关键：环上全是模块级 import ⇒ 导入期 `ImportError`（hard）；
+  只要有一条延迟导入 ⇒ 当前安全（latent）。本仓 2 个环均为 latent，已由测试锁住
+  "不得变成 hard"。
+  工具自身修掉 2 个准确性缺陷：把 `if TYPE_CHECKING:` 的 import 当运行时依赖
+  （**凭空造出一个不存在的环**）、扫描器判据过宽（命中合法读取）。
+- 小说审计 `docs/NOVEL_AUDIT_1789640077.md`：核对 30 个文件，定位 6 类结构性错误
+  （04d 死写摘要 / 6 处 CoT 污染 / 时间线占位符 / 4 个主角名 / 2 个世界名 / 幽灵角色），
+  并判定结尾为**结构性烂尾**（尾段提示词层级错误，把"段落收束"当"故事收束"）。
+- 清除 `app/novel_toolkit.py` 里写死的开发机绝对路径（换机即静默失效）。
+
 ## v3.1.0 (2026-09-17)
 
 **本次发布的定位**：P5（样式与对话框收敛）收尾 + 面板可脱离为独立窗口。

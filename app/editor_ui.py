@@ -8,6 +8,8 @@ import threading
 import time
 import tkinter as tk
 
+from loguru import logger
+
 from app import FullscreenWriter, SceneDetector, UIStyle, dialogs
 
 
@@ -196,8 +198,13 @@ class EditorUIMixin:
                     _protagonist = _meta.get("protagonist", "")
                     if _protagonist:
                         shared_context += f"\n【重要·主角锁定】本小说主角名为「{_protagonist}」。所有创作必须以「{_protagonist}」为主角，禁止更换！"
-                except Exception:
-                    pass
+                except Exception as e:  # noqa: BLE001
+                    # ❗ 这里**绝不能**静默吞掉。这段代码负责把「主角锁定」注入提示词，
+                    # 而静默失败的直接后果就是：AI 不知道主角是谁 ⇒ 中途换主角。
+                    # 小说审计里那本《快速统治》出现**四个不同主角名**，
+                    # 正是"主角锁定失效 + 无任何提示"这类失败造成的 ——
+                    # 用户看到的是"AI 乱写"，而真正的原因被 `pass` 吃掉了。
+                    logger.warning(f"[主角锁定] 读取 meta.json 失败，本章将不带主角锁定：{e}")
 
         def save_callback(content):
             # 保存到当前章节

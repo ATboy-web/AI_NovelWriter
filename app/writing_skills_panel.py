@@ -5,6 +5,8 @@
 import tkinter as tk
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from app import dialogs
 
 if TYPE_CHECKING:
@@ -199,8 +201,11 @@ class WritingSkillsPanelMixin:
         try:
             meta = self._get_meta()
             writing_skill_manager.style_config.genre_style = meta.get("genre", "玄幻-东方玄幻")
-        except Exception:
-            pass
+        except Exception as e:  # noqa: BLE001
+            # ❗ 不静默：读不到 meta 时会**回落到默认题材**，
+            # 而"用户自定义题材"正是本轮新增能力 ——
+            # 静默回落会让用户的自定义题材被悄悄换成默认值，且没有任何提示。
+            logger.warning(f"[写作风格] 读取作品题材失败，题材风格将保持上一次的值：{e}")
 
         dialogs.showinfo("成功", "写作风格已更新！\n下次生成章节时将应用新风格。")
         self._log("[写作技能] 风格配置已更新")

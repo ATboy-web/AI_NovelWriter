@@ -56,6 +56,13 @@ a = Analysis(
         'app.panels.lineage_panel',
         # 插图工坊面板（同上是按字符串导入，必须显式列出，否则打包后少一块）
         'app.panels.illustration_panel',
+        # 插件中心面板（同上；插件系统本身由 app.writing_skills 静态 import）
+        'app.panels.plugin_panel',
+        'app.plugin_system',
+        # MCP 服务器面板（同上；mcp_system 由 app.novel_agent 延迟 import，
+        # 延迟 import 不产生静态依赖 ⇒ 必须显式列出，否则打包后少一块）
+        'app.panels.mcp_panel',
+        'app.mcp_system',
         'app.timeline_store',
         'app.lineage',
         # v2 面板模块（legacy.py 按字符串导入）

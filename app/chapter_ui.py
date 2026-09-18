@@ -102,7 +102,13 @@ class ChapterUIMixin:
         self._load_chapter_by_number(self.current_chapter)
 
     def _save_chapter_silent(self):
-        """静默保存当前章节（不弹窗）"""
+        """静默保存当前章节（不弹窗）。
+
+        ❗ 本轮改为**原子写**。这里是"自动保存"，触发频率最高，
+        而原先用的是裸 `open(..., "w")` —— 一旦在写入过程中进程被杀
+        （任务管理器结束 / 断电 / 崩溃），磁盘上留下的是**被截断的半章**，
+        而原文已经没了。章节是用户最不可再生的数据，这条必须原子。
+        """
         if not self.current_novel_dir:
             return
         content = self.content_text.get("1.0", tk.END).strip()
@@ -110,8 +116,9 @@ class ChapterUIMixin:
             return
         chapters_dir = self.current_novel_dir / "chapters"
         chapters_dir.mkdir(exist_ok=True)
-        with open(chapters_dir / f"chapter_{self.current_chapter:04d}.txt", "w", encoding="utf-8") as f:
-            f.write(content)
+        # 走 mixin 的 `_atomic_write`（它委托 `app.storage.atomic_write_text`），
+        # 与本文件 `:68` 的保存路径保持一致 —— 不留第二种写法。
+        self._atomic_write(chapters_dir / f"chapter_{self.current_chapter:04d}.txt", content)
         self._announce_chapter_saved(self.current_chapter, content)
         self._log(f"第{self.current_chapter}章已自动保存")
 

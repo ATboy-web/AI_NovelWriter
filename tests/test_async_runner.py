@@ -1,21 +1,29 @@
-"""统一后台执行器测试（v3 §1.1 A6）。
+"""统一后台执行器测试（v3 §1.1 A6 + v3.2 取消）。
 
-本文件的核心不是"能起线程"，而是三件容易做错的事：
+本文件的核心不是"能起线程"，而是四件容易做错的事：
 
 1. **回调必须回主线程**（`ui.after(0, ...)`），且窗口已销毁时不能崩
 2. **异常不能被吞** —— v2 的 40 处裸线程表现为"点了没反应"，正是异常只落在 stderr
 3. **上下文必须继承** —— `contextvars` 在裸 `Thread` 里会丢（见 usage_tracker 测试）
+4. **取消是正常控制流，不是故障**（v3.2）—— 与 `on_error` 必须分开，
+   否则"用户点了停止"会被弹成"生成失败"
 """
 
 import sys
 import threading
+import time
 from pathlib import Path
+
+import pytest
 
 from app.async_runner import (
     DEFAULT_THREAD_NAME,
     BackgroundRunner,
+    CancelledError,
+    CancelToken,
     context_runner,
     copy_context_snapshot,
+    current_token,
     join_all,
 )
 
@@ -272,3 +280,214 @@ class TestJoinAll:
         assert runner.alive
         runner.join(timeout=3)
         assert runner.alive == []
+
+
+# ====================================================================== v3.2 取消
+
+
+class TestCancelToken:
+    """取消令牌的纯逻辑（不涉及线程）。"""
+
+    def test_initial_state_is_not_cancelled(self):
+        token = CancelToken()
+        assert not token.cancelled and token.elapsed is None
+        assert token.reason == "用户请求停止"  # 未给原因时的默认文案
+
+    def test_cancel_is_idempotent_and_keeps_first_reason(self):
+        token = CancelToken()
+        assert token.cancel("第一次") is True
+        assert token.cancel("第二次") is False, "重复取消应返回 False（表示无状态变化）"
+        assert token.reason == "第一次", "后一次不该覆盖先到达的原因"
+        assert token.elapsed is not None
+
+    def test_raise_if_cancelled(self):
+        token = CancelToken()
+        token.raise_if_cancelled()  # 未取消 ⇒ 不抛
+        token.cancel("够了")
+        with pytest.raises(CancelledError) as exc:
+            token.raise_if_cancelled()
+        assert "够了" in str(exc.value)
+
+    def test_elapsed_grows(self):
+        token = CancelToken()
+        token.cancel()
+        first = token.elapsed
+        time.sleep(0.05)
+        assert token.elapsed > first
+
+    def test_wait_returns_true_when_cancelled(self):
+        token = CancelToken()
+        threading.Timer(0.05, token.cancel).start()
+        assert token.wait(2.0) is True
+
+    def test_wait_times_out_when_not_cancelled(self):
+        assert CancelToken().wait(0.05) is False
+
+    def test_context_manager_cancels_on_exit(self):
+        token = CancelToken()
+        with token:
+            assert not token.cancelled
+        assert token.cancelled
+
+    def test_cancelled_error_is_an_exception(self):
+        assert issubclass(CancelledError, Exception)
+
+
+class TestCancellableExecution:
+    """`submit_cancellable` 的真实线程行为。"""
+
+    def test_task_receives_token_as_first_arg(self):
+        holder = {}
+
+        def work(token):
+            holder["token"] = token
+            return "done"
+
+        runner = BackgroundRunner()
+        token = runner.submit_cancellable(work)
+        runner.join(timeout=2)
+        assert holder["token"] is token
+
+    def test_token_is_published_via_contextvars(self):
+        """深层代码能用 `current_token()` 取到令牌，不必逐层传参。"""
+        holder = {}
+
+        def work(token):
+            holder["same"] = current_token() is token
+
+        runner = BackgroundRunner()
+        runner.submit_cancellable(work)
+        runner.join(timeout=2)
+        assert holder["same"] is True
+
+    def test_token_does_not_leak_after_task(self):
+        """任务结束后当前上下文里不该还留着旧令牌。"""
+
+        def work(_token):
+            return None
+
+        runner = BackgroundRunner()
+        runner.submit_cancellable(work)
+        runner.join(timeout=2)
+        assert current_token() is None
+
+    def test_cancellation_routes_to_on_cancelled_not_on_error(self):
+        """❗ 本组最重要的一条：取消是**正常控制流**，不是故障。
+
+        若把 `CancelledError` 混进 `on_error`，用户点「停止」会看到"生成失败"弹窗。
+        """
+        seen = {}
+
+        def work(token):
+            for _ in range(200):
+                token.raise_if_cancelled()
+                time.sleep(0.005)
+            return "never"
+
+        runner = BackgroundRunner()
+        token = runner.submit_cancellable(
+            work,
+            on_success=lambda r: seen.update(success=r),
+            on_cancelled=lambda t: seen.update(cancelled=t.reason),
+            on_error=lambda e: seen.update(error=repr(e)),
+        )
+        time.sleep(0.05)
+        token.cancel("测试取消")
+        runner.join(timeout=3)
+        assert "cancelled" in seen, f"未走到 on_cancelled：{seen}"
+        assert "error" not in seen and "success" not in seen
+
+    def test_task_completes_normally_when_not_cancelled(self):
+        seen = {}
+
+        def work(_token):
+            return 42
+
+        runner = BackgroundRunner()
+        runner.submit_cancellable(work, on_success=lambda r: seen.update(r=r))
+        runner.join(timeout=2)
+        assert seen["r"] == 42
+
+    def test_real_exception_still_goes_to_on_error(self):
+        """真正的异常不能被取消出口吞掉 —— 两个出口必须区分开。"""
+        seen = {}
+
+        def work(_token):
+            raise ValueError("真的出错了")
+
+        runner = BackgroundRunner()
+        runner.submit_cancellable(
+            work,
+            on_error=lambda e: seen.update(error=type(e).__name__),
+            on_cancelled=lambda _t: seen.update(cancelled=True),
+        )
+        runner.join(timeout=2)
+        assert seen.get("error") == "ValueError" and "cancelled" not in seen
+
+    def test_on_finally_runs_on_both_paths(self):
+        for cancel in (False, True):
+            calls = []
+
+            def work(token):
+                if cancel:
+                    token.cancel()
+                    token.raise_if_cancelled()
+                return "ok"
+
+            runner = BackgroundRunner()
+            runner.submit_cancellable(work, on_finally=lambda: calls.append(1))
+            runner.join(timeout=2)
+            assert calls == [1], f"cancel={cancel} 时 on_finally 未执行"
+
+
+class TestWatchdog:
+    """看门狗：把"停止无响应"从现象变成可观测事件。"""
+
+    def test_watchdog_warns_when_task_ignores_cancel(self):
+        logs = []
+        started = threading.Event()
+
+        def stubborn(token):
+            started.set()
+            time.sleep(1.2)  # 故意忽略 token
+            return "finally"
+
+        runner = BackgroundRunner(log=logs.append)
+        token = runner.submit_cancellable(stubborn, watchdog=0.15, name="anw-stubborn")
+        assert started.wait(2)
+        token.cancel("停")
+        runner.join(timeout=3)
+        assert any("仍在运行" in m for m in logs), f"看门狗没报警：{logs}"
+
+    def test_watchdog_is_silent_when_task_exits_promptly(self):
+        logs = []
+
+        def cooperative(token):
+            for _ in range(200):
+                token.raise_if_cancelled()
+                time.sleep(0.005)
+
+        runner = BackgroundRunner(log=logs.append)
+        token = runner.submit_cancellable(cooperative, watchdog=0.15, name="anw-good")
+        time.sleep(0.05)
+        token.cancel("停")
+        runner.join(timeout=3)
+        assert not any("仍在运行" in m for m in logs), f"不该报警：{logs}"
+
+
+class TestCancellationWiring:
+    """接线守卫：生成流程必须真的用上取消令牌。"""
+
+    def test_generation_ui_creates_token(self):
+        code = _scan.code_only("app/generation_ui.py")
+        assert "CancelToken()" in code, "自动创作没有创建取消令牌"
+        assert "_auto_token" in code
+
+    def test_stop_handler_cancels_token(self):
+        """❗ 只创建令牌而不在「停止」里 cancel，等于没做 —— 必须钉住。"""
+        body = _scan.method_body("app/generation_ui.py", "def _stop_generate", "def _auto_detect_decisions")
+        assert ".cancel(" in body, "「停止」按钮没有触发取消令牌"
+
+    def test_loop_checks_token(self):
+        code = _scan.code_only("app/generation_ui.py")
+        assert "token.cancelled" in code or "raise_if_cancelled" in code

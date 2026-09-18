@@ -454,6 +454,119 @@ class TestDescriptionLibrary:  # setUp: self.lib = DescriptionLibrary()
 | 11 | **覆盖率阈值门禁**（此前覆盖率可任意下降而无人拦截） | `scripts/check_coverage.py`；阈值唯一权威 = `pyproject.toml` 的 `fail_under = 73`；CI 增加阻断式 `Coverage gate` 步骤 | `tests/test_coverage_gate.py`（12 条）；反证三例：阈值 90 ⇒ exit 1 / 阈值 10 ⇒ ratchet 触发 exit 1 / 阈值 10 + `--no-ratchet` ⇒ exit 0 |
 | 12 | **`BACKLOG_REGISTER.md` 文档漂移收口**（本文件） | §2 由"确认未修复"改为"已结案"；§5.1–5.4 补落地证据；§5.5 维持观察项；新增 §2.1（C1）、§5.6（R1） | 全部条目附 `文件:行号`，可 grep 复核 |
 
+### 6.2 第二十三轮（本轮四项任务，已执行）
+
+> 用户本轮提出四项任务：①小说审计 ②插件重新启用并改良 ③新增 MCP ④稳定性优化。
+> 逐项结论见 §6.2.1–6.2.4。
+
+| # | 事项 | 产出 | 验证 |
+|---|---|---|---|
+| 13 | **任务①：小说审计** | `docs/NOVEL_AUDIT_1789640077.md` | 逐目录核对 30 个文件；结论：**无文件缺失**，但 6 类结构性错误（04d 死写摘要 / 6 处 CoT 污染 / 时间线占位符 / 4 个主角名 / 2 个世界名 / 幽灵角色）；结尾判定为**结构性烂尾** |
+| 14 | **任务②：插件系统重新启用 + 改良** | `app/plugin_system.py`（新）、`app/panels/plugin_panel.py`（新，**第 17 面板**）、`examples/plugins/demo_writing_skill/`（示例插件）、`docs/PLUGIN_SYSTEM.md`（重写，旧版类型枚举是错的） | `tests/test_plugin_system.py` **83 条**；端到端实证：装→启→**消费端读到 1 技能包 + 1 素材库条目**。❗顺带修真缺陷：中文插件名的 `·` 曾被判非法 ⇒ **合法插件装不上** |
+| 15 | **任务③：新增 MCP 功能** | `app/mcp_system.py`（新：客户端 stdio/http + 服务端 + 管理器）、`app/panels/mcp_panel.py`（新，**第 18 面板**）、`docs/MCP_SUPPORT.md`（新） | `tests/test_mcp_system.py` **129 条**（含**真起子进程**的 stdio 传输、挂死超时、断开、kill）。接线：`NovelAgent` 注册 `list_mcp_tools`/`call_mcp_tool`；**闭环**——本应用工具可经 MCP 服务端被列出与调用 |
+| 16 | **任务④：稳定性 / 减少卡死** | `app/async_runner.py` 新增 `CancelToken` / `CancelledError` / `submit_cancellable` / `current_token` / 看门狗；`generation_ui` 接入（`_stop_generate` 真中断、重试间检查点） | `tests/test_async_runner.py` 由 25 → **45 条**。❗关键设计：取消走 `on_cancelled` 而**不是** `on_error` —— 否则"点了停止"会弹成"生成失败" |
+| 17 | **任务④续：章节落盘原子化** | `app/generation_ui.py`×2、`app/chapter_ui.py`×1 —— 裸 `open(..., "w")` 全部改为 `_atomic_write`（→ `app.storage.atomic_write_text`） | `tests/test_chapter_atomic_write.py` **9 条**；含"写失败时**原文必须完好**"的行为断言 |
+| 18 | **A1/A3/A4 修复（结尾质量）** | `novel_agent._generate_long_chapter` 尾段提示词改为要求**剧情推进 + 章节落点**；新增 `_count_words()`（剔空白与 Markdown）；新增 `_looks_truncated()`（**保守**判据，拿不准就不补） | `tests/test_ending_quality.py` **26 条**。**A2/A6 明确留到下一轮**（理由见审计 §5） |
+| 19 | **硬编码路径清除** | `app/novel_toolkit.py` 删除写死的开发机绝对路径（`C:/Users/Administrator/WorkBuddy/<会话ID>/...`），改为 4 级运行时解析 + `AI_NOVEL_DATA_DIR` 覆盖 | 全仓 grep `C:/Users/Administrator` 归零 |
+
+#### 6.2.1 任务①结论（小说审计）
+
+| 问题 | 结论 |
+|---|---|
+| 文件与既定功能是否一致 | ❌ 不一致（6 类结构性错误） |
+| 是否缺失文件 | ✅ 无缺失；但有 3 个"只写不读"幽灵文件 + 2 组重复 |
+| 内容质量 | ⚠️ 正文合格（8760 汉字、文笔流畅）；**记忆层全面失真** ⇒ 无法可靠续写 |
+| 结尾是否烂尾 | 🔴 **是，且属结构性**（尾段提示词层级错误，把"段落收束"当成"故事收束"） |
+| 成因 | 本作由 **15 面板的修复前构建**生成 ⇒ **该版本必然**，非修复后复发 |
+
+#### 6.2.2 任务②结论（插件）
+
+- **已重新启用且两端接通**：写端(`PluginManager`) / 读端(4 个真实消费点) / 看端(面板) / 钉端(测试)。
+- **改良点**：注册表驱动（新增类型只改一处）、结构化结果 `PluginResult`、安全默认更严（默认不启用 + 启用前静态体检 + Zip Slip 加固）、不阻塞 UI。
+- **可验证证据**：示例插件装→启后，`all_writing_skills()` 返回 1 条、`all_libraries()` 返回 1 条；面板底部由"0 个技能包"变为"已生效：1 个写作技能包注入写作提示词"。
+- **诚实边界**：插件是同等权限的 Python 代码，本模块**不能**沙箱化它，只能降低误装风险并让风险可见。
+
+#### 6.2.3 任务③结论（MCP）
+
+- 本仓**早有 MCP 形状的内部约定**（`AgentMessage`/`Tool`/`ToolRegistry` 的注释就写着"参考MCP协议"），缺的是**传输层**。本轮补的是传输层，**不重复造工具系统**。
+- **双向**：客户端（连外部 server）+ 服务端（把本应用工具按 MCP 规范暴露）。
+- **可验证证据**：`tests/test_mcp_system.py` 用**自写的假 MCP server** 走真 stdio 管道，验证 initialize / tools/list / tools/call / ping；并以"挂死 server 必须超时返回而非永久卡住"钉住防卡死行为。
+- **安全边界**：stdio 会启动本地进程、http 会发送配置里的 headers（可能含 API Key）—— 面板在启用前原文展示，**不承诺沙箱**。
+
+#### 6.2.4 任务④结论（稳定性）
+
+| 措施 | 解决的"卡死"形态 | 验证 |
+|---|---|---|
+| `CancelToken` 协作式取消 | 点「停止」后当前章节仍要跑完 ⇒ 体感卡死 | 45 条；`_stop_generate` 真触发 `.cancel()`（接线守卫） |
+| 章节落盘原子化 | 写盘中途被杀 ⇒ 半截文件 + 原文丢失 | 9 条；含"写失败原文完好"反证 |
+| 尾段补全改为保守 | 把**完整结尾**追加成断裂文字 | 26 条；判据含"以引号结尾视为完整"（旧实现的误判源） |
+| 字数统计修正 | 闸门与报告双双失真（虚高） | 26 条；含"闸门必须真的能触发" |
+| stdio 调用超时 + kill | MCP server 挂死拖住调用方 | 129 条中"挂死 server 超时"一条 |
+| 硬编码路径清除 | 换机即静默失效、回落到硬编码常量 | 全仓 grep 归零 |
+
+> **未做（不做假承诺）**：`chat_stream` 仍未接入生产（它是**感知延迟**优化，不减少总时长，属体验项而非卡死项）；
+> 审校采样丢中段（A2）需先有漏检率度量；`KnowledgeGraph.add_relation` 接线（A6）需先确认关系图谱的实际收益。
+
+### 6.3 第二十四轮（题材系统 + 结构优化 + 依赖梳理 + 推送）
+
+> 用户本轮要求：①丰富题材并支持自定义 ②优化结构降低崩坏风险
+> ③梳理全部模块调用与依赖关系并修漏洞 ④反复检查修复 ⑤提交并推送。
+
+| # | 事项 | 产出 | 验证 |
+|---|---|---|---|
+| 20 | **题材系统可扩展 + 用户自定义** | 新增 `app/genres_data.py`（纯数据：78/57 题材、100/104 标签）与 `app/genres.py`（`GenreRegistry` + `GenreResult`）；`lifecycle_ui.py` **净减 357 行**；新增「管理题材…」界面；配置落盘 `~/.ai_novel_writer/genres.json` | `tests/test_genres.py` **95 条**（含真 Tk：对话框建得出来、下拉被注册表填满）；文档 `docs/GENRE_SYSTEM.md` |
+| 21 | **模块依赖关系梳理（脚本化，非手画）** | 新增 `scripts/module_graph.py`（AST 分析 + Tarjan 找环）+ 生成 `docs/MODULE_DEPENDENCY_MAP.md` | `tests/test_module_graph.py` **13 条**。结果：**89 模块 / 250 边 / 2 个环（hard=0）** |
+| 22 | **循环依赖分级（hard vs latent）** | 工具把环分为"导入期真会 ImportError"与"当前安全但脆弱"两类 | 实测 2 个环**全部 latent**；`base.py` 的延迟导入带注释说明是有意设计 |
+| 23 | **静默吞异常登记制** | 修复 6 处会造成**数据/语义损失**的静默吞（详见下）；新增登记表把"无日志吞异常"变成必须显式说明的决定 | `tests/test_no_silent_swallow.py` **10 条**（含人造吞异常的反证） |
+| 24 | **重要数据原子写收口** | `meta.json`×3、`sequel/spinoff_concept.txt`×2、`scores.json`、`index.json`、分支摘要×1 —— 共 7 处裸 `open(...,"w")` 改为原子写 | `tests/test_chapter_atomic_write.py` 扩到 **17 条**（含"写失败原文必须完好"） |
+| 25 | **题材系统自身的 2 个真缺陷** | ①`add_genre` 判序错误导致"恢复隐藏项"被拒 ②`_load` 用 `or {}` 兜底在字段为列表时抛异常（违反"绝不抛"契约） | 均由新测试**在实际运行中**抓出并修复 |
+
+#### 6.3.1 依赖梳理的实际结论
+
+| 指标 | 值 |
+|---|---|
+| 内部模块数 | 89 |
+| 依赖边数 | 250（其中 42 条是函数内延迟导入） |
+| 循环依赖 | **2 个，且全部为 latent（hard=0）** |
+| 被依赖最多 | `app`(30) / `dialogs`(27) / `storage`(17) / `ui_style`(17) |
+
+两个环：`panels.base ↔ panels.legacy ↔ panels.registry`、`config ↔ secure_config`。
+
+**处置决定：不动代码，改为"把安全性用测试强制"。**
+
+拆环的两种做法都更糟：
+- 给第一个环把 `legacy → base` 改成延迟导入 —— 只是把脆弱点挪个位置；
+- 给第二个环把共享常量下沉成第三个模块 —— 会动到一条**安全不变式**：
+  `test_config_consistency.py` 明确规定"全仓只允许 `config.py` 出现敏感字段清单的字面量"。
+  为一个**当前不会炸**的环去改安全守卫，风险大于收益。
+
+所以改为：`TestNoHardCycles` 断言**任何环都不得变成 hard** ——
+任何人把那条延迟导入提到模块级，立刻变红。这比"拆掉它"更贴合真实风险。
+
+#### 6.3.2 修复的静默吞异常（会造成实际损失的那些）
+
+| 位置 | 静默失败的后果 |
+|---|---|
+| `editor_ui.py` 主角锁定注入 | AI 不知道主角是谁 ⇒ **中途换主角**（小说审计里那本出现 4 个主角名，正是此类失败） |
+| `character_system.py` 自定义武器加载 | 用户自定义武器/技能**凭空消失**且无提示 |
+| `timeline_ui.py` 世界线列表 | 某条世界线**凭空消失**在列表里 |
+| `timeline_ui.py` 分支角色检测 | 分支角色与上下文不一致 ⇒ 分支续写错乱 |
+| `timeline_ui.py` 分支摘要保存 | 分支续写上下文来源缺失 ⇒ 质量静默下降 |
+| `writing_skills_panel.py` 读取作品题材 | 用户的**自定义题材被悄悄换成默认值** |
+
+> 判据演进：`timeline_ui` 里有一处 `except Exception` 只是检查 Text 控件状态，
+> 收窄为 `tk.TclError` —— 判据比要拦的东西宽就是假阳性。
+
+#### 6.3.3 依赖图工具自身的 2 个准确性缺陷（都是负向对照抓出来的）
+
+1. **把 `if TYPE_CHECKING:` 里的 import 当成运行时依赖** ⇒ 凭空造出
+   `writing_skills_panel ↔ novel_app` 这个并不存在的环。误报的代价不只是"图难看"——
+   会有人去"修"一个不存在的问题。
+2. **静默吞异常扫描器第一版判据过宽**：写成"出现 `open(self.scores_file,` 就报错"，
+   结果命中了一处**合法的读取**。已改为只在 `"w"` 模式下报错。
+
+两次都是靠"人造一个反例看守卫会不会变红"发现的 —— 这条纪律（**负向对照**）本轮再次证明有效。
+
 ---
 
 ## 7. 验证方式

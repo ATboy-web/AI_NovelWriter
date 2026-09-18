@@ -1139,8 +1139,10 @@ class MemoryManager:
             self._scores_dirty = 0
 
     def _save_scores(self):
-        with open(self.scores_file, "w", encoding="utf-8") as f:
-            json.dump(self._scores, f, indent=2, ensure_ascii=False)
+        # ❗ 原子写：评分表是"哪些章节值得召回"的依据，
+        # 裸 `open(..., "w")` 中途被杀会留下半截 JSON ⇒ 下次加载失败 ⇒
+        # **整份检索评分静默清零**（表现为"记忆突然变笨了"）。
+        atomic_write_json(self.scores_file, self._scores, indent=2)
 
     def _load_scores(self) -> dict:
         if self.scores_file.exists():
@@ -1333,8 +1335,9 @@ class MemoryManager:
     def update_index(self, chapter_num: int, keywords: List[str]):
         index = self._load_index()
         index[str(chapter_num)] = keywords
-        with open(self.index_file, "w", encoding="utf-8") as f:
-            json.dump(index, f, indent=2, ensure_ascii=False)
+        # ❗ 原子写：关键词索引损坏 ⇒ `search_by_keyword` 全面失效，
+        # 而它是"按关键词召回历史章节"的唯一入口。
+        atomic_write_json(self.index_file, index, indent=2)
 
     def search_by_keyword(self, keyword: str) -> List[int]:
         index = self._load_index()

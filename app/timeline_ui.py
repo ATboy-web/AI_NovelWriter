@@ -10,8 +10,11 @@ import tkinter as tk
 from datetime import datetime
 from tkinter import ttk
 
+from loguru import logger
+
 from app import UIStyle, dialogs
 from app.lineage import branch_lineage_record
+from app.storage import atomic_write_text
 
 
 class TimelineMixin:
@@ -52,8 +55,10 @@ class TimelineMixin:
                 data = json.loads(f.read_text(encoding="utf-8"))
                 data["_file"] = f.name
                 timelines.append(data)
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError) as e:
+                # ❗ 静默跳过的后果：某条世界线"凭空消失"，用户以为数据丢了。
+                # 留下日志才能区分"文件坏了"与"从来没建过"。
+                logger.warning(f"[时间线] 跳过无法解析的世界线文件 {f.name}：{e}")
 
         # 顶部工具栏
         toolbar = tk.Frame(dialog, bg=C["bg_dark"])
@@ -449,7 +454,9 @@ class TimelineMixin:
             if not content or "点击左侧" in content:
                 dialogs.showwarning("提示", "请先在左侧点击选择一个决策点")
                 return
-        except Exception:
+        except tk.TclError:
+            # 只可能来自 Text 控件不可用（窗口已销毁）—— 收窄到具体异常类型，
+            # 别用 `except Exception` 把真正的逻辑错误也一起吞掉。
             pass
 
         # 重新查找选中的决策点
@@ -744,11 +751,14 @@ class TimelineMixin:
                                 max_tokens=1000,
                             )
                             branch_mem.save_chapter_summary(ch_num, ch_summary_text or content[:200])
-                            (branch_dir / "summaries" / f"chapter_{ch_num:04d}_summary.txt").write_text(
-                                f"分支第{i + 1}章: {title}\n\n{ch_summary_text or content[:200]}", encoding="utf-8"
+                            atomic_write_text(
+                                branch_dir / "summaries" / f"chapter_{ch_num:04d}_summary.txt",
+                                f"分支第{i + 1}章: {title}\n\n{ch_summary_text or content[:200]}",
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:  # noqa: BLE001
+                            # ❗ 分支摘要生成失败要留痕：它是分支世界线**续写时的上下文来源**，
+                            # 缺了它后续生成质量会静默下降，而用户只会觉得"突然写差了"。
+                            logger.warning(f"[分支] 第{ch_num}章摘要生成/保存失败：{e}")
 
                     # 角色自动检测
                     try:
@@ -765,8 +775,11 @@ class TimelineMixin:
                                     branch_chars.create_character(name=name, first_appearance=ch_num)
                                     branch_chars.save_character(name)
                                     self._log(f"[分支角色] 新增: {name}")
-                    except Exception:
-                        pass
+                    except Exception as e:  # noqa: BLE001
+                        # ❗ 分支角色检测失败要留痕：缺角色会让分支世界线的
+                        # 「角色出现章」与上下文**静默不一致**，
+                        # 后续分支续写就会出现"这个角色是谁"的错乱。
+                        logger.warning(f"[分支角色] 第{ch_num}章角色检测失败：{e}")
 
                     # 更新上下文用于下一章
                     context_text = content[-1500:] if len(content) > 1500 else content

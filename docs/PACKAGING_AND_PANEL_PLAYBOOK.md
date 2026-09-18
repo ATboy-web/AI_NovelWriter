@@ -77,7 +77,7 @@ python scripts/check_bundle.py "%TEMP%\anw_work_x\novel_app\Analysis-00.toc"
 onefile 应见**双进程**（引导 + 应用），窗口标题非空（`AI小说创作工坊 vX.Y.Z`）。
 启动后查诊断日志的 `SYSTEM/panel_registry` 事件：
 
-- **应为 16 面板 / 5 分组**
+- **应为 18 面板 / 5 分组**
 - **`load_failures` 必须为 `[]`**
 
 探针脚本模板 `%TEMP%\smoke_exe.py`（`Popen` + Win32 `EnumWindows` 读标题）。
@@ -136,7 +136,7 @@ onefile 应见**双进程**（引导 + 应用），窗口标题非空（`AI小�
 - ❗ **`build()` 末尾必须 `self.mark_built(True)`**。
   宿主的 `is_built` 靠它判断走"复用"还是"重建"，漏了会被**重复构建**。
   （其它三个原生面板都有这一行。）
-- ❗ **面板总数写进了内存与文档**（现 **16 面板 / 5 分组**），新增面板要同步。
+- ❗ **面板总数写进了内存与文档**（现 **18 面板 / 5 分组**），新增面板要同步。
 
 ### `ui_kit` 的两个反直觉点
 

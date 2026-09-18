@@ -16,6 +16,8 @@ from loguru import logger
 
 from app import AIClient, ImageGenerator, MemoryManager, NoteManager, NovelAgent, UIStyle, dialogs
 from app.events import TOPIC_CONFIG_CHANGED, TOPIC_NOVEL_CLOSED, TOPIC_NOVEL_OPENED
+from app.genres import get_genre_registry
+from app.storage import atomic_write_json, atomic_write_text
 
 
 class NovelLifecycleMixin:
@@ -203,396 +205,25 @@ class NovelLifecycleMixin:
         ch_frame = tk.Frame(top, bg=C["bg_dark"])
         ch_frame.grid(row=4, column=1, sticky=tk.W, padx=(5, 0), pady=3)
 
-        # 男女频类型列表
-        MALE_GENRES = [
-            "玄幻-东方玄幻",
-            "玄幻-异世大陆",
-            "玄幻-高武世界",
-            "玄幻-王朝争霸",
-            "玄幻-宗门林立",
-            "仙侠-古典仙侠",
-            "仙侠-现代修真",
-            "仙侠-洪荒封神",
-            "仙侠-修真文明",
-            "仙侠-凡人修仙",
-            "都市-都市生活",
-            "都市-都市异能",
-            "都市-青春校园",
-            "都市-商战职场",
-            "都市-娱乐明星",
-            "历史-架空历史",
-            "历史-两宋元明",
-            "历史-三国争霸",
-            "历史-秦汉三国",
-            "历史-五代十国",
-            "科幻-星际文明",
-            "科幻-末世危机",
-            "科幻-时空穿梭",
-            "科幻-赛博朋克",
-            "科幻-机甲战争",
-            "悬疑-灵异恐怖",
-            "悬疑-侦探推理",
-            "悬疑-探险揭秘",
-            "悬疑-盗墓笔记",
-            "悬疑-法医刑侦",
-            "游戏-电子竞技",
-            "游戏-虚拟网游",
-            "游戏-游戏异界",
-            "游戏-游戏制作",
-            "游戏-数据流",
-            "军事-抗战烽火",
-            "军事-谍战特工",
-            "军事-战争幻想",
-            "军事-特种兵",
-            "军事-谍战风云",
-            "武侠-传统武侠",
-            "武侠-国术古武",
-            "武侠-武侠幻想",
-            "武侠-古武未来",
-            "武侠-江湖恩怨",
-            "体育-篮球风云",
-            "体育-足球天下",
-            "体育-综合竞技",
-            "体育-格斗搏击",
-            "体育-赛车竞速",
-            "轻小说-原生幻想",
-            "轻小说-搞笑吐槽",
-            "轻小说-恋爱日常",
-            "轻小说-异世界",
-            "轻小说-魔法少女",
-            "二次元-青春日常",
-            "二次元-变身入替",
-            "二次元-同人衍生",
-            "二次元-穿越动漫",
-            "二次元-系统穿越",
-            "无限流-诸天万界",
-            "无限流-副本挑战",
-            "无限流-轮回空间",
-            "无限流-世界穿梭",
-            "系统流-签到系统",
-            "系统流-抽奖系统",
-            "系统流-任务系统",
-            "系统流-模拟器",
-            "末日-丧尸末日",
-            "末日-废土求生",
-            "末日-病毒危机",
-            "末日-冰河世纪",
-            "克苏鲁-神话恐怖",
-            "克苏鲁-未知恐惧",
-            "克苏鲁-理智崩坏",
-            "赛博朋克-赛博修仙",
-            "赛博朋克-数字生命",
-            "赛博朋克-虚拟现实",
-        ]
-        FEMALE_GENRES = [
-            "古代言情-女尊王朝",
-            "古代言情-宫闱宅斗",
-            "古代言情-穿越奇情",
-            "古代言情-种田经商",
-            "古代言情-江湖侠女",
-            "现代言情-豪门总裁",
-            "现代言情-都市婚恋",
-            "现代言情-职场丽人",
-            "现代言情-娱乐圈",
-            "现代言情-军婚甜宠",
-            "幻想言情-异世恋歌",
-            "幻想言情-快穿攻略",
-            "幻想言情-魔法幻情",
-            "幻想言情-星际恋歌",
-            "幻想言情-兽世奇缘",
-            "纯爱-古代纯爱",
-            "纯爱-现代纯爱",
-            "纯爱-幻想纯爱",
-            "纯爱-星际纯爱",
-            "纯爱-电竞纯爱",
-            "耽美-古代耽美",
-            "耽美-现代耽美",
-            "耽美-校园耽美",
-            "耽美-娱乐圈耽美",
-            "浪漫青春-青春校园",
-            "浪漫青春-疼痛成长",
-            "浪漫青春-纯爱唯美",
-            "浪漫青春-暗恋成真",
-            "浪漫青春-双向奔赴",
-            "仙侠奇缘-古典仙缘",
-            "仙侠奇缘-修仙情劫",
-            "仙侠奇缘-洪荒情缘",
-            "仙侠奇缘-凡人仙缘",
-            "悬疑灵异-推理侦探",
-            "悬疑灵异-恐怖惊悚",
-            "悬疑灵异-灵异鬼怪",
-            "悬疑灵异-法医档案",
-            "游戏竞技-电子竞技",
-            "游戏竞技-全息网游",
-            "游戏竞技-电竞爱情",
-            "游戏竞技-游戏主播",
-            "短篇-短篇言情",
-            "短篇-微小说",
-            "短篇-轻小说",
-            "短篇-同人小说",
-            "百合-古代百合",
-            "百合-现代百合",
-            "百合-幻想百合",
-            "年代文-七八十年代",
-            "年代文-知青岁月",
-            "年代文-重生年代",
-            "穿书-穿成炮灰",
-            "穿书-穿成反派",
-            "穿书-穿成女配",
-            "重生-重生复仇",
-            "重生-重生逆袭",
-            "重生-重生日常",
-        ]
-
         tk.Label(top, text="小说类型:", bg=C["bg_dark"], fg=C["text_primary"], font=UIStyle.font("label")).grid(
             row=5, column=0, sticky=tk.W, pady=3
         )
-        genre_var = tk.StringVar(value=MALE_GENRES[0])
-        genre_combo = ttk.Combobox(top, textvariable=genre_var, values=MALE_GENRES, state="readonly", width=35)
+        # 题材来自注册表（`app/genres.py`），不再内联在本函数里。
+        # ❗ 注册表不可用时**必须降级**而不是崩：题材选不了不该让新建对话框起不来。
+        registry = get_genre_registry()
+        if registry is None:
+            self._log("[题材] 注册表不可用，题材选择已降级")
+            genre_var = tk.StringVar(value="")
+            genre_combo = ttk.Combobox(top, textvariable=genre_var, values=[], state="readonly", width=35)
+        else:
+            genre_var = tk.StringVar(value="")
+            genre_combo = ttk.Combobox(top, textvariable=genre_var, state="readonly", width=35)
         genre_combo.grid(row=5, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
         top.columnconfigure(1, weight=1)
 
-        # 男生标签（8类 80+标签）
-        MALE_TAGS = {
-            "角色设定": [
-                "废材崛起",
-                "扮猪吃虎",
-                "杀伐果断",
-                "智商在线",
-                "低调男主",
-                "独行侠",
-                "狠人大帝",
-                "稳健型",
-                "腹黑型",
-                "热血少年",
-                "冷面高手",
-                "逍遥自在",
-                "护短",
-                "不圣母",
-                "有底线",
-                "重生者",
-            ],
-            "情节元素": [
-                "系统流",
-                "穿越大军",
-                "重生复仇",
-                "无敌流",
-                "升级流",
-                "种田流",
-                "争霸流",
-                "诸天流",
-                "无限流",
-                "签到流",
-                "数据化",
-                "聊天群",
-                "直播流",
-                "召唤流",
-                "转生流",
-                "模拟器",
-            ],
-            "世界观": [
-                "异界大陆",
-                "王朝争霸",
-                "宗门林立",
-                "末世废土",
-                "星空宇宙",
-                "灵气复苏",
-                "赛博朋克",
-                "求生冒险",
-                "东方神话",
-                "洪荒封神",
-                "修真文明",
-                "巫师世界",
-            ],
-            "爽点标签": [
-                "越级挑战",
-                "越阶杀敌",
-                "装逼打脸",
-                "逆天改命",
-                "一人成军",
-                "万古不朽",
-                "超神之路",
-                "武道巅峰",
-                "碾压全场",
-                "秀翻天",
-                "骚操作",
-                "神级操作",
-            ],
-            "成长路线": [
-                "废柴逆袭",
-                "天才陨落再起",
-                "散修崛起",
-                "赘婿翻身",
-                "上门女婿",
-                "退婚打脸",
-                "回归都市",
-                "隐世归来",
-                "退役兵王",
-                "回归豪门",
-            ],
-            "战斗风格": [
-                "肉身成圣",
-                "剑道独尊",
-                "拳拳到肉",
-                "法术流",
-                "武技流",
-                "炼丹大师",
-                "阵法宗师",
-                "器道大师",
-                "驭兽师",
-                "暗杀流",
-                "群战之王",
-            ],
-            "感情线": [
-                "单女主",
-                "多女主",
-                "后宫流",
-                "无女主",
-                "暧昧流",
-                "青梅竹马",
-                "天降系",
-                "傲娇女主",
-                "御姐型",
-                "萝莉型",
-                "病娇女主",
-            ],
-            "特殊设定": [
-                "万界穿梭",
-                "时间回溯",
-                "读心术",
-                "透视眼",
-                "隐身术",
-                "空间戒指",
-                "金手指",
-                "老爷爷",
-                "神级血脉",
-                "远古传承",
-                "神器认主",
-                "神兽伙伴",
-            ],
-        }
-        FEMALE_TAGS = {
-            "角色设定": [
-                "甜宠女主",
-                "女强逆袭",
-                "马甲大佬",
-                "团宠担当",
-                "万人迷",
-                "病娇偏执",
-                "霸总老公",
-                "白月光",
-                "替身前妻",
-                "软萌娇妻",
-                "女王御姐",
-                "萌宝来袭",
-                "戏精女主",
-                "佛系女主",
-                "毒舌女主",
-                "学霸女主",
-            ],
-            "情节元素": [
-                "先婚后爱",
-                "追妻火葬场",
-                "带球跑",
-                "契约婚姻",
-                "养成系",
-                "宅斗宫斗",
-                "真假千金",
-                "失忆重逢",
-                "假戏真做",
-                "隐婚密爱",
-                "替身文学",
-                "重生虐渣",
-                "闪婚闪离",
-                "破镜重圆",
-                "日久生情",
-                "强取豪夺",
-            ],
-            "气氛风格": [
-                "虐恋情深",
-                "欢喜冤家",
-                "温馨治愈",
-                "爆笑甜宠",
-                "暗恋成真",
-                "虐渣打脸",
-                "逆袭爽文",
-                "甜到齁",
-                "虐到哭",
-                "轻松欢脱",
-                "高甜无虐",
-                "玻璃渣里找糖",
-            ],
-            "甜宠类型": [
-                "一见钟情",
-                "日久生情",
-                "暗恋成真",
-                "宠妻狂魔",
-                "双向奔赴",
-                "青梅竹马",
-                "师生恋",
-                "姐弟恋",
-                "大叔宠",
-                "萌宝助攻",
-                "豪门恩怨",
-                "总裁文",
-            ],
-            "身份设定": [
-                "豪门千金",
-                "落魄千金",
-                "穿越女主",
-                "重生女主",
-                "系统女主",
-                "异能女主",
-                "修仙女主",
-                "古代女主",
-                "现代女主",
-                "末世女主",
-                "娱乐圈女主",
-                "军嫂文",
-            ],
-            "男主人设": [
-                "霸道总裁",
-                "冷面军少",
-                "腹黑王爷",
-                "温柔竹马",
-                "傲娇少爷",
-                "冰山校草",
-                "禁欲系",
-                "病娇男主",
-                "忠犬男主",
-                "渣男回头",
-                "高冷学长",
-                "阳光少年",
-            ],
-            "感情模式": [
-                "甜宠",
-                "先虐后甜",
-                "先甜后虐",
-                "甜虐交织",
-                "高甜",
-                "暗恋",
-                "明恋",
-                "单箭头",
-                "双箭头",
-                "三角恋",
-                "四角恋",
-                "骨科",
-            ],
-            "特殊元素": [
-                "萌宝",
-                "双胞胎",
-                "龙凤胎",
-                "穿越",
-                "重生",
-                "系统",
-                "空间",
-                "异能",
-                "修仙",
-                "娱乐圈",
-                "豪门",
-                "校园",
-            ],
-        }
+        # 「管理题材」：增删自定义题材 / 隐藏内置题材
+        genre_manage_btn = ttk.Button(top, text="管理题材…", width=11)
+        genre_manage_btn.grid(row=5, column=2, sticky=tk.W, padx=(4, 0), pady=3)
 
         # ===== 中间可滚动标签区域 =====
         tag_outer = tk.LabelFrame(
@@ -643,12 +274,24 @@ class NovelLifecycleMixin:
 
         def update_tags(channel):
             """更新标签显示"""
-            genre_combo["values"] = MALE_GENRES if channel == "male" else FEMALE_GENRES
-            genre_var.set(MALE_GENRES[0] if channel == "male" else FEMALE_GENRES[0])
+            # 全部从注册表读；注册表为 None 时用空清单（界面仍可用，只是没得选）
+            reg = get_genre_registry()
+            if reg is None:
+                genre_combo["values"] = []
+                genre_var.set("")
+                tags = {}
+            else:
+                names = reg.with_novel_genre(channel, genre_var.get())
+                genre_combo["values"] = names
+                # ❗ 保留用户/作品已选的题材（切频道时才重置）。
+                # 原实现无条件 `set(第一个)`，会把用户刚选的题材清掉 ——
+                # 而频道切换回调在初始化时也会被触发一次。
+                if genre_var.get() not in names:
+                    genre_var.set(names[0] if names else "")
+                tags = reg.tags_for(channel)
             for w in tags_container.winfo_children():
                 w.destroy()
             self.tag_vars.clear()
-            tags = MALE_TAGS if channel == "male" else FEMALE_TAGS
             for cat_name, cat_tags in tags.items():
                 cat_label = tk.Label(
                     tags_container,
@@ -682,6 +325,19 @@ class NovelLifecycleMixin:
             tags_container.update_idletasks()
             tag_canvas.configure(scrollregion=tag_canvas.bbox("all"))
             tag_canvas.yview_moveto(0)
+
+        def on_manage_genres():
+            """打开题材管理：增删自定义题材 / 隐藏内置题材。"""
+            reg = get_genre_registry()
+            if reg is None:
+                dialogs.warn("题材配置不可用（无法读写配置文件）", parent=dialog)
+                return
+            self._open_genre_manager(dialog, channel_var.get(), reg)
+            # ❗ 管理结果会改变清单，**必须**刷新 —— 否则用户刚加的题材在下拉里看不到，
+            # 会以为"没生效"并反复添加。
+            update_tags(channel_var.get())
+
+        genre_manage_btn.config(command=on_manage_genres)
 
         # 频道选择
         for text, val in [("男生频道", "male"), ("女生频道", "female")]:
@@ -885,8 +541,7 @@ class NovelLifecycleMixin:
                 "created_at": datetime.now().isoformat(),
                 "template": template_name if template_name != "无" else None,
             }
-            with open(novel_dir / "meta.json", "w", encoding="utf-8") as f:
-                json.dump(meta, f, indent=2, ensure_ascii=False)
+            atomic_write_json(novel_dir / "meta.json", meta)
 
             # 初始化
             self.current_novel_dir = novel_dir
@@ -918,6 +573,75 @@ class NovelLifecycleMixin:
             padx=20,
             pady=3,
         ).pack(side=tk.RIGHT)
+
+    def _open_genre_manager(self, parent, channel: str, registry) -> None:
+        """题材管理对话框：在**生效清单**上增删，按差集回写注册表。
+
+        ## 为什么用"编辑整张清单 + 求差集"而不是"只编辑自定义项"
+
+        用户的心智模型是"我要的题材列表长这样"，而不是"我要维护一份补丁"。
+        让他直接编辑最终清单最自然；而差集能天然覆盖两种情况：
+
+        | 用户动作 | 差集结果 | 注册表行为 |
+        |---|---|---|
+        | 加了新题材 | 新增项 | `add_genre` → 存为自定义 |
+        | 删了自定义题材 | 消失项 | `remove_genre` → 从配置移除 |
+        | 删了**内置**题材 | 消失项 | `remove_genre` → 加入隐藏表（**不改源码**） |
+
+        这样"隐藏内置题材"不需要单独一套界面 —— 它就是"删除"的自然语义。
+        再次添加同一个名字即可恢复（`add_genre` 会识别出它曾是隐藏项）。
+
+        ## 已知取舍（写清楚，不做虚假承诺）
+
+        `dialogs.edit_items` 支持上下移动，但**顺序不会被持久化**：
+        生效顺序恒为「内置（保持原位）→ 自定义（追加在末尾）」。
+        这是有意的 —— 自定义排序要引入一份完整的顺序表，
+        而它带来的收益（微调下拉顺序）不值得那份复杂度与漂移风险。
+        """
+        current = registry.genres_for(channel)
+        label = registry.channel_label(channel)
+        new_list = dialogs.edit_items(
+            parent,
+            f"管理题材 · {label}",
+            items=current,
+            hint=(
+                f"共 {len(current)} 个题材（当前频道：{label}）。\n"
+                "· 新增的题材会保存为「自定义题材」，追加在列表末尾；\n"
+                "· 删除内置题材只是**隐藏**它（不动源码），再次添加同名即可恢复；\n"
+                "· 自定义顺序不保存，生效顺序恒为「内置 → 自定义」。\n"
+                f"配置文件：{registry.config_file}"
+            ),
+        )
+        if new_list is None:
+            return  # 用户取消 ≠ 清空
+
+        old_set, new_set = set(current), {str(x).strip() for x in new_list if str(x).strip()}
+        added = [n for n in new_set - old_set]
+        removed = [n for n in old_set - new_set]
+
+        if not added and not removed:
+            return
+
+        failures: list[str] = []
+        for name in added:
+            res = registry.add_genre(channel, name)
+            if not res.ok:
+                failures.append(f"添加「{name}」失败：{res.message}")
+        for name in removed:
+            res = registry.remove_genre(channel, name)
+            if not res.ok:
+                failures.append(f"删除「{name}」失败：{res.message}")
+
+        changed = len(added) + len(removed) - len(failures)
+        if failures:
+            # 部分失败要**明确告知**，否则用户会以为设置已生效
+            dialogs.showwarning(
+                "部分题材未生效",
+                "\n".join(failures[:10]) + ("\n…" if len(failures) > 10 else ""),
+                parent=parent,
+            )
+        if changed:
+            self._log(f"[题材] {label}：新增 {len(added)} 个、删除/隐藏 {len(removed)} 个（共 {len(new_set)} 个生效）")
 
     def _open_novel(self):
         """打开小说 - 直接使用文件对话框"""
@@ -1251,8 +975,7 @@ class NovelLifecycleMixin:
                 "original_novel": str(self.current_novel_dir),
                 "original_title": original_meta.get("title", ""),
             }
-            with open(novel_dir / "meta.json", "w", encoding="utf-8") as f:
-                json.dump(sequel_meta, f, indent=2, ensure_ascii=False)
+            atomic_write_json(novel_dir / "meta.json", sequel_meta)
 
             # 复制原著的世界观和角色设定
             orig_memory = self.current_novel_dir / "memory"
@@ -1270,10 +993,12 @@ class NovelLifecycleMixin:
                 shutil.copytree(orig_chars, novel_dir / "characters", dirs_exist_ok=True)
 
             # 保存续集概念作为参考
-            with open(novel_dir / "sequel_concept.txt", "w", encoding="utf-8") as f:
-                f.write(f"原著: {original_meta.get('title', '')}\n\n")
-                f.write(f"原著摘要:\n{global_summary}\n\n")
-                f.write(f"续集概念:\n{concept}")
+            atomic_write_text(
+                novel_dir / "sequel_concept.txt",
+                f"原著: {original_meta.get('title', '')}\n\n"
+                + f"原著摘要:\n{global_summary}\n\n"
+                + f"续集概念:\n{concept}",
+            )
 
             # 切换到续集
             self.current_novel_dir = novel_dir
@@ -1436,8 +1161,7 @@ class NovelLifecycleMixin:
                 "original_title": original_meta.get("title", ""),
                 "selected_characters": selected_chars,
             }
-            with open(novel_dir / "meta.json", "w", encoding="utf-8") as f:
-                json.dump(spinoff_meta, f, indent=2, ensure_ascii=False)
+            atomic_write_json(novel_dir / "meta.json", spinoff_meta)
 
             # 复制世界观设定
             orig_memory = self.current_novel_dir / "memory"
@@ -1458,11 +1182,13 @@ class NovelLifecycleMixin:
                         shutil.copy2(char_file, chars_dir / f"{char_name}.json")
 
             # 保存同人设定文档
-            with open(novel_dir / "spinoff_concept.txt", "w", encoding="utf-8") as f:
-                f.write(f"原著: {original_meta.get('title', '')}\n")
-                f.write(f"衍生类型: {spinoff_type.get()}\n")
-                f.write(f"主要角色: {', '.join(selected_chars)}\n\n")
-                f.write(f"衍生概念:\n{concept}")
+            atomic_write_text(
+                novel_dir / "spinoff_concept.txt",
+                f"原著: {original_meta.get('title', '')}\n"
+                + f"衍生类型: {spinoff_type.get()}\n"
+                + f"主要角色: {', '.join(selected_chars)}\n\n"
+                + f"衍生概念:\n{concept}",
+            )
 
             # 切换到同人作品
             self.current_novel_dir = novel_dir

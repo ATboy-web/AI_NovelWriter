@@ -401,10 +401,13 @@ class GenerationMixin:
                 )
 
                 # 保存章节
+                # ❗ 必须原子写：本章可能是几十分钟的 API 往返换来的，
+                # 而裸 `open(..., "w")` 在写入中途被杀会留下**截断的半章**、
+                # 原文不可恢复。`_atomic_write`（→ `app.storage.atomic_write_text`）
+                # 用唯一临时名 + `os.replace`，要么完整落盘、要么保持旧内容。
                 chapters_dir = self.current_novel_dir / "chapters"
                 chapters_dir.mkdir(exist_ok=True)
-                with open(chapters_dir / f"chapter_{ch_num:04d}.txt", "w", encoding="utf-8") as f:
-                    f.write(content)
+                self._atomic_write(chapters_dir / f"chapter_{ch_num:04d}.txt", content)
 
                 # GUI操作必须在主线程
                 self.root.after(0, lambda: self._display_chapter(ch_num, chapter_info.get("title", ""), content))
@@ -812,10 +815,20 @@ class GenerationMixin:
         ).pack(side=tk.LEFT, padx=5)
 
     def _stop_generate(self):
-        """停止自动创作"""
+        """停止自动创作。
+
+        v3.2：除了置 `_auto_running`，还**必须**触发取消令牌 ——
+        否则已经开始的章节仍会跑完（用户看到的是"点了停止没反应"）。
+        `CancelToken` 是线程安全 Event，章节内的检查点会被它唤醒。
+        """
         self._auto_running = False
         self._stop_flag = True
-        self._log("已请求停止自动创作，正在完成当前章节...")
+        token = getattr(self, "_auto_token", None)
+        if token is not None and not token.cancelled:
+            token.cancel("用户在界面上点了停止")
+            self._log("已请求停止自动创作 —— 正在中断当前章节（已生成的章节内容不受影响）…")
+        else:
+            self._log("已请求停止自动创作，正在完成当前章节…")
 
     def _auto_detect_decisions(self, chapter_num: int, content: str):
         """自动检测决策点，记录到主世界线（不生成分支）"""
@@ -1308,11 +1321,10 @@ class GenerationMixin:
                     prev_context=prev_context,
                 )
 
-                # 保存
+                # 保存（原子写，理由同上：重写章节同样是高成本产物，不能留下半截文件）
                 chapters_dir = self.current_novel_dir / "chapters"
                 chapters_dir.mkdir(exist_ok=True)
-                with open(chapters_dir / f"chapter_{current_ch:04d}.txt", "w", encoding="utf-8") as f:
-                    f.write(content)
+                self._atomic_write(chapters_dir / f"chapter_{current_ch:04d}.txt", content)
 
                 # 更新显示
                 self.root.after(
@@ -1519,6 +1531,15 @@ class GenerationMixin:
         self._auto_running = True
         self.auto_btn.config(state=tk.DISABLED, text="创作中...")
 
+        # v3.2：给本次自动创作一个取消令牌。
+        # 原来点「停止」只在**两章之间**生效，已经发出的那一章必须跑完 ——
+        # 表现为"点了停止没反应"，也就是用户感知的卡死。
+        # 令牌让章节内部的检查点（生成前后、每章开头）也能安全退出。
+        # ❗ 令牌只用于**协作式**退出；它不会强杀线程（那样会留下半写文件）。
+        from .async_runner import CancelToken
+
+        self._auto_token = CancelToken()
+
         meta = self._get_meta()
 
         # 🔥 18+/擦边内容注入到概念中（影响世界观、角色、大纲生成）
@@ -1687,6 +1708,15 @@ class GenerationMixin:
                         self._log("自动创作已停止")
                         break
 
+                    # v3.2：取消令牌检查点。
+                    # 与上面的 `_auto_running` 区别：那个是"界面状态"（主线程写、
+                    # 子线程读，没有内存屏障），这个是**线程安全的 Event**。
+                    # 两者都查是刻意的 —— 令牌是权威信号，`_auto_running` 兼容旧路径。
+                    token = getattr(self, "_auto_token", None)
+                    if token is not None and token.cancelled:
+                        self._log(f"自动创作已停止（{token.reason}）")
+                        break
+
                     # 跳过已完成的章节
                     if ch_num in existing_chapters:
                         skipped += 1
@@ -1822,6 +1852,13 @@ class GenerationMixin:
 
                         # 超时重试3次
                         for attempt in range(3):
+                            # v3.2：重试**之间**是理想的取消点 ——
+                            # 上一次请求已经结束（或已超时），此刻退出不会留下
+                            # 半读的响应或悬挂的连接。放在这里而不是请求中间，
+                            # 是因为"取消"不该等于"泄漏一个还在飞的请求"。
+                            if token is not None and token.cancelled:
+                                self._log(f"第{ch_num}章在重试前被中断（{token.reason}），已完成的章节已落盘。")
+                                break
                             try:
                                 content = self.agent.generate_chapter(
                                     ch_num,

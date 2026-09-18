@@ -97,16 +97,75 @@ git checkout -b release/v1.2.0
 ```
 
 #### 步骤2：更新版本号
+
+> 🚨 **下面这个模板与本仓库的实际结构不符，不要照抄。** 本仓库**没有** `VERSION` 文件、
+> `package.json` 或 `setup.py` —— 照抄的结果是改了一堆不存在的文件、而真正的地方没改。
+> 以本仓库为准的操作见紧随其后的「步骤 2b」。
+
 ```bash
-# 更新版本文件
+# ❌ 以下为历史模板，对本仓库不适用
 echo "1.2.0" > VERSION
-
-# 更新package.json
 npm version 1.2.0 --no-git-tag-version
-
-# 更新setup.py
 sed -i "s/version='.*'/version='1.2.0'/" setup.py
 ```
+
+#### 步骤 2b：本仓库的正确做法（v3.2.0 实测流程）
+
+**① 版本号只改两处**（单一权威源 + 冻结 EXE 的回退值）：
+
+| 位置 | 说明 |
+|---|---|
+| `pyproject.toml` 的 `version` | **权威源** |
+| `app/__init__.py` 的 `_FALLBACK_VERSION` | 冻结 EXE 读不到前两者时的回退值 |
+
+**② README 有**两份**，都要改**（`tests/test_version_consistency.py` 会断言标题含版本号）：
+
+| 文件 | 需同步的位置 |
+|---|---|
+| `README.md` | 标题 `# AI小说创作工坊 vX.Y.Z`、**下载表**里的版本列 |
+| `README_EN.md` | 标题 `# AI NovelWriter vX.Y.Z`、**下载表**里的版本列 |
+
+> ❗ 只改 `README.md` 会**被门禁拦下**（v3.2.0 时实测踩到）—— 英文版同样要同步。
+> 另外顺手核对：测试徽章数字、面板数、题材数等"会过期的事实"。
+
+**③ CHANGELOG 的段落标题必须改成正式版本号**：
+
+```bash
+# ❌ 这样写，CI 派生不出发布说明：
+## 未发布（候选版本 v3.2.0）
+
+# ✅ 必须写成 CI 能找到的形式（scripts/release_notes.py 按此匹配）：
+## v3.2.0 (2026-09-18)
+```
+
+> ❗ CI 的 `Generate release notes from CHANGELOG` 步骤执行
+> `python scripts/release_notes.py "${GITHUB_REF_NAME#v}"`，
+> 它**按 `^## v?X.Y.Z` 匹配**。标题不改成正式版本号 ⇒ 发布说明为空。
+> 发版前可本地预演：`python scripts/release_notes.py 3.2.0 --out /tmp/notes.md`
+
+**④ 推送与打标签（本次实测的坑）**：
+
+```bash
+git push origin main                 # 先推提交
+git tag -a v3.2.0 -m "Release v3.2.0 - …"
+git push origin refs/tags/v3.2.0     # 再推标签 ⇒ 触发 CI 建 EXE + Release
+```
+
+> 🔴 **推送必须用「系统 git」，不能用容器/沙箱自带的 PortableGit**：
+> 后者的 system gitconfig 里 `credential.helper=helper-selector` 会去弹 GUI 选择器，
+> 在**非交互环境必然挂起**（`git credential fill` 直接超时）。
+>
+> ```bash
+> G="/c/Program Files/Git/cmd/git.exe"      # 其 etc/gitconfig 用 credential.helper=manager
+> GIT_TERMINAL_PROMPT=0 timeout 180 "$G" push origin refs/tags/v3.2.0
+> ```
+>
+> 先 `"$G" push --dry-run` 验证鉴权再真推。
+> ⚠️ 若仓库开了分支保护（要求走 PR），高权限 PAT 会输出
+> `Bypassed rule violations for refs/heads/main` —— 推送成功但**绕过了规则**。
+
+**⑤ 绝不手工再建同名 Release**：打 `v*` 标签时 CI 会建；
+手工再建会撞名。标签重指的唯一合法条件是「该标签从未产出过任何 Release 或附件」。
 
 #### 步骤3：更新变更日志
 ```bash

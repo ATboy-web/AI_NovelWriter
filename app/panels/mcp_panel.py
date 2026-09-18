@@ -175,11 +175,20 @@ class MCPPanel(BasePanel):
         # ---- 工具条
         bar = ui_kit.toolbar(body)
         bar["bar"].pack(fill=tk.X)  # ❗ toolbar 不自行 pack
-        ui_kit.button(bar["left"], "添加服务器", self._on_add, kind="primary")
-        ui_kit.button(bar["left"], "测试连接", self._on_test, kind="secondary")
-        ui_kit.button(bar["left"], "刷新工具", self._on_refresh_tools, kind="ghost")
-        ui_kit.button(bar["left"], "打开配置文件", self._on_open_file, kind="ghost")
+        # ❗ 「添加服务器」等按钮一度**全部不可见**：`ui_kit.button / badge`
+        # 只创建控件、**不自行 pack**，必须由调用方挂载；漏挂载不报错。
+        ui_kit.button(bar["left"], "添加服务器", self._on_add, kind="primary").pack(side=tk.LEFT)
+        ui_kit.button(bar["left"], "测试连接", self._on_test, kind="secondary").pack(
+            side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0)
+        )
+        ui_kit.button(bar["left"], "刷新工具", self._on_refresh_tools, kind="ghost").pack(
+            side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0)
+        )
+        ui_kit.button(bar["left"], "打开配置文件", self._on_open_file, kind="ghost").pack(
+            side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0)
+        )
         self._count_badge = ui_kit.badge(bar["right"], "未加载", kind="info")
+        self._count_badge.pack(side=tk.RIGHT)
 
         # ---- 上下两栏：上=服务器，下=工具
         top = tk.Frame(body, bg=C["bg_dark"])
@@ -188,7 +197,7 @@ class MCPPanel(BasePanel):
         left = tk.Frame(top, bg=C["bg_dark"], width=520)
         left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         left.pack_propagate(False)
-        ui_kit.section_title(left, "MCP 服务器")
+        ui_kit.section_title(left, "MCP 服务器").pack(anchor=tk.W, pady=(0, ui_kit.SPACE["xs"]))
         # ❗ pretty_tree 返回 dict；columns 是列名序列、宽度另传 widths；frame 需自行 pack
         holder = ui_kit.pretty_tree(
             left,
@@ -203,7 +212,7 @@ class MCPPanel(BasePanel):
         right = tk.Frame(top, bg=C["bg_dark"])
         right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 0))
 
-        ui_kit.section_title(right, "服务器详情")
+        ui_kit.section_title(right, "服务器详情").pack(anchor=tk.W, pady=(0, ui_kit.SPACE["xs"]))
         detail_box = ui_kit.scrollable(right)
         detail_box["frame"].pack(fill=tk.BOTH, expand=True)
         self._detail = tk.Text(
@@ -223,13 +232,18 @@ class MCPPanel(BasePanel):
         actions = tk.Frame(right, bg=C["bg_dark"])
         actions.pack(fill=tk.X, pady=(6, 2))
         self._enable_btn = ui_kit.button(actions, "启用", self._on_enable, kind="primary")
+        self._enable_btn.pack(side=tk.LEFT)
         self._disable_btn = ui_kit.button(actions, "停用", self._on_disable, kind="ghost")
+        self._disable_btn.pack(side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0))
         self._remove_btn = ui_kit.button(actions, "删除", self._on_remove, kind="danger")
+        self._remove_btn.pack(side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0))
 
         # ---- 下部：工具表
         lower = tk.Frame(body, bg=C["bg_dark"])
         lower.pack(fill=tk.BOTH, expand=True, padx=2, pady=(4, 0))
-        ui_kit.section_title(lower, "可用 MCP 工具（来自已启用的服务器）")
+        ui_kit.section_title(lower, "可用 MCP 工具（来自已启用的服务器）").pack(
+            anchor=tk.W, pady=(0, ui_kit.SPACE["xs"])
+        )
         t_holder = ui_kit.pretty_tree(
             lower,
             columns=["服务器", "工具", "说明"],

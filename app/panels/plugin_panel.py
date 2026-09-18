@@ -135,10 +135,17 @@ class PluginPanel(BasePanel):
         # ---- 工具条
         bar = ui_kit.toolbar(body)
         bar["bar"].pack(fill=tk.X)  # ❗ toolbar 不自行 pack
-        ui_kit.button(bar["left"], "安装插件", self._on_install, kind="primary")
-        ui_kit.button(bar["left"], "重新扫描", self._on_reload, kind="ghost")
-        ui_kit.button(bar["left"], "打开插件目录", self._on_open_dir, kind="ghost")
+        # ❗ 与插图/MCP 面板同因：`ui_kit.button / badge` **不自行 pack**，
+        # 必须显式挂载，否则按钮被创建却永不显示（曾整排消失）。
+        ui_kit.button(bar["left"], "安装插件", self._on_install, kind="primary").pack(side=tk.LEFT)
+        ui_kit.button(bar["left"], "重新扫描", self._on_reload, kind="ghost").pack(
+            side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0)
+        )
+        ui_kit.button(bar["left"], "打开插件目录", self._on_open_dir, kind="ghost").pack(
+            side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0)
+        )
         self._count_badge = ui_kit.badge(bar["right"], "未扫描", kind="info")
+        self._count_badge.pack(side=tk.RIGHT)
 
         # ---- 左右分栏
         split = tk.Frame(body, bg=C["bg_dark"])
@@ -147,7 +154,7 @@ class PluginPanel(BasePanel):
         left = tk.Frame(split, bg=C["bg_dark"], width=460)
         left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         left.pack_propagate(False)
-        ui_kit.section_title(left, "已安装插件")
+        ui_kit.section_title(left, "已安装插件").pack(anchor=tk.W, pady=(0, ui_kit.SPACE["xs"]))
         # ❗ `pretty_tree` 返回 dict，columns 是列名序列、宽度另传 widths，
         # 且返回的 frame 需要自行 pack（与"传 (名,宽) 元组"的直觉不同）
         holder = ui_kit.pretty_tree(
@@ -163,7 +170,7 @@ class PluginPanel(BasePanel):
         right = tk.Frame(split, bg=C["bg_dark"])
         right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 0))
 
-        ui_kit.section_title(right, "插件详情")
+        ui_kit.section_title(right, "插件详情").pack(anchor=tk.W, pady=(0, ui_kit.SPACE["xs"]))
         detail_box = ui_kit.scrollable(right)
         detail_box["frame"].pack(fill=tk.BOTH, expand=True)
         self._detail = tk.Text(
@@ -183,8 +190,11 @@ class PluginPanel(BasePanel):
         actions = tk.Frame(right, bg=C["bg_dark"])
         actions.pack(fill=tk.X, pady=(6, 2))
         self._enable_btn = ui_kit.button(actions, "启用", self._on_enable, kind="primary")
+        self._enable_btn.pack(side=tk.LEFT)
         self._disable_btn = ui_kit.button(actions, "停用", self._on_disable, kind="ghost")
+        self._disable_btn.pack(side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0))
         self._uninstall_btn = ui_kit.button(actions, "卸载", self._on_uninstall, kind="danger")
+        self._uninstall_btn.pack(side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0))
 
         # ---- 底部：生效证据（"装上了" vs "生效了"）
         self._effect_line = ui_kit.hint(body, "")

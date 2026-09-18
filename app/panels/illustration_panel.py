@@ -62,7 +62,7 @@ class IllustrationPanel(BasePanel):
         C = UIStyle.COLORS
         self._prompts: list[Path] = []
         self._current: Optional[Path] = None
-        self._runner = BackgroundRunner(ui=getattr(self.app, "root", None), log=self._log)
+        self._runner = BackgroundRunner(ui=getattr(self.app, "root", None), log=self._log_safe)
         self._busy = False
 
         body = tk.Frame(parent, bg=C["bg_dark"])
@@ -71,10 +71,19 @@ class IllustrationPanel(BasePanel):
         # ---- 顶部工具条：后端状态 + 三个动作
         bar = ui_kit.toolbar(body)
         bar["bar"].pack(fill=tk.X)  # ❗ toolbar 只返回三块 Frame，**不自行 pack**
-        ui_kit.button(bar["left"], "检测后端", self._on_check, kind="ghost")
-        ui_kit.button(bar["left"], "刷新提示词", self._on_reload, kind="ghost")
-        ui_kit.button(bar["left"], "打开图片目录", self._on_open_dir, kind="ghost")
+        # ❗❗ 同一坑有**两层**：`toolbar` 不自行 pack 已是已知项，
+        # 但 `button / badge / section_title / hint` **同样不自行 pack** ——
+        # 它们只创建控件并返回，必须由调用方挂载。
+        # 漏掉不报错：控件照样被创建，只是永远不显示（本面板曾整排按钮消失）。
+        ui_kit.button(bar["left"], "检测后端", self._on_check, kind="ghost").pack(side=tk.LEFT)
+        ui_kit.button(bar["left"], "刷新提示词", self._on_reload, kind="ghost").pack(
+            side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0)
+        )
+        ui_kit.button(bar["left"], "打开图片目录", self._on_open_dir, kind="ghost").pack(
+            side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0)
+        )
         self._status_badge = ui_kit.badge(bar["right"], "未检测", kind="info")
+        self._status_badge.pack(side=tk.RIGHT)
 
         # ---- 左：提示词列表；右：内容与生成
         split = tk.Frame(body, bg=C["bg_dark"])
@@ -83,7 +92,7 @@ class IllustrationPanel(BasePanel):
         left = tk.Frame(split, bg=C["bg_dark"], width=280)
         left.pack(side=tk.LEFT, fill=tk.Y)
         left.pack_propagate(False)
-        ui_kit.section_title(left, "名场面提示词")
+        ui_kit.section_title(left, "名场面提示词").pack(anchor=tk.W, pady=(0, ui_kit.SPACE["xs"]))
         # `pretty_tree` 返回的是 dict（frame/tree/scrollbar/sort_by），且 columns 是
         # **列名序列**、宽度另传 `widths` —— 与"传 (名,宽) 元组"的直觉写法不同。
         holder = ui_kit.pretty_tree(
@@ -100,7 +109,7 @@ class IllustrationPanel(BasePanel):
         right = tk.Frame(split, bg=C["bg_dark"])
         right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 0))
 
-        ui_kit.section_title(right, "提示词内容")
+        ui_kit.section_title(right, "提示词内容").pack(anchor=tk.W, pady=(0, ui_kit.SPACE["xs"]))
         self._preview = tk.Text(
             right,
             height=12,
@@ -118,7 +127,8 @@ class IllustrationPanel(BasePanel):
         actions = tk.Frame(right, bg=C["bg_dark"])
         actions.pack(fill=tk.X, pady=(6, 2))
         self._gen_btn = ui_kit.button(actions, "生成插图", self._on_generate, kind="primary")
-        ui_kit.hint(actions, "生成结果保存到作品目录的 images/ 下")
+        self._gen_btn.pack(side=tk.LEFT)
+        ui_kit.hint(actions, "生成结果保存到作品目录的 images/ 下").pack(side=tk.LEFT, padx=(ui_kit.SPACE["md"], 0))
         self._gen_btn.config(state=tk.DISABLED)
 
         self._hint = ui_kit.hint(right, "")
@@ -142,6 +152,23 @@ class IllustrationPanel(BasePanel):
 
     # ------------------------------------------------------------------ 内部
 
+    def _log_safe(self, message: str) -> None:
+        """宿主绑定则走宿主的日志面板，否则只落 logger。
+
+        ❗ 为什么必须有它：`BackgroundRunner(log=...)` 会在生成过程中回传进度，
+        而 `self._log` 在**未绑定宿主时会抛 AttributeError**
+        （`BasePanel.__getattr__` 把未定义属性转发给宿主，宿主为 None 即抛）。
+        本面板原先直接传 `self._log`，是三个新面板里唯一没做这层兜底的 ——
+        结果"未绑定宿主"时 `build()` 直接崩在构造 runner 这一步，
+        **后面所有控件都来不及创建**，表现为"面板一片空白"。
+        MCP 与插件面板都用 `_log_safe`，这里补齐一致。
+        """
+        host_log = getattr(self.app, "_log", None) if self.app is not None else None
+        if callable(host_log):
+            host_log(message)
+        else:
+            logger.debug(f"[插图工坊] {message}")
+
     def _novel_dir(self) -> Optional[Path]:
         d = getattr(self, "current_novel_dir", None)
         return Path(d) if d else None
@@ -158,8 +185,11 @@ class IllustrationPanel(BasePanel):
         try:
             from app.image_generator import ImageGenerator
 
-            gen = ImageGenerator(self.config)
-            self.app.image_gen = gen
+            # ❗ 用 `getattr` 而非 `self.config`：后者走 `__getattr__` 代理，
+            # 未绑定宿主时会抛，被下面的 `except` 吞成一个**误导性的**"构造失败"。
+            gen = ImageGenerator(getattr(self.app, "config", None))
+            if self.app is not None:
+                self.app.image_gen = gen
             return gen
         except Exception as exc:  # noqa: BLE001 - 构造失败要能显示出来
             logger.debug(f"[插图工坊] 构造 ImageGenerator 失败：{exc}")

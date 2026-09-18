@@ -138,14 +138,45 @@ onefile 应见**双进程**（引导 + 应用），窗口标题非空（`AI小�
   （其它三个原生面板都有这一行。）
 - ❗ **面板总数写进了内存与文档**（现 **18 面板 / 5 分组**），新增面板要同步。
 
-### `ui_kit` 的两个反直觉点
+### 🔴 `ui_kit` 的挂载契约**不一致**（最容易踩，且不报错）
+
+**同一个模块里的助手分两类，从外观上完全看不出来**：
+
+| 类别 | 助手 | 调用方要做什么 |
+|---|---|---|
+| **自挂载** | `card` · `toolbar` · `search_entry` · `empty_state` · `kpi_row` · `scrollable` · `pretty_tree` | 什么也不用做（`pretty_tree` 的 `frame` 例外，见下） |
+| 🔴 **需调用方挂载** | **`button` · `badge` · `section_title` · `hint`** | **必须自己 `.pack()`** |
+
+后四个只 `创建控件 + return`。若写成裸调用（`ui_kit.button(bar, "添加", cb)` 后面不接 `.pack()`），
+
+- **不会报任何错**；
+- 控件**确实进了 widget 树**（`winfo_children()` 里能找到它）；
+- 但**没有几何管理器接管它** ⇒ 不显示、不占位。表现为"按钮凭空消失"。
+
+> 2026-09-19 实测：`mcp_panel` / `plugin_panel` / `illustration_panel` 三个面板
+> 共 **28 处**裸调用 ⇒「添加服务器」「安装插件」「生成插图」等入口全部不可见。
+> 长期没被发现，是因为 `section_title` / `badge` **只有这三个面板在用**（没有正确范例可对照），
+> 而 `button` 的另两个调用方（`host.py`、`timeline_panel.py`）恰好都挂对了。
+
+- ❗ **判据必须是 `winfo_manager()` 非空**，**不是**"对象存在"——
+  后者在 `winfo_children()` 里恒为真，测试会照样绿。
+- ✅ 守卫：`tests/test_panel_controls_mounted.py`（静态全仓扫描 + 真 Tk 渲染断言，双层 + 三个反例）。
+
+### `ui_kit` 的另两个反直觉点
 
 - **`pretty_tree()` 返回的是 dict**（`{"frame","tree","scrollbar","sort_by"}`），
   不是 `ttk.Treeview` —— 拿控件要 `holder["tree"]`。
   且 `columns` 是**列名序列**（`["文件"]`），宽度另传 `widths=[240]`；
-  返回的 `frame` **还要自行 pack**。
+  返回的 `frame` **还要自行 pack**（与上表"自挂载"不冲突：树控件自挂载，外层 frame 要自己挂）。
 - **`toolbar()` 只返回三块 Frame**（`{"bar","left","right"}`），**不自行 pack**
   —— 忘记 pack `bar["bar"]` 会得到一个不可见的工具条。
+
+### ❗ `self._log` 未绑定宿主时会抛
+
+`self._log` 经 `BasePanel.__getattr__` 代理到宿主，**`app=None`（未绑定）时抛 `AttributeError`**。
+若它出现在 `build()` 靠前位置（如构造 `BackgroundRunner`），
+**后面所有控件都建不出来** ⇒ 表现为"面板一片空白"。
+⇒ 面板内一律走自己的 `_log_safe` 兜底（`mcp_panel` / `plugin_panel` / `illustration_panel` 均已实现）。
 
 ### 其它既有约定
 

@@ -41,9 +41,31 @@ class TestParseJsonResponse:
     def test_trailing_comma_repaired(self):
         assert parse_json_response('{"a": 1,}', None) == {"a": 1}
 
-    def test_missing_closing_brace_returns_default(self):
-        # 已知局限：完全没有闭合 } 时无法用 { ... } 提取，返回默认值
-        assert parse_json_response('{"a": "hello', "DEFAULT") == "DEFAULT"
+    def test_missing_closing_brace_is_repaired(self):
+        """M-12（2026-11-17）：截断在字符串内也要能补全。
+
+        这条此前断言的是"已知局限：返回默认值"。局限的根因有两层：
+        ① 候选提取用 `rfind("}")`，没有闭合括号时切片为空 ⇒ 候选根本没进列表；
+        ② 补全后缀全以 `"` 开头，只能修"截断在字符串内"。
+        两处修好后，行为从"放弃"变成"恢复"。
+        """
+        assert parse_json_response('{"a": "hello', "DEFAULT") == {"a": "hello"}
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ('{"a": 1', {"a": 1}),
+            ('{"a": true', {"a": True}),
+            ('{"a": null', {"a": None}),
+            ('{"a": "x"', {"a": "x"}),
+            ('{"a": [1]', {"a": [1]}),
+            ('{"a": {"b": 2', {"a": {"b": 2}}),
+            ('[{"a": 1', [{"a": 1}]),
+        ],
+    )
+    def test_truncated_at_any_value_type_is_repaired(self, raw, expected):
+        """截断点覆盖字符串 / 数字 / 布尔 / null / 嵌套（M-12 的回归面）。"""
+        assert parse_json_response(raw, "DEFAULT") == expected
 
     def test_partial_objects_extracted(self):
         # Strategy 5：逐个提取完整子对象

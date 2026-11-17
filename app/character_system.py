@@ -762,11 +762,19 @@ class CharacterSystem:
                 logger.warning(f"[角色系统] 自定义武器/技能文件无法读取，已跳过：{e}")
 
     def _save_custom(self):
-        if self.custom_file:
-            with open(self.custom_file, "w", encoding="utf-8") as f:
-                json.dump(
-                    {"weapons": self.custom_weapons, "skills": self.custom_skills}, f, indent=2, ensure_ascii=False
-                )
+        """保存自定义武器/技能（M-10：原子写 + `.bak` 轮转）。
+
+        旧实现是裸 `open(..., "w")` + `json.dump`：写入中途被杀会留下截断文件，
+        而 `_load_custom` 只 `warning` 后跳过 —— 用户的全部自定义武器/技能静默消失。
+        """
+        if not self.custom_file:
+            return
+        atomic_write_json(
+            self.custom_file,
+            {"weapons": self.custom_weapons, "skills": self.custom_skills},
+            indent=2,
+            backup=True,
+        )
 
     def add_custom_weapon(self, name: str, category: str, quality: str, desc: str, attributes: Dict) -> Dict:
         """添加自定义武器"""

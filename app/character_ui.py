@@ -1149,12 +1149,20 @@ class CharacterUIMixin:
         # 加载角色故事
         stories_dir = self.current_novel_dir / "character_stories"
         stories_dir.mkdir(exist_ok=True)
-        story_file = stories_dir / f"{char_name}.json"
+        # ❗ 必须与 `biography.read_story_arcs` 用同一个文件名规则：
+        # 旧实现这里用**原始角色名**，而读取侧用 `safe_filename(name)` ——
+        # 名字里带 `/` 或 `..` 时，写进去的故事线永远读不回来，还会越出目录。
+        story_file = stories_dir / f"{safe_filename(char_name)}.json"
 
         story_data = {"name": char_name, "story_arcs": [], "notes": ""}
         if story_file.exists():
-            with open(story_file, "r", encoding="utf-8") as f:
-                story_data = json.load(f)
+            try:
+                with open(story_file, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    story_data = loaded
+            except (OSError, ValueError) as exc:
+                self._log(f"[故事线] 读取 {story_file.name} 失败，按空内容继续：{exc}")
 
         tk.Label(
             dialog,
@@ -1226,8 +1234,8 @@ class CharacterUIMixin:
 
         def save_story():
             story_data["notes"] = detail_text.get("1.0", tk.END).strip()
-            with open(story_file, "w", encoding="utf-8") as f:
-                json.dump(story_data, f, indent=2, ensure_ascii=False)
+            # M-11：故事线是长文本，中断概率更高 —— 必须原子写 + `.bak`
+            atomic_write_json(story_file, story_data, indent=2, backup=True)
             self._log(f"已保存 {char_name} 的故事线")
             dialogs.showinfo("成功", "故事线已保存")
 

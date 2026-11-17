@@ -1418,8 +1418,12 @@ class NovelLifecycleMixin:
             )
 
             # 保存配置
+            # ❗ `configure_provider` 返回"是否成功落盘"。加密组件不可用时它会
+            # 拒绝写入（避免凭据明文落盘），此时必须告知用户 —— 否则用户以为
+            # 已经保存，重启后凭据全没了却毫无线索。
+            saved = True
             if provider_id == "webdav":
-                self.cloud_storage.configure_provider(
+                saved = self.cloud_storage.configure_provider(
                     "webdav",
                     {
                         "url": webdav_url_entry.get(),
@@ -1428,13 +1432,21 @@ class NovelLifecycleMixin:
                     },
                 )
             elif provider_id == "baidu":
-                self.cloud_storage.configure_provider("baidu", {"access_token": baidu_token_entry.get()})
+                saved = self.cloud_storage.configure_provider("baidu", {"access_token": baidu_token_entry.get()})
             elif provider_id == "quark":
-                self.cloud_storage.configure_provider("quark", {"cookie": quark_cookie_entry.get()})
+                saved = self.cloud_storage.configure_provider("quark", {"cookie": quark_cookie_entry.get()})
             elif provider_id == "xunlei":
-                self.cloud_storage.configure_provider("xunlei", {"access_token": xunlei_token_entry.get()})
+                saved = self.cloud_storage.configure_provider("xunlei", {"access_token": xunlei_token_entry.get()})
             elif provider_id == "aliyun":
-                self.cloud_storage.configure_provider("aliyun", {"access_token": aliyun_token_entry.get()})
+                saved = self.cloud_storage.configure_provider("aliyun", {"access_token": aliyun_token_entry.get()})
+
+            if not saved:
+                dialogs.showwarning(
+                    "凭据未保存",
+                    "云盘凭据无法安全加密，因此本次**没有**写入磁盘（避免以明文保存）。\n\n"
+                    "请检查 cryptography 与配置目录权限后重试。",
+                )
+                return
 
             # 测试连接
             if self.cloud_storage.connect_provider(provider_id):

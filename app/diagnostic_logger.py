@@ -5,6 +5,7 @@ AI 诊断日志系统 - JSON 结构化日志，供 AI/开发者分析
 
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -12,6 +13,55 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+# ── 脱敏（L-6）────────────────────────────────────────
+
+#: 字段名里出现这些片段就整值替换成 `***`（大小写不敏感）。
+#: 判据刻意保守：宁可多盖一个无关键，也不要漏掉一个凭据。
+_SENSITIVE_MARKERS = (
+    "API_KEY",
+    "APIKEY",
+    "ACCESS_TOKEN",
+    "REFRESH_TOKEN",
+    "AUTH_TOKEN",
+    "SECRET",
+    "PASSWORD",
+    "PASSWD",
+    "CREDENTIAL",
+    "COOKIE",
+    "BEARER",
+)
+
+#: 文本里的"键=值"凭据（URL 查询串最常见）。
+_INLINE_SECRET_RE = re.compile(
+    r"(?i)(access_token|refresh_token|api_key|apikey|token|password|passwd|secret|sessionid)=([^&\s\"']+)"
+)
+#: `Authorization: Bearer xxx` / 裸 Bearer token
+_BEARER_RE = re.compile(r"(?i)(bearer\s+)[A-Za-z0-9\-._~+/]{12,}=*")
+#: 常见云厂商/服务商密钥前缀（OpenAI/Anthropic/GitHub/Slack）
+_KEY_PREFIX_RE = re.compile(r"\b(sk-[A-Za-z0-9\-_]{16,}|ghp_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9\-]{10,})")
+
+
+def is_sensitive_key(key: Any) -> bool:
+    """字段名是否像凭据。"""
+    upper = str(key).upper()
+    return any(marker in upper for marker in _SENSITIVE_MARKERS)
+
+
+def redact_text(text: str) -> str:
+    """把文本里的凭据替换成 `***`。幂等。
+
+    刻意**不做异常兜底**：入参在所有调用点都已是 `str`
+    （见 `_truncate_data` 与 `str(error)`），出现非字符串属于编程错误，
+    静默吞掉只会让"某类日志永远不被脱敏"这件事无人察觉。
+    """
+    if not text:
+        return text
+    text = _INLINE_SECRET_RE.sub(r"\1=***", text)
+    text = _BEARER_RE.sub(r"\1***", text)
+    text = _KEY_PREFIX_RE.sub("***", text)
+    return text
+
 
 # ── 单例 ──────────────────────────────────────────────
 _logger_instance: Optional["DiagnosticLogger"] = None
@@ -123,8 +173,9 @@ class DiagnosticLogger:
             if error:
                 entry["error"] = {
                     "type": type(error).__name__,
-                    "message": str(error)[:500],
-                    "traceback": traceback.format_exc()[-2000:],  # 最后2000字符（核心栈）
+                    # L-6：异常文本常带完整 URL（含 access_token=…）或 Bearer 头
+                    "message": redact_text(str(error))[:500],
+                    "traceback": redact_text(traceback.format_exc())[-2000:],  # 最后2000字符（核心栈）
                 }
 
             if duration_ms is not None:
@@ -142,15 +193,27 @@ class DiagnosticLogger:
                 pass  # 日志写入失败不能影响主流程
 
     def _truncate_data(self, data: Any, max_depth: int = 3, max_str: int = 2000) -> Any:
-        """截断大数据，防止日志爆炸"""
+        """截断大数据，防止日志爆炸；**同时做兜底脱敏**（L-6）。
+
+        当前调用方都只记元数据（provider / model / 计数），但"当前没泄露"
+        不等于"以后不会"：任何人往 `data` 里塞一个 `api_key` 或带查询串的 URL，
+        就会把长期凭据写进可被上传/打包的 JSONL。这里按 key 名与文本模式兜底。
+        """
         if isinstance(data, str):
-            if len(data) > max_str:
-                return data[:max_str] + f"...[截断,原长{len(data)}]"
-            return data
+            text = redact_text(data)
+            if len(text) > max_str:
+                return text[:max_str] + f"...[截断,原长{len(text)}]"
+            return text
         elif isinstance(data, dict):
             if max_depth <= 0:
                 return {"_truncated": True, "_keys": list(data.keys())[:20]}
-            return {k: self._truncate_data(v, max_depth - 1, max_str) for k, v in list(data.items())[:50]}
+            result = {}
+            for k, v in list(data.items())[:50]:
+                if is_sensitive_key(k):
+                    result[k] = "***"
+                else:
+                    result[k] = self._truncate_data(v, max_depth - 1, max_str)
+            return result
         elif isinstance(data, list):
             if max_depth <= 0:
                 return [f"...[{len(data)}项]"]
@@ -158,7 +221,7 @@ class DiagnosticLogger:
         elif isinstance(data, (int, float, bool, type(None))):
             return data
         else:
-            return str(data)[:max_str]
+            return redact_text(str(data))[:max_str]
 
     # ── 便捷方法 ─────────────────────────────────────
 

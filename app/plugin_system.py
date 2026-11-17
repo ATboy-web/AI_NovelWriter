@@ -144,6 +144,9 @@ _MAX_EXTRACT_MEMBER_BYTES = 128 * 1024 * 1024
 #: 成员数量上限（防"百万个空文件"拖死文件系统）。
 _MAX_EXTRACT_MEMBERS = 5000
 
+#: 从 URL 安装时的下载上限（L-5）。插件包是纯文本 + 少量资源，256 MB 足够。
+_MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024
+
 
 def default_plugins_dir() -> Path:
     """插件根目录（唯一来源 —— 别在别处再拼一次这个路径）。"""
@@ -627,6 +630,11 @@ class PluginManager:
             parsed = urlparse(source)
             if parsed.scheme in ("http", "https"):
                 return self._install_from_url(source)
+            # 只允许"无 scheme"（本地路径）或盘符（`C:\…` 会被解析成 scheme="c"）。
+            # `file://` / `ftp://` / `data:` 一律拒绝：前者会绕过"用户显式提供 URL"
+            # 的前提，后两者既不该被当作安装来源也无法安全处理。
+            if parsed.scheme and len(parsed.scheme) > 1:
+                return PluginResult(False, f"不支持的来源协议：{parsed.scheme}（仅支持本地路径或 http/https）")
             if source.lower().endswith(".zip"):
                 return self._install_from_zip(Path(source))
             return self._install_from_directory(Path(source))
@@ -634,19 +642,48 @@ class PluginManager:
             return PluginResult(False, f"安装失败：{type(exc).__name__}: {exc}")
 
     def _install_from_url(self, url: str) -> PluginResult:
-        import urllib.request
+        """从 URL 下载并安装。
+
+        L-5：旧实现用 `urllib.request.urlretrieve`，**无超时、无大小上限** ——
+        一个慢速或恶意的服务端可以让安装线程永久挂起，或用无限流把磁盘写满。
+        现在改为 `urlopen(timeout=...)` + 分块读取 + 上限检查。
+        """
 
         parsed = urlparse(url)
+        # 只允许 http(s)：`file://` / `ftp://` 会绕过"用户显式提供 URL"的前提
+        if parsed.scheme not in ("http", "https"):
+            return PluginResult(False, f"不支持的来源协议：{parsed.scheme or '(空)'}")
         # GitHub 仓库页 → 归档下载地址
-        if parsed.netloc.endswith("github.com") and not url.lower().endswith(".zip"):
+        if (parsed.netloc or "").endswith("github.com") and not url.lower().endswith(".zip"):
             url = url.rstrip("/") + "/archive/refs/heads/main.zip"
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
                 zip_path = Path(temp_dir) / "plugin.zip"
-                urllib.request.urlretrieve(url, str(zip_path))  # noqa: S310 - 用户显式提供的 URL
+                self._download_to(url, zip_path)
                 return self._install_from_zip(zip_path)
         except Exception as exc:  # noqa: BLE001
             return PluginResult(False, f"下载失败：{type(exc).__name__}: {exc}")
+
+    @staticmethod
+    def _download_to(url: str, dest: Path) -> None:
+        """带超时与体积上限的下载。超限即抛 `ValueError`（由调用方转成结果对象）。"""
+        import urllib.request
+
+        request = urllib.request.Request(url, headers={"User-Agent": "AI-NovelWriter"})
+        written = 0
+        with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 - scheme 已校验
+            declared = response.headers.get("Content-Length")
+            if declared and declared.isdigit() and int(declared) > _MAX_DOWNLOAD_BYTES:
+                raise ValueError(f"文件过大（{int(declared) / 1048576:.1f} MB），已拒绝下载")
+            with open(dest, "wb") as out:
+                while True:
+                    chunk = response.read(64 * 1024)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > _MAX_DOWNLOAD_BYTES:
+                        raise ValueError(f"下载体积超过上限 {_MAX_DOWNLOAD_BYTES // 1048576} MB")
+                    out.write(chunk)
 
     def _install_from_zip(self, zip_path: Path) -> PluginResult:
         if not zip_path.exists():
@@ -698,9 +735,17 @@ class PluginManager:
             return PluginResult(False, f"插件「{plugin_name}」已存在，请先卸载", plugin_name)
 
         dest_dir = self.plugins_dir / plugin_name
+        # 🔴 M-9：**绝不**在这里 `rmtree` 既有目录。
+        # 旧实现在 `dest_dir.exists()` 时直接删除，而判重用的是 `plugin.json` 里的
+        # `name`、目录名用的是文件名 —— 二者不一致时，会删掉**另一个插件**的目录。
+        # 删除只允许出现在 `uninstall()`（有用户确认）。
+        if dest_dir.exists():
+            return PluginResult(
+                False,
+                f"插件目录「{plugin_name}」已存在。如需替换，请先在列表里卸载该插件。",
+                plugin_name,
+            )
         try:
-            if dest_dir.exists():
-                shutil.rmtree(dest_dir)
             shutil.copytree(plugin_src, dest_dir)
         except OSError as exc:
             return PluginResult(False, f"复制插件失败：{exc}", plugin_name)

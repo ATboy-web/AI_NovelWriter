@@ -49,7 +49,7 @@ JUSTIFIED: dict[str, str] = {
     "app/__init__.py:41": "`_ImportStub` 降级：导入失败必须能继续跑，否则打包缺陷不可见",
     "app/__init__.py:47": "元数据读取失败时回落到 `_FALLBACK_VERSION`，是版本探测的正常分支",
     "app/agent_orchestrator.py:30": "`__del__` 析构：抛异常会让解释器打印 ignored 并干扰线程池清理",
-    "app/diagnostic_logger.py:141": "日志组件自身：在这里报错会把「记录失败」升级成「业务失败」",
+    "app/diagnostic_logger.py:192": "日志组件自身：在这里报错会把「记录失败」升级成「业务失败」",
     "app/novel_store.py:90": "事件订阅方抛异常不得影响写盘（此时写盘已经成功）",
     "app/storage.py:138": "临时文件名生成：拿不到 pid/tid 就退化为无前缀，仍能唯一",
     "app/storage.py:144": "旧临时文件的尽力清理：清理失败不该让本次写入失败",

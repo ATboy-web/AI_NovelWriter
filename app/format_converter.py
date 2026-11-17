@@ -5,6 +5,7 @@
 
 import os
 import re
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -12,6 +13,36 @@ from typing import Dict, List, Optional
 
 class FormatConverter:
     """小说格式转换器"""
+
+    # ------------------------------------------------------------------ 原子输出
+
+    @staticmethod
+    def _tmp_output(output_file: Path) -> Path:
+        """为一次导出创建同目录临时文件（L-7）。
+
+        为什么必须同目录：`os.replace` 只在**同一文件系统**内是原子的；
+        跨分区（`%TEMP%` → 用户目录）会退化成复制 + 删除，失去原子性。
+        """
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        handle, tmp = tempfile.mkstemp(
+            prefix=f".{output_file.stem}-",
+            suffix=output_file.suffix,
+            dir=str(output_file.parent),
+        )
+        os.close(handle)
+        return Path(tmp)
+
+    @staticmethod
+    def _commit_output(tmp: Path, output_file: Path) -> None:
+        """把临时文件原子替换为目标文件。"""
+        os.replace(tmp, output_file)
+
+    @staticmethod
+    def _discard_output(tmp: Path) -> None:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
     SUPPORTED_FORMATS = {
         "txt": {"name": "TXT纯文本", "ext": ".txt", "desc": "纯文本格式，通用性最强"},
@@ -83,8 +114,14 @@ class FormatConverter:
         else:
             lines.append(content)
 
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
+        tmp = self._tmp_output(output_file)
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+            self._commit_output(tmp, output_file)
+        except Exception:
+            self._discard_output(tmp)
+            raise
 
         return str(output_file)
 
@@ -191,8 +228,14 @@ class FormatConverter:
 </body>
 </html>""")
 
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write("".join(html_parts))
+        tmp = self._tmp_output(output_file)
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write("".join(html_parts))
+            self._commit_output(tmp, output_file)
+        except Exception:
+            self._discard_output(tmp)
+            raise
 
         return str(output_file)
 
@@ -253,8 +296,14 @@ class FormatConverter:
         else:
             md_parts.append(content)
 
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write("\n".join(md_parts))
+        tmp = self._tmp_output(output_file)
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write("\n".join(md_parts))
+            self._commit_output(tmp, output_file)
+        except Exception:
+            self._discard_output(tmp)
+            raise
 
         return str(output_file)
 
@@ -322,7 +371,13 @@ class FormatConverter:
         book.add_item(epub.EpubNav())
         book.spine = ["nav"] + epub_chapters
 
-        epub.write_epub(str(output_file), book)
+        tmp = self._tmp_output(output_file)
+        try:
+            epub.write_epub(str(tmp), book)
+            self._commit_output(tmp, output_file)
+        except Exception:
+            self._discard_output(tmp)
+            raise
         return str(output_file)
 
     def _to_pdf(
@@ -400,7 +455,13 @@ class FormatConverter:
                     pdf.multi_cell(0, 8, para)
                     pdf.ln(3)
 
-        pdf.output(str(output_file))
+        tmp = self._tmp_output(output_file)
+        try:
+            pdf.output(str(tmp))
+            self._commit_output(tmp, output_file)
+        except Exception:
+            self._discard_output(tmp)
+            raise
         return str(output_file)
 
     def _to_docx(
@@ -449,7 +510,13 @@ class FormatConverter:
                 if para:
                     doc.add_paragraph(para)
 
-        doc.save(str(output_file))
+        tmp = self._tmp_output(output_file)
+        try:
+            doc.save(str(tmp))
+            self._commit_output(tmp, output_file)
+        except Exception:
+            self._discard_output(tmp)
+            raise
         return str(output_file)
 
 

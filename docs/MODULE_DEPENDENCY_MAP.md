@@ -9,7 +9,7 @@
 | 指标 | 值 |
 |---|---|
 | 内部模块数 | 91 |
-| 依赖边数 | 262 |
+| 依赖边数 | 263 |
 | 其中函数内延迟导入 | 44 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
@@ -56,7 +56,7 @@
 |---|---|
 | `app` | 31 |
 | `dialogs` | 28 |
-| `storage` | 20 |
+| `storage` | 21 |
 | `ui_style` | 18 |
 | `events` | 12 |
 | `panels` | 12 |
@@ -105,7 +105,7 @@
 | `chapter_ui` | 🔴`app`, 🔴`dialogs`, 🔴`events` |
 | `character_system` | 🔴`parsing`, 🔴`storage` |
 | `character_ui` | 🔴`app`, 🔴`biography`, 🔴`character_system`, 🔴`dialogs`, 🔴`format_converter`, 🔴`memory_manager`, 🔴`parsing`, 🔴`storage`, 🔴`timeline_store` |
-| `cloud_storage` | ⚪`secure_config` |
+| `cloud_storage` | ⚪`secure_config`, 🔴`storage` |
 | `config` | ⚪`secure_config`, 🔴`storage` |
 | `design_tokens` | 🔴`ui_style` |
 | `diagnostic_logger` | — |

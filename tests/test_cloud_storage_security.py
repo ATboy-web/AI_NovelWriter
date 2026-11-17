@@ -11,9 +11,9 @@
 （`_require_secure_url` / `_safe_error`）—— 它们写在代码里但从未被执行过，
 等于"没人验证过它真的拦得住"。
 
-> 已知未修复项（见审查报告）：`CloudStorageManager.download_novel()`
-> 用云端返回的 `name` 直接拼本地路径，可越界写入。该问题被判定为**高危**，
-> 按用户要求只报告、待确认后再改，因此这里不放会失败的用例。
+> 路径穿越（H-1）、配置健壮性（M-3/M-4）、厂商字段（M-7/M-8）、
+> 百度分片（M-5）与增量同步（M-6）在
+> `tests/test_cloud_storage_paths_and_sync.py` 里，本文件不重复。
 """
 
 from __future__ import annotations

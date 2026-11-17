@@ -70,6 +70,8 @@ __all__ = [
     "MCPManager",
     "default_servers_file",
     "sanitize_server_name",
+    "build_child_env",
+    "is_sensitive_env_name",
     "parse_sse_payload",
     "extract_rpc_result",
     "build_initialize_params",
@@ -81,6 +83,47 @@ __all__ = [
 
 #: MCP 协议版本（2024-11-05 是当前被广泛实现的一版）。
 MCP_PROTOCOL_VERSION = "2024-11-05"
+
+#: 允许明文 http 的本机主机名（本地 MCP server）。
+_ALLOWED_INSECURE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+
+#: 子进程**不继承**的敏感环境变量（L-1）。
+#:
+#: `stdio` 传输会启动一个第三方进程，旧实现把 `os.environ` 整个传下去 ——
+#: 于是 MCP server 能读到本机的 `OPENAI_API_KEY` / `AWS_SECRET_ACCESS_KEY` /
+#: GitHub token 等。这里按"名字像凭据就不传"的保守规则剥离，
+#: 同时保留 `MCP_SPEC.env` 允许用户显式补充（那本来就是配置者已知的内容）。
+_SENSITIVE_ENV_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "AUTH", "COOKIE")
+
+
+def _is_loopback_url(url: str) -> bool:
+    """URL 的主机是否是本机回环地址。"""
+    from urllib.parse import urlparse
+
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    return host in _ALLOWED_INSECURE_HOSTS
+
+
+def is_sensitive_env_name(name: str) -> bool:
+    """环境变量名是否"看起来像凭据"。"""
+    upper = str(name).upper()
+    return any(marker in upper for marker in _SENSITIVE_ENV_MARKERS)
+
+
+def build_child_env(extra: Optional[dict] = None) -> dict[str, str]:
+    """构造子进程环境：剥离敏感变量 + 合并配置里显式声明的 `env`（L-1）。
+
+    用户显式在 `mcp_servers.json` 的 `env` 里写下的值**会保留** ——
+    那是配置者主动交给该 server 的，与"被动继承整台机器所有密钥"是两回事。
+    """
+    env = {str(k): str(v) for k, v in os.environ.items() if not is_sensitive_env_name(k)}
+    for key, value in (extra or {}).items():
+        env[str(key)] = str(value)
+    return env
+
 
 #: 支持的传输方式 → 说明（「新增一种传输只改这里一处」）。
 TRANSPORTS: dict[str, str] = {
@@ -358,6 +401,10 @@ class MCPServerSpec:
                 return False, "http 传输缺少 url"
             if not (self.url.startswith("http://") or self.url.startswith("https://")):
                 return False, "url 必须以 http:// 或 https:// 开头"
+            # L-2：明文 http 只允许本机。远程 MCP 的 headers 里通常带 Bearer token，
+            # 用 http 等于把凭据明文发到网络上。
+            if self.url.startswith("http://") and not _is_loopback_url(self.url):
+                return False, "远程 MCP 必须使用 https（http 会把 headers 里的凭据明文发出）"
             return True, ""
         return False, f"未知传输方式：{self.transport}"
 
@@ -414,8 +461,8 @@ class MCPClient:
 
     def _call_stdio(self, method: str, params: Optional[dict]) -> dict:
         cmd = [self.spec.command] + list(self.spec.args)
-        env = dict(os.environ)
-        env.update({str(k): str(v) for k, v in (self.spec.env or {}).items()})
+        # L-1：不把整台机器的环境变量交给第三方进程（见 build_child_env 的说明）
+        env = build_child_env(self.spec.env)
         payload = self._envelope(method, params)
         if JSONRPC_METHODS.get(method, {}).get("notification", False):
             # 通知：发完即走，不等响应
@@ -484,6 +531,10 @@ class MCPClient:
             import httpx
         except ImportError as e:  # pragma: no cover - httpx 是运行依赖
             raise _JsonRpcError(f"缺少 httpx，无法走 HTTP 传输：{e}") from None
+        # L-2：即使调用方绕过 `is_usable()` 直接调 `call()`，这里也再拦一次 ——
+        # 安全判据不能只挂在"界面会不会先检查"上。
+        if self.spec.url.startswith("http://") and not _is_loopback_url(self.spec.url):
+            raise _JsonRpcError("远程 MCP 必须使用 https（http 会把 headers 里的凭据明文发出）")
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",

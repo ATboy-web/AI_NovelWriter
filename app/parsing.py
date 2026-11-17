@@ -33,6 +33,32 @@ __all__ = [
     "extract_characters_payload",
 ]
 
+#: 截断补全的后缀候选（**顺序即优先级**）。
+#:
+#: 分两族：先试"值已完整、只缺闭合括号"，再试"截断在字符串内部、还需要补引号"。
+#: 两族都必须在 `_is_balanced()`（字符串感知）通过后才会 `json.loads`，
+#: 因此不会把"截断在字符串内"误补成合法 JSON（M-12）。
+_TRUNCATION_SUFFIXES = (
+    # ---- 族 1：值已完整（数字 / true / false / null / 已闭合的容器）
+    "}",
+    "]}",
+    "}]",
+    "}}",
+    "}]}",
+    "]}}",
+    "}}}",
+    "}\n}",
+    "]\n}",
+    # ---- 族 2：截断在字符串内部，需要先补引号
+    '"}',
+    '"}]',
+    '"}}',
+    '"}]}}',
+    '"]}}}',
+    '"}\n}',
+    '"}\n}]',
+)
+
 # Strategy 5 中不应被当作角色名的键：它们的值是角色的子对象（武器/属性等），
 # 不是角色本身。
 # L10：此前这里还包含 `"raw"`，导致一个**真的叫 raw 的角色**被静默丢弃；
@@ -476,6 +502,24 @@ def parse_json_response(response: str, default, is_list: bool = False):
         if start >= 0 and end > start:
             strategies.append(clean[start:end])
 
+    # Strategy 2.5: **整体文本本身**也是候选（M-12 的前提修复）。
+    #
+    # 上面的提取用 `rfind("}") + 1`，当响应被截断且**一个闭合括号都没有**时
+    # `rfind` 返回 -1 ⇒ 候选切片为空 ⇒ 根本不进 `strategies`。
+    # 于是 Strategy 4 的"补全截断"对着**空列表**循环，永远不可能生效
+    # （实测：`{"a": 1` 在修复前后都无法恢复）。
+    # 这里把整段文本补进去，让补全策略真的有机会跑。
+    slice_candidates = set(strategies)
+    for candidate in (text, clean):
+        stripped = candidate.strip()
+        if stripped.startswith(("{", "[")) and stripped not in strategies:
+            strategies.append(stripped)
+
+    #: 原文以 `{` 开头 ⇒ 作者意图是**对象**。此时若某个"切片候选"解析出 list，
+    #: 那只是把内层数组当成了结果（`{"a": [1]` → `[1]`），属于
+    #: M4 明确要防的"合法但语义错误"。定向跳过，不影响真正的顶层数组输入。
+    expects_object = text.strip().startswith("{") and not is_list
+
     # Strategy 3: 修复常见AI JSON错误
     # 每个候选原文产出两个修复版本并**按保真度排序**：先字符串感知版本
     # （保留字符串内部的中文标点与弯引号），再朴素全量替换版本（兜底 AI 把
@@ -505,6 +549,9 @@ def parse_json_response(response: str, default, is_list: bool = False):
         if is_list and not isinstance(parsed, list):
             # 期望列表却解析出对象 → 这个候选不合格，继续找
             continue
+        if expects_object and s in slice_candidates and isinstance(parsed, list):
+            # 原文是对象、这里却从切片里捞出一个数组 ⇒ 是碎片，不是答案
+            continue
         return parsed
 
     # Strategy 4: 尝试补全截断的JSON
@@ -512,9 +559,15 @@ def parse_json_response(response: str, default, is_list: bool = False):
     # 只要恰好解析成功就 `return` —— 可能返回一个"合法但语义错误"的对象，
     # 把解析失败伪装成成功（下游据此走错分支，比直接失败更难排查）。
     # 现在要求补全后 **括号配平** 且 **顶层类型与候选开头字符一致**。
+    #
+    # M-12（2026-11-17）：后缀必须分两族，**先试"不补引号"的一族**。
+    # 旧实现的后缀全部以 `"` 开头（`'"}', '"}]' …`），只能修复"截断在字符串内"
+    # 的情形；AI 在数字/布尔/null 处被截断时（`{"a": 1`）永远补不出来。
+    # `_is_balanced` 是字符串感知的，所以多试不补引号的后缀不会把
+    # "截断在字符串内"误判成成功（未闭合的引号会让配平检查直接拒绝）。
     for s in strategies:
         opener = s.lstrip()[:1]
-        for suffix in ['"}', '"}]', '"}}', '"}]}}', '"]}}}', "}}}", '"}\n}', '"}\n}]']:
+        for suffix in _TRUNCATION_SUFFIXES:
             candidate = s + suffix
             if not _is_balanced(candidate):
                 # 补全后结构仍不平衡 → 这次"成功"必然是假象，跳过
@@ -655,13 +708,17 @@ def parse_exp_json(response: str) -> dict:
         # 计算缺少的闭合括号
         open_braces = truncated.count("{") - truncated.count("}")
         open_brackets = truncated.count("[") - truncated.count("]")
-        # 补全
-        completed = truncated
-        if not completed.endswith('"'):
-            completed += '"'
-        completed += "}" * open_braces + "]" * open_brackets
-        try:
-            data = json.loads(completed)
+        # 补全：**先试不补引号**，再试补引号（M-12）。
+        # 旧实现无条件 `if not endswith('"'): += '"'`，
+        # 于是 `{"a": 1` 被补成 `{"a": 1"}` —— 永远是非法 JSON。
+        closers = "}" * open_braces + "]" * open_brackets
+        for candidate in (truncated + closers, truncated + '"' + closers):
+            if not _is_balanced(candidate):
+                continue
+            try:
+                data = json.loads(candidate)
+            except (json.JSONDecodeError, ValueError):
+                continue
             if isinstance(data, dict):
                 # 验证数据格式
                 for key, val in data.items():
@@ -671,7 +728,6 @@ def parse_exp_json(response: str) -> dict:
                             "exp": _safe_exp_int(val.get("exp", 0)),
                             "detail": val.get("detail", ""),
                         }
-        except (json.JSONDecodeError, ValueError):
-            pass
+                break
 
     return result

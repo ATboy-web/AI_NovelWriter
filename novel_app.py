@@ -42,15 +42,22 @@ from app.navigation import NavigationManager
 from app.usage_tracker import usage_tracker
 
 # 从 app 包导入核心类
-from app import (AppConfig, AIClient, ImageGenerator,
-                 NoteManager, ReadingManager, UIStyle, __version__)
+from app import AppConfig, AIClient, ImageGenerator, NoteManager, ReadingManager, UIStyle, __version__
 
-from app.panels import (ElementsPanelMixin, BridgesPanelMixin,
-                        DescriptionsPanelMixin, DialoguePanelMixin,
-                        StoryFlowPanelMixin, StylePanelMixin,
-                        AdaptPanelMixin, WebSearchPanelMixin,
-                        MemoryVizPanelMixin, SummaryMgmtPanelMixin,
-                        BatchOpsPanelMixin, ChapterAnalysisPanelMixin)
+from app.panels import (
+    ElementsPanelMixin,
+    BridgesPanelMixin,
+    DescriptionsPanelMixin,
+    DialoguePanelMixin,
+    StoryFlowPanelMixin,
+    StylePanelMixin,
+    AdaptPanelMixin,
+    WebSearchPanelMixin,
+    MemoryVizPanelMixin,
+    SummaryMgmtPanelMixin,
+    BatchOpsPanelMixin,
+    ChapterAnalysisPanelMixin,
+)
 
 from app.writing_skills_panel import WritingSkillsPanelMixin
 
@@ -71,6 +78,46 @@ from app.note_ui import NoteUIMixin
 from app.usage_ui import UsagePanelMixin
 
 
+class _UnavailableCloudStorage:
+    """云存储不可用时的降级替身（M-3）。
+
+    为什么需要它：云同步是**可选增强项**，但它在 `__init__` 里构造，
+    一旦抛异常整个应用就起不来（实测：配置文件被截断 ⇒ 双击 EXE 无窗口直接退出）。
+    本类只提供调用方实际用到的接口，全部返回"没有/失败"，
+    让界面显示"未配置云存储"而不是崩溃。
+
+    ❗ 刻意**不继承** `CloudStorageManager`：继承会把 `__init__` 再跑一遍，
+    等于没有降级。
+    """
+
+    def __init__(self, reason: str = ""):
+        self.reason = reason or "云存储不可用"
+        self.config: dict = {}
+        self.providers: dict = {}
+
+    def get_available_providers(self) -> list:
+        return []
+
+    def configure_provider(self, provider_id, config) -> bool:  # noqa: ANN001
+        logger.warning(f"[云存储] 不可用，忽略对 {provider_id} 的配置：{self.reason}")
+        return False
+
+    def connect_provider(self, provider_id) -> bool:  # noqa: ANN001
+        return False
+
+    def upload_novel(self, *args, **kwargs) -> bool:
+        return False
+
+    def download_novel(self, *args, **kwargs) -> bool:
+        return False
+
+    def sync_novel(self, *args, **kwargs) -> bool:
+        return False
+
+    def close(self) -> None:
+        return None
+
+
 class NovelWriterApp(
     ShellMixin,
     NovelLifecycleMixin,
@@ -87,10 +134,18 @@ class NovelWriterApp(
     NoteUIMixin,
     UsagePanelMixin,
     WritingSkillsPanelMixin,
-    ElementsPanelMixin, BridgesPanelMixin, DescriptionsPanelMixin,
-    DialoguePanelMixin, StoryFlowPanelMixin, StylePanelMixin,
-    AdaptPanelMixin, WebSearchPanelMixin, MemoryVizPanelMixin,
-    SummaryMgmtPanelMixin, BatchOpsPanelMixin, ChapterAnalysisPanelMixin
+    ElementsPanelMixin,
+    BridgesPanelMixin,
+    DescriptionsPanelMixin,
+    DialoguePanelMixin,
+    StoryFlowPanelMixin,
+    StylePanelMixin,
+    AdaptPanelMixin,
+    WebSearchPanelMixin,
+    MemoryVizPanelMixin,
+    SummaryMgmtPanelMixin,
+    BatchOpsPanelMixin,
+    ChapterAnalysisPanelMixin,
 ):
     """AI自动写小说主应用（薄编排层，业务方法见各功能域 Mixin）"""
 
@@ -121,7 +176,14 @@ class NovelWriterApp(
         self.character_system = None
         self.format_converter = None
         self.image_manager = None
-        self.cloud_storage = CloudStorageManager()
+        # M-3：云存储是**可选的增强项**，构造失败（配置损坏、加密组件不可用、
+        # 目录无权限）不得让整个应用起不来 —— 旧实现直接 `CloudStorageManager()`，
+        # 异常一路冒到 `__main__`，表现为"双击 EXE 无窗口直接退出"。
+        try:
+            self.cloud_storage = CloudStorageManager()
+        except Exception as exc:  # noqa: BLE001 - 降级为"云同步不可用"
+            logger.error(f"[启动] 云存储初始化失败，云同步功能将不可用：{exc}")
+            self.cloud_storage = _UnavailableCloudStorage(str(exc))
 
         self.current_novel_dir = None
         self.memory = None
@@ -130,7 +192,7 @@ class NovelWriterApp(
         self.current_chapter = 0
         self.is_modified = False  # 文档是否已修改
         self._state_lock = threading.Lock()  # 保护共享状态的锁
-        self._exp_awarded_chapters = set()   # 防止同一章节重复发放EXP
+        self._exp_awarded_chapters = set()  # 防止同一章节重复发放EXP
 
         # 创建GUI
         self.root = tk.Tk()
@@ -167,10 +229,10 @@ class NovelWriterApp(
         self._update_status()
 
         # 绑定快捷键
-        self.root.bind('<Control-s>', lambda e: self._save_chapter())
-        self.root.bind('<Control-n>', lambda e: self._new_novel())
-        self.root.bind('<Control-o>', lambda e: self._open_novel())
-        self.root.bind('<F11>', lambda e: self._open_fullscreen_writer())
+        self.root.bind("<Control-s>", lambda e: self._save_chapter())
+        self.root.bind("<Control-n>", lambda e: self._new_novel())
+        self.root.bind("<Control-o>", lambda e: self._open_novel())
+        self.root.bind("<F11>", lambda e: self._open_fullscreen_writer())
 
 
 # ==================== 入口 ====================

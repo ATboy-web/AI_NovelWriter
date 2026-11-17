@@ -8,9 +8,9 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 89 |
-| 依赖边数 | 250 |
-| 其中函数内延迟导入 | 42 |
+| 内部模块数 | 91 |
+| 依赖边数 | 262 |
+| 其中函数内延迟导入 | 44 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
@@ -54,22 +54,22 @@
 
 | 模块 | 被引用次数 |
 |---|---|
-| `app` | 30 |
-| `dialogs` | 27 |
-| `storage` | 19 |
-| `ui_style` | 17 |
+| `app` | 31 |
+| `dialogs` | 28 |
+| `storage` | 20 |
+| `ui_style` | 18 |
 | `events` | 12 |
-| `panels` | 11 |
-| `panels.base` | 9 |
+| `panels` | 12 |
+| `panels.base` | 10 |
+| `panels.ui_kit` | 9 |
 | `config` | 8 |
-| `panels.ui_kit` | 8 |
-| `async_runner` | 6 |
+| `async_runner` | 7 |
 | `novel_toolkit` | 6 |
+| `token_estimator` | 6 |
 | `ai_client` | 5 |
 | `diagnostic_logger` | 5 |
 | `memory_manager` | 5 |
 | `providers.base` | 5 |
-| `token_estimator` | 5 |
 | `panels.registry` | 4 |
 | `parsing` | 4 |
 | `usage_tracker` | 4 |
@@ -127,7 +127,7 @@
 | `navigation` | — |
 | `note_manager` | 🔴`config` |
 | `note_ui` | 🔴`app`, 🔴`dialogs` |
-| `novel_agent` | 🔴`agent_orchestrator`, 🔴`ai_client`, 🔴`config`, ⚪`diagnostic_logger`, ⚪`mcp_system`, 🔴`memory_manager`, 🔴`parsing`, 🔴`storage`, 🔴`token_estimator`, 🔴`usage_tracker`, ⚪`writing_skills` |
+| `novel_agent` | 🔴`agent_orchestrator`, 🔴`ai_client`, 🔴`config`, ⚪`diagnostic_logger`, ⚪`mcp_system`, 🔴`memory_manager`, 🔴`parsing`, ⚪`skill_library`, 🔴`storage`, 🔴`token_estimator`, 🔴`usage_tracker`, ⚪`writing_skills` |
 | `novel_store` | 🔴`storage` |
 | `novel_toolkit` | — |
 | `outline_ui` | 🔴`app`, 🔴`dialogs`, 🔴`token_estimator` |
@@ -150,6 +150,7 @@
 | `panels.memory_viz_panel` | 🔴`ui_style` |
 | `panels.plugin_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`plugin_system`, 🔴`ui_style` |
 | `panels.registry` | ⚪`panels`, ⚪`panels.base`, ⚪`panels.legacy` |
+| `panels.skill_library_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`skill_library`, 🔴`ui_style` |
 | `panels.story_flow_panel` | 🔴`app`, 🔴`dialogs`, 🔴`novel_toolkit`, 🔴`ui_style` |
 | `panels.style_panel` | 🔴`app`, 🔴`dialogs`, 🔴`novel_toolkit` |
 | `panels.summary_mgmt_panel` | 🔴`ui_style` |
@@ -174,6 +175,7 @@
 | `scene_detector` | — |
 | `secure_config` | 🔴`config`, 🔴`storage` |
 | `shell_ui` | 🔴`app`, ⚪`ai_client`, ⚪`diagnostic_logger`, 🔴`dialogs`, ⚪`performance_monitor` |
+| `skill_library` | ⚪`plugin_system`, 🔴`storage`, 🔴`token_estimator` |
 | `storage` | — |
 | `timeline_store` | ⚪`events`, ⚪`lineage`, ⚪`memory_manager`, 🔴`storage` |
 | `timeline_ui` | 🔴`app`, ⚪`character_system`, 🔴`dialogs`, 🔴`lineage`, ⚪`memory_manager`, 🔴`storage` |
@@ -210,6 +212,7 @@
 - `panels.memory_viz_panel`
 - `panels.plugin_panel`
 - `panels.registry`
+- `panels.skill_library_panel`
 - `panels.story_flow_panel`
 - `panels.style_panel`
 - `panels.summary_mgmt_panel`

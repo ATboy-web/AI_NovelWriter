@@ -63,6 +63,9 @@ a = Analysis(
         # 延迟 import 不产生静态依赖 ⇒ 必须显式列出，否则打包后少一块）
         'app.panels.mcp_panel',
         'app.mcp_system',
+        # 技能库面板（同上；skill_library 只被面板与 novel_agent 延迟 import）
+        'app.panels.skill_library_panel',
+        'app.skill_library',
         'app.timeline_store',
         'app.lineage',
         # v2 面板模块（legacy.py 按字符串导入）

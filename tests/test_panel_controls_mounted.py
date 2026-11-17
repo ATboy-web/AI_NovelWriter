@@ -220,6 +220,10 @@ EXPECTED = {
         "buttons": ["检测后端", "刷新提示词", "打开图片目录", "生成插图"],
         "titles": ["名场面提示词", "提示词内容"],
     },
+    "skills": {
+        "buttons": ["导入技能", "登记目录", "重新扫描", "一键应用", "预览注入", "匹配当前稿件", "停用", "卸载"],
+        "titles": ["已登记技能", "技能详情"],
+    },
 }
 
 
@@ -254,6 +258,19 @@ class TestPanelsActuallyRenderControls:
                 ps.PluginManager(plugins_dir=tmp_path / "plugins", state_file=tmp_path / "state.json"),
             )
             panel = PluginPanel()
+        elif key == "skills":
+            from app import skill_library as sl
+
+            # ❗ 必须换掉单例：默认技能库指向 `~/.ai_novel_writer/skills`，
+            # 建面板会读真实目录（测试污染用户数据/结果依赖机器状态）。
+            monkeypatch.setattr(
+                sl,
+                "_library",
+                sl.SkillLibrary(skills_dir=tmp_path / "skills", registry_file=tmp_path / "skills.json"),
+            )
+            from app.panels.skill_library_panel import SkillLibraryPanel
+
+            panel = SkillLibraryPanel()
         else:
             panel = IllustrationPanel()
 

@@ -689,6 +689,24 @@ class NovelAgent:
         except Exception as e:
             self.log(f"[插件技能] 获取上下文失败: {e}")
 
+        # 技能库（v3.3）：用户导入的 SKILL.md 技能包，按规则分级装配后的**写作约束**。
+        # 与插件技能包分开占预算，理由相同 —— 规则文本较长，塞进 500 字的
+        # 【写作参考】里会被 `_compress_text` 压缩成一句废话。
+        # ⚠️ 这是技能库**唯一**的注入点：`get_writing_context()` 里没有第二处，
+        # 否则同一份规则会被重复注入两次（插件段目前就存在这个重复，见验收记录）。
+        try:
+            from .skill_library import get_skill_library
+
+            library = get_skill_library()
+            skill_budget = max(0, min(900, max_chars - used))
+            skill_ctx = library.prompt_context(budget=skill_budget) if library is not None else ""
+            if skill_ctx:
+                section = f"【技能库规则】\n{skill_ctx}"
+                parts.append(section)
+                used += len(section)
+        except Exception as e:
+            self.log(f"[技能库] 获取规则失败: {e}")
+
         # === 伏笔追踪 ===
         unresolved = self._get_unresolved_plots()
         if unresolved and used + len(unresolved) < max_chars:

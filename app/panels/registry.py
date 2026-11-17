@@ -71,6 +71,8 @@ NATIVE_PANEL_MODULES: tuple[str, ...] = (
     "app.panels.plugin_panel",
     # MCP 服务器：让 MCP 客户端/服务端从"只有内部形状"变成用户可配置、可验证
     "app.panels.mcp_panel",
+    # 技能库：把外部 SKILL.md 技能包解析成可检索、可注入的提示词规则
+    "app.panels.skill_library_panel",
 )
 
 

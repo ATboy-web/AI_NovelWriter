@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 import httpx
+from loguru import logger
 
 # 允许使用明文 http 的本机地址（本地 WebDAV / 自建网盘）
 _ALLOWED_INSECURE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
@@ -680,9 +681,23 @@ class CloudStorageManager:
         """递归加密/解密配置中的敏感字段。
 
         敏感字段使用 Fernet 加密，避免云盘凭据明文落盘。
+
+        🔴 **任何失败路径都不得回落到明文**（S8）：
+        旧实现在加密后端不可用、或单字段加密抛异常时直接 `result[key] = value`，
+        于是 `cloud_config.json` 会静静出现 `"access_token": "..."` 明文 ——
+        用户以为"已加密"，直到文件被同步/备份/上传才暴露。
+        现在的策略是：**宁可写空（用户需重新填写），也不落明文**。
         """
         if not self._secure_config:
-            return config
+            if decrypt:
+                # 读盘：没有加密后端就无法解密，原样返回（供本次运行使用）
+                return config
+            logger.warning(
+                "[云存储] 加密组件不可用：本次保存不会写入任何云盘凭据（避免明文落盘），"
+                "请修复 cryptography / SecureConfig 后重新填写。"
+            )
+            return self._blank_sensitive(config)
+
         result = {}
         for key, value in config.items():
             if isinstance(value, dict):
@@ -693,8 +708,22 @@ class CloudStorageManager:
                         result[key] = self._secure_config._decrypt(value) or ""
                     else:
                         result[key] = self._secure_config._encrypt(value)
-                except Exception:
-                    result[key] = value
+                except Exception as exc:  # noqa: BLE001 - 单字段失败不该中断整份配置
+                    logger.warning(f"[云存储] 字段 {key} {'解密' if decrypt else '加密'}失败：{exc}")
+                    # 写盘失败 ⇒ 留空；读盘失败 ⇒ 也留空（无法解密的值没有意义）
+                    result[key] = ""
+            else:
+                result[key] = value
+        return result
+
+    def _blank_sensitive(self, config: Dict) -> Dict:
+        """返回一份敏感字段被清空的副本（**不修改入参**）。"""
+        result = {}
+        for key, value in config.items():
+            if isinstance(value, dict):
+                result[key] = self._blank_sensitive(value)
+            elif key in self._SENSITIVE_FIELDS and isinstance(value, str) and value:
+                result[key] = ""
             else:
                 result[key] = value
         return result

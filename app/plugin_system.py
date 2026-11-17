@@ -129,6 +129,21 @@ _PLUGIN_NAME_FORBIDDEN = ("/", "\\", "\x00")
 #: 单个插件入口文件的大小上限（防止把巨型文件塞进插件目录拖垮解析）。
 _MAX_ENTRY_BYTES = 2 * 1024 * 1024
 
+#: 解压上限（防压缩炸弹 / Zip Bomb）。
+#:
+#: 旧实现的 `safe_extract` 只校验**路径**，对解压后的体积没有任何限制：
+#: 一个 1 MB 的 ZIP 可以把 10 GB 的零字节展开到临时目录 —— 磁盘被写满，
+#: 而临时目录的清理要等到 `finally`，期间整个应用不可用。
+#: 这里用「解压后总量」作为判据而不是「压缩比」：文本类技能包（大量重复内容）
+#: 压缩比天然可以上千倍，用比值会误伤合法包；总量上限对两类都成立。
+_MAX_EXTRACT_BYTES = 256 * 1024 * 1024
+
+#: 单个成员解压后的上限（防止单个巨型文件绕过总量检查的边角情况）。
+_MAX_EXTRACT_MEMBER_BYTES = 128 * 1024 * 1024
+
+#: 成员数量上限（防"百万个空文件"拖死文件系统）。
+_MAX_EXTRACT_MEMBERS = 5000
+
 
 def default_plugins_dir() -> Path:
     """插件根目录（唯一来源 —— 别在别处再拼一次这个路径）。"""
@@ -297,17 +312,36 @@ def sanitize_plugin_name(name: str) -> Optional[str]:
 
 
 def safe_extract(zip_ref: zipfile.ZipFile, dest: Path) -> None:
-    """安全解压 ZIP，防止 Zip Slip（路径穿越）。
+    """安全解压 ZIP：防路径穿越（Zip Slip）**与压缩炸弹**。
 
-    逐个成员校验解析后的绝对路径仍在目标目录内；越界即抛 `ValueError`。
-    ❗ 用 `is_relative_to` 而不是字符串 `startswith` —— 后者会被
+    两道检查都在 `extractall` **之前**完成 —— 事后再检查已经没有意义
+    （磁盘可能已经写满）。：
+
+    1. **路径**：逐个成员校验解析后的绝对路径仍在目标目录内；
+       越界即抛 `ValueError`。
+    2. **体积**：成员数 / 单成员解压后大小 / 解压后总量，任一超限即拒绝。
+
+    ❗ 路径判据用 `is_relative_to` 而不是字符串 `startswith` —— 后者会被
     `/tmp/plugin_evil` 这种"前缀相同但并非子目录"的路径绕过。
     """
     dest = dest.resolve()
-    for member in zip_ref.infolist():
+    members = zip_ref.infolist()
+    if len(members) > _MAX_EXTRACT_MEMBERS:
+        raise ValueError(f"ZIP 成员过多（{len(members)} 个，上限 {_MAX_EXTRACT_MEMBERS}），已拒绝解压")
+
+    total_bytes = 0
+    for member in members:
         target = (dest / member.filename).resolve()
         if not target.is_relative_to(dest):
             raise ValueError(f"检测到不安全的 ZIP 路径: {member.filename}")
+        # `file_size` 来自 ZIP 中央目录，是**解压后**的大小（未实际解压即可读取）
+        size = int(getattr(member, "file_size", 0) or 0)
+        if size > _MAX_EXTRACT_MEMBER_BYTES:
+            raise ValueError(f"ZIP 内单个文件过大（{size / 1048576:.1f} MB），已拒绝解压: {member.filename}")
+        total_bytes += size
+        if total_bytes > _MAX_EXTRACT_BYTES:
+            raise ValueError(f"ZIP 解压后超过上限（>{_MAX_EXTRACT_BYTES // 1048576} MB），疑似压缩炸弹，已拒绝解压")
+
     zip_ref.extractall(str(dest))
 
 

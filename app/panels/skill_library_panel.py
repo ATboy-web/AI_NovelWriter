@@ -23,6 +23,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, ttk
@@ -42,6 +43,7 @@ from app.skill_library import (
 from app.ui_style import UIStyle
 from app.writing_presets import (
     PRESETS,
+    build_rewrite_instruction,
     format_qc,
     get_preset_manager,
     qc_report,
@@ -209,6 +211,8 @@ class SkillLibraryPanel(BasePanel):
     def build(self, parent: tk.Widget) -> tk.Widget:
         C = UIStyle.COLORS
         self._skills: list[dict[str, Any]] = []
+        #: 两段式状态：`{preset, fingerprint, report}`。第二步只认这份报告。
+        self._pending: Optional[dict[str, Any]] = None
         self._current = ""
         self._query = tk.StringVar(value="")
         self._busy = False
@@ -253,6 +257,10 @@ class SkillLibraryPanel(BasePanel):
             side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0)
         )
         ui_kit.button(preset_row, "质检当前稿件", self._on_qc, kind="ghost").pack(
+            side=tk.LEFT, padx=(ui_kit.SPACE["xs"], 0)
+        )
+        # 两段式的第二步：只有先跑过质检（有 pending 报告）才能生成改写指令
+        ui_kit.button(preset_row, "生成改写指令", self._on_build_instruction, kind="ghost").pack(
             side=tk.LEFT, padx=(ui_kit.SPACE["xs"], 0)
         )
         self._preset_badge = ui_kit.badge(preset_row, "未加载", kind="info")
@@ -497,17 +505,83 @@ class SkillLibraryPanel(BasePanel):
         preset = manager.current(text=text) if manager is not None else None
         if preset is None:
             preset = PRESETS["qc-gate"]
-        report = qc_report(text, preset)
+        dna = self._load_dna()
+        report = qc_report(text, preset, dna=dna)
         dialogs.show_text(
             self._host_widget(),
             f"写作质检 · {preset.name}",
             format_qc(report, preset.name),
         )
+        # 记下这次报告对应的**稿件指纹**：第二步要校验稿件没变过
+        self._pending = {
+            "preset": preset.key,
+            "fingerprint": self._text_fingerprint(text),
+            "report": report,
+            "dna": dna,
+        }
         state = "通过" if report["ok"] else f"{report['blockers']} 项阻断"
         self._set_effect(
-            f"质检完成：{state}（{report['passed']}/{report['total']} 项达标）",
+            f"质检完成：{state}（{report['passed']}/{report['total']} 项达标） —— 可点「生成改写指令」进入第二步",
             "success" if report["ok"] else "error",
         )
+
+    def _text_fingerprint(self, text: str) -> str:
+        """稿件指纹（sha1 前 16 位）。用于判断"报告是不是针对当前这版稿件"。"""
+        return hashlib.sha1((text or "").encode("utf-8")).hexdigest()[:16]
+
+    def _load_dna(self):
+        """读当前作品的风格 DNA（没有作品或未配置时返回 None）。"""
+        novel_dir = getattr(self.app, "current_novel_dir", None) if self.app is not None else None
+        if not novel_dir:
+            return None
+        try:
+            from app.style_dna import load_style_dna
+
+            return load_style_dna(novel_dir)
+        except Exception as exc:  # noqa: BLE001 - 风格 DNA 是加分项
+            logger.debug(f"[技能库] 读取风格 DNA 失败：{exc}")
+            return None
+
+    def _on_build_instruction(self) -> None:
+        """两段式的第二步：由**已完成的报告**生成改写指令。
+
+        ❗ 这里必须校验前置条件。若允许"直接生成指令"，模型就会一步改完 ——
+        技能包"先报告后改写"的闸门等于没有。
+        """
+        if not self._pending:
+            self._set_effect(
+                "请先点「质检当前稿件」生成报告 —— 改写指令只能由检测结论生成",
+                "info",
+            )
+            return
+        text = self._current_text()
+        if self._text_fingerprint(text) != self._pending["fingerprint"]:
+            self._pending = None
+            self._set_effect("稿件在这次检测之后被修改过，请重新质检再生成指令", "error")
+            return
+
+        preset = PRESETS.get(self._pending["preset"]) or PRESETS["qc-gate"]
+        instruction = build_rewrite_instruction(
+            self._pending["report"],
+            preset,
+            dna=self._pending.get("dna"),
+        )
+
+        # 落到作品目录，便于复用与审计（不落盘就只是"弹窗一关就没了"）
+        saved = ""
+        novel_dir = getattr(self.app, "current_novel_dir", None) if self.app is not None else None
+        if novel_dir:
+            try:
+                workspace = Path(novel_dir) / "_去AI味工作区"
+                workspace.mkdir(parents=True, exist_ok=True)
+                target = workspace / "改写指令.md"
+                target.write_text(instruction, encoding="utf-8")
+                saved = f"（已写入 {target.name}）"
+            except OSError as exc:
+                logger.warning(f"[技能库] 改写指令落盘失败：{exc}")
+
+        dialogs.show_text(self._host_widget(), "改写指令（可复制给 Agent）", instruction)
+        self._set_effect(f"改写指令已生成{saved}：复制给 Agent 执行第二步", "success")
 
     # ------------------------------------------------------------------ 动作
 

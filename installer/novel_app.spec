@@ -69,6 +69,11 @@ a = Analysis(
         # 写作预设（把技能规则装配成阶段/体裁/长度三个维度的能力单元）。
         # 由 novel_agent 与技能库面板延迟 import ⇒ 必须显式列出。
         'app.writing_presets',
+        # 风格 DNA / 语义候选 / 文本度量：均由上面两个模块**延迟 import**，
+        # 静态分析看不到 ⇒ 必须显式列出，否则 EXE 里"按钮在、功能静默失效"。
+        'app.style_dna',
+        'app.semantic_candidates',
+        'app.text_stats',
         'app.timeline_store',
         'app.lineage',
         # v2 面板模块（legacy.py 按字符串导入）

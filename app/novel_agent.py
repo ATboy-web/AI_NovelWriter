@@ -702,7 +702,13 @@ class NovelAgent:
                 # 1200 是实测得出的下界：900 只能装下 5 条规则（规范与边界要占 600），
                 # 会漏掉翻译腔/语义层四条；1200 可装 9–11 条且不足上下文的 12%。
                 preset_budget = max(0, min(1200, max_chars - used))
-                preset_ctx = manager.prompt_context(budget=preset_budget, stage="generate")
+                # 传作品目录：预设会把该作品的「风格DNA.json」一并注入，
+                # 让"冲突以风格文档为准"在生成期就生效，而不是等成稿后才发现跑偏
+                preset_ctx = manager.prompt_context(
+                    budget=preset_budget,
+                    stage="generate",
+                    novel_dir=getattr(self.memory, "novel_dir", None),
+                )
                 if preset_ctx:
                     section = f"【写作预设】\n{preset_ctx}"
                     parts.append(section)

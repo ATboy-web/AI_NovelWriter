@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 
 import pytest
@@ -25,11 +26,14 @@ from app.writing_presets import (
     DETECTORS,
     PRESETS,
     PresetManager,
+    build_rewrite_instruction,
+    calibrated_limits,
     check_conservation,
     check_x_level,
     count_hanzi,
     detect_text,
     format_qc,
+    gate_factor_issues,
     match_preset,
     official_level,
     qc_report,
@@ -116,6 +120,81 @@ class TestRegistry:
 
 
 # ====================================================================== 触发条件
+
+
+class TestDivisionOfLabour:
+    """预设分工守则（建议 1）：新增预设必须遵守，否则五个变十个、十个变二十个。
+
+    守则是**可执行**的，不是文档里的一句话：
+    1. 每个预设必须有**非空排除项** —— 没有排除项的预设等于"什么都管"，会和其他预设打架；
+    2. 任意两个预设的规则集不得完全相同 —— 完全相同的两个只是名字不同；
+    3. 维度必须唯一 —— 同一维度下的两个预设是同一件事的两种叫法。
+    """
+
+    def test_every_preset_has_exclusions(self):
+        for key, preset in PRESETS.items():
+            assert preset.exclude_note, f"{key} 没有排除项：它会对所有文本做全量处理，必然越界"
+
+    def test_no_two_presets_share_exclusions(self):
+        seen: dict = {}
+        for key, preset in PRESETS.items():
+            signature = tuple(preset.exclude_note)
+            assert signature not in seen, f"{key} 与 {seen.get(signature)} 的排除项完全相同"
+            seen[signature] = key
+
+    def test_no_two_presets_share_rule_set(self):
+        seen: dict = {}
+        for key, preset in PRESETS.items():
+            signature = tuple(sorted(preset.rule_ids))
+            if not signature:  # qc-gate 不注入规则，属刻意设计
+                continue
+            assert signature not in seen, f"{key} 与 {seen.get(signature)} 的规则集完全相同"
+            seen[signature] = key
+
+    def test_dimensions_are_unique(self):
+        dims = [p.dimension for p in PRESETS.values()]
+        assert len(dims) == len(set(dims)), f"维度重复：{dims}"
+
+    def test_preset_count_is_capped(self):
+        """上限 5 个：超过就说明有人在按"规则多少"切分，而不是按场景。
+
+        真要加第 6 个，先回答"它独占哪个维度、别的预设为什么不能覆盖它"，
+        然后把这个数字改掉 —— 强制停顿，避免预设清单无限膨胀。
+        """
+        assert len(PRESETS) <= 5, "预设超过 5 个：请先确认新预设是否落在一个全新维度上"
+
+
+class TestGateAudit:
+    """门禁数字必须**有据可查**（建议 5）。"""
+
+    @pytest.mark.parametrize("key", sorted(PRESETS))
+    def test_no_unexplained_gate(self, key):
+        issues = gate_factor_issues(PRESETS[key])
+        assert not issues, "；".join(issues)
+
+    def test_limits_are_derived_from_human_ref(self):
+        """有 body 参照的项，倍数必须落在合理区间；超界的必须有策略说明。"""
+        from app.writing_presets import GATE_FACTOR_RANGE
+
+        low, high = GATE_FACTOR_RANGE
+        for key, preset in PRESETS.items():
+            for row in calibrated_limits(preset):
+                if row["factor"] is None or row["basis"] == "policy":
+                    continue
+                assert low <= row["factor"] <= high, f"{key}.{row['detector']} 倍数 {row['factor']} 无依据"
+
+    def test_policy_entries_are_real_gates(self):
+        """策略说明不能挂在不存在的门禁上（改门禁时容易漏删）。"""
+        for key, preset in PRESETS.items():
+            gate_keys = {g[0] for g in preset.gates}
+            for detector, _reason in preset.gate_policy:
+                assert detector in gate_keys, f"{key}.gate_policy 里的 {detector} 不在门禁中"
+
+    def test_qc_gate_matches_deai_full(self):
+        """质检闸门不得比清理预设少判项 —— 否则"清理时要求、验收时不查"。"""
+        full = {g[0]: g[1] for g in PRESETS["deai-full"].gates}
+        gate = {g[0]: g[1] for g in PRESETS["qc-gate"].gates}
+        assert gate == full
 
 
 class TestMatch:
@@ -456,3 +535,103 @@ class TestStructure:
         report = qc_report(CLEANED, PRESETS["deai-full"])
         assert "structure" in report and "sentence_cv" in report["structure"]
         assert all(i["detector"] != "sentence_cv" for i in report["items"])
+
+
+class TestSkillUpgradeFollows:
+    """技能包升级时预设应**自动跟随**（建议 5 的迭代方向）。
+
+    机制是"按规则编号引用 + 不重抄规则文本"。这里用假规则对象模拟
+    "技能包把第 1 条规则的措辞改了"，确认预设输出跟着变 ——
+    如果哪天有人为了"稳定"把规则文本抄进预设，这条会变红。
+    """
+
+    def _rule(self, title: str, summary: str, level: str = "A"):
+        class Rule:
+            def __init__(self):
+                self.title = title
+                self.level = level
+
+            def revision(self):
+                return summary
+
+        return Rule()
+
+    def test_changed_rule_text_flows_through(self):
+        old_rule = self._rule("1. 翻案腔", "改法：直接正面下判断。")
+        new_rule = self._rule("1. 翻案腔", "改法：新版改了措辞，直接给判断并保留限定词。")
+
+        old_text = PRESETS["deai-full"].to_prompt(rules=[old_rule], budget=1200)
+        new_text = PRESETS["deai-full"].to_prompt(rules=[new_rule], budget=1200)
+        assert "直接正面下判断" in old_text
+        assert "新版改了措辞" in new_text
+
+    def test_rule_removal_is_visible(self):
+        """技能包里删掉某条规则 ⇒ 预设不再显示它（不报错、不残留旧文本）。"""
+        only_rule = self._rule("3. 起手式", "改法：删掉。")
+        text = PRESETS["deai-full"].to_prompt(rules=[only_rule], budget=1200)
+        assert "起手式" in text
+        assert "翻案腔" not in text
+
+    def test_preset_does_not_hardcode_rule_text(self):
+        """守卫：预设的文本字段里不得抄进规则原文（技能升级时会漂移）。
+
+        只查预设自身的叙述字段，不扫整个文件 —— 检测器的 `note` 里
+        复述一句规则要点是合理的，那是给人看的说明，不参与装配。
+        """
+        for key, preset in PRESETS.items():
+            fields = list(preset.norms) + list(preset.exclude_note) + list(preset.self_check) + [preset.summary]
+            for text in fields:
+                assert not text.startswith("改法："), f"{key} 的字段里抄了规则原文：{text[:30]}"
+
+
+class TestStyleDnaWiring:
+    """风格 DNA 必须真的进入生成链（否则只是编辑器里的一个按钮）。"""
+
+    def test_prompt_context_reads_dna(self, tmp_path: Path):
+        (tmp_path / "风格DNA.json").write_text(
+            json.dumps({"name": "某作者", "banned_words": ["赋能"]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        manager = PresetManager(state_file=tmp_path / "state.json")
+        manager.activate("gen-guard")
+        ctx = manager.prompt_context(budget=1200, novel_dir=tmp_path)
+        assert "作者风格 DNA" in ctx
+        assert "赋能" in ctx
+
+    def test_no_dna_no_block(self, tmp_path: Path):
+        manager = PresetManager(state_file=tmp_path / "state.json")
+        manager.activate("gen-guard")
+        ctx = manager.prompt_context(budget=1200, novel_dir=tmp_path)
+        assert "作者风格 DNA" not in ctx
+
+    def test_agent_passes_novel_dir(self):
+        source = _code_only(REPO_ROOT / "app" / "novel_agent.py")
+        # `ast.unparse` 会把双引号统一成单引号，所以只匹配结构片段
+        assert "self.memory" in source and "novel_dir" in source, "生成链没有把作品目录传给预设"
+        assert "prompt_context(" in source
+
+
+class TestTwoPhaseInstruction:
+    """两段式（建议 3b）：改写指令只能由**已完成的报告**生成。"""
+
+    def test_instruction_has_hard_constraints(self):
+        report = qc_report(AI_ISH, PRESETS["deai-full"], with_candidates=False)
+        text = build_rewrite_instruction(report, PRESETS["deai-full"])
+        for keyword in ("硬性约束", "信息守恒", "结构不动", "永不改", "逐处改动清单"):
+            assert keyword in text
+
+    def test_instruction_embeds_detection_results(self):
+        report = qc_report(AI_ISH, PRESETS["deai-full"], with_candidates=False)
+        text = build_rewrite_instruction(report, PRESETS["deai-full"])
+        assert "检测结果" in text
+        assert "翻案腔" in text
+
+    def test_instruction_budget(self):
+        report = qc_report(AI_ISH, PRESETS["deai-full"], with_candidates=False)
+        text = build_rewrite_instruction(report, PRESETS["deai-full"], budget=600)
+        assert len(text) <= 600
+
+    def test_instruction_without_report_sections_is_safe(self):
+        """空报告也不能崩（面板可能传入不完整的 dict）。"""
+        text = build_rewrite_instruction({}, PRESETS["deai-full"])
+        assert "硬性约束" in text

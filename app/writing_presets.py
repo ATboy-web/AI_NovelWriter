@@ -61,6 +61,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from loguru import logger
 
 from .storage import atomic_write_json
+from .text_stats import count_hanzi
+from .text_stats import per_ktx as _per_ktx
 
 __all__ = [
     "DETECTORS",
@@ -91,20 +93,10 @@ QC_LEVELS: Dict[str, str] = {
 
 # ====================================================================== 文本工具
 
-
-_HANZI_RE = re.compile(r"[\u4e00-\u9fff]")
-
-
-def count_hanzi(text: str) -> int:
-    """汉字个数（与技能包 `detect.py` 的口径一致：只数汉字，不算标点与英文）。"""
-    return len(_HANZI_RE.findall(text or ""))
-
-
-def _per_ktx(count: int, hanzi: int) -> float:
-    """每千汉字密度。`hanzi=0` 时返回 0（短文本不参与密度判定）。"""
-    if hanzi <= 0:
-        return 0.0
-    return count * 1000.0 / hanzi
+#: 汉字计数与密度换算下沉到 `text_stats`（唯一实现），原因有二：
+#: ① `semantic_candidates` 也要用，留在这里会形成潜伏循环；
+#: ② 汉字口径必须全仓一致，否则短文案门槛会时灵时不灵且不报错。
+#: 顶部已 `from .text_stats import count_hanzi, per_ktx as _per_ktx`。
 
 
 # ====================================================================== 脚本层检测器
@@ -130,6 +122,9 @@ class Detector:
     human_ref: Optional[float] = None
     note: str = ""
     flags: int = 0
+    #: 该检测器针对的**标点**（空 = 不是标点类）。
+    #: 风格 DNA 声明「爱用某标点」时，质检据此放行 —— 这是"冲突以风格文档为准"的落点。
+    mark: str = ""
     #: 门禁性质。**这是质检能不能闭环的关键**：
     #: - `blocker`：A 级机械替换，有效命中就该清零；残留即交付阻断。
     #: - `review`：脚本只能粗筛，命中里混着合法写法（标题冒号、清单内顿号、
@@ -225,6 +220,7 @@ DETECTORS: Dict[str, Detector] = {
         rule="技能规则 8（F 级指纹）",
         patterns=(r"——",),
         human_ref=0.8,
+        mark="——",
         note=">2/千字才优先处理；低于人类参考值的文本不因「缺少」而补写",
     ),
     "semicolon": Detector(
@@ -232,6 +228,7 @@ DETECTORS: Dict[str, Detector] = {
         label="分号",
         rule="F 级指纹",
         patterns=(r"；",),
+        mark="；",
         note="逐处看能否安全拆成句号；有并列层级则保留",
     ),
 }
@@ -308,6 +305,13 @@ class Preset:
     gates: Tuple[Tuple[str, float], ...] = ()
     budget: int = 900
     auto: bool = True
+    #: 人称混用是否算硬伤。**只有虚构叙事预设为 True** ——
+    #: 技术文章里"我"与"你"并存是正常写法，用小说标准判会误伤合格稿。
+    person_strict: bool = False
+    #: 门禁刻意偏离「人类参考 × 系数」的项：`{detector: 理由}`。
+    #: 存在理由 = 这个数字**不是**按人体参照算的，而是体裁策略（零容忍 / 放宽）。
+    #: 审计时：超界必须有理由；有理由也必须在报告里对人可见 —— 不能默默放宽。
+    gate_policy: Tuple[Tuple[str, str], ...] = ()
 
     # ------------------------------------------------------------------ 装配
 
@@ -326,14 +330,35 @@ class Preset:
             "levels": list(self.include_levels),
             "gates": [{"detector": d, "limit": v} for d, v in self.gates],
             "auto": self.auto,
+            "person_strict": self.person_strict,
         }
 
-    def to_prompt(self, rules: Optional[Sequence[Any]] = None, budget: int = 900) -> str:
-        """装配成提示词段落。**按规则边界截断**，并说明还有多少条未注入。"""
+    def to_prompt(
+        self,
+        rules: Optional[Sequence[Any]] = None,
+        budget: int = 900,
+        dna: Optional[Any] = None,
+    ) -> str:
+        """装配成提示词段落。**按规则边界截断**，并说明还有多少条未注入。
+
+        `dna`（`style_dna.StyleDNA`）存在时，紧跟标题插入「作者风格 DNA」段。
+        位置很关键：它必须在规则**之前** —— 否则模型先读到"删破折号"，
+        再看"破折号是作者特征"，规则已经生效了。
+        """
         lines = [
             f"【写作预设：{self.name}】",
             f"阶段：{self.stage} —— {self.summary}",
         ]
+
+        # 风格 DNA 优先于规则：作者特征高于通用判据（"冲突以风格文档为准"）
+        dna_block = ""
+        if dna is not None:
+            from .style_dna import style_prompt
+
+            dna_block = style_prompt(dna)
+            if dna_block:
+                lines.append(dna_block)
+
         if self.include_levels:
             lines.append(f"可处理级别：{'/'.join(self.include_levels)}（X 级已否决、H 级人审，均不得改动）")
 
@@ -455,7 +480,9 @@ PRESETS: Dict[str, Preset] = {
             "有没有「一句话总结：」「关键在于：」式提示语冒号（规则 2）",
             "同一实体在一段内是否换了多个说法（规则 10）",
         ),
-        gates=(("fanan", 0.50), ("colon_prompt", 0.20), ("starter", 0.03)),
+        # 起手式删除是零成本（删「说白了」不损失任何信息）⇒ 门禁收到 1.25 倍，
+        # 不用"生成期难免"来放水
+        gates=(("fanan", 0.50), ("colon_prompt", 0.20), ("starter", 0.01)),
         budget=900,
     ),
     # ---------------------------------------------------------------- 成稿清理
@@ -526,6 +553,19 @@ PRESETS: Dict[str, Preset] = {
             "同义重命名是否误伤了刻意的指称变化",
         ),
         gates=(("fanan", 0.80), ("long_attr", 0.40)),
+        # 小说里人称跳变是硬伤（读者会不知道"谁在看"）
+        person_strict=True,
+        gate_policy=(
+            (
+                "fanan",
+                "叙事中「不是A而是B」可承担人物心理与转折，比说明文宽容 3.6 倍；"
+                "叙事体裁的 human_ref 尚无实测，待按本预设积累稿对后校准",
+            ),
+            (
+                "long_attr",
+                "长定语在场景描写里是正常的修饰铺陈，比说明文宽容 4 倍；同上待校准",
+            ),
+        ),
         budget=800,
     ),
     # ---------------------------------------------------------------- 长度特化
@@ -551,7 +591,13 @@ PRESETS: Dict[str, Preset] = {
             "不为了去 AI 味牺牲信息密度：卖点、数字、限定词必须保留",
         ),
         self_check=("每条改动都能说出「原来像模板、现在像人说话」的具体理由",),
+        # 短文案零容忍：一条模板腔就毁掉整句，没有"密度"可言 ⇒ 不用人体参照
         gates=(("fanan", 0.0), ("colon_prompt", 0.0), ("starter", 0.0)),
+        gate_policy=(
+            ("fanan", "短文案逐句人工判断，出现即改 ⇒ 零容忍，不按密度"),
+            ("colon_prompt", "同上：一句话里出现提示语冒号就是模板腔"),
+            ("starter", "同上：短文案里「说白了」几乎必然多余"),
+        ),
         budget=520,
     ),
     # ---------------------------------------------------------------- 只验收
@@ -704,6 +750,72 @@ def structure_metrics(text: str) -> Dict[str, float]:
     }
 
 
+#: 门禁相对「人类参考密度」的**合理倍数区间**。
+#:
+#: 门禁数字不能随手定：它必须能回答"为什么是 0.3 而不是 0.5"。
+#: 技能包的做法是"人类参考 × 一个系数"——留出余量容忍正常波动。
+#: 区间上下界是**守卫**：越过就说明要么数字拍脑袋了，要么这个检测器的
+#: 人类参照需要按体裁重定（而不是直接放宽容差）。
+GATE_FACTOR_RANGE: Tuple[float, float] = (1.0, 3.5)
+
+
+def calibrated_limits(preset: "Preset") -> List[Dict[str, Any]]:
+    """把预设门禁换算成「相对人类参考的倍数」，供审计与校准工具使用。
+
+    返回每项：`{detector, label, limit, human_ref, factor, basis}`。
+    `factor` 为 `None` 表示该检测器没有人类参照（如分号），只能人工定。
+    """
+    policy = dict(preset.gate_policy)
+    rows: List[Dict[str, Any]] = []
+    for key, limit in preset.gates:
+        detector = DETECTORS.get(key)
+        if detector is None:
+            continue
+        ref = detector.human_ref
+        factor = round(limit / ref, 2) if ref else None
+        reason = policy.get(key, "")
+        rows.append(
+            {
+                "detector": key,
+                "label": detector.label,
+                "limit": limit,
+                "human_ref": ref,
+                "factor": factor,
+                # basis 三档：按人体参照 / 有策略说明 / 无依据
+                "basis": "policy" if reason else ("human_ref" if ref else "manual"),
+                "policy": reason,
+                # 门禁性质随行带回：调用方（校准工具）要据此区分"误判"与"提示噪音"
+                "gate_class": detector.gate_class,
+            }
+        )
+    return rows
+
+
+def gate_factor_issues(preset: "Preset") -> List[str]:
+    """返回超出合理倍数的门禁项（空列表 = 全部有据）。
+
+    这不是"报错"，而是**提示该重定人类参照**：某检测器在合格稿上反复超标时，
+    正确做法是按体裁重算 `human_ref`，硬放宽 `limit` 会让门禁失去意义。
+    """
+    low, high = GATE_FACTOR_RANGE
+    issues: List[str] = []
+    for row in calibrated_limits(preset):
+        factor = row["factor"]
+        if factor is None:
+            continue
+        if low <= factor <= high:
+            continue
+        # 超界但写了策略说明 ⇒ 合规（例如短文案零容忍、小说体裁放宽）
+        if row["basis"] == "policy":
+            continue
+        issues.append(
+            f"{preset.key}.{row['detector']}：门禁 {row['limit']:g} 是"
+            f"人类参考 {row['human_ref']:g} 的 {factor:g} 倍，"
+            f"超出 {low:g}–{high:g} ⇒ 应重定 human_ref，或在 gate_policy 写明理由"
+        )
+    return issues
+
+
 # ====================================================================== 质检
 
 
@@ -720,11 +832,16 @@ class QcFinding:
     level: str
     human_ref: Optional[float] = None
     gate_class: str = "review"
+    #: 被风格 DNA 放行（作者特征）。**保留原始数字**，只是不参与判定 ——
+    #: 悄悄把计数改成 0 会让报告撒谎（用户以为这处写法消失了）。
+    style_allowed: bool = False
     samples: List[str] = field(default_factory=list)
     hint: str = ""
 
     @property
     def passed(self) -> bool:
+        if self.style_allowed:
+            return True
         return self.count <= self.limit if self.level == "count" else self.per_ktx <= self.limit
 
     @property
@@ -742,6 +859,7 @@ class QcFinding:
             "limit": self.limit,
             "human_ref": self.human_ref,
             "gate_class": self.gate_class,
+            "style_allowed": self.style_allowed,
             "passed": self.passed,
             "blocking": self.blocking,
             "samples": self.samples,
@@ -754,18 +872,25 @@ def qc_report(
     preset: Preset,
     reference: Optional[str] = None,
     max_samples: int = 3,
+    dna: Optional[Any] = None,
+    with_candidates: bool = True,
 ) -> Dict[str, Any]:
     """对文本跑该预设的质检门禁。
 
     Args:
         text: 待检文本（生成结果或改写结果）。
         preset: 用哪套门禁（来自预设的 `gates`）。
-        reference: 改写的**原文**。提供时额外做「信息守恒」核对
-            （原文的数字与引语必须在改后仍存在）—— 这是技能包里
-            「实词都要能指出出处」唯一可机器化的部分。
+        reference: 改写的**原文**。提供时额外做「信息守恒」与「X 级反向守卫」
+            —— 这是技能包「实词都要能指出出处」「X 级永不改」唯一可机器化的部分。
+        with_candidates: 是否附带语义层候选（`semantic_candidates`）。默认开 ——
+            "只有清单没有候选"等于让模型凭印象找，这是上一版最弱的一环。
+        dna: 风格指纹（`style_dna.StyleDNA`）。提供时：
+            ① 作者爱用的标点**从门禁放行**（不再反复提示删破折号）；
+            ② 追加人称/句长/禁词比对。
 
     Returns:
-        `{"ok", "total", "passed", "failed", "blockers", "items", "semantic", "conservation"}`
+        `{"ok", "total", "passed", "failed", "blockers", "reviews", "items",
+           "semantic", "conservation", "x_guard", "structure", "style"}`
     """
     hanzi = count_hanzi(text)
     gates = preset.gate_map() or dict(PRESETS["qc-gate"].gates)
@@ -780,6 +905,8 @@ def qc_report(
         per_ktx = _per_ktx(count, hanzi)
         level = "density" if detector.unit == "density" else "count"
         samples = detector.find(text)[:max_samples] if count else []
+        # 风格 DNA 放行：作者明确声明爱用这个标点 ⇒ 作者特征高于通用判据
+        style_allowed = bool(detector.mark and dna is not None and dna.allows_mark(detector.mark))
         items.append(
             QcFinding(
                 detector=key,
@@ -791,6 +918,7 @@ def qc_report(
                 level=level,
                 human_ref=detector.human_ref,
                 gate_class=detector.gate_class,
+                style_allowed=style_allowed,
                 samples=samples,
                 hint=detector.note,
             )
@@ -798,11 +926,51 @@ def qc_report(
 
     conservation = check_conservation(reference, text) if reference else None
     x_guard = check_x_level(reference, text) if reference else None
+
+    # 数字丢失 ⇒ **硬阻断**（技能包：「关键数字仍在改稿中」）。
+    # 它不是一个"检测器"，但必须出现在 items 里 —— 否则报告显示"全部达标"
+    # 却在别处判不合格，用户找不到原因。
+    if conservation is not None and not conservation["ok"]:
+        missing = conservation["missing_numbers"]
+        items.append(
+            QcFinding(
+                detector="conservation",
+                label="信息守恒（数字丢失）",
+                rule="技能包最终验收",
+                count=len(missing),
+                per_ktx=0.0,
+                limit=0,
+                level="count",
+                gate_class="blocker",
+                samples=missing[:max_samples],
+                hint="原文的数字必须在改后仍存在；丢失即篡改事实",
+            )
+        )
+
+    drift = None
+    if dna is not None:
+        from .style_dna import style_drift
+
+        drift = style_drift(text, dna, person_strict=preset.person_strict)
+
+    # 语义层候选：把"要模型判的东西"抽出来，避免它通读全文凭印象挑几处
+    candidates = None
+    candidate_summary = None
+    if with_candidates:
+        try:
+            from .semantic_candidates import extract_candidates, semantic_summary
+
+            candidates = extract_candidates(text)
+            candidate_summary = semantic_summary(candidates)
+        except Exception as exc:  # noqa: BLE001 - 候选抽取失败不该让质检失败
+            logger.warning(f"[写作预设] 语义候选抽取失败：{exc}")
+
     failed = [i for i in items if not i.passed]
     blockers = [i for i in failed if i.blocking]
+    style_ok = drift is None or drift.ok
     return {
-        # 数字丢失或 X 级被误删也算不合格（后者是"改了不该改的"）
-        "ok": not blockers and (conservation is None or conservation["ok"]) and (x_guard is None or x_guard["ok"]),
+        # 三类不合格：阻断项未清、数字丢失、X 级被误删（含在 items 里）、风格硬偏离
+        "ok": not blockers and (x_guard is None or x_guard["ok"]) and style_ok,
         "preset": preset.key,
         "hanzi": hanzi,
         "total": len(items),
@@ -815,6 +983,9 @@ def qc_report(
         "conservation": conservation,
         "x_guard": x_guard,
         "structure": structure_metrics(text),
+        "style": drift.as_dict() if drift is not None else None,
+        "candidates": candidate_summary,
+        "candidate_items": candidates.as_dict()["candidates"] if candidates is not None else None,
     }
 
 
@@ -846,6 +1017,107 @@ def check_conservation(original: str, revised: str) -> Dict[str, Any]:
     }
 
 
+def build_rewrite_instruction(
+    report: Dict[str, Any],
+    preset: "Preset",
+    dna: Optional[Any] = None,
+    budget: int = 1800,
+) -> str:
+    """把质检报告压成一段**可直接交给 Agent 的改写指令**（两段式的第二步）。
+
+    为什么要有这一步：技能包的流程是「先出报告 → 等用户确认 → 再改写」，
+    但"等确认"在桌面端靠什么保证？如果只写一句"先报告后改写"在提示词里，
+    模型完全可以一步改完（它不会自己停下来）。
+
+    所以把它做成**数据流**：第一步产出一份报告，第二步的指令只能由这份报告生成。
+    跳过第一步 ⇒ 没有报告 ⇒ 生成不出指令。约束由此从"提示词里的请求"
+    变成"流程里的前置条件"。
+
+    Args:
+        report: `qc_report()` 的返回值（必须含指标与候选）。
+        preset: 生成该报告时用的预设。
+        dna: 风格指纹（有则一并写进指令，避免改写时丢掉作者特征）。
+        budget: 指令长度上限。
+    """
+    lines: List[str] = [
+        "请按下面这份**已经完成的检测结论**改写正文。",
+        "",
+        "## 硬性约束",
+        "1. 只改报告中列为「拟改」的项，每处改动必须能对应到规则编号；指不出的改动请撤销。",
+        "2. 信息守恒：原文的数字、姓名、日期、引语、限定词（可能/通常/多数）必须保留。",
+        "3. 结构不动：标题层级、段落顺序、列表/表格/引用/代码块位置原样保留。",
+        "4. **下列特征永不改**（配对复测已推翻，改了反而更不像人）：",
+        "   序数词小标题、「这意味着」式复述、空转句引列表、概括替代（同段有数据也不改）。",
+        "5. 不制造参差：不为节奏改句长、不拆段落。",
+        "6. 输出格式：改写后全文 + 逐处改动清单（原文 → 改后 + 规则编号）。",
+        "",
+    ]
+
+    # 预设规范（与注入同源，避免"改写时不看规范"）
+    preset_part = preset.to_prompt(budget=min(700, budget // 2), dna=dna)
+    if preset_part:
+        lines.append("## 写作预设（本次改写必须遵守）")
+        lines.append(preset_part)
+        lines.append("")
+
+    # 机器判定结果
+    lines.append("## 检测结果（脚本层，已判定）")
+    lines.append(f"篇幅：{report.get('hanzi', 0)} 汉字")
+    blockers = [i for i in report.get("items", []) if i.get("blocking")]
+    reviews = [i for i in report.get("items", []) if not i["passed"] and not i.get("blocking")]
+    allowed = [i for i in report.get("items", []) if i.get("style_allowed")]
+    if blockers:
+        lines.append("### 必须改（阻断项）")
+        for item in blockers:
+            samples = "；".join(item.get("samples", [])[:2])
+            lines.append(
+                f"- {item['label']}（{item['rule']}）：{item['count']} 处，"
+                f"{item['per_ktx']:.2f}/千字（上限 {item['limit']:g}）" + (f"；例：{samples}" if samples else "")
+            )
+    if reviews:
+        lines.append("### 需逐条判断（粗筛项，可保留但须给理由）")
+        for item in reviews:
+            samples = "；".join(item.get("samples", [])[:2])
+            lines.append(
+                f"- {item['label']}（{item['rule']}）：{item['count']} 处" + (f"；例：{samples}" if samples else "")
+            )
+    if allowed:
+        lines.append("### 已放行（作者风格特征，不得改）")
+        for item in allowed:
+            lines.append(f"- {item['label']}：{item['count']} 处（风格 DNA 已声明为作者习惯）")
+
+    # 候选清单
+    candidates = report.get("candidate_items") or {}
+    if candidates:
+        lines.append("")
+        lines.append("## 待判读候选（请按判据逐条判定 hit / miss / unsure）")
+        from .semantic_candidates import JUDGE_LABELS, JUDGE_RULES
+
+        for kind, items in candidates.items():
+            if not items:
+                continue
+            lines.append(f"### {JUDGE_LABELS.get(kind, kind)}：{len(items)} 条")
+            for item in items[:12]:
+                if kind == "cohesion":
+                    lines.append(f"- 第 {item['start']}–{item['end']} 段（{item['length']} 连环）")
+                elif kind == "rename":
+                    families = "、".join(f"{f['family']}({'/'.join(f['words'])})" for f in item["families"])
+                    lines.append(f"- 第 {item['paragraph']} 段：{families}")
+                elif kind == "colon_judge":
+                    lines.append(f"- 第 {item['paragraph']} 段「{item['prefix']}：…」")
+                else:
+                    lines.append(f"- 第 {item['paragraph']} 段 {item['length']} 连：{item['sentences'][0]}")
+            if len(items) > 12:
+                lines.append(f"- （另有 {len(items) - 12} 条，见候选 JSON）")
+        lines.append("")
+        lines.append("判读纪律：" + "；".join(JUDGE_RULES))
+
+    text = chr(10).join(lines)
+    if len(text) > budget:
+        text = text[: max(0, budget - 1)].rstrip() + "…"
+    return text
+
+
 def format_qc(report: Dict[str, Any], preset_name: str = "") -> str:
     """把质检结果渲染成人读文本（面板与报告共用）。"""
     lines = [
@@ -853,13 +1125,15 @@ def format_qc(report: Dict[str, Any], preset_name: str = "") -> str:
         f"篇幅：{report.get('hanzi', 0)} 汉字",
         f"门禁：{report.get('passed', 0)} 通过 / {report.get('failed', 0)} 未达"
         f"（其中阻断 {report.get('blockers', 0)}、需复核 {report.get('reviews', 0)}）",
-        "说明：❌ 阻断项必须处理；⚠️ 为脚本粗筛，命中里可能含标题冒号、清单顿号、"
-        "作者本人的破折号等合法写法，需逐条复核而非硬改。",
+        "说明：❌ 阻断项必须处理；⚠️ 为脚本粗筛（可能含标题冒号、清单顿号等合法写法），"
+        "需逐条复核而非硬改；🎨 为风格 DNA 声明的作者特征，已放行。",
         "",
         "──────── 机器可判（脚本层） ────────",
     ]
     for item in report.get("items", []):
-        if item["passed"]:
+        if item.get("style_allowed"):
+            mark = "🎨"  # 作者特征：风格 DNA 已放行，数字照实显示
+        elif item["passed"]:
             mark = "✅"
         elif item.get("blocking"):
             mark = "❌"
@@ -893,6 +1167,26 @@ def format_qc(report: Dict[str, Any], preset_name: str = "") -> str:
                     f"⚠️ 这些「」内容改后不同：{conservation['missing_quotes']}（若为强调而非引文可接受，请人工确认）"
                 )
 
+    style = report.get("style")
+    if style:
+        lines.append("")
+        lines.append("──────── 风格 DNA 比对（作者特征优先） ────────")
+        person = style.get("person") or {}
+        if person.get("detail"):
+            lines.append(("✅" if person.get("ok", True) else "❌") + f" 人称：{person['detail']}")
+        sentence = style.get("sentence") or {}
+        if sentence.get("detail"):
+            lines.append(("✅" if sentence.get("ok", True) else "⚠️") + f" 句长：{sentence['detail']}")
+        marks = style.get("marks") or {}
+        if marks.get("detail"):
+            flag = "·" if marks.get("advisory") else "✅"
+            lines.append(f"{flag} 爱用标点：{marks['detail']}（作者特征，不算 AI 味）")
+        banned = style.get("banned") or {}
+        if banned.get("hits"):
+            lines.append(f"❌ 禁词：{'、'.join(banned['hits'])}")
+        elif banned:
+            lines.append("✅ 禁词：无")
+
     guard = report.get("x_guard")
     if guard:
         lines.append("")
@@ -918,6 +1212,15 @@ def format_qc(report: Dict[str, Any], preset_name: str = "") -> str:
 
     lines.append("")
     lines.append("──────── 待判读（语义层，脚本不下结论） ────────")
+    candidates = report.get("candidates") or {}
+    if candidates:
+        basis = "已判读" if candidates.get("basis") == "judged" else "尚未判读（以下为候选数，非命中数）"
+        lines.append(
+            f"候选 {candidates.get('total', 0)} 条 · {basis} · "
+            f"最长连环 {candidates.get('longest_chain', 0)} · "
+            f"同构三连 {candidates.get('iso3_count', 0)} · "
+            f"重命名 {candidates.get('rename_count', 0)} 次"
+        )
     for item in report.get("semantic", []):
         lines.append(f"· {item['label']}：{item['hint']}")
     return "\n".join(lines)
@@ -1018,8 +1321,18 @@ class PresetManager:
 
     # ------------------------------------------------------------------ 装配
 
-    def prompt_context(self, budget: int = 900, text: str = "", stage: str = "") -> str:
+    def prompt_context(
+        self,
+        budget: int = 900,
+        text: str = "",
+        stage: str = "",
+        novel_dir: Optional[Any] = None,
+    ) -> str:
         """装配当前生效预设的提示词。
+
+        Args:
+            novel_dir: 当前作品目录。提供时会读该作品的 `风格DNA.json` 一并注入 ——
+                "冲突以风格文档为准"必须真的把文档带进提示词，否则只是句空话。
 
         ❗ 与 `SkillLibrary.prompt_context()` **互斥**：调用方二选一。
         同时注入会把同一批规则说两遍（见模块文档）。
@@ -1027,7 +1340,15 @@ class PresetManager:
         preset = self.current(text=text, stage=stage)
         if preset is None:
             return ""
-        return preset.to_prompt(rules=_library_rules(), budget=min(budget, preset.budget))
+        dna = None
+        if novel_dir:
+            try:
+                from .style_dna import load_style_dna
+
+                dna = load_style_dna(novel_dir)
+            except Exception as exc:  # noqa: BLE001 - 风格 DNA 是加分项
+                logger.debug(f"[写作预设] 读取风格 DNA 失败：{exc}")
+        return preset.to_prompt(rules=_library_rules(), budget=min(budget, preset.budget), dna=dna)
 
 
 _library_cache: Any = None
@@ -1054,10 +1375,17 @@ def _library_rules() -> List[Any]:
         return []
 
 
-def build_preset_context(budget: int = 900, text: str = "", stage: str = "") -> str:
+def build_preset_context(
+    budget: int = 900,
+    text: str = "",
+    stage: str = "",
+    novel_dir: Optional[Any] = None,
+) -> str:
     """模块级便捷入口（`novel_agent` 用它，避免直接依赖管理器单例）。"""
     manager = get_preset_manager()
-    return manager.prompt_context(budget=budget, text=text, stage=stage) if manager else ""
+    if manager is None:
+        return ""
+    return manager.prompt_context(budget=budget, text=text, stage=stage, novel_dir=novel_dir)
 
 
 # ====================================================================== 单例

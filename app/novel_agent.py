@@ -689,23 +689,42 @@ class NovelAgent:
         except Exception as e:
             self.log(f"[插件技能] 获取上下文失败: {e}")
 
-        # 技能库（v3.3）：用户导入的 SKILL.md 技能包，按规则分级装配后的**写作约束**。
-        # 与插件技能包分开占预算，理由相同 —— 规则文本较长，塞进 500 字的
-        # 【写作参考】里会被 `_compress_text` 压缩成一句废话。
-        # ⚠️ 这是技能库**唯一**的注入点：`get_writing_context()` 里没有第二处，
-        # 否则同一份规则会被重复注入两次（插件段目前就存在这个重复，见验收记录）。
+        # 写作预设（v3.3）：把技能库规则按「阶段 / 体裁 / 长度」装配成的可复用能力单元。
+        # ⚠️ 与下面的技能库注入**互斥**：预设本身已包含规则子集，两者同时注入
+        # 会把同一批规则说两遍（既浪费预算，又让模型以为这是两组不同要求）。
+        # 生成阶段传 `stage="generate"` ⇒ 自动选「生成期防 AI 腔」，而不是成稿清理。
+        preset_ctx = ""
         try:
-            from .skill_library import get_skill_library
+            from .writing_presets import get_preset_manager
 
-            library = get_skill_library()
-            skill_budget = max(0, min(900, max_chars - used))
-            skill_ctx = library.prompt_context(budget=skill_budget) if library is not None else ""
-            if skill_ctx:
-                section = f"【技能库规则】\n{skill_ctx}"
-                parts.append(section)
-                used += len(section)
+            manager = get_preset_manager()
+            if manager is not None:
+                # 1200 是实测得出的下界：900 只能装下 5 条规则（规范与边界要占 600），
+                # 会漏掉翻译腔/语义层四条；1200 可装 9–11 条且不足上下文的 12%。
+                preset_budget = max(0, min(1200, max_chars - used))
+                preset_ctx = manager.prompt_context(budget=preset_budget, stage="generate")
+                if preset_ctx:
+                    section = f"【写作预设】\n{preset_ctx}"
+                    parts.append(section)
+                    used += len(section)
         except Exception as e:
-            self.log(f"[技能库] 获取规则失败: {e}")
+            self.log(f"[写作预设] 获取约束失败: {e}")
+
+        # 技能库（v3.3）：**仅在没有预设时兜底**。规则文本较长，塞进 500 字的
+        # 【写作参考】里会被 `_compress_text` 压成一句废话，所以独立占预算。
+        if not preset_ctx:
+            try:
+                from .skill_library import get_skill_library
+
+                library = get_skill_library()
+                skill_budget = max(0, min(900, max_chars - used))
+                skill_ctx = library.prompt_context(budget=skill_budget) if library is not None else ""
+                if skill_ctx:
+                    section = f"【技能库规则】\n{skill_ctx}"
+                    parts.append(section)
+                    used += len(section)
+            except Exception as e:
+                self.log(f"[技能库] 获取规则失败: {e}")
 
         # === 伏笔追踪 ===
         unresolved = self._get_unresolved_plots()

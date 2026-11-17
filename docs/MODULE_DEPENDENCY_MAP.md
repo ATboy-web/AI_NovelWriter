@@ -8,9 +8,9 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 91 |
-| 依赖边数 | 263 |
-| 其中函数内延迟导入 | 44 |
+| 内部模块数 | 92 |
+| 依赖边数 | 267 |
+| 其中函数内延迟导入 | 46 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
@@ -56,7 +56,7 @@
 |---|---|
 | `app` | 31 |
 | `dialogs` | 28 |
-| `storage` | 21 |
+| `storage` | 22 |
 | `ui_style` | 18 |
 | `events` | 12 |
 | `panels` | 12 |
@@ -127,7 +127,7 @@
 | `navigation` | — |
 | `note_manager` | 🔴`config` |
 | `note_ui` | 🔴`app`, 🔴`dialogs` |
-| `novel_agent` | 🔴`agent_orchestrator`, 🔴`ai_client`, 🔴`config`, ⚪`diagnostic_logger`, ⚪`mcp_system`, 🔴`memory_manager`, 🔴`parsing`, ⚪`skill_library`, 🔴`storage`, 🔴`token_estimator`, 🔴`usage_tracker`, ⚪`writing_skills` |
+| `novel_agent` | 🔴`agent_orchestrator`, 🔴`ai_client`, 🔴`config`, ⚪`diagnostic_logger`, ⚪`mcp_system`, 🔴`memory_manager`, 🔴`parsing`, ⚪`skill_library`, 🔴`storage`, 🔴`token_estimator`, 🔴`usage_tracker`, ⚪`writing_presets`, ⚪`writing_skills` |
 | `novel_store` | 🔴`storage` |
 | `novel_toolkit` | — |
 | `outline_ui` | 🔴`app`, 🔴`dialogs`, 🔴`token_estimator` |
@@ -150,7 +150,7 @@
 | `panels.memory_viz_panel` | 🔴`ui_style` |
 | `panels.plugin_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`plugin_system`, 🔴`ui_style` |
 | `panels.registry` | ⚪`panels`, ⚪`panels.base`, ⚪`panels.legacy` |
-| `panels.skill_library_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`skill_library`, 🔴`ui_style` |
+| `panels.skill_library_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`skill_library`, 🔴`ui_style`, 🔴`writing_presets` |
 | `panels.story_flow_panel` | 🔴`app`, 🔴`dialogs`, 🔴`novel_toolkit`, 🔴`ui_style` |
 | `panels.style_panel` | 🔴`app`, 🔴`dialogs`, 🔴`novel_toolkit` |
 | `panels.summary_mgmt_panel` | 🔴`ui_style` |
@@ -184,6 +184,7 @@
 | `ui_style` | — |
 | `usage_tracker` | 🔴`events`, ⚪`providers.pricing`, 🔴`storage` |
 | `usage_ui` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`events`, 🔴`providers`, 🔴`providers.balance`, 🔴`providers.pricing`, 🔴`token_estimator`, 🔴`usage_tracker` |
+| `writing_presets` | ⚪`skill_library`, 🔴`storage` |
 | `writing_skills` | ⚪`plugin_system` |
 | `writing_skills_panel` | 🔴`app`, 🔴`dialogs`, ⚪`ui_style`, ⚪`writing_skills` |
 | `novel_app` | 🔴`app`, 🔴`ai_settings_ui`, 🔴`chapter_ui`, 🔴`character_ui`, 🔴`cloud_storage`, 🔴`editor_ui`, 🔴`events`, 🔴`generation_ui`, 🔴`lifecycle_ui`, 🔴`navigation`, 🔴`note_ui`, 🔴`novel_toolkit`, 🔴`outline_ui`, 🔴`panels`, 🔴`persistence_ui`, 🔴`reader_ui`, 🔴`shell_ui`, 🔴`timeline_ui`, 🔴`toolkit_ui`, 🔴`usage_tracker`, 🔴`usage_ui`, 🔴`writing_skills_panel` |

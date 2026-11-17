@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog
+from tkinter import filedialog, ttk
 from typing import Any, Optional
 
 from loguru import logger
@@ -40,6 +40,12 @@ from app.skill_library import (
     get_skill_library,
 )
 from app.ui_style import UIStyle
+from app.writing_presets import (
+    PRESETS,
+    format_qc,
+    get_preset_manager,
+    qc_report,
+)
 
 from . import ui_kit
 from .base import BasePanel
@@ -227,6 +233,31 @@ class SkillLibraryPanel(BasePanel):
         self._count_badge = ui_kit.badge(bar["right"], "未扫描", kind="info")
         self._count_badge.pack(side=tk.RIGHT)
 
+        # ---- 写作预设行（把技能规则装配成「阶段 / 体裁 / 长度」三个维度的能力单元）
+        # ❗ 预设与技能规则是**单选**关系（预设已含规则子集），所以放在同一面板里
+        # 让用户一眼看到"现在生效的是哪一层"，而不是再开一个第 20 面板。
+        preset_row = tk.Frame(body, bg=C["bg_dark"])
+        preset_row.pack(fill=tk.X, pady=(ui_kit.SPACE["sm"], 0))
+        ui_kit.section_title(preset_row, "写作预设").pack(side=tk.LEFT)
+        self._preset_var = tk.StringVar(value="（自动选择）")
+        self._preset_box = ttk.Combobox(
+            preset_row,
+            textvariable=self._preset_var,
+            values=self._preset_labels(),
+            state="readonly",
+            width=28,
+        )
+        self._preset_box.pack(side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0))
+        self._preset_box.bind("<<ComboboxSelected>>", lambda _e: self._on_preset_pick())
+        ui_kit.button(preset_row, "应用预设", self._on_preset_apply, kind="primary").pack(
+            side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0)
+        )
+        ui_kit.button(preset_row, "质检当前稿件", self._on_qc, kind="ghost").pack(
+            side=tk.LEFT, padx=(ui_kit.SPACE["xs"], 0)
+        )
+        self._preset_badge = ui_kit.badge(preset_row, "未加载", kind="info")
+        self._preset_badge.pack(side=tk.RIGHT)
+
         # ---- 搜索行（技能自动匹配之外的第二条查找路径）
         self._search = ui_kit.search_entry(
             body,
@@ -365,6 +396,7 @@ class SkillLibraryPanel(BasePanel):
                 "❗ 本软件**只解析规则**，不会执行技能包里的脚本。"
             )
         self._refresh_effect()
+        self._refresh_preset_badge()
 
     def _refresh_tree(self) -> None:
         query = self._query.get().strip()
@@ -410,6 +442,72 @@ class SkillLibraryPanel(BasePanel):
         self._set_detail("\n".join(f"{title}：{value}" for title, value in skill_detail_lines(info)))
         self._apply_btn.config(text="重新应用" if info.get("enabled") else "一键应用")
         self._disable_btn.config(state=tk.NORMAL if info.get("enabled") else tk.DISABLED)
+
+    # ------------------------------------------------------------------ 预设
+
+    def _preset_labels(self) -> list[str]:
+        """下拉项：第一项是「自动选择」，其余按维度标注。"""
+        labels = ["（自动选择）"]
+        for preset in PRESETS.values():
+            labels.append(f"{preset.name} · {preset.dimension}")
+        return labels
+
+    def _preset_by_label(self, label: str) -> Optional[str]:
+        """下拉文案 → 预设 key。"""
+        for preset in PRESETS.values():
+            if label == f"{preset.name} · {preset.dimension}":
+                return preset.key
+        return None
+
+    def _on_preset_pick(self) -> None:
+        self._refresh_preset_badge()
+
+    def _on_preset_apply(self) -> None:
+        manager = get_preset_manager()
+        if manager is None:
+            self._set_effect("写作预设不可用（状态文件无法访问）", "error")
+            return
+        label = self._preset_var.get()
+        key = "" if label == "（自动选择）" else self._preset_by_label(label)
+        if key is None:
+            self._set_effect(f"无法识别的预设：{label}", "error")
+            return
+        ok, message = manager.activate(key)
+        self._set_effect(message, "success" if ok else "error")
+        self._refresh_preset_badge()
+        if hasattr(self, "_effect_line"):
+            self._refresh_effect()
+
+    def _refresh_preset_badge(self) -> None:
+        manager = get_preset_manager()
+        if manager is None:
+            self._preset_badge.config(text="未加载")
+            return
+        key = manager.active
+        name = PRESETS[key].name if key in PRESETS else "自动选择"
+        self._preset_badge.config(text=f"生效：{name}")
+
+    def _on_qc(self) -> None:
+        """对当前稿件跑质检：脚本层给数字，语义层只列待判读项。"""
+        manager = get_preset_manager()
+        text = self._current_text()
+        if not text.strip():
+            self._set_effect("没有可质检的正文：请先打开小说或写入内容", "info")
+            return
+        preset = manager.current(text=text) if manager is not None else None
+        if preset is None:
+            preset = PRESETS["qc-gate"]
+        report = qc_report(text, preset)
+        dialogs.show_text(
+            self._host_widget(),
+            f"写作质检 · {preset.name}",
+            format_qc(report, preset.name),
+        )
+        state = "通过" if report["ok"] else f"{report['blockers']} 项阻断"
+        self._set_effect(
+            f"质检完成：{state}（{report['passed']}/{report['total']} 项达标）",
+            "success" if report["ok"] else "error",
+        )
 
     # ------------------------------------------------------------------ 动作
 

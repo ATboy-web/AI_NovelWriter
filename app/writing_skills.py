@@ -97,6 +97,70 @@ ANTI_SLOP_RULES = {
 }
 
 
+# ====================================================================== 扣分分级
+
+
+#: 承接/转折词：**正常叙事必需**，单独出现不算 AI 味。
+#:
+#: 依据技能库实测：句首连接词是 A 级规则，但判据是「**相邻段落连续**这样开头」，
+#: 而不是"出现就扣分"。而 "但是/不过/然而" 在一篇 3000 字小说里出现十几次是
+#: 完全正常的 —— 按每个扣 2 分算，光这一类就能扣掉 20+ 分，把合格章节判成不达标。
+#:
+#: 为什么保留在 `ANTI_SLOP_RULES` 里：它是"值得看一眼"的清单（面板会展示），
+#: 只是**不该直接换算成分数**。分级放在这里，规则表本身不动。
+_SOFT_CONNECTIVES: tuple[str, ...] = (
+    "然而",
+    "不过",
+    "但是",
+    "虽然如此",
+    "即便如此",
+    "尽管如此",
+)
+
+#: 总结/切换话题类套话：在任何体裁里都显得机械，**出现即扣分**。
+_HARD_TRANSITIONS: tuple[str, ...] = (
+    "综上所述",
+    "总而言之",
+    "言归正传",
+    "话说回来",
+    "归根结底",
+    "说到底",
+)
+
+#: issue 文本里被引号包住的命中词：`第3行: 过度使用过渡词 '然而'`
+_ISSUE_WORD_RE = re.compile(r"'([^']+)'")
+
+
+def classify_slop_issue(issue: str) -> str:
+    """判断一条 anti-slop 命中是 **hard**（扣分）还是 **soft**（仅提示）。
+
+    分级只依赖"命中词属于哪一类"，不依赖位置 —— 位置判断（是否连续段首）
+    需要看全文，那是 `writing_presets.qc_report()` 的职责，不在这一层重复实现。
+    """
+    text = str(issue or "")
+    match = _ISSUE_WORD_RE.search(text)
+    word = match.group(1) if match else ""
+
+    if word in _HARD_TRANSITIONS:
+        return "hard"
+    if word in _SOFT_CONNECTIVES:
+        return "soft"
+    # 套话开头/结尾、形容词堆砌、插件禁用词：都属于"出现即问题"
+    if any(marker in text for marker in ("禁止开头", "禁止结尾", "形容词", "插件", "禁用")):
+        return "hard"
+    if "过渡词" in text:
+        # 过渡词里没登记的词（自定义规则）按 soft 处理：宁可少扣，不可误扣
+        return "soft"
+    return "hard"
+
+
+def split_slop_issues(issues: list) -> tuple[list, list]:
+    """把命中拆成 `(可扣分的, 仅提示的)`。"""
+    hard = [item for item in issues if classify_slop_issue(item) == "hard"]
+    soft = [item for item in issues if classify_slop_issue(item) == "soft"]
+    return hard, soft
+
+
 class AntiSlopProcessor:
     """去AI味处理器 - 借鉴stop-slop"""
 

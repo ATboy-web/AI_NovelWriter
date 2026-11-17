@@ -40,6 +40,7 @@ from app.skill_library import (
     SkillResult,
     get_skill_library,
 )
+from app.style_dna import format_dna
 from app.ui_style import UIStyle
 from app.writing_presets import (
     PRESETS,
@@ -261,6 +262,9 @@ class SkillLibraryPanel(BasePanel):
         )
         # 两段式的第二步：只有先跑过质检（有 pending 报告）才能生成改写指令
         ui_kit.button(preset_row, "生成改写指令", self._on_build_instruction, kind="ghost").pack(
+            side=tk.LEFT, padx=(ui_kit.SPACE["xs"], 0)
+        )
+        ui_kit.button(preset_row, "从成稿学风格", self._on_learn_style, kind="ghost").pack(
             side=tk.LEFT, padx=(ui_kit.SPACE["xs"], 0)
         )
         self._preset_badge = ui_kit.badge(preset_row, "未加载", kind="info")
@@ -494,6 +498,44 @@ class SkillLibraryPanel(BasePanel):
         key = manager.active
         name = PRESETS[key].name if key in PRESETS else "自动选择"
         self._preset_badge.config(text=f"生效：{name}")
+
+    def _on_learn_style(self) -> None:
+        """从当前作品的成稿学习风格 DNA 草稿。
+
+        刻意**不直接覆盖**已有 DNA：学习结果是统计草稿，覆盖掉用户手写的
+        `tone` / `banned_words` 等于把人工信息冲成机器猜测。
+        """
+        novel_dir = getattr(self.app, "current_novel_dir", None) if self.app is not None else None
+        if not novel_dir:
+            self._set_effect("没有打开的作品 —— 需要先打开小说才能从成稿学习", "info")
+            return
+        try:
+            from app.style_dna import learn_and_save, learn_from_novel
+
+            dna = learn_from_novel(novel_dir)
+            if dna is None:
+                self._set_effect("本作品还没有章节（chapters/ 为空），无法学习风格", "info")
+                return
+
+            target = Path(novel_dir) / "风格DNA.json"
+            if target.exists():
+                preview = format_dna(dna)
+                dialogs.show_text(
+                    self._host_widget(),
+                    "学习到的风格指纹（未覆盖已有文件）",
+                    preview + chr(10) * 2 + f"⚠️ {target.name} 已存在，本次**未写入**。"
+                    "如需采用，请先备份原文件后手动替换。",
+                )
+                self._set_effect("已生成指纹预览；已有 DNA 文件，未覆盖", "info")
+                return
+
+            ok, message = learn_and_save(novel_dir)
+            self._set_effect(message, "success" if ok else "error")
+            if ok:
+                dialogs.show_text(self._host_widget(), "已生成风格 DNA 草稿", format_dna(dna))
+        except Exception as exc:  # noqa: BLE001 - 学习是增强项，不该让面板崩
+            logger.warning(f"[技能库] 学习风格失败：{exc}")
+            self._set_effect(f"学习风格失败：{exc}", "error")
 
     def _on_qc(self) -> None:
         """对当前稿件跑质检：脚本层给数字，语义层只列待判读项。"""

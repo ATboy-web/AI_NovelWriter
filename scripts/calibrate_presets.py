@@ -134,7 +134,9 @@ def collect_after_texts(
             items.append((after_path.name, _read(after_path)))
 
     if corpus:
-        for path in sorted(Path(corpus).glob("*.md")):
+        # 作品成稿是 `chapters/chapter_*.txt` —— 只收 *.md 会把最真实的那批语料漏掉
+        candidates = sorted(Path(corpus).glob("*.md")) + sorted(Path(corpus).glob("*.txt"))
+        for path in candidates:
             name = path.name.lower()
             if any(marker in name for marker in _NOT_ACCEPTABLE):
                 skipped.append(path.name)

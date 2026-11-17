@@ -73,6 +73,9 @@ a = Analysis(
         # 静态分析看不到 ⇒ 必须显式列出，否则 EXE 里"按钮在、功能静默失效"。
         'app.style_dna',
         'app.semantic_candidates',
+        # 评审落盘与一致性校验：同样由 novel_agent / generation_ui 延迟 import
+        'app.review_store',
+        'app.consistency',
         'app.text_stats',
         'app.timeline_store',
         'app.lineage',

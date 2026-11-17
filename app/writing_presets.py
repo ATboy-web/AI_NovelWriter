@@ -73,6 +73,7 @@ __all__ = [
     "QC_LEVELS",
     "SEMANTIC_CHECKS",
     "build_preset_context",
+    "review_criteria",
     "count_hanzi",
     "default_presets_file",
     "detect_text",
@@ -1015,6 +1016,105 @@ def check_conservation(original: str, revised: str) -> Dict[str, Any]:
         "ok": not missing_numbers,
         "quotes_ok": not missing_quotes,
     }
+
+
+#: 评审视角的级别划分：哪些**可以扣分**、哪些**不许扣分**、哪些**不判**。
+#:
+#: 为什么需要这张表：`novel_agent._reviewer_evaluate` 原来内置了一份手写的
+#: 「AI 写作痕迹检查」清单（"然而/不过"过渡词要扣分、"在这个世界上"开头要扣分），
+#: 与技能库的实测结论**直接冲突** ——
+#:
+#: | 特征 | Reviewer 旧清单 | 技能库实测 |
+#: |---|---|---|
+#: | 「这意味着」复述 | 隐含要扣分 | **人类用得更多**（0.027 vs 0.016/千字）⇒ 永不改 |
+#: | 序数词小标题 | 未提 | 人类 8.6% vs AI 4.9% ⇒ 永不改 |
+#: | 空转句引列表 | 未提 | 人类高一个量级 ⇒ 永不改 |
+#:
+#: 写和评用两把尺的后果是修订循环互相拉扯：Writer 按预设保留，Reviewer 按清单扣分。
+#: 所以评审的判据必须**从同一个规则源派生**（"同一事实写两处必然漂移"，本项目踩过 5 次）。
+#:
+#: 三档的含义见技能包 `DETECT.md`，这里只做归类，不重复判据原文。
+_REVIEW_DEDUCT_LEVELS: tuple[str, ...] = ("A", "B")
+
+#: 规则标题里出现这些词 = 技能包已明确"不再检测 / 永不改"，评审不得拿它扣分。
+_RETIRED_MARKERS: tuple[str, ...] = ("降级", "已否决", "不再", "永不改", "已撤销")
+_REVIEW_HINT_ONLY: tuple[str, ...] = ("C", "F")
+_REVIEW_NEVER: tuple[str, ...] = ("X",)
+
+
+def review_criteria(rules: Optional[Sequence[Any]] = None, budget: int = 760) -> str:
+    """生成**给 Reviewer 智能体**的评审判据段落，与写作预设同源。
+
+    为什么单独一个函数而不是复用 `Preset.to_prompt()`：预设是"怎么写"的约束
+    （含最小改动、信息守恒等写作纪律），评审需要的是"怎么判"的口径
+    （哪些算错、哪些不算错、哪些不许判）。两者的**级别归类相同、表述目的不同**。
+
+    Args:
+        rules: 技能库规则（`SkillRule` 列表）。为 `None` 时从技能库自动取。
+        budget: 段落长度上限。
+
+    Returns:
+        可直接拼进 system prompt 的文本；技能库不可用时返回**仅含 X 级禁区**的
+        最小版本（宁可少判，也不能让评审按旧清单乱扣分）。
+    """
+    selected = list(rules) if rules is not None else _library_rules()
+
+    deduct: list[str] = []
+    hint_only: list[str] = []
+    for rule in selected:
+        title = str(getattr(rule, "title", "") or "")
+        # 只有**带编号的**才是可执行规则；「F 级单模型指纹的处置」这类是章节标题
+        if _rule_number(title) is None:
+            continue
+        # 已降级 / 已否决的条目在技能包里明确"不再检测"，评审也不该拿它扣分
+        if _RETIRED_MARKERS and any(marker in title for marker in _RETIRED_MARKERS):
+            continue
+        level = official_level(title) or str(getattr(rule, "level", "") or "")
+        if level in _REVIEW_DEDUCT_LEVELS:
+            deduct.append(f"- [{level}] {title}")
+        elif level in _REVIEW_HINT_ONLY:
+            hint_only.append(f"- [{level}] {title}")
+
+    lines: list[str] = [
+        "【评审判据（与写作预设同源，不得另立标准）】",
+        "",
+        "## 可扣分项（两条规则都有实测依据）",
+    ]
+    lines.extend(deduct[:12] or ["- （技能库未加载：请勿凭印象判定句式问题）"])
+
+    lines.extend(
+        [
+            "",
+            "## 只提示、不得扣分（配对复测方向反转或人机无差异）",
+            "- 序数词小标题（人类 8.6% vs AI 4.9%）",
+            "- 「这意味着」式复述（人类 0.027 vs AI 0.016 每千字）",
+            "- 空转句引列表（人类高一个量级）",
+            "- 概括替代（同段有具体数值也不改）",
+            "- 句长/段长方差（两轮复测人机无差异，不为节奏改句长）",
+        ]
+    )
+    if hint_only:
+        lines.append("")
+        # `item` 已自带 "- [级别] 标题"，别再补前缀
+        lines.extend(f"{item}（只报告，不扣分）" for item in hint_only[:5])
+
+    lines.extend(
+        [
+            "",
+            "## 不得判定（模型间共识不足，交人审）",
+            "- 比喻贴切度、暗喻、拟人化喻体 —— 模型对贴切度的共识只有 0–40%",
+            "",
+            "## 使用纪律",
+            "- 上述「可扣分项」要指出**具体位置与原句**；指不出位置的扣分无效",
+            "- 不在上述清单内的表达，按文学标准正常评价，但不得反推「像 AI」",
+            "- 研究语料中显著 ≠ 本篇单次命中显著；不得据此断言作者是 AI",
+        ]
+    )
+
+    text = "\n".join(lines)
+    if len(text) > budget:
+        text = text[: max(0, budget - 1)].rstrip() + "…"
+    return text
 
 
 def build_rewrite_instruction(

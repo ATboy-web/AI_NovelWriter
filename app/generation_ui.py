@@ -445,14 +445,55 @@ class GenerationMixin:
         def run():
             try:
                 review = self.agent.review_chapter(ch_num, content)
+                score = review.get("overall_score")
                 review_json = json.dumps(review, indent=2, ensure_ascii=False)
-                self.root.after(0, lambda: self._display_review(review_json))
-                self._log(f"审校完成，评分：{review.get('overall_score', 'N/A')}")
+
+                # 审校结果已由 `review_chapter` 落盘（memory/reviews/），
+                # 这里补两条"单章之外"的信息：全书趋势 + 本章一致性。
+                extra = self._review_context(ch_num, content, score)
+                payload = review_json + (chr(10) * 2 + extra if extra else "")
+
+                self.root.after(0, lambda: self._display_review(payload))
+                if score is None:
+                    self._log("审校未完成：AI 未返回可用评分，请人工确认")
+                else:
+                    self._log(f"审校完成，评分：{score}")
             except Exception as e:
                 self._log(f"审校失败: {e}")
                 self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
+
+    def _review_context(self, chapter_num: int, content: str, score) -> str:
+        """拼出「单章之外」的两段信息：全书趋势 + 本章一致性。
+
+        为什么要拼在审校结果后面：评分本身只说明"这一章怎么样"，
+        作者真正需要的是"整本在往哪走"与"有没有和前文对不上"。
+        这两件事的数据都已经在 memory/ 里，不展示就等于白存。
+        """
+        parts: list[str] = []
+        novel_dir = getattr(self, "novel_dir", None) or getattr(self.agent, "memory", None)
+        novel_dir = getattr(novel_dir, "novel_dir", novel_dir)
+
+        try:
+            from app.review_store import format_trend
+
+            trend = format_trend(novel_dir)
+            if trend:
+                parts.append("──────── 全书评审趋势 ────────" + chr(10) + trend)
+        except Exception as exc:  # noqa: BLE001 - 趋势是附加信息
+            self._log(f"读取评审趋势失败: {exc}")
+
+        try:
+            from app.consistency import check_chapter, format_issues
+
+            result = check_chapter(novel_dir, chapter_num, content)
+            if result["summary"]["high"] or result["summary"]["low"]:
+                parts.append("──────── 一致性检查 ────────" + chr(10) + format_issues(result))
+        except Exception as exc:  # noqa: BLE001 - 一致性是附加信息
+            self._log(f"一致性检查失败: {exc}")
+
+        return (chr(10) * 2).join(parts)
 
     def _style_optimize(self):
         """风格优化当前章节"""

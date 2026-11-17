@@ -507,19 +507,34 @@ class NovelAgent:
             return {"ok": False, "message": f"调用 MCP 工具失败: {e}"}
 
     def _call_anti_slop_check(self, content: str) -> list:
-        """调用写作技能进行去AI味检查"""
+        """去AI味检查：**只返回可扣分的命中**（soft 项只记日志）。
+
+        🔴 修复（2026-11-18）：原来把所有命中都返回，调用方按"每条扣 2 分"处理。
+        而 `ANTI_SLOP_RULES["forbidden_transitions"]` 含 "但是/不过/然而" ——
+        一篇 3000 字小说出现十几次完全正常，每类最多取 3 条 ⇒ 最多扣 24 分，
+        足够把 82 分的合格章节压到不达标，从而触发无休止的修订循环。
+
+        依据技能库实测：句首连接词只在「**相邻段落连续**这样开头」时才算问题，
+        不是"出现即问题"。所以这里按 `classify_slop_issue()` 分级：
+        soft（常见转折词）不参与扣分，hard（套话开头/结尾、总结类套话、
+        形容词堆砌、插件禁用词）照旧扣分。
+        """
         try:
             from .writing_skills import writing_skill_manager
 
             issues = writing_skill_manager.anti_slop.check_text(content)
 
-            # 收集所有问题
-            all_issues = []
+            collected = []
             for issue_type, issue_list in issues.items():
                 if issue_list and issue_type != "suggestions":
-                    all_issues.extend(issue_list[:3])  # 每类最多3个
+                    collected.extend(issue_list[:3])  # 每类最多3个
 
-            return all_issues
+            from .writing_skills import split_slop_issues
+
+            hard, soft = split_slop_issues(collected)
+            if soft:
+                self.log(f"[写作技能] {len(soft)} 处常见转折词仅提示，不扣分（与技能库口径一致）")
+            return hard
         except Exception as e:
             self.log(f"[写作技能] 去AI味检查失败: {e}")
             return []
@@ -985,8 +1000,8 @@ class NovelAgent:
             # 一旦命中，崩的是 `list.setdefault`（`AttributeError`），
             # 而且是在生成主流程里，整章生成失败。归一化必须在使用之前。
             if not isinstance(review, dict):
-                self.log("[Editor] ⚠️ 审校返回的不是 JSON 对象，按默认评分处理")
-                review = {"overall_score": 70, "issues": [], "suggestions": []}
+                self.log("[Editor] ⚠️ 审校返回的不是 JSON 对象，本轮按「评审失败」处理")
+                review = {"overall_score": None, "issues": [], "suggestions": []}
 
             # 工具调用: 一致性检查
             self.tools.call("check_consistency", content=content[:500])
@@ -995,15 +1010,25 @@ class NovelAgent:
             slop_issues = self._call_anti_slop_check(content)
             if slop_issues:
                 review.setdefault("issues", []).extend(slop_issues)
-                review["overall_score"] = max(0, review.get("overall_score", 70) - len(slop_issues) * 2)
-                self.log(f"[写作技能] 发现{len(slop_issues)}个AI写作痕迹，扣分")
+                current = review.get("overall_score")
+                # 评审失败（None）时不要用扣分把 None 变成数字 —— 那又是"伪装"
+                if current is not None:
+                    review["overall_score"] = max(0, current - len(slop_issues) * 2)
+                self.log(f"[写作技能] 发现{len(slop_issues)}个可扣分的AI写作痕迹")
 
             self.log(f"[Editor] 质量裁定：{review.get('overall_score', 0)}分")
             self._record_conversation(
                 "Editor", "judge", f"评分{review.get('overall_score', 0)}，阈值{self.QUALITY_THRESHOLD}"
             )
 
-            if review.get("overall_score", 0) >= self.QUALITY_THRESHOLD:
+            score = review.get("overall_score")
+            if score is None:
+                # 评审没给出可用分数 ≠ 合格。不自动通过，也不无脑修订 —— 交给人工。
+                self.log("[Editor] ⚠️ 本章评审未完成，无法裁定质量，跳过自动判定（请人工确认）")
+                self._record_conversation("Editor", "manual", "评审未完成，需人工确认")
+                break
+
+            if score >= self.QUALITY_THRESHOLD:
                 self.log("[Editor] ✅ 通过！质量达标。")
                 self._record_conversation("Editor", "approve", "质量达标，通过")
                 break
@@ -1257,12 +1282,22 @@ class NovelAgent:
 7. 是否有明显的错别字或语病
 8. 是否有过于冗长、拖沓的段落
 
-【AI写作痕迹检查 - 必须扣分】
-1. 是否以"在这个世界上"、"在这个时代"等开头
-2. 是否过度使用"然而"、"不过"、"尽管如此"等过渡词
-3. 是否以"故事才刚刚开始"、"命运的齿轮开始转动"等结尾
-4. 是否有形容词堆砌（如"美丽动人可爱"）
-5. 是否有AI式的元叙述（如"读者可能会想"）"""
+【AI写作痕迹检查】
+
+⚠️ 这一项**不再使用手写清单**，判据由技能库统一提供（见下方注入的「评审判据」）。
+
+原清单（"在这个世界上"开头、"然而/不过"过渡词、"故事才刚刚开始"结尾）
+已废弃，原因：它与技能库的实测结论冲突 ——
+「这意味着」式复述、序数词小标题等在 270 对同题同事实配对复测中
+**人类用得比 AI 更多**，据此扣分等于惩罚人类写法。
+"然而/不过"只在与技能库「句首连接词」规则同时命中时才处理。
+
+【原创技巧类提示（不是扣分项，只在 suggestions 里提一句）】
+1. 是否以"在这个世界上"、"在这个时代"这类空泛时空壳开头
+2. 是否以"故事才刚刚开始"、"命运的齿轮开始转动"结尾
+3. 是否有形容词堆砌（如"美丽动人可爱"）
+4. 是否有 AI 式元叙述（如"读者可能会想"）
+这四条**没有实测依据**，属经验性套路；只当写作建议，不得计入六维度评分。"""
 
         dynamic_context = f"""{context}
 {feedback_section}
@@ -1282,6 +1317,17 @@ class NovelAgent:
     "is_acceptable": true/false
 }}"""
 
+        # 评审判据从技能库派生 —— 与写作预设同源，避免「写」和「评」用两把尺
+        try:
+            from .writing_presets import review_criteria
+
+            criteria = review_criteria()
+        except Exception as exc:  # noqa: BLE001 - 判据取不到不该中断评审
+            self.log(f"[评审] 取技能库判据失败，使用最小判据: {exc}")
+            criteria = ""
+        if criteria:
+            cache_prefix = cache_prefix + "\n\n" + criteria
+
         system = cache_prefix + "\n\n" + dynamic_context
 
         # 采样：开头2000 + 中间1000 + 结尾1000，覆盖全文
@@ -1298,10 +1344,28 @@ class NovelAgent:
         prompt = f"请审校第{chapter_num}章内容：\n\n{sample}"
         response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
 
+        # 🔴 失败不伪装：解析不出来就给 None + error，**不再回落成 70 分**。
+        # 旧实现 `{"overall_score": 70}` 让"评审失败"看起来像"70 分"，
+        # 而 70 分通常就在及格线附近 ⇒ 失败被记成通过。
+        from .review_store import normalize_review, save_review
+
         try:
-            return self._parse_json_response(response or "{}", {"overall_score": 70, "issues": [], "suggestions": []})
-        except Exception:
-            return {"overall_score": 70, "issues": [], "suggestions": [], "raw": response}
+            raw = self._parse_json_response(response or "{}", {})
+        except Exception as exc:  # noqa: BLE001 - 解析失败是预期分支
+            raw = {"error": f"评审结果解析失败：{exc}"}
+        # 解析器在"期望 dict 但 AI 返回顶层数组"时会给出 list。
+        # `normalize_review` 内部也检查类型，但**调用点自证**才能被
+        # `tests/test_parse_type_contract.py` 的静态守卫识别 —— 那道守卫专门
+        # 用来防"新增调用点忘了判类型"，绕过去等于让它失效。
+        if not isinstance(raw, dict):
+            raw = {"error": f"评审结果类型异常（{type(raw).__name__}），需人工确认"}
+
+        model_name = getattr(self.config, "model", "") if self.config is not None else ""
+        record = normalize_review(raw, chapter_num, model=model_name if isinstance(model_name, str) else "")
+        save_review(getattr(self.memory, "novel_dir", None), record)
+        if not record.ok:
+            self.log(f"[Reviewer] ⚠️ 评审未完成（{record.error}），本章无可用分数")
+        return record.as_dict()
 
     def _writer_revise(
         self,

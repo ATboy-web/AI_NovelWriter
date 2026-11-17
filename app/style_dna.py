@@ -39,7 +39,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from loguru import logger
 
@@ -56,6 +56,10 @@ __all__ = [
     "parse_style_dna",
     "save_dna_template",
     "style_prompt",
+    "learn_from_texts",
+    "learn_from_novel",
+    "learn_and_save",
+    "format_dna",
 ]
 
 #: 风格 DNA 的标准文件名（唯一来源）。
@@ -498,4 +502,211 @@ def format_drift(drift: Optional[StyleDrift]) -> str:
         lines.append(f"❌ 禁词：{'、'.join(drift.banned['hits'])}")
     elif drift.banned:
         lines.append("✅ 禁词：无")
+    return "\n".join(lines)
+
+
+# ====================================================================== 自动学习
+
+
+#: 自动学习时会考察的标点：只挑**能反映作者习惯**的两种。
+#:
+#: 为什么不收「！」「？」：它们在网文里密度极高，更多是体裁特征而非个人指纹；
+#: 收进来会让每本书的 DNA 都长一个样，失去区分度。
+_LEARNABLE_MARKS: tuple[str, ...] = ("——", "……")
+
+#: 爱用标点的判定密度（每千汉字）。低于它视为偶发，不算习惯。
+_MARK_THRESHOLD = 1.0
+
+#: 人称判定：主导人称占比达到这个值才写进 DNA，否则留空（说明人称本就混用）。
+_PERSON_DOMINANCE = 0.60
+
+#: 单次学习的采样上限（字）。防止有人把整套书塞进来跑几分钟。
+_LEARN_SAMPLE_CHARS = 200_000
+
+
+def _learn_paragraphs(texts: Sequence[str]) -> List[str]:
+    """把多篇文本拼成一个段落序列（复用体裁判据）。"""
+    paragraphs: List[str] = []
+    for text in texts:
+        buffer: List[str] = []
+        for line in (text or "").splitlines():
+            stripped = line.strip()
+            if stripped:
+                buffer.append(stripped)
+            elif buffer:
+                paragraphs.append(" ".join(buffer))
+                buffer = []
+        if buffer:
+            paragraphs.append(" ".join(buffer))
+    return paragraphs
+
+
+def learn_from_texts(texts: Sequence[str], name: str = "") -> StyleDNA:
+    """从**作者成稿**统计出风格指纹草稿。
+
+    只学四类可统计项：**人称、句长均值、句长离散度、爱用标点**。
+
+    不学的三项及原因：
+    - `tone`（语气）：属于审美判断，统计不出来，留给人填；
+    - `banned_words`（禁词）：从正面文本无法反推"作者不用什么"；
+    - `notes`：人的话。
+
+    这样产出的是一份**可核对、可修改**的草稿，而不是"AI 猜的风格"——
+    后者无法验证，用户只能全盘接受或全盘放弃。
+    """
+    from .text_stats import count_hanzi
+
+    joined = "\n\n".join(t for t in texts if t)
+    if len(joined) > _LEARN_SAMPLE_CHARS:
+        joined = joined[:_LEARN_SAMPLE_CHARS]
+
+    warnings: List[str] = []
+    total = count_hanzi(joined)
+    if total < 200:
+        return StyleDNA(name=name, warnings=("样本文本不足 200 汉字，无法统计风格指纹",))
+
+    # ---- 人称 ----
+    counts = _count_pronouns(joined)
+    person = ""
+    grand_total = sum(counts.values())
+    if grand_total:
+        top_group, top_count = max(counts.items(), key=lambda kv: kv[1])
+        ratio = top_count / grand_total
+        if ratio >= _PERSON_DOMINANCE:
+            person = top_group
+        else:
+            warnings.append(f"人称不集中（主导人称仅占 {ratio:.0%}），未写入 DNA；如确实是混用写法，可人工指定")
+    else:
+        warnings.append("样本中几乎没有人称代词，未写入人称")
+
+    # ---- 句长 ----
+    lengths = [len(re.sub(r"\s", "", s)) for s in _split_sentences(joined)]
+    sentence_mean = 0.0
+    sentence_cv = 0.0
+    if lengths:
+        mean = sum(lengths) / len(lengths)
+        sentence_mean = round(mean, 1)
+        if len(lengths) > 1:
+            variance = sum((v - mean) ** 2 for v in lengths) / len(lengths)
+            sentence_cv = round((variance**0.5) / mean, 3) if mean else 0.0
+    else:
+        warnings.append("切不出完整句子，未写入句长")
+
+    # ---- 爱用标点 ----
+    marks: List[str] = []
+    for mark in _LEARNABLE_MARKS:
+        density = (joined.count(mark) * 1000.0) / total
+        if density >= _MARK_THRESHOLD:
+            marks.append(mark)
+
+    return StyleDNA(
+        name=name or "（从成稿学习，请核对后使用）",
+        person=person,
+        sentence_mean=sentence_mean,
+        sentence_cv=sentence_cv,
+        favorite_marks=tuple(marks),
+        warnings=tuple(warnings),
+    )
+
+
+def learn_from_novel(
+    novel_dir: Any,
+    max_chapters: int = 50,
+    per_chapter_chars: int = 4000,
+) -> Optional[StyleDNA]:
+    """从作品的 `chapters/` 目录学习风格指纹。
+
+    Args:
+        novel_dir: 作品目录。
+        max_chapters: 最多读多少章。默认 50 —— 风格是统计量，50 章（约 20 万字）
+            已足够稳定，再多只是变慢。
+        per_chapter_chars: 每章最多取多少字（防止单章超长挤占采样）。
+
+    Returns:
+        指纹草稿；目录不存在或没有章节时返回 `None`。
+    """
+    if not novel_dir:
+        return None
+    base = Path(novel_dir) / "chapters"
+    if not base.is_dir():
+        return None
+    files = sorted(base.glob("*.txt"))[:max_chapters]
+    if not files:
+        return None
+
+    texts: List[str] = []
+    for path in files:
+        try:
+            texts.append(path.read_text(encoding="utf-8", errors="replace")[:per_chapter_chars])
+        except OSError as exc:
+            logger.warning(f"[风格DNA] 跳过不可读章节 {path.name}：{exc}")
+
+    if not texts:
+        return None
+    # 作品目录名形如 `书名_1781862528`（下单时间戳），去掉它更像书名；过长再截
+    raw_name = re.sub(r"_\d{6,}$", "", Path(novel_dir).name) or "本书"
+    if len(raw_name) > 24:
+        raw_name = raw_name[:24] + "…"
+    dna = learn_from_texts(texts, name=f"{raw_name} 的指纹（自动学习）")
+    # 补一条可追溯性说明：让人知道这份草稿是从哪些文件来的
+    return StyleDNA(
+        name=dna.name,
+        person=dna.person,
+        tone=dna.tone,
+        sentence_mean=dna.sentence_mean,
+        sentence_cv=dna.sentence_cv,
+        favorite_marks=dna.favorite_marks,
+        banned_words=dna.banned_words,
+        prose_reference=dna.prose_reference,
+        notes=f"从 {len(texts)} 章成稿统计生成；语气与禁词需人工补填",
+        warnings=dna.warnings,
+    )
+
+
+def learn_and_save(novel_dir: Any, overwrite: bool = False) -> Tuple[bool, str]:
+    """学习并写入 `风格DNA.json`。默认**不覆盖**已有文件。"""
+    base = Path(novel_dir) if novel_dir else None
+    if base is None:
+        return False, "没有打开的作品"
+    target = base / default_dna_filename()
+    if target.exists() and not overwrite:
+        return False, f"已存在 {target.name}，未覆盖（如需重建请先备份或显式覆盖）"
+
+    dna = learn_from_novel(base)
+    if dna is None:
+        return False, "没有可学习的章节（chapters/ 为空或不存在）"
+
+    payload = dna.as_dict()
+    if dna.warnings:
+        payload["_warnings"] = list(dna.warnings)
+    try:
+        atomic_write_json(target, payload, indent=2)
+    except OSError as exc:
+        return False, f"写入失败：{exc}"
+    return True, f"已从成稿学习并写入 {target.name}（请核对后使用）"
+
+
+def format_dna(dna: Optional[StyleDNA]) -> str:
+    """把指纹渲染成人读文本（面板预览用）。"""
+    if dna is None:
+        return "尚未配置风格 DNA。可点「从成稿学习」自动生成草稿，或手写 风格DNA.json。"
+    lines = [f"指纹：{dna.name or '（未命名）'}"]
+    if dna.person:
+        lines.append(f"人称：{dna.person}")
+    if dna.tone:
+        lines.append(f"语气：{dna.tone}")
+    if dna.sentence_mean:
+        lines.append(f"句长：均值 {dna.sentence_mean:g} 字，离散 {dna.sentence_cv:g}")
+    if dna.favorite_marks:
+        lines.append(f"爱用标点：{'、'.join(dna.favorite_marks)}")
+    if dna.banned_words:
+        lines.append(f"禁词：{'、'.join(dna.banned_words)}")
+    if dna.prose_reference:
+        lines.append(f"参考文档：{Path(dna.prose_reference).name}")
+    if dna.notes:
+        lines.append(f"备注：{dna.notes}")
+    if dna.warnings:
+        lines.append("")
+        lines.append("⚠️ 未能自动确定的部分：")
+        lines.extend(f"- {item}" for item in dna.warnings)
     return "\n".join(lines)

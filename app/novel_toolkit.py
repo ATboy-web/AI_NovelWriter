@@ -857,11 +857,20 @@ class DescriptionLibrary:
         "宫廷权谋": ["朝堂辩论", "后宫争斗", "密谋策划", "刺客暗杀", "政变", "流放", "科举", "册封"],
     }
 
+    def __init__(self):
+        # 实例级副本，避免修改类变量。
+        # 🔴 修复（2026-11-17 补覆盖率时发现）：原先没有 `__init__`，
+        # `add_custom_item` 直接改 `self.CATEGORIES[...]` —— 而 `self.CATEGORIES`
+        # 解析到的是**类属性**，于是一本书里加的描写会出现在另一本书、甚至
+        # 另一个作品会话里（实测：实例 A 加的关键词，实例 B 立刻可见）。
+        # 与 `WebSearchAdaptEngine.HOT_MEMES` 的做法保持一致。
+        self.CATEGORIES = {k: list(v) for k, v in self.__class__.CATEGORIES.items()}
+
     def get_categories(self) -> List[str]:
         return list(self.CATEGORIES.keys())
 
     def add_custom_item(self, category: str, item: str):
-        """添加自定义描写关键词"""
+        """添加自定义描写关键词（只影响当前实例）"""
         if category not in self.CATEGORIES:
             self.CATEGORIES[category] = []
         if item not in self.CATEGORIES[category]:

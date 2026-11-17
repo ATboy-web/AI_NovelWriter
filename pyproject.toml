@@ -159,12 +159,18 @@ precision = 1
 #     升至 **79.50%（Windows 全量）/ 79.23%（CI 口径）**（+0.83）——
 #     新增 `style_dna` 95.4%、`semantic_candidates` 97.0%、`writing_presets` 84.4%，
 #     三个模块都由密集单测覆盖（不是"跑过行"那种）。
-#   阈值上调到 **78.5**：
-#     - 按最低平台（CI 79.23）留 0.73 缓冲；
-#     - Windows 79.50 富余 1.00，上界 80.5 ⇒ 不触发 ratchet。
+#   2026-11-17 专项补覆盖率（7 个新测试文件 / 309 条）：
+#     升至 **85.73%（Windows 全量）/ 85.45%（CI 口径）**（+6.23）——
+#     character_system 46.7→84.7、cloud_storage 53.9→84.2、format_converter 31.6→92.5、
+#     novel_toolkit 43.5→95.0、writing_presets 84.4→92.5、memory_manager 83.4→87.2。
+#   阈值上调到 **84.5**：
+#     - 按最低平台（CI 85.45）留 1.00 缓冲；
+#     - Windows 85.73 富余 1.23，上界 86.5 ⇒ 不触发 ratchet。
+#     - 不再逐轮追高：85% 之后剩余缺口集中在 Tk 界面（ai_settings_ui 11.6% /
+#       dialogs 27.4% / usage_ui 41.7%），需 Tk 测试隔离框架才能安全推进。
 # ⚠️ 必须**单进程**跑才是真实值。分块跑（沙箱删档守卫所迫）只覆盖到 40.7%，
 #    那是严重低估——因为它只统计"被跑到的模块"。
 #
 # 判定由 scripts/check_coverage.py 执行，它额外做了「阈值也要往上走」的反向检查：
 # 实测超过 fail_under + 2 个百分点即失败并提示收紧，防止门禁退化成橡皮图章。
-fail_under = 78.5
+fail_under = 84.5

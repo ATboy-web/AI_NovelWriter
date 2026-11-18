@@ -234,7 +234,10 @@ V3_MODULES = (
     "app/panels/timeline_panel.py",
     "app/panels/biography_panel.py",
     "app/panels/lineage_panel.py",
-    "app/panels/usage_panel.py",
+    # ❗ 原为 `app/panels/usage_panel.py` —— 该文件从未存在（实际实现是 `app/usage_ui.py`），
+    # 于是这条"不得删除角色名"的硬约束在真实模块上一直被 `pytest.skip` 跳过。
+    "app/usage_ui.py",
+    "app/ai_settings_ui.py",
     "app/timeline_store.py",
     "app/lineage.py",
     "app/novel_store.py",

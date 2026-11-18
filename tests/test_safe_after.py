@@ -33,6 +33,7 @@ import pathlib
 import re
 import tkinter as tk
 
+import _tk_harness
 import pytest
 
 from app.async_runner import BackgroundRunner, safe_after
@@ -61,8 +62,7 @@ class _Boom:
 
 class TestSafeAfterCore:
     def test_delivers_callback(self):
-        root = tk.Tk()
-        root.withdraw()
+        root = _tk_harness.create_root()
         try:
             fired: list[int] = []
             assert safe_after(root, fired.append, 7) is True
@@ -72,8 +72,7 @@ class TestSafeAfterCore:
             root.destroy()
 
     def test_delay_parameter(self):
-        root = tk.Tk()
-        root.withdraw()
+        root = _tk_harness.create_root()
         try:
             fired: list[str] = []
             assert safe_after(root, fired.append, "x", delay=1) is True
@@ -108,8 +107,7 @@ class TestSafeAfterCore:
         （实测 Windows/Py3.11 下 Tk 仍接受投递 → 返回 True；
         其它平台可能返回 False。用例只锁"不抛"这一条。）
         """
-        root = tk.Tk()
-        root.withdraw()
+        root = _tk_harness.create_root()
         victim = tk.Toplevel(root)
         victim.destroy()
         try:
@@ -120,8 +118,7 @@ class TestSafeAfterCore:
 
 class TestDispatchContract:
     def test_dispatch_uses_after(self):
-        root = tk.Tk()
-        root.withdraw()
+        root = _tk_harness.create_root()
         try:
             fired: list[int] = []
             BackgroundRunner(ui=root).dispatch(fired.append, 1)

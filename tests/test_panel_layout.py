@@ -16,9 +16,11 @@ from __future__ import annotations
 
 import json
 import sys
+import tkinter as tk
 from pathlib import Path
 from typing import Any
 
+import _tk_harness
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -169,12 +171,7 @@ class TestPanelLayoutPersistence:
 
 @pytest.fixture()
 def tk_root():
-    tk = pytest.importorskip("tkinter")
-    try:
-        root = tk.Tk()
-    except tk.TclError as exc:  # pragma: no cover - 无显示环境
-        pytest.skip(f"无可用显示环境：{exc}")
-    root.withdraw()
+    root = _tk_harness.optional_root()
     yield root
     try:
         root.destroy()

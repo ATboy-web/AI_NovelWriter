@@ -22,6 +22,7 @@ import json
 import sys
 from pathlib import Path
 
+import _tk_harness
 import pytest
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -512,16 +513,9 @@ class TestWiringGuard:
 # ====================================================================== 5. 真 Tk
 
 
-def _tk_available() -> bool:
-    try:
-        import tkinter
-
-        root = tkinter.Tk()
-        root.withdraw()
-        root.destroy()
-        return True
-    except Exception:  # noqa: BLE001 - 无显示环境
-        return False
+def _tk_ok() -> bool:
+    """能否建出 Tk 根窗口（统一走 harness）。"""
+    return _tk_harness.tk_available()
 
 
 def _find_widgets(root, cls_name: str) -> list:
@@ -534,10 +528,9 @@ def _find_widgets(root, cls_name: str) -> list:
     return found
 
 
-@pytest.mark.skipif(not _tk_available(), reason="无显示环境")
+@pytest.mark.skipif(not _tk_ok(), reason="无显示环境")
 class TestNewNovelDialogTk:
     def _open(self, tmp_path, monkeypatch):
-        import tkinter as tk
 
         from app.lifecycle_ui import NovelLifecycleMixin
 
@@ -546,8 +539,7 @@ class TestNewNovelDialogTk:
 
         class Fake:
             def __init__(self):
-                self.root = tk.Tk()
-                self.root.withdraw()
+                self.root = _tk_harness.create_root()
                 self.logs = []
 
             def _log(self, msg):
@@ -574,7 +566,6 @@ class TestNewNovelDialogTk:
 
     def test_custom_genre_appears_in_combo(self, tmp_path, monkeypatch):
         monkeypatch.setattr("app.genres._registry", None)
-        import tkinter as tk
 
         from app.genres import GenreRegistry
         from app.lifecycle_ui import NovelLifecycleMixin
@@ -585,8 +576,7 @@ class TestNewNovelDialogTk:
 
         class Fake:
             def __init__(self):
-                self.root = tk.Tk()
-                self.root.withdraw()
+                self.root = _tk_harness.create_root()
 
             def _log(self, msg):
                 pass

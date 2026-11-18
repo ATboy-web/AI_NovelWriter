@@ -23,6 +23,7 @@ import logging
 import os
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -146,18 +147,68 @@ class SecureConfig:
         self.config = self._load()
 
     def _init_encryption(self) -> Fernet:
-        """初始化加密引擎，密钥通过 DPAPI 或文件权限保护"""
+        """初始化加密引擎，密钥通过 DPAPI 或文件权限保护。
+
+        ❗ **密钥解不开时必须轮换，而不是抛异常**（2026-11-18 修正）。
+
+        旧实现：`_protect_key_load` 遇到 DPAPI 失败时 log + `raise`，于是
+        `SecureConfig.__init__` 直接失败 ⇒ `CloudStorageManager._secure_config` 变成 `None`
+        ⇒ **云盘凭据永久无法保存**。实测本机的 `.config_key` 来自另一个账户，
+        这条路径让功能彻底不可用，且用户无从得知"删掉密钥文件就能恢复"。
+
+        这类状态最恶劣的地方是**不可恢复**：同一台机器上只要密钥解不开一次，
+        之后每次启动都走同一条 raise 路径。所以改成轮换 ——
+        代价是旧密文需要重新填写（无法避免），但功能能继续用。
+        """
         if self.key_file.exists():
             raw = self.key_file.read_bytes()
-            key = self._protect_key_load(raw)
+            try:
+                key = self._protect_key_load(raw)
+            except OSError as exc:
+                key = self._rotate_key(exc)
         else:
             key = Fernet.generate_key()
             self.key_file.write_bytes(self._protect_key_save(key))
-            try:
-                os.chmod(self.key_file, 0o600)
-            except (OSError, AttributeError):
-                pass
+            self._chmod_key()
         return Fernet(key)
+
+    def _chmod_key(self) -> None:
+        try:
+            os.chmod(self.key_file, 0o600)
+        except (OSError, AttributeError):
+            pass
+
+    def _rotate_key(self, exc: BaseException) -> bytes:
+        """旧密钥无法解保护时，换一把新密钥并保留旧文件（可取证、可回滚）。
+
+        三个必须一起做的动作，少一个都会造成数据损失：
+
+        1. **保留旧密钥文件**为 `.config_key.old-<时间戳>` —— 万一以后能恢复账户，
+           旧密文还有救；直接覆盖就永久失去这个可能。
+        2. **置 `_load_failed = True`** —— `save()` 见到该标记会拒绝"用默认值覆盖磁盘"，
+           否则轮换后第一次保存就会把用户既有配置整体洗成默认值。
+        3. **明确告知用户要重新填写凭据** —— 这是轮换的必然结果，
+           含糊其辞会让用户以为配置没丢。
+        """
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        backup = self.key_file.with_name(f"{self.key_file.name}.old-{stamp}")
+        try:
+            if backup.exists():
+                backup.unlink()
+            self.key_file.rename(backup)
+        except OSError as rename_error:  # noqa: BLE001 - 备份失败不能阻断恢复
+            logger.warning(f"旧密钥备份失败（不阻断恢复）: {rename_error}")
+
+        key = Fernet.generate_key()
+        self.key_file.write_bytes(self._protect_key_save(key))
+        self._chmod_key()
+
+        self._load_failed = True
+        logger.warning(
+            f"加密密钥无法解保护（{exc}），已轮换为新密钥；旧密钥留档为 {backup.name}。"
+            "此前保存的云盘凭据/AI 密钥需重新填写（旧密文已无法解密）。"
+        )
+        return key
 
     def _protect_key_save(self, key: bytes) -> bytes:
         """保存密钥前进行保护（Windows 用 DPAPI 加密）"""

@@ -29,6 +29,7 @@ import sys
 import textwrap
 from pathlib import Path
 
+import _tk_harness
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -953,27 +954,18 @@ class TestWiringGuard:
 # ====================================================================== 6. 真 Tk
 
 
-def _tk_available() -> bool:
-    try:
-        import tkinter
-
-        root = tkinter.Tk()
-        root.withdraw()
-        root.destroy()
-        return True
-    except Exception:  # noqa: BLE001 - 无显示环境
-        return False
+def _tk_ok() -> bool:
+    """能否建出 Tk 根窗口（统一走 harness）。"""
+    return _tk_harness.tk_available()
 
 
-@pytest.mark.skipif(not _tk_available(), reason="无显示环境")
+@pytest.mark.skipif(not _tk_ok(), reason="无显示环境")
 class TestPanelTk:
     def _build(self, tmp_path, monkeypatch):
-        import tkinter as tk
 
         monkeypatch.setattr(mcp, "_manager", None)
         monkeypatch.setattr(mcp, "default_servers_file", lambda: tmp_path / "mcp_servers.json")
-        root = tk.Tk()
-        root.withdraw()
+        root = _tk_harness.create_root()
         panel = MCPPanel()
         # 关键：`app=None`（未绑定宿主）也必须能建出来 —— 这就是 `_log_safe` 的存在理由
         body = panel.build(root)

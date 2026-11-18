@@ -122,18 +122,64 @@ class TestSecureConfig:
 class TestSecureConfigEdgeCases:
     """边界条件测试"""
 
-    def test_corrupted_key_file(self, tmp_path):
-        """测试损坏的密钥文件"""
+    def test_corrupted_key_file_is_rotated_not_fatal(self, tmp_path):
+        """损坏/异账户的密钥文件 ⇒ **轮换**，不是让加密后端永久失效。
+
+        ❗ 原用例断言 `pytest.raises(Exception)`，即"打不开就抛"。那个契约把所有
+        打不开密钥的机器**永久锁死**：`CloudStorageManager._secure_config` 变成 `None`
+        ⇒ 云盘凭据永远无法保存，且用户不知道"删掉密钥文件就能恢复"。
+        本机实测就撞上了这一条（密钥来自另一账户）。
+
+        新契约（本次改动）：
+        1. 构造**成功**；
+        2. 旧密钥文件被留档为 `.config_key.old-<时间戳>`（不覆盖、可取证）；
+        3. `_load_failed` 置位 ⇒ `save()` 不会用默认值抹掉磁盘上的既有配置；
+        4. 新密钥可用（能加解密）。
+        """
         config_dir = tmp_path / ".ai_novel_writer"
         config_dir.mkdir(parents=True, exist_ok=True)
-
-        # 写入损坏的密钥文件
         key_file = config_dir / ".config_key"
         key_file.write_bytes(b"corrupted-key-data")
 
-        # 应该抛出异常或处理错误
-        with pytest.raises(Exception):
-            SecureConfig(config_dir)
+        secure = SecureConfig(config_dir)
+
+        assert secure.fernet is not None, "轮换后加密引擎应可用"
+        assert secure._load_failed is True, "必须置 _load_failed，否则保存时会抹掉既有配置"
+        archived = list(config_dir.glob(".config_key.old-*"))
+        assert archived, "旧密钥必须留档（以后能恢复账户时旧密文还有救）"
+        assert archived[0].read_bytes() == b"corrupted-key-data", "留档的应是原始字节"
+        assert key_file.read_bytes() != b"corrupted-key-data", "主密钥文件应已换成新密钥"
+
+        # 新密钥真的能用
+        cipher = secure._encrypt("PLAINTEXT")
+        assert cipher != "PLAINTEXT"
+        assert secure._decrypt(cipher) == "PLAINTEXT"
+
+    def test_rotation_does_not_wipe_existing_config(self, tmp_path):
+        """轮换之后 `save()` 不得把磁盘上既有配置洗成默认值。
+
+        这是轮换最容易造成的**数据损失**：密钥换了、旧密文解不开，
+        若保存逻辑把"解不开"当成"没有"，用户配置就被默认值覆盖了。
+        """
+        config_dir = tmp_path / ".ai_novel_writer"
+        config_dir.mkdir(parents=True, exist_ok=True)
+
+        first = SecureConfig(config_dir)
+        first.set("safe_setting", "KEEP-ME")
+        first.save()
+
+        # 模拟密钥被外部破坏（换账户/换机器）
+        (config_dir / ".config_key").write_bytes(b"corrupted-key-data")
+
+        broken = SecureConfig(config_dir)
+        assert broken._load_failed is True
+        broken.set("another", "x")
+        broken.save()
+
+        import json
+
+        raw = json.loads((config_dir / "config.json").read_text(encoding="utf-8"))
+        assert raw.get("safe_setting") == "KEEP-ME", "轮换后既有配置被抹掉了"
 
     def test_missing_config_file(self, tmp_path):
         """测试缺少配置文件"""

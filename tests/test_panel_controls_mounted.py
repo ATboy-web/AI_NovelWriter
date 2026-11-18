@@ -34,6 +34,7 @@ import ast
 import sys
 from pathlib import Path
 
+import _tk_harness
 import pytest
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -174,60 +175,18 @@ class TestStaticMountGuard:
 
 
 def _tk_ok() -> bool:
-    try:
-        import tkinter
-
-        r = tkinter.Tk()
-        r.withdraw()
-        r.destroy()
-        return True
-    except Exception:  # noqa: BLE001
-        return False
+    """能否建出 Tk 根窗口（统一走 harness）。"""
+    return _tk_harness.tk_available()
 
 
 def _make_root():
-    """建一个隐藏的 Tk 根窗口，并区分「环境挂了」与「面板有缺陷」。
+    """建隐藏根窗口 —— 统一走 。
 
-    ## 为什么要包这一层
-
-    长进程里 `tk.Tk()` 偶发抛：
-
-        _tkinter.TclError: invalid command name "tcl_findLibrary"
-
-    这是 **Tk 自身初始化失败**（Tcl 的 `init.tcl` 没被加载，于是 `tcl_findLibrary`
-    未定义），与"面板有没有把控件挂上去"毫无关系。实测它只在**全量套件的特定执行顺序**下
-    出现（单跑、整文件跑都 100% 通过，600 次连建连毁也不复现），属于环境级偶发。
-
-    ## 处理原则
-
-    - **先重试一次**：这类失败多为瞬时，重试几乎必然成功；
-    - 仍失败 ⇒ `pytest.skip`，**因为窗口都建不出来时，任何"控件未挂载"的断言都不成立**
-      —— 硬判失败等于把环境问题报成产品缺陷（历史上正是这样误伤了三个按钮的判定）；
-    - skip 时往 stderr 打一行显眼告警，避免这条守卫**静默失效**：
-      它一失效，`ui_kit` 契约不一致（按钮永远不显示）就没人守了。
+    这个文件曾经自己写了一套"重试 + 跳过"逻辑（含本地诊断落盘），
+    与另外 5 个测试文件各自为政。现在收敛到唯一入口：
+    **环境起不来窗口**才算 skip（），面板自身的问题照常让测试失败。
     """
-    import tkinter as tk
-
-    last: Exception | None = None
-    for attempt in range(2):
-        try:
-            root = tk.Tk()
-            root.withdraw()
-            return root
-        except Exception as exc:  # noqa: BLE001 - Tcl 异常类型跨版本不统一
-            last = exc
-            if attempt == 0:
-                continue
-    # ⚠️ 必须用 warnings.warn 而不是 print：跳过用例的 stdout/stderr 会被 pytest
-    # **捕获且不显示**（只在失败时回放），于是这条守卫一旦失效，日志里什么都看不到。
-    # warnings 会稳定出现在末尾的 warnings summary 里。
-    import warnings
-
-    warnings.warn(
-        f"[panel-controls] Tk 无法初始化，已跳过「控件挂载」断言（环境问题，非面板缺陷）：{last}",
-        stacklevel=2,
-    )
-    pytest.skip(f"环境级 Tk 初始化失败（非面板缺陷）：{last}")
+    return _tk_harness.create_root()
 
 
 def _collect(root) -> dict[str, str]:
@@ -387,8 +346,7 @@ class TestPanelsActuallyRenderControls:
         """
         import tkinter as tk
 
-        root = tk.Tk()
-        root.withdraw()
+        root = _tk_harness.create_root()
         try:
             tk.Button(root, text="幽灵按钮")  # 故意不 pack
             tk.Button(root, text="正常按钮").pack()

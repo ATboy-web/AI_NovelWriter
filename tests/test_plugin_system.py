@@ -25,6 +25,7 @@ import sys
 import zipfile
 from pathlib import Path
 
+import _tk_harness
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -676,18 +677,12 @@ class TestWiringGuard:
 # ====================================================================== 5. 真 Tk（可选）
 
 
-def _tk_available() -> bool:
-    try:
-        import tkinter as tk
-
-        root = tk.Tk()
-        root.destroy()
-        return True
-    except Exception:  # noqa: BLE001
-        return False
+def _tk_ok() -> bool:
+    """能否建出 Tk 根窗口 —— 统一走 `_tk_harness`（全仓唯一入口）。"""
+    return _tk_harness.tk_available()
 
 
-@pytest.mark.skipif(not _tk_available(), reason="无显示环境")
+@pytest.mark.skipif(not _tk_ok(), reason="无显示环境")
 class TestPanelTk:
     def test_build_marks_built_and_shows_empty_state(self, tmp_path, monkeypatch):
         import tkinter as tk
@@ -696,8 +691,7 @@ class TestPanelTk:
         mgr = ps.PluginManager(plugins_dir=tmp_path / "plugins", state_file=tmp_path / "s.json")
         monkeypatch.setattr(ps, "_manager", mgr)
 
-        root = tk.Tk()
-        root.withdraw()
+        root = _tk_harness.create_root()
         try:
             panel = PluginPanel(app=None)
             frame = panel.build(root)
@@ -708,7 +702,6 @@ class TestPanelTk:
             root.destroy()
 
     def test_panel_lists_installed_plugin(self, tmp_path, monkeypatch):
-        import tkinter as tk
 
         monkeypatch.setattr(ps, "_manager", None)
         mgr = ps.PluginManager(plugins_dir=tmp_path / "plugins", state_file=tmp_path / "s.json")
@@ -716,8 +709,7 @@ class TestPanelTk:
         mgr.install(str(src))
         monkeypatch.setattr(ps, "_manager", mgr)
 
-        root = tk.Tk()
-        root.withdraw()
+        root = _tk_harness.create_root()
         try:
             panel = PluginPanel(app=None)
             panel.build(root)
@@ -734,8 +726,7 @@ class TestPanelTk:
         import app.panels.plugin_panel as panel_mod
 
         monkeypatch.setattr(panel_mod, "get_plugin_manager", lambda: None)
-        root = tk.Tk()
-        root.withdraw()
+        root = _tk_harness.create_root()
         try:
             panel = PluginPanel(app=None)
             panel.build(root)

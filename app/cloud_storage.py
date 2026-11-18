@@ -942,15 +942,25 @@ class CloudStorageManager:
     #: 增量同步的本地清单文件名（远端不支持递归列举时使用）
     _MANIFEST_NAME = ".cloud_sync.json"
 
-    def __init__(self, config_file: Path = None):
+    def __init__(self, config_file: Path = None, secure_config=None):
+        """`secure_config` 可注入 —— 生产留空即用默认（`~/.ai_novel_writer`）。
+
+        ❗ 为什么需要这个参数：`SecureConfig()` 默认读**真实用户目录**下的密钥文件，
+        于是"加密是否可用"取决于机器状态（例如密钥来自其他账户就打不开）。
+        测试如果无法注入，就只能 `skip("本机加密后端不可用")` ——
+        加密回归在 CI 上等于没跑，而"凭据不得明文落盘"是安全项。
+        """
         self.config_file = Path(config_file) if config_file else Path.home() / ".ai_novel_writer" / "cloud_config.json"
         self._secure_config = None
-        try:
-            from app.secure_config import SecureConfig
+        if secure_config is not None:
+            self._secure_config = secure_config
+        else:
+            try:
+                from app.secure_config import SecureConfig
 
-            self._secure_config = SecureConfig()
-        except Exception as exc:  # noqa: BLE001 - 加密不可用不应阻断启动
-            logger.warning(f"[云存储] 加密组件初始化失败，凭据将不会被保存：{exc}")
+                self._secure_config = SecureConfig()
+            except Exception as exc:  # noqa: BLE001 - 加密不可用不应阻断启动
+                logger.warning(f"[云存储] 加密组件初始化失败，凭据将不会被保存：{exc}")
         self.config = self._load_config()
         self.providers: Dict[str, CloudProvider] = {}
         self._init_providers()

@@ -632,28 +632,43 @@ class TestManagerListing:
 
 
 class TestManagerConfigEncryption:
+    """凭据加密的回归 —— **不跳过**。
+
+    ❗ 原实现用 。
+    这个判据把"机器上密钥打不开"当成"无需测试"，于是这条**安全断言**
+    （凭据不得明文落盘）在 CI 上长期等于没跑。
+    现在改为**注入隔离的 **（密钥与配置都放 tmp_path）：
+    测试不依赖机器状态，也就没有跳过的理由。
+    """
+
+    @staticmethod
+    def _manager(tmp_path: Path):
+        from app.cloud_storage import CloudStorageManager
+        from app.secure_config import SecureConfig
+
+        return CloudStorageManager(
+            config_file=tmp_path / "cfg.json",
+            secure_config=SecureConfig(config_dir=tmp_path / "secure"),
+        )
+
     def test_sensitive_fields_are_not_plaintext(self, tmp_path: Path):
         """加密可用时，落盘的 token 不得是明文。"""
-        manager = CloudStorageManager(config_file=tmp_path / "cfg.json")
-        if manager._secure_config is None:
-            pytest.skip("本机加密后端不可用")
+        manager = self._manager(tmp_path)
         manager.configure_provider("baidu", {"access_token": "SECRET-TOKEN-VALUE"})
         raw = (tmp_path / "cfg.json").read_text(encoding="utf-8")
         assert "SECRET-TOKEN-VALUE" not in raw
 
     def test_roundtrip_decrypts(self, tmp_path: Path):
-        manager = CloudStorageManager(config_file=tmp_path / "cfg.json")
-        if manager._secure_config is None:
-            pytest.skip("本机加密后端不可用")
+        manager = self._manager(tmp_path)
         manager.configure_provider("baidu", {"access_token": "T-123"})
-        reloaded = CloudStorageManager(config_file=tmp_path / "cfg.json")
+        # 重载必须用**同一把密钥**（生产里就是同一台机器同一用户）：
+        # 走默认构造会读到真实用户目录的密钥，与注入的这把不同，必然解不开。
+        reloaded = self._manager(tmp_path)
         assert reloaded.config["baidu"]["access_token"] == "T-123"
 
     def test_nested_config_encrypted(self, tmp_path: Path):
         """嵌套字典里的凭据也要加密（配置可能按 provider 再分层）。"""
-        manager = CloudStorageManager(config_file=tmp_path / "cfg.json")
-        if manager._secure_config is None:
-            pytest.skip("本机加密后端不可用")
+        manager = self._manager(tmp_path)
         manager.configure_provider("webdav", {"url": "https://x", "password": "PW-SECRET"})
         raw = json.loads((tmp_path / "cfg.json").read_text(encoding="utf-8"))
         assert raw["webdav"]["password"] != "PW-SECRET"

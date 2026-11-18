@@ -12,6 +12,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import _tk_harness
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -138,15 +139,8 @@ class TestPreviewText:
 
 
 def _tk_ok() -> bool:
-    try:
-        import tkinter as tk
-
-        root = tk.Tk()
-        root.withdraw()
-        root.destroy()
-        return True
-    except Exception:  # noqa: BLE001
-        return False
+    """能否建出 Tk 根窗口 —— 统一走 `_tk_harness`（全仓唯一入口）。"""
+    return _tk_harness.tk_available()
 
 
 @pytest.mark.skipif(not _tk_ok(), reason="无显示环境")
@@ -161,8 +155,7 @@ class TestPanelBuilds:
         library.install(str(write_skill(tmp_path / "src")))
         monkeypatch.setattr(sl, "_library", library)
 
-        root = tk.Tk()
-        root.withdraw()
+        root = _tk_harness.create_root()
         try:
             panel = SkillLibraryPanel()
             panel.build(root)
@@ -177,7 +170,6 @@ class TestPanelBuilds:
             root.destroy()
 
     def test_apply_enables_and_previews(self, tmp_path: Path, monkeypatch):
-        import tkinter as tk
 
         from app import skill_library as sl
         from app.panels.skill_library_panel import SkillLibraryPanel
@@ -191,8 +183,7 @@ class TestPanelBuilds:
             lambda _parent, title, text, **_kw: captured.append((title, text)),
         )
 
-        root = tk.Tk()
-        root.withdraw()
+        root = _tk_harness.create_root()
         try:
             panel = SkillLibraryPanel()
             panel.build(root)
@@ -206,7 +197,6 @@ class TestPanelBuilds:
             root.destroy()
 
     def test_match_without_text_explains(self, tmp_path: Path, monkeypatch):
-        import tkinter as tk
 
         from app import skill_library as sl
         from app.panels.skill_library_panel import SkillLibraryPanel
@@ -214,8 +204,7 @@ class TestPanelBuilds:
         library = sl.SkillLibrary(skills_dir=tmp_path / "skills", registry_file=tmp_path / "skills.json")
         monkeypatch.setattr(sl, "_library", library)
 
-        root = tk.Tk()
-        root.withdraw()
+        root = _tk_harness.create_root()
         try:
             panel = SkillLibraryPanel()
             panel.build(root)

@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import re
 import sys
+import tkinter as tk
 from pathlib import Path
 
+import _tk_harness
 import pytest
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -79,12 +81,7 @@ class TestPaletteContrast:
 @pytest.fixture()
 def tk_root():
     """一个隐藏的根窗口；没有显示环境时跳过。"""
-    tk = pytest.importorskip("tkinter")
-    try:
-        root = tk.Tk()
-    except tk.TclError as exc:  # pragma: no cover - 无显示环境
-        pytest.skip(f"无可用显示环境：{exc}")
-    root.withdraw()
+    root = _tk_harness.optional_root()
     yield root
     try:
         root.destroy()

@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import _tk_harness
 import pytest
 
 from app.async_runner import CancelToken
@@ -397,12 +398,10 @@ class TestPanelWiring:
         panel._bulk_ui(lambda: None)  # 无 root 时直接执行
 
     def test_idle_buttons_disabled(self):
-        import tkinter as tk
 
         from app.panels.rework_panel import ReworkPanel
 
-        root = tk.Tk()
-        root.withdraw()
+        root = _tk_harness.create_root()
         try:
             panel = ReworkPanel()
             panel.build(root)

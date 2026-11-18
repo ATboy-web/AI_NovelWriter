@@ -15,6 +15,7 @@ import re
 import sys
 from pathlib import Path
 
+import _tk_harness
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -619,13 +620,7 @@ class TestPanelGuards:
 
 @pytest.fixture(scope="module")
 def tk_root():
-    import tkinter as tk
-
-    try:
-        root = tk.Tk()
-    except Exception as exc:  # noqa: BLE001 - 无显示环境则跳过
-        pytest.skip(f"无可用 Tk 环境：{exc}")
-    root.withdraw()
+    root = _tk_harness.optional_root()
     yield root
     try:
         root.destroy()

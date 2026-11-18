@@ -25,9 +25,11 @@ Tk 的控件**不能改父**（没有 reparent），所以"面板换个容器"�
 from __future__ import annotations
 
 import sys
+import tkinter as tk
 from pathlib import Path
 from typing import Any
 
+import _tk_harness
 import pytest
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -111,12 +113,7 @@ def _teardown(built: Any) -> None:
 
 @pytest.fixture()
 def tk_root():
-    tk = pytest.importorskip("tkinter")
-    try:
-        root = tk.Tk()
-    except tk.TclError as exc:  # pragma: no cover - 无显示环境
-        pytest.skip(f"无可用显示环境：{exc}")
-    root.withdraw()
+    root = _tk_harness.optional_root()
     yield root
     try:
         root.destroy()

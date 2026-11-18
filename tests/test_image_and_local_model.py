@@ -19,6 +19,7 @@ import ast
 import inspect
 from pathlib import Path
 
+import _tk_harness
 import httpx
 import pytest
 import respx
@@ -221,10 +222,17 @@ class TestImageHasARealEntryPoint:
         assert "check_backend" in src, "面板没有后端检测入口"
 
     def test_panel_does_not_require_pil(self):
-        """打包 EXE 有意排除 PIL，面板必须能不带它工作。"""
+        """打包 EXE 有意排除 PIL，面板必须能不带它工作。
+
+        ❗ 原实现在"面板根本没有 PIL 导入"时 `pytest.skip("也符合预期")` ——
+        这是自相矛盾的：**既然符合预期，就该通过**。skip 会让这条断言
+        在被测代码变化后**永久静默**（例如有人删掉 PIL 分支，测试就永远绿着）。
+        现在改成真断言：**要么没有 PIL 导入，要么每个导入都被 try/except ImportError 包住**。
+        """
         src = (_REPO_ROOT / "app" / "panels" / "illustration_panel.py").read_text(encoding="utf-8")
         tree = ast.parse(src)
-        # 找所有 ImportFrom("PIL")，确认都被 try/except ImportError 包着
+
+        guarded_imports = 0
         for node in ast.walk(tree):
             if isinstance(node, ast.Try):
                 for child in ast.walk(node):
@@ -232,8 +240,17 @@ class TestImageHasARealEntryPoint:
                         assert any(
                             isinstance(h.type, ast.Name) and h.type.id == "ImportError" for h in node.handlers
                         ), "PIL 的导入没有 `except ImportError` 兜底"
-                        return
-        pytest.skip("面板里没有 PIL 导入（也符合预期）")
+                        guarded_imports += 1
+
+        # 所有 PIL 导入（无论在哪）都必须落在上面的计数里
+        total_pil_imports = sum(
+            1
+            for child in ast.walk(tree)
+            if isinstance(child, ast.ImportFrom) and (child.module or "").startswith("PIL")
+        )
+        assert guarded_imports >= total_pil_imports or total_pil_imports == 0, (
+            f"有 {total_pil_imports - guarded_imports} 处 PIL 导入未被 try/except ImportError 包住"
+        )
 
     def test_panel_is_declared_for_packaging(self):
         """原生面板是按字符串动态导入的，spec 不列就会在打包后少一块。"""
@@ -419,13 +436,7 @@ class TestLocalModelUiIsWired:
 
 @pytest.fixture(scope="module")
 def tk_root():
-    import tkinter as tk
-
-    try:
-        root = tk.Tk()
-    except Exception as exc:  # noqa: BLE001 - 无显示环境则跳过
-        pytest.skip(f"无可用 Tk 环境：{exc}")
-    root.withdraw()
+    root = _tk_harness.optional_root()
     yield root
     try:
         root.destroy()

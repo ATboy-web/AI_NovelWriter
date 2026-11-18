@@ -355,12 +355,6 @@ class MCPPanel(BasePanel):
             "success",
         )
 
-    def _set_detail(self, text: str) -> None:
-        self._detail.config(state=tk.NORMAL)
-        self._detail.delete("1.0", tk.END)
-        self._detail.insert("1.0", text)
-        self._detail.config(state=tk.DISABLED)
-
     def _spec_of(self, name: str) -> Optional[MCPServerSpec]:
         for spec in self._servers:
             if spec.name == name:

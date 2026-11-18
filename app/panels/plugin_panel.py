@@ -288,12 +288,6 @@ class PluginPanel(BasePanel):
             "success",
         )
 
-    def _set_detail(self, text: str) -> None:
-        self._detail.config(state=tk.NORMAL)
-        self._detail.delete("1.0", tk.END)
-        self._detail.insert("1.0", text)
-        self._detail.config(state=tk.DISABLED)
-
     def _info_of(self, name: str) -> dict:
         for info in self._plugins:
             if str(info.get("name")) == name:

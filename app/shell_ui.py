@@ -88,8 +88,9 @@ class ShellMixin:
         quick_btn_frame.pack(side=tk.LEFT, padx=20)
 
         for text, cmd, color in [
-            ("新建小说", lambda: self._new_novel(), C["accent"]),
-            ("打开小说", lambda: self._open_novel(), C["bg_light"]),
+            # 「新建小说」「打开小说」已从本工具栏移除：顶部 header 与「文件」菜单
+            # 各有一个，同一功能三处入口只会让工具栏变长、不增加可达性。
+            # 这里只保留**唯一不重复**的高频动作。
             ("续写新章", lambda: self._continue_novel(), C["success"]),
         ]:
             btn = tk.Button(

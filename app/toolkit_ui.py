@@ -52,6 +52,25 @@ class ToolkitUIMixin:
         )
         self._record_panel_registry()
 
+    def _open_panel(self, key: str) -> bool:
+        """按 key 切到某个面板（菜单项指向面板用）。
+
+        为什么需要它：有些功能在菜单里有一个旧入口、在面板里又有一份实现
+        （例如「生成角色传记」）。与其维护两套界面，不如让菜单**跳到面板** ——
+        功能不减，界面只有一份。
+
+        面板宿主尚未建立时返回 False 并记日志，不抛异常（菜单项不该让主窗口崩）。
+        """
+        host = getattr(self, "panel_host", None)
+        if host is None:
+            logger.debug(f"[面板] 宿主未就绪，无法跳转到 {key}")
+            return False
+        try:
+            return bool(host.select(key))
+        except Exception as exc:  # noqa: BLE001 - 未知 key / 构建失败都不该炸菜单
+            logger.warning(f"[面板] 跳转 {key} 失败：{exc}")
+            return False
+
     def _save_panel_layout(self, layout) -> None:
         """把布局记忆到磁盘（由宿主在布局变化时回调）。
 

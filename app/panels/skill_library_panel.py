@@ -436,12 +436,6 @@ class SkillLibraryPanel(BasePanel):
             "success",
         )
 
-    def _set_detail(self, text: str) -> None:
-        self._detail.config(state=tk.NORMAL)
-        self._detail.delete("1.0", tk.END)
-        self._detail.insert("1.0", text)
-        self._detail.config(state=tk.DISABLED)
-
     def _on_search(self) -> None:
         self._refresh_tree()
 

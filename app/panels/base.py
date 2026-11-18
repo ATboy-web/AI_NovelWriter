@@ -228,6 +228,31 @@ class BasePanel:
             return False
         return True
 
+
+    # ------------------------------------------------------------------ 详情区
+
+    def _set_detail(self, text: str) -> None:
+        """把文本写进面板右侧的详情区（`self._detail`，一个只读 Text）。
+
+        为什么放在基类：lineage / mcp / plugin / rework / skills 五个面板里，
+        这段代码**逐字相同**（都是"临时解除只读 → 清空 → 写入 → 恢复只读"）。
+        五份副本的问题是改一处忘四处 —— 而它偏偏是"刷新详情"这种每天都在跑的代码。
+
+        自检：`self._detail` 不存在时直接返回，不抛异常。
+        面板可能在某些构建顺序下还没创建详情区就被调用（例如事件早于 build），
+        那种情况下"详情没刷新"远好过"面板崩掉"。
+        """
+        widget = getattr(self, "_detail", None)
+        if widget is None:
+            return
+        try:
+            widget.config(state="normal")
+            widget.delete("1.0", "end")
+            widget.insert("1.0", text)
+            widget.config(state="disabled")
+        except Exception as exc:  # noqa: BLE001 - 控件已销毁等情况不该炸面板
+            logger.debug(f"[面板] 详情区刷新失败：{exc}")
+
     # ------------------------------------------------------------------ 辅助
 
     @property

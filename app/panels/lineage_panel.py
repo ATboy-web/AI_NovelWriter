@@ -575,8 +575,3 @@ class LineagePanel(BasePanel):
 
     # ------------------------------------------------------------------ 辅助
 
-    def _set_detail(self, text: str) -> None:
-        self._detail.configure(state=tk.NORMAL)
-        self._detail.delete("1.0", tk.END)
-        self._detail.insert("1.0", text)
-        self._detail.configure(state=tk.DISABLED)

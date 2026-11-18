@@ -3,7 +3,9 @@
 从 novel_app.py (P2-1 巨石拆分) 自动产生；方法体逐字节复制自原 NovelWriterApp，行为保持不变。
 """
 
+import re
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog
 
 from app import dialogs
@@ -183,27 +185,50 @@ class ChapterUIMixin:
         self.outline_list.see(ch_num - 1)
 
     def _export_txt(self):
-        """导出全文TXT"""
+        """导出全文 TXT（走 `format_converter` 的统一实现）。
+
+        为什么改：此前这里是**手写的一套导出**（裸 `open("w")` + 只支持 TXT），
+        而 `format_converter` 早已支持六种格式（TXT/HTML/Markdown/EPUB/PDF/DOCX）。
+        同一件"导出"的事两套代码，后果是：格式细节两边不一致、修一处忘另一处。
+        现在统一走 converter —— 想导其他格式，用工具栏「格式转换」即可。
+
+        行为变化（有意）：TXT 里每章前会多出分隔线与章名（converter 的规范格式），
+        不再包含正文首行的 markdown `#` 标记。
+        """
         if not self.current_novel_dir:
             dialogs.showwarning("提示", "请先创建或打开小说")
             return
 
         meta = self._get_meta()
+        title = meta.get("title", "小说")
         save_path = filedialog.asksaveasfilename(
-            defaultextension=".txt", filetypes=[("文本文件", "*.txt")], initialfile=f"{meta.get('title', '小说')}.txt"
+            defaultextension=".txt", filetypes=[("文本文件", "*.txt")], initialfile=f"{title}.txt"
         )
-
         if not save_path:
             return
 
-        chapters_dir = self.current_novel_dir / "chapters"
-        chapter_files = sorted(chapters_dir.glob("chapter_*.txt"))
+        chapters: list[dict] = []
+        for path in sorted((self.current_novel_dir / "chapters").glob("chapter_*.txt")):
+            raw = path.read_text(encoding="utf-8", errors="replace")
+            lines = raw.splitlines()
+            heading = lines[0].lstrip("#").strip() if lines and lines[0].startswith("#") else ""
+            body = "\n".join(lines[1:]).strip() if heading else raw.strip()
+            match = re.search(r"(\d+)", path.stem)
+            chapters.append({"num": int(match.group(1)) if match else 0, "title": heading, "content": body})
 
-        with open(save_path, "w", encoding="utf-8") as out:
-            out.write(f"《{meta.get('title', '小说')}》\n\n")
-            for cf in chapter_files:
-                content = cf.read_text(encoding="utf-8")
-                out.write(content + "\n\n")
+        try:
+            from app.format_converter import FormatConverter
 
-        self._log(f"全文已导出到: {save_path}")
-        dialogs.showinfo("成功", f"全文已导出到:\n{save_path}")
+            result = FormatConverter(self.current_novel_dir).convert(
+                "", title, "txt", chapters=chapters, output_file=Path(save_path)
+            )
+            if not result:
+                dialogs.showerror("导出失败", "格式转换未返回结果，请检查导出目录权限。")
+                return
+        except Exception as exc:  # noqa: BLE001 - 导出失败要能看见原因
+            self._log(f"导出失败: {exc}")
+            dialogs.showerror("导出失败", str(exc))
+            return
+
+        self._log(f"全文已导出到: {result}")
+        dialogs.showinfo("成功", f"全文已导出到:\n{result}")

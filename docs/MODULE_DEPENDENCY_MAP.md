@@ -9,8 +9,8 @@
 | 指标 | 值 |
 |---|---|
 | 内部模块数 | 100 |
-| 依赖边数 | 299 |
-| 其中函数内延迟导入 | 61 |
+| 依赖边数 | 300 |
+| 其中函数内延迟导入 | 62 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
@@ -103,7 +103,7 @@
 | `async_runner` | ⚪`app`, ⚪`dialogs` |
 | `biography` | 🔴`storage` |
 | `bulk_rewrite` | ⚪`app`, ⚪`ai_client`, 🔴`async_runner`, 🔴`rework`, 🔴`text_stats`, ⚪`writing_presets` |
-| `chapter_ui` | 🔴`app`, 🔴`dialogs`, 🔴`events` |
+| `chapter_ui` | 🔴`app`, 🔴`dialogs`, 🔴`events`, ⚪`format_converter` |
 | `character_system` | 🔴`parsing`, 🔴`storage` |
 | `character_ui` | 🔴`app`, 🔴`biography`, 🔴`character_system`, 🔴`dialogs`, 🔴`format_converter`, 🔴`memory_manager`, 🔴`parsing`, 🔴`storage`, 🔴`timeline_store` |
 | `cloud_storage` | ⚪`secure_config`, 🔴`storage` |

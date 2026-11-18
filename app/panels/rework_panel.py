@@ -324,14 +324,6 @@ class ReworkPanel(BasePanel):
             )
         self._set_detail("\n".join(lines))
 
-    def _set_detail(self, text: str) -> None:
-        if not getattr(self, "_detail", None):
-            return
-        self._detail.config(state=tk.NORMAL)
-        self._detail.delete("1.0", tk.END)
-        self._detail.insert("1.0", text)
-        self._detail.config(state=tk.DISABLED)
-
     def _set_effect(self, text: str, kind: str = "info") -> None:
         if not getattr(self, "_effect_line", None):
             return

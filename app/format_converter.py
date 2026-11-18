@@ -67,17 +67,29 @@ class FormatConverter:
         chapters: List[Dict] = None,
         metadata: Dict = None,
         images: Dict[str, bytes] = None,
+        output_file: Optional[Path] = None,
     ) -> Optional[str]:
-        """转换格式，返回输出文件路径"""
+        """转换格式，返回输出文件路径。
+
+        `output_file` 给定时写到指定位置（用于"另存为"），否则写到
+        `novel_dir/export/<标题><扩展名>`。
+
+        为什么加这个参数：`chapter_ui._export_txt` 等旧入口是"让用户选路径另存"，
+        而统一实现原来只会往固定目录写 —— 不加这个参数就没法把旧入口收敛过来，
+        于是同一件"导出"的事会永远停留在两套代码上。
+        """
         if format_type not in self.SUPPORTED_FORMATS:
             return None
 
         ext = self.SUPPORTED_FORMATS[format_type]["ext"]
-        output_dir = self.novel_dir / "export" if self.novel_dir else Path("export")
-        output_dir.mkdir(exist_ok=True)
-
-        safe_title = re.sub(r'[<>:"/\\|?*]', "_", title)
-        output_file = output_dir / f"{safe_title}{ext}"
+        if output_file is not None:
+            # 指定了路径就照用，**不要**再被下面的默认命名覆盖
+            output_file = Path(output_file)
+        else:
+            output_dir = self.novel_dir / "export" if self.novel_dir else Path("export")
+            output_dir.mkdir(exist_ok=True)
+            safe_title = re.sub(r'[<>:"/\\|?*]', "_", title)
+            output_file = output_dir / f"{safe_title}{ext}"
 
         try:
             if format_type == "txt":

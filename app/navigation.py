@@ -35,7 +35,13 @@ class NavigationManager:
         menubar.add_cascade(label="创作", menu=create_menu)
         create_menu.add_command(label="仿写风格", command=self.app._style_imitation)
         create_menu.add_separator()
-        create_menu.add_command(label="生成角色传记", command=self.app._generate_character_biography)
+        # 「生成角色传记」原先弹出自己的 Toplevel，而「角色传记」面板（biography）
+        # 已有同名能力（AI 生成传记 / 保存 / 导出 / 转为故事线）。同一功能两套界面，
+        # 所以菜单项改为**跳到面板**，而不是再维护一个独立弹窗。
+        create_menu.add_command(
+            label="生成角色传记",
+            command=lambda: self.app._open_panel("biography"),
+        )
         create_menu.add_command(label="生成书籍简介", command=self.app._generate_synopsis)
 
         # 设置菜单

@@ -3,6 +3,91 @@
 > 版本号单一权威源为 `pyproject.toml`，`app.__version__` 与 README 均与之一致
 > （由 `tests/test_version_consistency.py` 守护）。
 
+## v3.3.2 (2026-11-18)
+
+**本次发布的定位**：一个**安全/可靠性**补丁。修正「加密密钥不可解 ⇒ 功能永久失效」
+这条不可恢复的故障路径，并把测试侧 10 处各自静默跳过的 Tk 守卫收敛为单一入口。
+**不新增功能**，`3.3.1` 的界面与能力完全一致。
+
+> 用例数（collected）**4169 → 4182**；通过 **4164 → 4182**；**跳过 5 → 0**。
+> 覆盖率 **85.76% → 85.75%**（新增判定分支，行数基数同步变大）。
+
+### 修复
+
+**🔴 加密密钥解不开时，云盘凭据功能**永久**不可用（P0）**
+- 现象：`~/.ai_novel_writer/.config_key` 若由**另一个账户/机器**的 DPAPI 保护，
+  `SecureConfig.__init__` 直接抛 `OSError: DPAPI CryptUnprotectData 失败`。
+- 后果链：`SecureConfig` 构造失败 → `CloudStorageManager._secure_config = None`
+  → **云盘凭据永远无法保存**，且每次启动都走同一条 raise 路径，
+  用户看不到任何"删掉密钥文件就能恢复"的线索 —— **不可恢复**。
+- 现在改为**密钥轮换**（`app/secure_config.py`），三个动作缺一不可：
+  1. 旧密钥留档为 `.config_key.old-<时间戳>` —— 日后若账户可恢复，旧密文还有救；
+  2. 置 `_load_failed = True` —— `save()` 据此拒绝"用默认值覆盖磁盘"，
+     否则轮换后第一次保存就会把用户既有配置整体洗成默认值；
+  3. 日志明确告知"此前保存的凭据需重新填写" —— 这是轮换的必然代价，含糊其辞等于欺骗。
+- 附带修正：`_init_encryption` 的 `chmod 0600` 抽成 `_chmod_key()`，两条分支共用。
+
+**测试隔离：加密回归长期等于没跑**
+- `CloudStorageManager` 新增 `secure_config=` 注入点。原先它固定构造 `SecureConfig()`，
+  读**真实用户目录**的密钥 ⇒ "加密是否可用"取决于机器状态 ⇒ 3 条用例只能
+  `pytest.skip("本机加密后端不可用")`。
+- 于是「凭据不得明文落盘」这条**安全断言在 CI 上从未真正执行**。
+  现在用 `SecureConfig(config_dir=tmp_path/...)` 注入隔离密钥，
+  `test_cloud_storage_providers.py` **98 passed / 0 skipped**。
+
+**🟡 硬约束「不得删除角色名」在真实模块上一直是空转**
+- `test_data_safety_baseline.py` 的 `V3_MODULES` 清单里写着 `app/panels/usage_panel.py` ——
+  **该文件从未存在**（实际实现是 `app/usage_ui.py`）。
+  `if not path.is_file(): pytest.skip()` 于是让这条**用户数据安全约束**在真实模块上永远跳过。
+- 清单改为真实模块，并补入同类的 `app/ai_settings_ui.py`（实测两者均无违规调用面）。
+
+**Tk 根窗口创建：10 处重复实现 → 单一入口**
+- 原先 10 个测试文件各写一遍 `tk.Tk()` + `except: pytest.skip("无可用显示环境")`，
+  同一故障有 10 种表现，判据也不一致（有的捕 `TclError`、有的捕 `Exception`）。
+  其中 `test_panel_layout` 一旦跳过，**面板布局回归就失去守护**。
+- 新增 `tests/_tk_harness.py`：
+  - `create_root()`：3 次重试（0.15s/0.30s 递增），仍失败则落盘现场并抛 `TkUnavailable`；
+  - `optional_root()`：无显示环境可跳过，但**必须 `warnings.warn`**（否则整类静默）；
+  - `tk_available()`：加 `lru_cache`，全进程只探测一次 —— 每次探测本身也是一次
+    "新建 Tcl 解释器"，原先每个模块/类各探测一次纯属额外风险；
+  - **重试成功也留痕**（`anw_tk_retry.jsonl`）：静默恢复等于又一次掩盖。
+- **判据收窄**：只有"确实建不出窗口"才允许跳过；面板自身写坏必须让测试**失败**。
+
+**`test_image_and_local_model` 里自相矛盾的跳过**
+- 原文 `pytest.skip("面板里没有 PIL 导入（**也符合预期**）")`：既然符合预期就该通过。
+  skip 会让这条断言在被测代码变化后永久静默。改为真断言：
+  「要么没有 PIL 导入，要么每个导入都被 `try/except ImportError` 包住」。
+
+### 测试
+
+| 项 | v3.3.1 | v3.3.2 |
+|---|---:|---:|
+| 用例数（collected） | 4169 | **4182** |
+| 通过 | 4164 | **4182** |
+| 跳过 | 5 | **0** |
+| 覆盖率 | 85.76% | **85.75%** |
+
+新增 13 条，逐项对得上：
+
+| 来源 | 条数 |
+|---|---:|
+| 新增 `tests/test_tk_harness.py` | +11 |
+| `test_secure_config.py`（1 条"损坏即抛"拆为"轮换成功"+"不得洗掉既有配置"） | +1 |
+| `test_data_safety_baseline.py`（`V3_MODULES` 补入 `ai_settings_ui.py`） | +1 |
+
+其余 5 条跳过项（3 条加密 + 1 条数据基线 + 1 条 Tk）**由跳过转为实际执行**，不改变条数。
+
+- 新增 `tests/test_tk_harness.py`（11 条）：重试被吸收且留痕、持续失败抛
+  `TkUnavailable` 且现场含 `init_tcl_read_ok`/句柄/内存/创建次数、探测缓存只 1 次。
+- 加密轮换新增 2 条：旧密钥留档字节一致、**轮换后 save 不得洗掉既有配置**。
+- 新增 4 道防回退守卫：禁裸 `tk.Tk()`（含反向断言）、禁自写 `_tk_available()`、
+  禁 `except: skip("无可用显示环境")`、`tk_available()` 必须只探测 1 次。
+
+> 关于 Tk 偶发失败：其成因是 Tcl 解释器初始化期**读 init.tcl 的瞬时失败**
+> （错误签名 `couldn't read file ...: No error`，同一瞬间纯 Python 读同一文件成功），
+> 位于 Tcl C 层，**无法从 Python 根治**。本次做的是"降暴露面 + 重试 + 留痕 + 失败即红"，
+> 使连续两轮全量 0 跳过，且故障发生时留有可定因的现场。
+
 ## v3.3.1 (2026-11-18)
 
 **本次发布的定位**：以「**不再静默失败**」为主线的一次加固与清理 ——

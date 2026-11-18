@@ -1,4 +1,4 @@
-# AI小说创作工坊 v3.3.1
+# AI小说创作工坊 v3.3.2
 
 [![CI](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml/badge.svg)](https://github.com/ATboy-web/AI_NovelWriter/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ATboy-web/AI_NovelWriter?label=release&color=blue)](https://github.com/ATboy-web/AI_NovelWriter/releases/latest)
@@ -18,7 +18,7 @@
 
 | 平台 | 版本 | 大小 | 链接 |
 |------|------|------|------|
-| **Windows** | **v3.3.1** | ~25 MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
+| **Windows** | **v3.3.2** | ~25 MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
 | Android | v4.0.1（沿用上一次构建） | ~10.9 MB | [AI_NovelWriter_v4.0.1.apk](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.16.0) |
 
 > 单文件免安装：下载后直接双击运行。首次启动需在 **设置** 里配置 AI 服务。

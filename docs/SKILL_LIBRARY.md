@@ -203,7 +203,7 @@ python -m pytest tests/test_plugin_system.py tests/test_panel_framework.py \
 # 4) 手工验收：面板 → 导入该技能目录 → 一键应用 → 预览注入
 ```
 
-EXE 冒烟判据同步为 **19 面板 / 5 分组 / `load_failures=[]`**。
+EXE 冒烟判据同步为 **20 面板 / 5 分组 / `load_failures=[]`**。
 
 ## 10. 已知边界
 

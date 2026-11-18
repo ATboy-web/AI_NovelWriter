@@ -73,6 +73,8 @@ NATIVE_PANEL_MODULES: tuple[str, ...] = (
     "app.panels.mcp_panel",
     # 技能库：把外部 SKILL.md 技能包解析成可检索、可注入的提示词规则
     "app.panels.skill_library_panel",
+    # 回炉重造：给存量低质量章节一个"打回重写"的位置（此前章节模块只有读写/导航/导出）
+    "app.panels.rework_panel",
 )
 
 

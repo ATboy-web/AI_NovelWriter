@@ -220,6 +220,22 @@ EXPECTED = {
         "buttons": ["检测后端", "刷新提示词", "打开图片目录", "生成插图"],
         "titles": ["名场面提示词", "提示词内容"],
     },
+    "rework": {
+        # 工具条 3 个 + 状态流转 6 个。状态流转按钮在初始状态是**置灰但不隐藏**，
+        # 所以这里照样要求"存在且已挂载"—— 置灰是业务态，未挂载是缺陷。
+        "buttons": [
+            "扫描低质量章节",
+            "全部入炉",
+            "刷新",
+            "开始重写",
+            "提交审核",
+            "审核通过",
+            "定稿",
+            "退回正常",
+            "废弃",
+        ],
+        "titles": ["回炉队列", "原因与历史"],
+    },
     "skills": {
         "buttons": [
             "导入技能",
@@ -284,6 +300,10 @@ class TestPanelsActuallyRenderControls:
             from app.panels.skill_library_panel import SkillLibraryPanel
 
             panel = SkillLibraryPanel()
+        elif key == "rework":
+            from app.panels.rework_panel import ReworkPanel
+
+            panel = ReworkPanel()
         else:
             panel = IllustrationPanel()
 

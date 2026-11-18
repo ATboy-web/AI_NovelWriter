@@ -66,6 +66,9 @@ a = Analysis(
         # 技能库面板（同上；skill_library 只被面板与 novel_agent 延迟 import）
         'app.panels.skill_library_panel',
         'app.skill_library',
+        # 回炉重造：面板 + 核心状态机（面板模块级 import，静态可见，但显式列出更稳）
+        'app.panels.rework_panel',
+        'app.rework',
         # 写作预设（把技能规则装配成阶段/体裁/长度三个维度的能力单元）。
         # 由 novel_agent 与技能库面板延迟 import ⇒ 必须显式列出。
         'app.writing_presets',

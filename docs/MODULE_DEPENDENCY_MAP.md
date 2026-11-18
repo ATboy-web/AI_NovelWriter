@@ -8,9 +8,9 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 97 |
-| 依赖边数 | 279 |
-| 其中函数内延迟导入 | 54 |
+| 内部模块数 | 99 |
+| 依赖边数 | 290 |
+| 其中函数内延迟导入 | 56 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
@@ -55,15 +55,15 @@
 | 模块 | 被引用次数 |
 |---|---|
 | `app` | 31 |
-| `dialogs` | 28 |
-| `storage` | 24 |
-| `ui_style` | 18 |
+| `dialogs` | 29 |
+| `storage` | 25 |
+| `ui_style` | 19 |
+| `panels` | 13 |
 | `events` | 12 |
-| `panels` | 12 |
-| `panels.base` | 10 |
-| `panels.ui_kit` | 9 |
+| `panels.base` | 11 |
+| `panels.ui_kit` | 10 |
+| `async_runner` | 8 |
 | `config` | 8 |
-| `async_runner` | 7 |
 | `novel_toolkit` | 6 |
 | `token_estimator` | 6 |
 | `ai_client` | 5 |
@@ -72,8 +72,8 @@
 | `providers.base` | 5 |
 | `panels.registry` | 4 |
 | `parsing` | 4 |
+| `text_stats` | 4 |
 | `usage_tracker` | 4 |
-| `lineage` | 3 |
 
 > 这些模块被最多人依赖 ⇒ 改它们的破坏面最大，应当优先保证测试覆盖。
 
@@ -151,6 +151,7 @@
 | `panels.memory_viz_panel` | 🔴`ui_style` |
 | `panels.plugin_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`plugin_system`, 🔴`ui_style` |
 | `panels.registry` | ⚪`panels`, ⚪`panels.base`, ⚪`panels.legacy` |
+| `panels.rework_panel` | 🔴`async_runner`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`rework`, 🔴`ui_style` |
 | `panels.skill_library_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`skill_library`, 🔴`style_dna`, 🔴`ui_style`, 🔴`writing_presets` |
 | `panels.story_flow_panel` | 🔴`app`, 🔴`dialogs`, 🔴`novel_toolkit`, 🔴`ui_style` |
 | `panels.style_panel` | 🔴`app`, 🔴`dialogs`, 🔴`novel_toolkit` |
@@ -174,6 +175,7 @@
 | `reader_ui` | 🔴`app`, 🔴`dialogs` |
 | `reading_manager` | 🔴`config` |
 | `review_store` | 🔴`storage`, ⚪`writing_presets` |
+| `rework` | ⚪`review_store`, 🔴`storage`, 🔴`text_stats`, ⚪`writing_presets` |
 | `scene_detector` | — |
 | `secure_config` | 🔴`config`, 🔴`storage` |
 | `semantic_candidates` | ⚪`text_stats` |
@@ -218,6 +220,7 @@
 - `panels.memory_viz_panel`
 - `panels.plugin_panel`
 - `panels.registry`
+- `panels.rework_panel`
 - `panels.skill_library_panel`
 - `panels.story_flow_panel`
 - `panels.style_panel`

@@ -1642,7 +1642,7 @@ class NovelLifecycleMixin:
 
                 # 保存简介
                 synopsis_file = self.current_novel_dir / "synopsis.txt"
-                synopsis_file.write_text(result, encoding="utf-8")
+                self._atomic_write(synopsis_file, result)
 
                 self.root.after(0, lambda: self._show_synopsis(result))
                 self._log("书籍简介生成完成")
@@ -1682,7 +1682,7 @@ class NovelLifecycleMixin:
         def save():
             new_content = synopsis_text.get("1.0", tk.END).strip()
             synopsis_file = self.current_novel_dir / "synopsis.txt"
-            synopsis_file.write_text(new_content, encoding="utf-8")
+            self._atomic_write(synopsis_file, new_content)
             dialog.destroy()
             self._log("书籍简介已保存")
 

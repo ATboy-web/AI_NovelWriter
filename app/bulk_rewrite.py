@@ -50,6 +50,7 @@ from loguru import logger
 
 from .async_runner import CancelledError, CancelToken
 from .rework import ReworkError
+from .storage import atomic_write_json, atomic_write_text
 from .text_stats import count_hanzi
 
 __all__ = [
@@ -391,7 +392,10 @@ class BulkRewriter:
             row.update(extra)
             self._log["chapters"][str(chapter)] = row
             try:
-                self._log_path.write_text(json.dumps(self._log, ensure_ascii=False, indent=2), encoding="utf-8")
+                # 🔴 原子写：这份日志是**断点续跑的唯一依据**。
+                # 裸写被杀会留下半截 JSON ⇒ 下次读不出来 ⇒ 已重写过的章全部重做，
+                # 那是真金白银的重复模型调用。
+                atomic_write_json(self._log_path, self._log, indent=2)
             except OSError as exc:
                 logger.warning(f"[整书重写] 日志写入失败：{exc}")
 
@@ -594,7 +598,9 @@ class BulkRewriter:
         payload = (title + "\n\n" + new_body) if title else new_body
         target = self.out_dir / f"chapter_{chapter:04d}.txt"
         try:
-            target.write_text(payload, encoding="utf-8")
+            # 原子写：半章文件比"没写"更危险 —— 它看起来像完成了，
+            # 用户可能直接拿去用，而段落只到一半。
+            atomic_write_text(target, payload)
         except OSError as exc:
             self.stats.failed += 1
             self.stats.failures.append({"chapter": chapter, "error": f"写入失败：{exc}"})

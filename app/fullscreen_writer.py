@@ -13,6 +13,7 @@ from tkinter import ttk
 # （见 app/__init__.py 的可选导入段），走包级导入会形成循环引用，
 # 而失败会被 `_ImportStub` **静默降级** —— 表现为 FullscreenWriter 变成一个一实例化就报错的桩。
 # `tests/test_import_health.py` 会拦住这类静默降级。
+from .storage import atomic_write_json
 from .ui_style import UIStyle
 
 try:
@@ -952,24 +953,28 @@ class FullscreenWriter:
             self.ai_var.set(self.ai_assist_enabled)
 
     def _save_writer_settings(self):
-        """保存写作设置（与读取用同一种编码：UTF-8，见 `_load_writer_settings`）。"""
+        """保存写作设置（原子写；与读取同一种编码 UTF-8，见 `_load_writer_settings`）。
+
+        为什么改原子写：这里是"用户调完就走"的状态。裸写时被杀会留下半截 JSON，
+        下次打开窗口 `json.load` 抛错 → 走"读失败用默认值"分支 → **用户调过的字号、
+        纸张宽度、打字机模式、AI 辅助全部悄悄回到默认**，而且只有一条 warning 日志。
+        """
         if not self.config:
             return
         settings_file = self.config.config_dir / "writer_settings.json"
         try:
-            with open(settings_file, "w", encoding="utf-8") as f:
-                json.dump(
-                    {
-                        "font_size": self.font_size,
-                        "paper_width": self.paper_width,
-                        "paper_position": self.paper_position,
-                        "bg_opacity": self.bg_opacity,
-                        "typewriter_mode": self.typewriter_mode,
-                        "ai_assist": self.ai_assist_enabled,
-                    },
-                    f,
-                    indent=2,
-                )
+            atomic_write_json(
+                settings_file,
+                {
+                    "font_size": self.font_size,
+                    "paper_width": self.paper_width,
+                    "paper_position": self.paper_position,
+                    "bg_opacity": self.bg_opacity,
+                    "typewriter_mode": self.typewriter_mode,
+                    "ai_assist": self.ai_assist_enabled,
+                },
+                indent=2,
+            )
         except OSError as e:
             logger.warning(f"写作设置保存失败（不影响本次写作）: {type(e).__name__}: {e}")
 

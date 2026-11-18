@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from .storage import atomic_write_json
+
 # ==================== 小说元素库 ====================
 
 
@@ -574,8 +576,8 @@ class ElementLibrary:
             with open(f, "r", encoding="utf-8") as fp:
                 data = json.load(fp)
         data["items"].append(item)
-        with open(f, "w", encoding="utf-8") as fp:
-            json.dump(data, fp, indent=2, ensure_ascii=False)
+        # 原子写：自定义素材是用户一点点攒出来的，截断就整库读不回来
+        atomic_write_json(f, data, indent=2)
 
     def generate_background(self, ai_client, selected_elements, novel_type, title) -> str:
         elements_desc = [f"- {e.get('name', '')}: {e.get('template', '')}" for e in selected_elements]
@@ -1213,8 +1215,7 @@ class WebSearchAdaptEngine:
         if category not in custom:
             custom[category] = []
         custom[category].append(item)
-        with open(f, "w", encoding="utf-8") as fp:
-            json.dump(custom, fp, indent=2, ensure_ascii=False)
+        atomic_write_json(f, custom, indent=2)
         return item
 
     def delete_custom_meme(self, category: str, index: int):
@@ -1236,8 +1237,7 @@ class WebSearchAdaptEngine:
             except (FileNotFoundError, json.JSONDecodeError):
                 pass
         custom[category] = [i for i in items if i.get("custom")]
-        with open(f, "w", encoding="utf-8") as fp:
-            json.dump(custom, fp, indent=2, ensure_ascii=False)
+        atomic_write_json(f, custom, indent=2)
 
     def get_categories(self) -> List[str]:
         return list(self.HOT_MEMES.keys())

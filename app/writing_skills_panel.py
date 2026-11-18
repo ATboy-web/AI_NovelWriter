@@ -45,6 +45,11 @@ class WritingSkillsPanelMixin:
         ]
 
         self._style_sliders = {}
+        # 旋钮初值取自**当前生效的配置**，不是写死的 5。
+        # 写死 5 会与 `WritingStyleConfig` 的默认值（描写 7、情感 6）不一致：
+        # 用户看到的是 5，实际生效的是 7，一保存就把 7 改成 5 —— 静默改掉他的设定。
+        from app.writing_skills import writing_skill_manager
+
         for i, (label, key, desc) in enumerate(sliders):
             row_frame = tk.Frame(style_frame, bg=C["bg_dark"])
             row_frame.pack(fill=tk.X, padx=10, pady=3)
@@ -64,7 +69,7 @@ class WritingSkillsPanelMixin:
                 troughcolor=C["bg_medium"],
                 command=lambda v, k=key: self._on_style_change(k, v),
             )
-            slider.set(5)
+            slider.set(int(getattr(writing_skill_manager.style_config, key, 5)))
             slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
             self._style_sliders[key] = slider
 

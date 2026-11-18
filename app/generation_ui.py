@@ -17,6 +17,11 @@ from app import UIStyle, dialogs
 from app.diagnostic_logger import get_logger
 from app.parsing import parse_exp_json, parse_json_response
 
+# 用模块级函数而不是 `self._atomic_write`：后者来自 PersistenceMixin，
+# 依赖 Mixin 组合顺序。单测用 `__new__` 裸造实例时拿不到它，
+# 于是写盘静默失效（AttributeError 被外层 try 吞掉）—— 实测踩过。
+from app.storage import atomic_write_text
+
 _diag = get_logger()
 
 
@@ -407,7 +412,7 @@ class GenerationMixin:
                 # 用唯一临时名 + `os.replace`，要么完整落盘、要么保持旧内容。
                 chapters_dir = self.current_novel_dir / "chapters"
                 chapters_dir.mkdir(exist_ok=True)
-                self._atomic_write(chapters_dir / f"chapter_{ch_num:04d}.txt", content)
+                atomic_write_text(chapters_dir / f"chapter_{ch_num:04d}.txt", content)
 
                 # GUI操作必须在主线程
                 self.root.after(0, lambda: self._display_chapter(ch_num, chapter_info.get("title", ""), content))
@@ -981,7 +986,8 @@ class GenerationMixin:
                 kept += 1
 
             main_data.setdefault("chapters", []).append(chapter_num)
-            main_file.write_text(json.dumps(main_data, indent=2, ensure_ascii=False), encoding="utf-8")
+            # 原子写：世界线主文件被截断后 `_load` 读不回来，用户记住的决策点全丢
+            atomic_write_text(main_file, json.dumps(main_data, indent=2, ensure_ascii=False))
             # 日志要如实反映"到底记了几条"：旧实现打印的是 `len(decisions)`（AI 返回的条数），
             # 即使全部是示例回声也会显示"记录1个决策点"，属于假成功。
             if kept:
@@ -1062,7 +1068,8 @@ class GenerationMixin:
             target = next((t for t in timelines if t.get("name") == tl_name), None)
             if target:
                 target_file = self.current_novel_dir / "timelines" / target["_file"]
-                target_file.write_text(json.dumps(target, indent=2, ensure_ascii=False), encoding="utf-8")
+                # 原子写：世界线文件被截断后 `_load` 读不回来，用户编辑的决策点会整份丢失。
+                atomic_write_text(target_file, json.dumps(target, indent=2, ensure_ascii=False))
                 self._log("[世界线] 决策点已编辑保存")
 
             edit_dlg.destroy()
@@ -1365,7 +1372,7 @@ class GenerationMixin:
                 # 保存（原子写，理由同上：重写章节同样是高成本产物，不能留下半截文件）
                 chapters_dir = self.current_novel_dir / "chapters"
                 chapters_dir.mkdir(exist_ok=True)
-                self._atomic_write(chapters_dir / f"chapter_{current_ch:04d}.txt", content)
+                atomic_write_text(chapters_dir / f"chapter_{current_ch:04d}.txt", content)
 
                 # 更新显示
                 self.root.after(
@@ -1669,9 +1676,10 @@ class GenerationMixin:
                             self.outline = self.agent.generate_outline(
                                 meta["genre"], meta["title"], outline_count, concept, total_chapters=real_total
                             )
-                        with open(outline_file, "w", encoding="utf-8") as f:
-                            with self._state_lock:
-                                json.dump(self.outline, f, indent=2, ensure_ascii=False)
+                        with self._state_lock:
+                            # 原子写：大纲是全书结构，写一半被杀会留下无法解析的 JSON，
+                            # 而后续 `read_outline` 会当成"没有大纲"重新生成 —— 覆盖掉用户改过的部分。
+                            atomic_write_text(outline_file, json.dumps(self.outline, indent=2, ensure_ascii=False))
                         # 更新meta中的章节数，保持total_chapters不变
                         meta["chapter_count"] = outline_count
                         # ❗ 用 `update_meta`（读-改-写合并）而不是 `write_meta`（整份覆盖）。
@@ -1935,7 +1943,7 @@ class GenerationMixin:
 
                         # 🛡️ 原子写入章节（防止断电损坏）
                         chapter_file = chapters_dir / f"chapter_{ch_num:04d}.txt"
-                        self._atomic_write(chapter_file, content)
+                        atomic_write_text(chapter_file, content)
 
                         # 章节写入成功即为成功
                         generated += 1
@@ -2220,7 +2228,10 @@ class GenerationMixin:
                         )
 
                         ch_file = chapters_dir / f"chapter_{ch_num:04d}.txt"
-                        ch_file.write_text(content, encoding="utf-8")
+                        # 🔴 原子写：这是整本书最核心的数据写入。裸写时进程被杀会留下
+                        # 截断的章节，而紧随其后的 finalize_chapter 已把摘要/索引/记忆
+                        # 更新成"这章存在"——正文却只有半截，且没有任何报错。
+                        atomic_write_text(ch_file, content)
                         self.agent.finalize_chapter(ch_num, content)
                         self._auto_detect_characters(ch_num, content)
                         self._auto_detect_decisions(ch_num, content)

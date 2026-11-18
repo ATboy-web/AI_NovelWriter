@@ -11,9 +11,12 @@
 import json
 import re
 import threading
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime
-from typing import Dict, List, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+from .storage import atomic_write_json
 
 
 @dataclass
@@ -29,6 +32,23 @@ class WritingStyleConfig:
 
     # 类型偏好
     genre_style: str = "玄幻"  # 玄幻/都市/科幻/言情等
+
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化为字典。
+
+        ❗ 用 `asdict(self)` 而不是手写六个键：手写的那份在加字段时必然漏
+        （本项目"同一事实写两处必然漂移"踩过 5 次），而这里的三处
+        save/load 过去正好各抄了一遍。
+        """
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "WritingStyleConfig":
+        """从字典还原。**未知键丢弃、缺失键用默认值** —— 老配置能读，
+        新加的字段不会因为旧文件里没有而崩。"""
+        known = {item.name for item in fields(cls)}
+        clean = {key: value for key, value in (data or {}).items() if key in known}
+        return cls(**clean)
 
     def to_prompt(self) -> str:
         """转换为AI提示词"""
@@ -586,10 +606,14 @@ class KnowledgeGraph:
         return "\n".join(context_parts)
 
     def save(self, filepath: str):
-        """保存到文件"""
+        """保存到文件（原子写）。
+
+        为什么改：原来是裸 `open("w")` —— 写一半被杀会留下**截断的 JSON**，
+        下次启动 `load()` 抛 `JSONDecodeError`，整张知识图谱就没了。
+        知识图谱是全书的实体/关系/事件，丢了等于丢掉"谁和谁有什么关系"。
+        """
         data = {"entities": self.entities, "relations": self.relations, "events": self.events}
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        atomic_write_json(Path(filepath), data, indent=2)
 
     def load(self, filepath: str):
         """从文件加载"""
@@ -733,9 +757,9 @@ class TimeAwareMemory:
         return "\n".join(context_parts)
 
     def save(self, filepath: str):
-        """保存到文件"""
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(self.memories, f, ensure_ascii=False, indent=2)
+        """保存到文件（原子写）。同 `KnowledgeGraph.save`：截断的时间记忆
+        会让"第几章发生过什么"整段丢失。"""
+        atomic_write_json(Path(filepath), self.memories, indent=2)
 
     def load(self, filepath: str):
         """从文件加载"""
@@ -986,56 +1010,51 @@ class WritingSkillManager:
                 print(f"[写作技能] 自动保存失败: {e}")
 
     def save_all(self, base_dir: str):
-        """保存所有数据"""
-        import os
+        """保存全部写作技能数据（三个文件都是原子写）。"""
+        base = Path(base_dir)
+        base.mkdir(parents=True, exist_ok=True)
 
-        os.makedirs(base_dir, exist_ok=True)
-
-        self.knowledge_graph.save(os.path.join(base_dir, "knowledge_graph.json"))
-        self.time_memory.save(os.path.join(base_dir, "time_memory.json"))
-
-        # 保存风格配置
-        with open(os.path.join(base_dir, "style_config.json"), "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "descriptiveness": self.style_config.descriptiveness,
-                    "dialogue_ratio": self.style_config.dialogue_ratio,
-                    "pacing": self.style_config.pacing,
-                    "emotional_depth": self.style_config.emotional_depth,
-                    "action_intensity": self.style_config.action_intensity,
-                    "genre_style": self.style_config.genre_style,
-                },
-                f,
-                ensure_ascii=False,
-                indent=2,
-            )
+        self.knowledge_graph.save(str(base / "knowledge_graph.json"))
+        self.time_memory.save(str(base / "time_memory.json"))
+        # 字段由 dataclass 派生，加新旋钮时这里不用改
+        atomic_write_json(base / "style_config.json", self.style_config.to_dict(), indent=2)
 
     def load_all(self, base_dir: str):
-        """加载所有数据"""
-        import os
+        """加载全部写作技能数据。
 
-        kg_path = os.path.join(base_dir, "knowledge_graph.json")
-        if os.path.exists(kg_path):
-            self.knowledge_graph.load(kg_path)
+        🔴 **缺文件时要重置成默认值**，不能"跳过"。
 
-        tm_path = os.path.join(base_dir, "time_memory.json")
-        if os.path.exists(tm_path):
-            self.time_memory.load(tm_path)
+        `writing_skill_manager` 是全局单例，而 `load_all` 只在创建 `NovelAgent`
+        时被调用。新书还没有 `style_config.json` 是常态 —— 旧实现 `if exists: ...`
+        直接跳过，于是 `style_config` 保持上一本书的值：用户打开新书看到的旋钮
+        是旧书的，点一下"保存"就把旧书风格写进新书。
+        （知识图谱/时间记忆同样如此，只是它们有"空即无"的语义，风格参数没有。）
+        """
+        base = Path(base_dir)
 
-        sc_path = os.path.join(base_dir, "style_config.json")
-        if os.path.exists(sc_path):
+        kg_path = base / "knowledge_graph.json"
+        if kg_path.is_file():
+            self.knowledge_graph.load(str(kg_path))
+
+        tm_path = base / "time_memory.json"
+        if tm_path.is_file():
+            self.time_memory.load(str(tm_path))
+
+        sc_path = base / "style_config.json"
+        if sc_path.is_file():
             try:
-                with open(sc_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
-                if isinstance(config, dict):
-                    self.style_config.descriptiveness = config.get("descriptiveness", 7)
-                    self.style_config.dialogue_ratio = config.get("dialogue_ratio", 5)
-                    self.style_config.pacing = config.get("pacing", 5)
-                    self.style_config.emotional_depth = config.get("emotional_depth", 6)
-                    self.style_config.action_intensity = config.get("action_intensity", 5)
-                    self.style_config.genre_style = config.get("genre_style", "玄幻")
-            except (json.JSONDecodeError, AttributeError) as e:
-                print(f"加载风格配置失败: {e}")
+                data = json.loads(sc_path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    self.style_config = WritingStyleConfig.from_dict(data)
+                else:
+                    self.style_config = WritingStyleConfig()
+            except (OSError, json.JSONDecodeError) as e:
+                # 配置坏了就回默认：比"沿用上一本书的旋钮"安全得多
+                print(f"加载风格配置失败，已重置为默认值: {e}")
+                self.style_config = WritingStyleConfig()
+        else:
+            # 新作品没有配置文件 ⇒ 明确的默认值，而不是上一个作品遗留的
+            self.style_config = WritingStyleConfig()
 
 
 # 全局实例

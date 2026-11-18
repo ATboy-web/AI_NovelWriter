@@ -58,7 +58,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 
-from .storage import atomic_write_json
+from .storage import atomic_write_json, atomic_write_text
 from .text_stats import count_hanzi
 
 __all__ = [
@@ -384,8 +384,9 @@ class ReworkStore:
             existing = [int(p.stem[1:]) for p in folder.glob("v*.txt") if p.stem[1:].isdigit()]
             version = (max(existing) + 1) if existing else 1
             target = folder / f"v{version}.txt"
-            # 写入用 UTF-8 且不加 BOM；章节正文里可能有任意字符
-            target.write_text(text, encoding="utf-8")
+            # 原子写：归档是**原文的唯一副本**。这里写出半截，等于把"可回滚"
+            # 这件事变成假的 —— 回滚后拿到的是断章。
+            atomic_write_text(target, text)
             atomic_write_json(
                 folder / f"v{version}.meta.json",
                 {

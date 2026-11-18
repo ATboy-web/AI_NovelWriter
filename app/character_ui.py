@@ -13,6 +13,7 @@ from tkinter import ttk
 from loguru import logger
 
 from app import UIStyle, dialogs
+from app.async_runner import safe_after
 from app.biography import build_biography_prompt, read_story_arcs, split_sections, structured_biography
 from app.character_system import CharacterSystem
 from app.format_converter import FormatConverter, ImageManager
@@ -135,7 +136,7 @@ class CharacterUIMixin:
 
             if new_count > 0:
                 self._log(f"[角色同步] 从记忆恢复{new_count}个新角色 (共{len(chars)}个)")
-            self.root.after(0, self._update_char_display)
+            safe_after(self.root, self._update_char_display)
         except Exception as e:
             self._log(f"[角色同步] 失败: {e}")
 
@@ -439,7 +440,7 @@ class CharacterUIMixin:
                             "但未能挂到角色面板（请先创建该角色后重试）"
                         )
 
-                    self.root.after(0, lambda: self._show_biography(result, char_name))
+                    safe_after(self.root, self._show_biography, result, char_name)
                     self._log(f"「{char_name}」个人传记生成完成，已保存到 {bio_file}")
 
                 except Exception as e:
@@ -957,7 +958,7 @@ class CharacterUIMixin:
 
                 if result["success"]:
                     char = result["character"]
-                    self.root.after(0, lambda: self._update_char_display())
+                    safe_after(self.root, self._update_char_display)
                     self._log(f"AI创建角色「{char.name}」成功")
 
                     # 如果有武器/技能建议，显示给用户
@@ -966,11 +967,14 @@ class CharacterUIMixin:
                         suggestions += f"建议武器: {result['weapon_suggestion']}\n"
                     if result.get("skill_suggestions"):
                         suggestions += f"建议技能: {', '.join(result['skill_suggestions'])}\n"
-                    self.root.after(0, lambda: dialogs.showinfo("AI创建成功", suggestions))
+                    safe_after(self.root, dialogs.showinfo, "AI创建成功", suggestions)
                 else:
-                    self.root.after(0, lambda: dialogs.showerror("创建失败", result.get("error", "未知错误")))
+                    safe_after(self.root, dialogs.showerror, "创建失败", result.get("error", "未知错误"))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
+                # ❗ 必须用 safe_after：这里本身就在 except 块里，
+                # 若 `self.root.after` 因窗口已销毁再抛一次 TclError，
+                # 原始错误就被这个二次异常吞掉了 —— 用户只看到线程静默退出。
+                safe_after(self.root, dialogs.showerror, "错误", str(e))
 
         self._log("AI正在创建角色...")
         threading.Thread(target=run, daemon=True).start()

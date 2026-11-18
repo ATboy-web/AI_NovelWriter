@@ -7,6 +7,8 @@ from tkinter import scrolledtext, ttk
 from app import UIStyle, dialogs
 from app.novel_toolkit import StyleTransferEngine
 
+from ..async_runner import safe_after
+
 
 class StylePanelMixin:
     """风格转换面板混入 - 提供风格转换相关的构建和操作方法"""
@@ -47,8 +49,8 @@ class StylePanelMixin:
         def run():
             try:
                 result = self.style_engine.convert_style(current_text, self.style_var.get())
-                self.root.after(0, lambda: self._show_tool_result(self.style_result, result))
+                safe_after(self.root, lambda: self._show_tool_result(self.style_result, result))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
+                safe_after(self.root, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()

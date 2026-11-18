@@ -14,6 +14,7 @@ from tkinter import filedialog, scrolledtext, ttk
 from loguru import logger
 
 from app import UIStyle, dialogs
+from app.async_runner import safe_after
 from app.diagnostic_logger import get_logger
 from app.parsing import parse_exp_json, parse_json_response
 
@@ -124,7 +125,7 @@ class GenerationMixin:
                     self._log("故事大纲已保存到 outlines/stories.json")
 
                 # GUI操作在主线程
-                self.root.after(0, self._refresh_outline_list)
+                safe_after(self.root, self._refresh_outline_list)
             except Exception as e:
                 self._log(f"生成失败: {e}")
             finally:
@@ -415,7 +416,7 @@ class GenerationMixin:
                 atomic_write_text(chapters_dir / f"chapter_{ch_num:04d}.txt", content)
 
                 # GUI操作必须在主线程
-                self.root.after(0, lambda: self._display_chapter(ch_num, chapter_info.get("title", ""), content))
+                safe_after(self.root, lambda: self._display_chapter(ch_num, chapter_info.get("title", ""), content))
 
                 # 自动定稿
                 self.agent.finalize_chapter(ch_num, content)
@@ -430,7 +431,7 @@ class GenerationMixin:
                 self._log(f"第{ch_num}章已保存并定稿")
             except Exception as e:
                 self._log(f"生成失败: {e}")
-                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
+                safe_after(self.root, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -458,14 +459,14 @@ class GenerationMixin:
                 extra = self._review_context(ch_num, content, score)
                 payload = review_json + (chr(10) * 2 + extra if extra else "")
 
-                self.root.after(0, lambda: self._display_review(payload))
+                safe_after(self.root, lambda: self._display_review(payload))
                 if score is None:
                     self._log("审校未完成：AI 未返回可用评分，请人工确认")
                 else:
                     self._log(f"审校完成，评分：{score}")
             except Exception as e:
                 self._log(f"审校失败: {e}")
-                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
+                safe_after(self.root, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -532,7 +533,7 @@ class GenerationMixin:
 
                 result = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
 
-                self.root.after(0, lambda: self._display_optimized(result))
+                safe_after(self.root, lambda: self._display_optimized(result))
                 self._log("风格优化完成")
 
             except Exception as e:
@@ -617,14 +618,14 @@ class GenerationMixin:
                     if len(text) > 100:  # 至少100字才分析
                         style = self.agent.analyze_style(text[:3000], name)
                         self._imported_styles.append(style)
-                        self.root.after(
-                            0,
-                            lambda s=style: style_list.insert(
+                        safe_after(
+                            self.root,
+                                                        lambda s=style: style_list.insert(
                                 tk.END, f"{s.get('author', '未知')} - {s.get('unique_features', '')[:30]}..."
                             ),
                         )
 
-                self.root.after(0, lambda: dialogs.showinfo("完成", f"已导入 {len(texts)} 个作者的风格"))
+                safe_after(self.root, lambda: dialogs.showinfo("完成", f"已导入 {len(texts)} 个作者的风格"))
                 self._log(f"已导入 {len(texts)} 个作者的风格特征")
 
             self._log("正在分析作者风格...")
@@ -665,13 +666,13 @@ class GenerationMixin:
             def analyze():
                 style = self.agent.analyze_style(text[:3000], author_name)
                 self._imported_styles.append(style)
-                self.root.after(
-                    0,
-                    lambda: style_list.insert(
+                safe_after(
+                    self.root,
+                                        lambda: style_list.insert(
                         tk.END, f"{style.get('author', '未知')} - {style.get('unique_features', '')[:30]}..."
                     ),
                 )
-                self.root.after(0, lambda: dialogs.showinfo("完成", f"已分析 {author_name} 的风格"))
+                safe_after(self.root, lambda: dialogs.showinfo("完成", f"已分析 {author_name} 的风格"))
                 self._log(f"已分析 {author_name} 的写作风格")
 
             self._log(f"正在分析 {author_name} 的风格...")
@@ -784,7 +785,7 @@ class GenerationMixin:
                     try:
                         self._log(f"正在使用 {style.get('author', '')} 的风格创作...")
                         result = self.agent.generate_with_style(prompt, style, word_count)
-                        self.root.after(0, lambda: self._display_generated(result))
+                        safe_after(self.root, lambda: self._display_generated(result))
                         self._log("仿写完成")
                     except Exception as e:
                         self._log(f"仿写失败: {e}")
@@ -801,7 +802,7 @@ class GenerationMixin:
                     try:
                         self._log("正在融合多个风格创作...")
                         result = self.agent.blend_styles(styles, prompt, word_count)
-                        self.root.after(0, lambda: self._display_generated(result))
+                        safe_after(self.root, lambda: self._display_generated(result))
                         self._log("风格融合创作完成")
                     except Exception as e:
                         self._log(f"风格融合失败: {e}")
@@ -831,7 +832,7 @@ class GenerationMixin:
                     self._log(f"正在用 {style.get('author', '')} 的风格重写当前章节...")
                     prompt = f"请用以下风格重写这段内容：\n\n{current_content[:2000]}"
                     result = self.agent.generate_with_style(prompt, style, len(current_content))
-                    self.root.after(0, lambda: self._display_generated(result))
+                    safe_after(self.root, lambda: self._display_generated(result))
                     self._log("风格重写完成")
                 except Exception as e:
                     self._log(f"风格重写失败: {e}")
@@ -1280,7 +1281,7 @@ class GenerationMixin:
                     "EXP_AWARDED",
                     {"total_exp": total_exp, "characters_awarded": len(logs), "details": logs[:5]},
                 )
-                self.root.after(0, self._update_char_display)
+                safe_after(self.root, self._update_char_display)
             else:
                 self._log(f"[角色EXP] 第{chapter_num}章 未检测到角色有效行为")
                 _diag.chapter_event(chapter_num, "EXP_NO_ACTION", {"behaviors_sample": str(behaviors)[:200]})
@@ -1375,8 +1376,9 @@ class GenerationMixin:
                 atomic_write_text(chapters_dir / f"chapter_{current_ch:04d}.txt", content)
 
                 # 更新显示
-                self.root.after(
-                    0, lambda c=content, n=current_ch, t=chapter_info.get("title", ""): self._display_chapter(n, t, c)
+                safe_after(
+                    self.root,
+                    lambda c=content, n=current_ch, t=chapter_info.get("title", ""): self._display_chapter(n, t, c),
                 )
                 self._log(f"第{current_ch}章重新创作完成")
 
@@ -1689,12 +1691,12 @@ class GenerationMixin:
                         # `update_meta` 会在锁内先读盘再合并，磁盘独有的键不会被覆盖，
                         # 而本函数要持久化的 `concept` 擦边提示仍在内存副本里，拼接结果不变。
                         self._novel_store().update_meta(meta)
-                        self.root.after(0, self._refresh_outline_list)
+                        safe_after(self.root, self._refresh_outline_list)
                         self._log(f"大纲已生成: {len(self.outline)}章 (总计划{real_total}章)")
                     except Exception as e:
                         self._log(f"大纲生成失败: {e}")
                         self._auto_running = False
-                        self.root.after(0, lambda: self.auto_btn.config(state=tk.NORMAL, text="自动创作"))
+                        safe_after(self.root, lambda: self.auto_btn.config(state=tk.NORMAL, text="自动创作"))
                         return
                 else:
                     self._log(f"大纲已存在: {len(self.outline)}章，跳过生成")
@@ -1951,9 +1953,9 @@ class GenerationMixin:
 
                         # 更新UI（第一章立即显示，之后每5章显示）
                         if generated == 1 or batch_count % 5 == 0 or ch_num == total:
-                            self.root.after(
-                                0,
-                                lambda c=content, n=ch_num, t=chapter_info.get("title", ""): self._display_chapter(
+                            safe_after(
+                                self.root,
+                                                                lambda c=content, n=ch_num, t=chapter_info.get("title", ""): self._display_chapter(
                                     n, t, c
                                 ),
                             )
@@ -2013,7 +2015,7 @@ class GenerationMixin:
 
                 # 更新进度显示 — 使用真实总章数
                 completed = len(existing_chapters) + generated
-                self.root.after(0, lambda c=completed, dt=display_total: self.chapter_var.set(f"{c}/{dt}"))
+                safe_after(self.root, lambda c=completed, dt=display_total: self.chapter_var.set(f"{c}/{dt}"))
 
                 summary = "=== 自动创作完成 ===\n"
                 summary += f"全书计划: {display_total} 章\n"
@@ -2029,18 +2031,18 @@ class GenerationMixin:
                 self._clear_checkpoint()
 
                 if generated > 0:
-                    self.root.after(
-                        0,
-                        lambda: dialogs.showinfo("完成", f"《{meta['title']}》创作完成！\n本次生成 {generated} 章"),
+                    safe_after(
+                        self.root,
+                                                lambda: dialogs.showinfo("完成", f"《{meta['title']}》创作完成！\n本次生成 {generated} 章"),
                     )
                 elif skipped > 0:
-                    self.root.after(0, lambda: dialogs.showinfo("提示", "所有章节已完成，无需继续创作"))
+                    safe_after(self.root, lambda: dialogs.showinfo("提示", "所有章节已完成，无需继续创作"))
 
             except Exception as e:
                 self._log(f"自动创作失败: {e}")
             finally:
                 self._auto_running = False
-                self.root.after(0, lambda: self.auto_btn.config(state=tk.NORMAL, text="自动创作"))
+                safe_after(self.root, lambda: self.auto_btn.config(state=tk.NORMAL, text="自动创作"))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -2241,16 +2243,17 @@ class GenerationMixin:
 
                         with self._state_lock:
                             self.current_chapter = ch_num
-                        self.root.after(
-                            0, lambda c=content, n=ch_num, t=ch_info.get("title", ""): self._display_chapter(n, t, c)
+                        safe_after(
+                            self.root,
+                            lambda c=content, n=ch_num, t=ch_info.get("title", ""): self._display_chapter(n, t, c),
                         )
                         self._log(f"[续写] 第{ch_num}章完成 ({len(content)}字)")
 
                     self._log(f"[续写] 完成！共新增{len(new_outline)}章")
-                    self.root.after(0, lambda: dialogs.showinfo("完成", f"续写完成！新增{len(new_outline)}章"))
+                    safe_after(self.root, lambda: dialogs.showinfo("完成", f"续写完成！新增{len(new_outline)}章"))
                 except Exception as e:
                     self._log(f"[续写] 失败: {e}")
-                    self.root.after(0, lambda _exc=e: dialogs.showerror("失败", str(_exc)))
+                    safe_after(self.root, lambda _exc=e: dialogs.showerror("失败", str(_exc)))
                 finally:
                     self._auto_running = False
 

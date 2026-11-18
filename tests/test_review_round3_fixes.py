@@ -421,11 +421,11 @@ class TestBiographyInputValidation:
         assert "max_tokens=word_count * 2" not in src
 
     def test_empty_ai_result_is_rejected(self):
-        body = _method_body("app/character_ui.py", "def run(", "self.root.after(0")
+        body = _method_body("app/character_ui.py", "def run(", "safe_after(self.root")
         assert "空传记" in body
 
     def test_missing_character_is_reported(self):
-        body = _method_body("app/character_ui.py", "def run(", "self.root.after(0")
+        body = _method_body("app/character_ui.py", "def run(", "safe_after(self.root")
         assert "attached" in body and "未能挂到角色面板" in body
 
 

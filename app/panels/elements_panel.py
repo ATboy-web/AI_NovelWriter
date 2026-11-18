@@ -6,6 +6,8 @@ from tkinter import scrolledtext, ttk
 
 from app import UIStyle, dialogs
 
+from ..async_runner import safe_after
+
 
 class ElementsPanelMixin:
     """元素库面板混入 - 提供元素库相关的构建和操作方法"""
@@ -98,9 +100,9 @@ class ElementsPanelMixin:
                 result = self.element_lib.generate_background(
                     self.ai_client, selected, self.genre_var.get(), self.title_var.get() or "未命名"
                 )
-                self.root.after(0, lambda: self._show_tool_result(self.elem_result, result))
+                safe_after(self.root, lambda: self._show_tool_result(self.elem_result, result))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
+                safe_after(self.root, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 

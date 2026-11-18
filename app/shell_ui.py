@@ -13,6 +13,7 @@ from tkinter import scrolledtext, ttk
 from loguru import logger
 
 from app import UIStyle, __version__, dialogs
+from app.async_runner import safe_after
 
 
 class ShellMixin:
@@ -992,7 +993,7 @@ class ShellMixin:
             self.log_text.config(state=tk.DISABLED)
 
         try:
-            self.root.after(0, _do_log)
+            safe_after(self.root, _do_log)
         except RuntimeError:
             pass
 

@@ -8,6 +8,8 @@ from app import dialogs
 from app.novel_toolkit import WebSearchAdaptEngine
 from app.ui_style import UIStyle
 
+from ..async_runner import safe_after
+
 
 class WebSearchPanelMixin:
     """联网搜索热点改编面板混入 - 提供热点改编相关的构建和操作方法"""
@@ -185,9 +187,9 @@ class WebSearchPanelMixin:
             try:
                 engine = WebSearchAdaptEngine(self.ai_client)
                 result = engine.search_and_adapt(query)
-                self.root.after(0, lambda: self._show_tool_result(self.ws_result, result))
+                safe_after(self.root, lambda: self._show_tool_result(self.ws_result, result))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
+                safe_after(self.root, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 

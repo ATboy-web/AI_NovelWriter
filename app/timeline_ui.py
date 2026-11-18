@@ -13,6 +13,7 @@ from tkinter import ttk
 from loguru import logger
 
 from app import UIStyle, dialogs
+from app.async_runner import safe_after
 from app.lineage import branch_lineage_record
 from app.storage import atomic_write_text
 
@@ -498,9 +499,9 @@ class TimelineMixin:
                 main_file.write_text(json.dumps(main_data, indent=2, ensure_ascii=False), encoding="utf-8")
 
                 self._log("[世界线] 分支故事已生成")
-                self.root.after(0, lambda: refresh_callback())
+                safe_after(self.root, lambda: refresh_callback())
             except Exception as e:
-                self.root.after(0, lambda _exc=e: dialogs.showerror("失败", str(_exc)))
+                safe_after(self.root, lambda _exc=e: dialogs.showerror("失败", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -795,16 +796,16 @@ class TimelineMixin:
                 )
 
                 self._log(f"[分支创作] 分支世界线完成: {branch_dir.name}")
-                self.root.after(
-                    0,
-                    lambda: dialogs.showinfo(
+                safe_after(
+                    self.root,
+                                        lambda: dialogs.showinfo(
                         "完成", f"分支世界线创作完成！\n{branch_dir.name}/\n共{n_chapters}章\n\n角色系统/摘要均已生成"
                     ),
                 )
 
             except Exception as e:
                 self._log(f"[分支创作] 失败: {e}")
-                self.root.after(0, lambda _exc=e: dialogs.showerror("失败", str(_exc)))
+                safe_after(self.root, lambda _exc=e: dialogs.showerror("失败", str(_exc)))
 
         self._stop_flag = False
         threading.Thread(target=run, daemon=True).start()

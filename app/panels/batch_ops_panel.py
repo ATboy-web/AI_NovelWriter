@@ -8,6 +8,8 @@ from tkinter import filedialog
 from app import dialogs
 from app.ui_style import UIStyle
 
+from ..async_runner import safe_after
+
 
 class BatchOpsPanelMixin:
     """批量操作面板混入 - 提供批量导入导出和摘要生成功能"""
@@ -152,8 +154,8 @@ class BatchOpsPanelMixin:
             def run():
                 for vol in range(1, total_volumes + 1):
                     self.memory.auto_generate_volume_summary(vol)
-                    self.root.after(0, lambda v=vol: self._log(f"第{v}卷摘要已生成"))
-                self.root.after(0, lambda: dialogs.showinfo("完成", f"已生成 {total_volumes} 个卷级摘要"))
+                    safe_after(self.root, lambda v=vol: self._log(f"第{v}卷摘要已生成"))
+                safe_after(self.root, lambda: dialogs.showinfo("完成", f"已生成 {total_volumes} 个卷级摘要"))
 
             threading.Thread(target=run, daemon=True).start()
 

@@ -56,6 +56,7 @@ __all__ = [
     "copy_context_snapshot",
     "context_runner",
     "join_all",
+    "safe_after",
     "DEFAULT_THREAD_NAME",
 ]
 
@@ -196,6 +197,52 @@ def cancellable(fn):
     return _wrapper
 
 
+def safe_after(widget, fn, *args, delay: int = 0) -> bool:
+    """把 `fn(*args)` 投递给 Tk 主循环，返回**是否成功投递**。
+
+    这是全仓唯一"往 Tk 投递回调"的入口。为什么需要它：
+
+    | 情况 | `widget.after(...)` 的行为 |
+    |---|---|
+    | 正常 | 返回定时器 id |
+    | 窗口/控件已销毁 | 抛 `TclError`：`application has been destroyed` |
+    | 解释器已退出 | 抛 `RuntimeError` |
+    | widget 不是 Tk 对象（测试替身） | 抛 `AttributeError` / `TypeError` |
+
+    旧实现在 `BackgroundRunner.dispatch` 里只捕获 `RuntimeError`/`AttributeError`，
+    **注释写着要抓 `TclError` 却没抓**。后果：用户关掉窗口/切走面板后，
+    还在跑的后台任务（生成章节、同步角色、AI 建角色）在主线程投递这一步抛穿，
+    线程顶层打印一长串 traceback；若投递点位于 `except` 块内（`character_ui`
+    的 AI 建角色就是这样），**连原始错误都被这个二次异常吞掉**。
+
+    ⚠️ 本模块**不得**出现任何 Tk 相关的 import：
+    `async_runner` 要能在无 GUI 环境（CI / 服务器）被导入。
+    因此用**类名 + TclError 的模块名**判断，而不是 `isinstance`。
+    """
+    after = getattr(widget, "after", None)
+    if not callable(after):
+        return False
+    try:
+        after(delay, lambda: fn(*args))
+        return True
+    except Exception as exc:  # noqa: BLE001 - 见下
+        # 刻意用宽捕获：Tk 在不同版本/不同销毁阶段抛的异常类型并不统一
+        # （TclError / RuntimeError / Tcl 的底层子类）。
+        # 这里"投递失败"是可预期分支，不值得为区分类型而冒漏网风险。
+        if _is_tk_gone(exc):
+            return False
+        raise
+
+
+def _is_tk_gone(exc: BaseException) -> bool:
+    """判断异常是否属于"控件/解释器已消失"这一类可忽略情形。"""
+    name = type(exc).__name__
+    if name in ("TclError", "RuntimeError", "AttributeError", "TypeError"):
+        return True
+    # Tcl 异常的 `__module__` 是底层 C 扩展模块名，按名字兜一道
+    return str(type(exc).__module__).startswith("_")
+
+
 def copy_context_snapshot() -> contextvars.Context:
     """拷贝**当前线程**的上下文，返回一份可在别的线程里 `run` 的快照。
 
@@ -252,21 +299,24 @@ class BackgroundRunner:
     # ------------------------------------------------------------ 派发
 
     def dispatch(self, fn, *args) -> None:
-        """把回调送回主线程（`ui` 为空则原地调用）。
+        """把回调送回主线程（`ui` 为空或控件已销毁则原地调用）。
 
         Tk 非线程安全，因此**所有**触碰控件的回调都必须走这里。
-        `after` 在窗口已销毁时会抛 `RuntimeError`/`TclError`，这时安静放弃 ——
-        后台线程继续跑完也不会崩。
+
+        关于"控件已销毁"：`after()` 在窗口销毁后抛 `TclError`
+        （`can't invoke "after" command: application has been destroyed`），
+        旧实现只捕获 `RuntimeError`/`AttributeError` —— **注释写了要抓 TclError，代码没抓**。
+        后果是后台任务（生成/同步/建角色）在用户关窗口或切面板后抛穿线程顶层，
+        异常处理路径里若再 `after` 一次，连原始错误都被吞掉。
+        现在统一走 `safe_after`，用类名判断（本模块不能引入 Tk 依赖）。
         """
         if fn is None:
             return
         ui = self.ui
-        if ui is not None and hasattr(ui, "after"):
-            try:
-                ui.after(0, lambda: fn(*args))
-                return
-            except (RuntimeError, AttributeError):
-                pass
+        if ui is not None and safe_after(ui, fn, *args):
+            return
+        # 投递失败（控件已销毁 / ui 不支持 after）⇒ 原地调用。
+        # 语义保持"回调不被丢掉"：多数回调是纯数据操作，原地跑没有副作用。
         fn(*args)
 
     def submit(
@@ -413,7 +463,7 @@ class BackgroundRunner:
         """返回一个「弹窗报错」的 `on_error` 回调。
 
         ⚠️ 延迟 import（两层都是）：本模块要能在**无 Tk 的服务器/单测环境**被导入，
-        而 `app.dialogs` 顶层 `import tkinter`。所以这里既不能顶层导入 dialogs，
+        而 `app.dialogs` 顶层就引入了 Tk。所以这里既不能顶层导入 dialogs，
         也不能在工厂里导入 —— 必须等到真的要弹窗时。
         """
 

@@ -15,6 +15,7 @@ from tkinter import filedialog, simpledialog, ttk
 from loguru import logger
 
 from app import AIClient, ImageGenerator, MemoryManager, NoteManager, NovelAgent, UIStyle, dialogs
+from app.async_runner import safe_after
 from app.events import TOPIC_CONFIG_CHANGED, TOPIC_NOVEL_CLOSED, TOPIC_NOVEL_OPENED
 from app.genres import get_genre_registry
 from app.storage import atomic_write_json, atomic_write_text
@@ -793,7 +794,7 @@ class NovelLifecycleMixin:
                 msg += "1. 点击「自动创作」继续自动生成剩余章节\n"
                 msg += "2. 点击「生成下一章」手动逐章创作\n"
                 msg += "3. 在编辑器中手动编写"
-                self.root.after(500, lambda: dialogs.showinfo("继续创作", msg))
+                safe_after(self.root, lambda: dialogs.showinfo("继续创作", msg), delay=500)
             elif completed_chapters >= total_chapters:
                 result = dialogs.askyesno(
                     "已完成", f"小说《{meta.get('title')}》已全部完成！共 {completed_chapters} 章。\n\n是否续写新章？"
@@ -1644,7 +1645,7 @@ class NovelLifecycleMixin:
                 synopsis_file = self.current_novel_dir / "synopsis.txt"
                 self._atomic_write(synopsis_file, result)
 
-                self.root.after(0, lambda: self._show_synopsis(result))
+                safe_after(self.root, lambda: self._show_synopsis(result))
                 self._log("书籍简介生成完成")
 
             except Exception as e:
@@ -1860,7 +1861,7 @@ class NovelLifecycleMixin:
 
                 result = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000)
 
-                self.root.after(0, lambda: self._display_analysis_result(result, filename))
+                safe_after(self.root, lambda: self._display_analysis_result(result, filename))
                 self._log("AI分析完成")
 
             except Exception as e:

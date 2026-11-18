@@ -7,6 +7,8 @@ from tkinter import scrolledtext, ttk
 from app import UIStyle, dialogs
 from app.novel_toolkit import DialogueEngine
 
+from ..async_runner import safe_after
+
 
 class DialoguePanelMixin:
     """对话推演面板混入 - 提供对话推演相关的构建和操作方法"""
@@ -60,9 +62,9 @@ class DialoguePanelMixin:
             try:
                 self.dialogue_engine.start_dialogue(self.dlg_scenario.get(), characters)
                 text = self.dialogue_engine.export_text()
-                self.root.after(0, lambda: self._show_tool_result(self.dlg_result, text))
+                safe_after(self.root, lambda: self._show_tool_result(self.dlg_result, text))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
+                safe_after(self.root, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -75,9 +77,9 @@ class DialoguePanelMixin:
             try:
                 self.dialogue_engine.continue_dialogue()
                 text = self.dialogue_engine.export_text()
-                self.root.after(0, lambda: self._show_tool_result(self.dlg_result, text))
+                safe_after(self.root, lambda: self._show_tool_result(self.dlg_result, text))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
+                safe_after(self.root, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 

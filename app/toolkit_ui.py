@@ -11,6 +11,7 @@ from tkinter import filedialog
 from loguru import logger
 
 from app import SceneDetector, UIStyle, dialogs
+from app.async_runner import safe_after
 from app.format_converter import FormatConverter, ImageManager
 from app.panels import PanelHost
 from app.panels import layout as panel_layout
@@ -172,12 +173,12 @@ class ToolkitUIMixin:
                 result = self.ai_client.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000)
 
                 # 在主线程中插入润色后的内容
-                self.root.after(0, lambda: self._insert_polished_content(result))
+                safe_after(self.root, lambda: self._insert_polished_content(result))
                 self._log("AI润色完成，内容已插入")
 
             except Exception as e:
                 # 润色失败时直接插入原内容
-                self.root.after(0, lambda: self.content_text.insert(tk.INSERT, "\n\n" + content))
+                safe_after(self.root, lambda: self.content_text.insert(tk.INSERT, "\n\n" + content))
                 self._log(f"AI润色失败，直接插入原内容: {e}")
 
         threading.Thread(target=run, daemon=True).start()
@@ -239,16 +240,16 @@ class ToolkitUIMixin:
                 (cover_dir / "cover_preview.html").write_text(html, encoding="utf-8")
 
                 self._log("[封面] 已保存到 cover/ 目录")
-                self.root.after(
-                    0,
-                    lambda: dialogs.showinfo(
+                safe_after(
+                    self.root,
+                                        lambda: dialogs.showinfo(
                         "完成",
                         "封面已生成:\n- 提示词: cover/cover_prompt.txt\n- 预览: cover/cover_preview.html\n\n将提示词复制到Midjourney/SD即可生成封面图",
                     ),
                 )
             except Exception as e:
                 self._log(f"[封面] 失败: {e}")
-                self.root.after(0, lambda _exc=e: dialogs.showerror("失败", str(_exc)))
+                safe_after(self.root, lambda _exc=e: dialogs.showerror("失败", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -597,12 +598,12 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                             success = self.cloud_storage.upload_novel(self.current_novel_dir, provider_id)
                             if success:
                                 self._log("上传成功！")
-                                self.root.after(0, lambda: dialogs.showinfo("成功", f"小说已上传到 {provider_name}"))
+                                safe_after(self.root, lambda: dialogs.showinfo("成功", f"小说已上传到 {provider_name}"))
                             else:
                                 self._log("上传失败")
-                                self.root.after(0, lambda: dialogs.showerror("失败", "上传失败，请检查网络和配置"))
+                                safe_after(self.root, lambda: dialogs.showerror("失败", "上传失败，请检查网络和配置"))
                         except Exception as e:
-                            self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
+                            safe_after(self.root, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
                     threading.Thread(target=run, daemon=True).start()
 
@@ -619,12 +620,12 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                             )
                             if success:
                                 self._log("下载成功！")
-                                self.root.after(0, lambda: dialogs.showinfo("成功", f"小说已从 {provider_name} 下载"))
+                                safe_after(self.root, lambda: dialogs.showinfo("成功", f"小说已从 {provider_name} 下载"))
                             else:
                                 self._log("下载失败")
-                                self.root.after(0, lambda: dialogs.showerror("失败", "下载失败"))
+                                safe_after(self.root, lambda: dialogs.showerror("失败", "下载失败"))
                         except Exception as e:
-                            self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
+                            safe_after(self.root, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
                     threading.Thread(target=run, daemon=True).start()
 

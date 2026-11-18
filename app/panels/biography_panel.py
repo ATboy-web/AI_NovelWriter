@@ -32,6 +32,7 @@ from typing import Any, Mapping
 
 from loguru import logger
 
+from app.async_runner import safe_after
 from app.events import TOPIC_CHARACTER_CHANGED, TOPIC_TIMELINE_CHANGED
 from app.storage import atomic_write_json, atomic_write_text, read_json_with_backup, safe_filename
 from app.timeline_store import TimelineStore
@@ -589,7 +590,7 @@ class BiographyPanel(BasePanel):
     def _ui(self, callback) -> None:
         root = getattr(self, "root", None)
         if root is not None and hasattr(root, "after"):
-            root.after(0, callback)
+            safe_after(root, callback)
         else:  # pragma: no cover - 仅无 Tk 的单测路径
             callback()
 

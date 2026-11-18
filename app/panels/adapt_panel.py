@@ -7,6 +7,8 @@ from tkinter import scrolledtext, ttk
 from app import UIStyle, dialogs
 from app.novel_toolkit import AdaptEngine
 
+from ..async_runner import safe_after
+
 
 class AdaptPanelMixin:
     """智能改编面板混入 - 提供智能改编相关的构建和操作方法"""
@@ -53,9 +55,9 @@ class AdaptPanelMixin:
             try:
                 result = self.adapt_engine.adapt_segment(selected, self.adapt_instr.get())
                 text = f"【匹配率: {result['match_rate']}%】\n\n{result['adapted']}"
-                self.root.after(0, lambda: self._show_tool_result(self.adapt_result, text))
+                safe_after(self.root, lambda: self._show_tool_result(self.adapt_result, text))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
+                safe_after(self.root, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -78,9 +80,9 @@ class AdaptPanelMixin:
                 for i, r in enumerate(results):
                     text += f"=== 片段{i + 1} (匹配率: {r['match_rate']}%) ===\n"
                     text += f"{r['adapted']}\n\n"
-                self.root.after(0, lambda: self._show_tool_result(self.adapt_result, text))
+                safe_after(self.root, lambda: self._show_tool_result(self.adapt_result, text))
             except Exception as e:
-                self.root.after(0, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
+                safe_after(self.root, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
 
         threading.Thread(target=run, daemon=True).start()
 

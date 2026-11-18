@@ -18,7 +18,7 @@ Tk 非线程安全，而本仓有 40 处裸 `threading.Thread` 在子线程里�
 - `publish()` 要求在主线程调用。若被别的线程调用，**不静默地在子线程里碰控件**，
   而是自动改道到 `publish_threadsafe()` 并记一条 warning —— 降级到排队派发，
   总好过偶发的 Tcl 崩溃。
-- `publish_threadsafe()` 内部统一 `root.after(0, ...)`，与 `bridges_panel.py` 既有写法一致。
+- `publish_threadsafe()` 内部统一 `safe_after(root, ...)`，与 `bridges_panel.py` 既有写法一致。
 - 没有 `root` 时（单测 / 无 GUI 环境）`publish_threadsafe` **就地同步派发**并返回 `False`，
   让"没装 Tk 也能测事件链"成立。
 
@@ -40,6 +40,8 @@ import threading
 from typing import Any, Callable
 
 from loguru import logger
+
+from ..async_runner import safe_after
 
 __all__ = [
     "ALL_TOPICS",
@@ -202,16 +204,17 @@ class EventBus:
 
         返回 `True` 表示已成功排入 `root.after` 队列（稍后异步派发）；
         返回 `False` 表示没有可用的 Tk（无 root 或窗口已销毁），此时**就地同步派发**。
+
+        ❗ 必须看 `safe_after` 的**返回值**，不能只靠 `try/except`：
+        `safe_after` 内部已经把"窗口已销毁"这类异常吞掉并返回 `False`
+        （这是它的契约）。早期改动只把它当 `after` 用、忽略了返回值，
+        结果是"返回 True 说已排队" + "**根本没有派发**" —— 事件静默丢失。
         """
         root = self._root
-        if root is not None and hasattr(root, "after"):
-            try:
-                root.after(0, lambda: self._dispatch(topic, payload))
-                return True
-            except (RuntimeError, AttributeError) as e:
-                # 窗口已销毁 / 主循环已退出：不是错误，只是没有主线程可用了
-                logger.debug(f"[{self._name}] 事件 {topic} 无法排入主线程（{e}），就地派发")
-        # 无 Tk：就地同步派发。这是单测与无 GUI 环境下事件链仍可验证的原因。
+        if root is not None and safe_after(root, lambda: self._dispatch(topic, payload)):
+            return True
+        # 无可用 Tk（或投递失败）：就地同步派发。
+        # 这是单测与无 GUI 环境下事件链仍可验证的原因。
         self._dispatch(topic, payload)
         return False
 

@@ -75,8 +75,16 @@ def _center_on_parent(window: tk.Toplevel, parent) -> None:
         pass
 
 
-def _prepare(parent, title: str) -> tk.Toplevel:
-    """建一个已套用主题的模态 Toplevel，并绑定 Escape=关闭。"""
+def _prepare(parent, title: str) -> Optional[tk.Toplevel]:
+    """建一个已套用主题的模态 Toplevel，并绑定 Escape=关闭。
+
+    🔴 **静默时返回 `None`**：这是所有模态窗的唯一入口，在这里拦一道，
+    比在每个调用方各写一遍 `if _silent` 可靠得多 ——
+    漏一处就是"自动流程卡死在弹窗上"（界面不动、日志无错、只能强杀）。
+    调用方必须处理 `None`（见 `ask_text` / `edit_items` / `show_text`）。
+    """
+    if _silent:
+        return None
     win = tk.Toplevel(parent)
     win.title(title)
     win.configure(bg=_C["bg_dark"])
@@ -107,6 +115,8 @@ def ask_text(
         注意：空字符串是合法返回值（用户确实输入了空），只有取消才是 None。
     """
     win = _prepare(parent, title)
+    if win is None:  # 静默：等同"用户取消"
+        return None
     result: dict = {"value": None}
 
     tk.Label(
@@ -220,8 +230,13 @@ def edit_items(
     Returns:
         编辑后的**新列表**（不修改传入的 `items`，调用方需自行保存）；
         取消返回 ``None`` —— 这样"用户取消了"和"用户清空了列表"可区分。
+
+        静默模式同样返回 ``None``：静默下没有人真的编辑过，
+        返回原列表会让调用方误以为"用户确认保存了"。
     """
     win = _prepare(parent, title)
+    if win is None:  # 静默：等同"用户取消"
+        return None
     win.geometry("460x440")
     result: dict = {"value": None}
     working = list(items or [])
@@ -392,6 +407,8 @@ def show_text(
     只读但**可选中复制** —— 正文提示词需要能复制到 Midjourney/SD 里。
     """
     win = _prepare(parent, title)
+    if win is None:  # 静默：不弹窗、不阻塞
+        return
     win.geometry(f"{min(width * 8, 1000)}x{max(height * 18, 320)}")
 
     text_frame = tk.Frame(win, bg=_C["bg_dark"])

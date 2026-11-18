@@ -9,6 +9,8 @@ import tkinter as tk
 from tkinter import ttk
 
 # ⚠️ 必须直接导入 `ui_style` 模块，不能写 `from app import UIStyle`：
+from app.async_runner import safe_after
+
 # `app/__init__.py` 在**定义 `UIStyle` 之前**就 `_safe_import("app.fullscreen_writer")`
 # （见 app/__init__.py 的可选导入段），走包级导入会形成循环引用，
 # 而失败会被 `_ImportStub` **静默降级** —— 表现为 FullscreenWriter 变成一个一实例化就报错的桩。
@@ -401,7 +403,7 @@ class FullscreenWriter:
         # Markdown高亮（延迟更新避免频繁触发）
         if hasattr(self, "_highlight_after_id"):
             self.win.after_cancel(self._highlight_after_id)
-        self._highlight_after_id = self.win.after(300, self._update_markdown_highlighting)
+        self._highlight_after_id = safe_after(self.win, self._update_markdown_highlighting, delay=300)
 
     def _on_tab(self, event):
         """Tab键接受AI建议"""
@@ -443,7 +445,7 @@ class FullscreenWriter:
                 self.suggestion_active = True
 
                 # 在主线程显示建议
-                self.win.after(0, self._show_suggestion)
+                safe_after(self.win, self._show_suggestion)
             except Exception as e:
                 logger.error(f"AI续写失败: {e}")
 
@@ -631,12 +633,12 @@ class FullscreenWriter:
                 )
 
                 # 在主线程中替换文本
-                self.win.after(0, lambda: self._replace_selection(response.strip(), mode))
-                self.win.after(0, self._hide_ai_status)
+                safe_after(self.win, lambda: self._replace_selection(response.strip(), mode))
+                safe_after(self.win, self._hide_ai_status)
 
             except Exception as e:
-                self.win.after(0, lambda _exc=e: self._show_ai_status(f"AI错误: {str(_exc)[:30]}"))
-                self.win.after(3000, self._hide_ai_status)
+                safe_after(self.win, lambda _exc=e: self._show_ai_status(f"AI错误: {str(_exc)[:30]}"))
+                safe_after(self.win, self._hide_ai_status, delay=3000)
 
         threading.Thread(target=generate, daemon=True).start()
 

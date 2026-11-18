@@ -32,6 +32,7 @@ from typing import Any
 
 from loguru import logger
 
+from app.async_runner import safe_after
 from app.events import TOPIC_CHAPTER_SAVED, TOPIC_TIMELINE_CHANGED
 from app.timeline_store import TimelineStore, extraction_prompt, parse_extraction_result
 from app.ui_style import UIStyle
@@ -595,7 +596,7 @@ class TimelinePanel(BasePanel):
         """把回调送回主线程（Tk 非线程安全）。宿主无 root 时同步执行。"""
         root = getattr(self, "root", None)
         if root is not None and hasattr(root, "after"):
-            root.after(0, callback)
+            safe_after(root, callback)
         else:  # pragma: no cover - 仅无 Tk 的单测路径
             callback()
 

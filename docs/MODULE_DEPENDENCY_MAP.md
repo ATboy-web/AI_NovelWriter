@@ -9,8 +9,8 @@
 | 指标 | 值 |
 |---|---|
 | 内部模块数 | 100 |
-| 依赖边数 | 305 |
-| 其中函数内延迟导入 | 62 |
+| 依赖边数 | 323 |
+| 其中函数内延迟导入 | 61 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
@@ -57,12 +57,12 @@
 | `app` | 32 |
 | `storage` | 30 |
 | `dialogs` | 29 |
+| `async_runner` | 27 |
 | `ui_style` | 19 |
 | `panels` | 13 |
 | `events` | 12 |
 | `panels.base` | 11 |
 | `panels.ui_kit` | 10 |
-| `async_runner` | 9 |
 | `config` | 9 |
 | `ai_client` | 7 |
 | `novel_toolkit` | 6 |
@@ -105,7 +105,7 @@
 | `bulk_rewrite` | ⚪`app`, ⚪`ai_client`, 🔴`async_runner`, 🔴`rework`, 🔴`storage`, 🔴`text_stats`, ⚪`writing_presets` |
 | `chapter_ui` | 🔴`app`, 🔴`dialogs`, 🔴`events`, ⚪`format_converter` |
 | `character_system` | 🔴`parsing`, 🔴`storage` |
-| `character_ui` | 🔴`app`, 🔴`biography`, 🔴`character_system`, 🔴`dialogs`, 🔴`format_converter`, 🔴`memory_manager`, 🔴`parsing`, 🔴`storage`, 🔴`timeline_store` |
+| `character_ui` | 🔴`app`, 🔴`async_runner`, 🔴`biography`, 🔴`character_system`, 🔴`dialogs`, 🔴`format_converter`, 🔴`memory_manager`, 🔴`parsing`, 🔴`storage`, 🔴`timeline_store` |
 | `cloud_storage` | ⚪`secure_config`, 🔴`storage` |
 | `config` | ⚪`secure_config`, 🔴`storage` |
 | `consistency` | — |
@@ -114,14 +114,14 @@
 | `dialogs` | 🔴`ui_style` |
 | `editor_ui` | 🔴`app`, 🔴`dialogs` |
 | `events` | — |
-| `events.bus` | — |
+| `events.bus` | 🔴`async_runner` |
 | `format_converter` | — |
-| `fullscreen_writer` | 🔴`ai_client`, 🔴`config`, 🔴`storage`, 🔴`ui_style` |
-| `generation_ui` | 🔴`app`, ⚪`async_runner`, ⚪`consistency`, 🔴`diagnostic_logger`, 🔴`dialogs`, 🔴`parsing`, ⚪`review_store`, 🔴`storage` |
+| `fullscreen_writer` | 🔴`ai_client`, 🔴`async_runner`, 🔴`config`, 🔴`storage`, 🔴`ui_style` |
+| `generation_ui` | 🔴`app`, 🔴`async_runner`, ⚪`consistency`, 🔴`diagnostic_logger`, 🔴`dialogs`, 🔴`parsing`, ⚪`review_store`, 🔴`storage` |
 | `genres` | 🔴`genres_data`, ⚪`storage` |
 | `genres_data` | — |
 | `image_generator` | 🔴`config` |
-| `lifecycle_ui` | 🔴`app`, 🔴`dialogs`, 🔴`events`, 🔴`genres`, 🔴`storage` |
+| `lifecycle_ui` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`events`, 🔴`genres`, 🔴`storage` |
 | `lineage` | 🔴`storage` |
 | `live_data` | — |
 | `mcp_system` | — |
@@ -134,15 +134,15 @@
 | `novel_toolkit` | 🔴`storage` |
 | `outline_ui` | 🔴`app`, 🔴`dialogs`, 🔴`token_estimator` |
 | `panels` | — |
-| `panels.adapt_panel` | 🔴`app`, 🔴`dialogs`, 🔴`novel_toolkit` |
+| `panels.adapt_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`novel_toolkit` |
 | `panels.base` | ⚪`events`, ⚪`panels`, ⚪`panels.registry`, ⚪`panels.ui_kit` |
-| `panels.batch_ops_panel` | 🔴`app`, 🔴`dialogs`, 🔴`ui_style` |
-| `panels.biography_panel` | 🔴`biography`, 🔴`events`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`storage`, 🔴`timeline_store`, 🔴`ui_style` |
-| `panels.bridges_panel` | 🔴`app`, 🔴`dialogs` |
+| `panels.batch_ops_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`ui_style` |
+| `panels.biography_panel` | 🔴`async_runner`, 🔴`biography`, 🔴`events`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`storage`, 🔴`timeline_store`, 🔴`ui_style` |
+| `panels.bridges_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs` |
 | `panels.chapter_analysis_panel` | 🔴`app`, 🔴`dialogs`, 🔴`ui_style` |
-| `panels.descriptions_panel` | 🔴`app`, 🔴`dialogs` |
-| `panels.dialogue_panel` | 🔴`app`, 🔴`dialogs`, 🔴`novel_toolkit` |
-| `panels.elements_panel` | 🔴`app`, 🔴`dialogs` |
+| `panels.descriptions_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs` |
+| `panels.dialogue_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`novel_toolkit` |
+| `panels.elements_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs` |
 | `panels.host` | ⚪`app`, ⚪`events`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.layout`, 🔴`panels.registry`, ⚪`panels.ui_kit` |
 | `panels.illustration_panel` | 🔴`async_runner`, 🔴`events`, ⚪`image_generator`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`ui_style` |
 | `panels.layout` | ⚪`storage` |
@@ -154,12 +154,12 @@
 | `panels.registry` | ⚪`panels`, ⚪`panels.base`, ⚪`panels.legacy` |
 | `panels.rework_panel` | ⚪`ai_client`, 🔴`async_runner`, 🔴`bulk_rewrite`, ⚪`config`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`rework`, 🔴`ui_style` |
 | `panels.skill_library_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`skill_library`, 🔴`style_dna`, 🔴`ui_style`, 🔴`writing_presets` |
-| `panels.story_flow_panel` | 🔴`app`, 🔴`dialogs`, 🔴`novel_toolkit`, 🔴`ui_style` |
-| `panels.style_panel` | 🔴`app`, 🔴`dialogs`, 🔴`novel_toolkit` |
+| `panels.story_flow_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`novel_toolkit`, 🔴`ui_style` |
+| `panels.style_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`novel_toolkit` |
 | `panels.summary_mgmt_panel` | 🔴`ui_style` |
-| `panels.timeline_panel` | 🔴`events`, ⚪`memory_manager`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, ⚪`storage`, 🔴`timeline_store`, 🔴`ui_style` |
+| `panels.timeline_panel` | 🔴`async_runner`, 🔴`events`, ⚪`memory_manager`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, ⚪`storage`, 🔴`timeline_store`, 🔴`ui_style` |
 | `panels.ui_kit` | 🔴`ui_style` |
-| `panels.websearch_panel` | 🔴`app`, 🔴`dialogs`, 🔴`novel_toolkit`, 🔴`ui_style` |
+| `panels.websearch_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`novel_toolkit`, 🔴`ui_style` |
 | `parsing` | — |
 | `performance_monitor` | — |
 | `persistence_ui` | 🔴`novel_store`, 🔴`storage` |
@@ -180,15 +180,15 @@
 | `scene_detector` | — |
 | `secure_config` | 🔴`config`, 🔴`storage` |
 | `semantic_candidates` | ⚪`text_stats` |
-| `shell_ui` | 🔴`app`, ⚪`ai_client`, ⚪`diagnostic_logger`, 🔴`dialogs`, ⚪`performance_monitor` |
+| `shell_ui` | 🔴`app`, ⚪`ai_client`, 🔴`async_runner`, ⚪`diagnostic_logger`, 🔴`dialogs`, ⚪`performance_monitor` |
 | `skill_library` | ⚪`plugin_system`, 🔴`storage`, 🔴`token_estimator` |
 | `storage` | — |
 | `style_dna` | 🔴`storage`, ⚪`text_stats` |
 | `text_stats` | — |
 | `timeline_store` | ⚪`events`, ⚪`lineage`, ⚪`memory_manager`, 🔴`storage` |
-| `timeline_ui` | 🔴`app`, ⚪`character_system`, 🔴`dialogs`, 🔴`lineage`, ⚪`memory_manager`, 🔴`storage` |
+| `timeline_ui` | 🔴`app`, 🔴`async_runner`, ⚪`character_system`, 🔴`dialogs`, 🔴`lineage`, ⚪`memory_manager`, 🔴`storage` |
 | `token_estimator` | — |
-| `toolkit_ui` | 🔴`app`, ⚪`diagnostic_logger`, 🔴`dialogs`, 🔴`format_converter`, 🔴`panels`, 🔴`panels.layout`, 🔴`panels.registry` |
+| `toolkit_ui` | 🔴`app`, 🔴`async_runner`, ⚪`diagnostic_logger`, 🔴`dialogs`, 🔴`format_converter`, 🔴`panels`, 🔴`panels.layout`, 🔴`panels.registry` |
 | `ui_style` | — |
 | `usage_tracker` | 🔴`events`, ⚪`providers.pricing`, 🔴`storage` |
 | `usage_ui` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`events`, 🔴`providers`, 🔴`providers.balance`, 🔴`providers.pricing`, 🔴`token_estimator`, 🔴`usage_tracker` |

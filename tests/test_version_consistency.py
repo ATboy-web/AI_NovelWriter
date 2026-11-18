@@ -202,8 +202,19 @@ def test_readme_shows_current_version(version):
 
 
 def test_readme_en_shows_current_version(version):
+    """英文 README 的标题**与下载表**都要体现当前版本。
+
+    ❗ 下载表这一条是补上的：v3.3.1 改版本时，`README.md` 的下载表与两个标题都改了，
+    唯独 `README_EN.md` 的下载表还写着 v3.2.0 —— 因为它当时**没有断言**。
+    这正是中文 README 那条守卫存在的原因（历史上下载表长期指向旧版本），
+    同一个坑在英文文档里又踩了一次 ⇒ 补齐，别让"两个入口"再各自漂移。
+    """
     text = (REPO_ROOT / "README_EN.md").read_text(encoding="utf-8")
     assert version in text.splitlines()[0], "README_EN 标题未体现当前版本"
+
+    download_rows = [line for line in text.splitlines() if line.startswith("|") and "AI_NovelWriter" in line]
+    assert download_rows, "README_EN 缺少下载表"
+    assert any(version in row for row in download_rows), f"README_EN 下载表未体现当前版本 {version}"
 
 
 def test_changelog_has_entry_for_version(version):

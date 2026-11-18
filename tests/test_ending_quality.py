@@ -163,9 +163,16 @@ class TestEndingPatchSafety:
     """D18：补全逻辑必须保守 —— 该跳过的跳过，该丢弃的丢弃。"""
 
     def test_patch_skips_when_ending_is_punctuated(self):
-        """正文末尾已经是句号 ⇒ 必须有"跳过补全"的分支，而不是无条件补。"""
+        """正文末尾已经是句号 ⇒ 必须有"跳过补全"的分支，而不是无条件补。
+
+        判据用**行为标记**而不是某一句文案：
+        结尾以句末标点在 `sentence_end` 里时走空分支（不补），
+        判不出时走"保持原样"分支。两者都在源码里，任一存在即说明
+        "不是无条件追加"。
+        """
         code = _scan.code_only("app/novel_agent.py")
-        assert "跳过补全" in code, "没有「结尾完整则跳过」的分支"
+        assert "sentence_end" in code, "找不到句末标点判据"
+        assert ("保持原样不补全" in code) or ("跳过补全" in code), "没有「不补全」的分支"
 
     def test_patch_uses_strict_dedup(self):
         """补全与原文重复时必须**丢弃**，不能再靠 `[:10] in result[-50:]`。"""

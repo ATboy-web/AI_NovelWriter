@@ -1042,6 +1042,10 @@ class AIClient:
         )
         reasoning_effort = kwargs.get("reasoning_effort", self.config.get("reasoning_effort", "high"))
 
+        # 正文/评审类调用传 False：拿不到 content 就报错，**不要**拿 reasoning 顶替。
+        # 默认 True 以保住 v2 的"分析类调用不白跑"语义。
+        allow_reasoning_fallback = bool(kwargs.get("allow_reasoning_fallback", True))
+
         # 自动检测模型类型，选择正确的provider
         detected_provider = self._detect_provider(provider, model)
 
@@ -1084,6 +1088,7 @@ class AIClient:
                 reasoning_effort,
                 api_key=api_key,
                 api_base=self.config.get("api_base", "") or "",
+                allow_reasoning_fallback=allow_reasoning_fallback,
             )
 
             latency = time.time() - start
@@ -1164,6 +1169,7 @@ class AIClient:
                         reasoning_effort,
                         api_key=api_key,
                         api_base=self.config.get("api_base", "") or "",
+                        allow_reasoning_fallback=allow_reasoning_fallback,
                     )
                     latency = time.time() - start
                     self.metrics.record(latency)
@@ -1188,6 +1194,7 @@ class AIClient:
         reasoning_effort,
         api_key: str,
         api_base: str,
+        allow_reasoning_fallback: bool = True,
     ) -> str:
         """统一执行层：构造请求 → 发送（含重试）→ 解析 → 收尾。
 
@@ -1230,7 +1237,9 @@ class AIClient:
         )
         if result.reasoning:
             self._log_thinking(result.reasoning)
-        return self._finalize_text(result, adapter.label, model)
+        return self._finalize_text(
+            result, adapter.label, model, allow_reasoning_fallback=allow_reasoning_fallback
+        )
 
     def _send(self, adapter: ProviderAdapter, spec: ProviderSpec, base: str, request: ChatRequest, api_key: str):
         """发送请求并对**瞬时故障**做指数退避重试（修 P3）。
@@ -1268,21 +1277,35 @@ class AIClient:
                     continue
                 raise
 
-    def _finalize_text(self, result, label: str, model: str) -> str:
-        """从 ChatResult 取最终文本，并保留 v2 的两条关键兜底语义。
+    def _finalize_text(self, result, label: str, model: str, *, allow_reasoning_fallback: bool = True) -> str:
+        """从 ChatResult 取最终文本。
 
-        1. 思考模式把 token 预算耗尽时，`content` 为空而 `reasoning_content` 里
-           有完整分析 —— 这时**返回 reasoning 比报错有用**（v2 已有行为，必须保留）。
-        2. 其余空响应仍要显式失败，不能静默返回空串（否则上层会写出空章节）。
+        两条兜底语义：
+
+        1. `allow_reasoning_fallback=True`（默认，分析类调用）：
+           思考把预算耗尽时 `content` 为空而 `reasoning_content` 里有完整分析 ——
+           返回 reasoning 比报错有用（v2 行为，保留）。
+           ⚠️ **正文生成不能用它**：reasoning 是规划文字，落盘会把章节写成
+           工作笔记（本次事故即此）。
+        2. `allow_reasoning_fallback=False`（正文/评审）：content 为空就**明确报错**，
+           让上层重试或降级，绝不把 reasoning 当成品交出去。
+           报错信息带上 reasoning 长度与 finish_reason —— 这两个数字能直接
+           告诉用户"是预算不够还是模型抽风"。
         """
         if result.text and result.text.strip():
             return result.text
         if result.finish_reason == "length" and len(result.reasoning.strip()) > 10:
-            self._log(
-                f"[提示] {label}思考模式耗尽token (reasoning_len={len(result.reasoning)})，"
-                "使用 reasoning_content 作为结果"
+            if allow_reasoning_fallback:
+                self._log(
+                    f"[提示] {label}思考模式耗尽token (reasoning_len={len(result.reasoning)})，"
+                    "使用 reasoning_content 作为结果"
+                )
+                return result.reasoning
+            raise Exception(
+                f"{label}思考模式耗尽 token，未产出正文 "
+                f"(reasoning_len={len(result.reasoning)}, finish={result.finish_reason})。"
+                "请关闭思考模式或提高 max_tokens 后重试。"
             )
-            return result.reasoning
         raise Exception(f"{label}返回空内容 (reasoning_len={len(result.reasoning)}, finish={result.finish_reason})")
 
     def _record_usage(

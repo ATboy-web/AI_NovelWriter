@@ -26,6 +26,33 @@ from app.storage import atomic_write_text
 _diag = get_logger()
 
 
+def coerce_chapter_no(value) -> int | None:
+    """把 AI 返回的章号转成正整数；转不了返回 `None`。
+
+    为什么需要它：模型经常返回 `{"chapter": "1"}`（字符串）而不是 `1`。
+    旧代码直接 `item["chapter"] - 1` ⇒ `TypeError: unsupported operand type(s) for -: 'str' and 'int'`
+    ⇒ 整个批量写大纲的 `with` 块中断 ⇒ `outline.json` 从未落盘
+    ⇒ 下一章又判定"大纲不足"重新生成（日志里连续两次「大纲不足，动态生成…」即此）。
+
+    抽成模块级纯函数是为了**可单测** —— 这段逻辑嵌在千行方法里时，只能靠肉眼看。
+    """
+    if isinstance(value, bool):  # bool 是 int 的子类，但章号 True 没有意义
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    text = str(value or "").strip()
+    if not text:
+        return None
+    # 容忍 "第3章" / "3." / "3) "
+    import re as _re
+
+    match = _re.search(r"\d+", text)
+    if not match:
+        return None
+    number = int(match.group())
+    return number if number > 0 else None
+
+
 class GenerationMixin:
     """业务生成层：设定/角色/大纲/章节生成、审校、风格、EXP、批量创作、扩写"""
 
@@ -1872,22 +1899,46 @@ class GenerationMixin:
                                         self._log("[大纲] JSON解析失败，跳过批量更新")
 
                                     if new_batch:
+                                        applied = 0
                                         with self._state_lock:
                                             for item in new_batch:
                                                 if not isinstance(item, dict) or "chapter" not in item:
                                                     continue
-                                                idx = item["chapter"] - 1
-                                                if idx < len(self.outline):
+                                                # ❗ 章号可能是字符串（AI 常返回 {"chapter": "1"}）。
+                                                # 旧写法直接 `- 1` ⇒ TypeError ⇒ 整块中断 ⇒
+                                                # outline.json 从未落盘 ⇒ 每章都重建一次大纲
+                                                # （日志实录：连续两次「大纲不足，动态生成…」）。
+                                                chapter_no = coerce_chapter_no(item["chapter"])
+                                                if chapter_no is None:
+                                                    self._log(
+                                                        f"[大纲] 跳过章号异常的条目: {item.get('chapter')!r}"
+                                                    )
+                                                    continue
+                                                idx = chapter_no - 1
+                                                if 0 <= idx < len(self.outline):
                                                     self.outline[idx]["title"] = item.get(
-                                                        "title", f"第{item['chapter']}章"
+                                                        "title", f"第{chapter_no}章"
                                                     )
                                                     self.outline[idx]["summary"] = item.get(
-                                                        "summary", f"第{item['chapter']}章情节"
+                                                        "summary", f"第{chapter_no}章情节"
                                                     )
-                                        # 保存已更新的 outline.json
-                                        self._novel_store().write_outline(self.outline)
+                                                    applied += 1
+                                        # 保存已更新的 outline.json（哪怕只更新一条也要落盘，
+                                        # 否则本章又要重新生成一遍大纲）
+                                        if applied:
+                                            self._novel_store().write_outline(self.outline)
+                                            self._log(f"[大纲] 已落盘 {applied} 条章节大纲")
                                     # 用新生成的大纲
-                                    cur_item = next((x for x in new_batch if x["chapter"] == ch_num), None)
+                                    # 同样容错：统一成字符串比较，避免 "1" != 1
+                                    cur_item = next(
+                                        (
+                                            x
+                                            for x in new_batch
+                                            if isinstance(x, dict)
+                                            and str(x.get("chapter", "")).strip() == str(ch_num)
+                                        ),
+                                        None,
+                                    )
                                     if cur_item:
                                         chapter_title = cur_item.get("title", chapter_title)
                                         chapter_summary = cur_item.get("summary", chapter_summary)

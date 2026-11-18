@@ -149,6 +149,68 @@ _SUMMARY_MAX_CHARS = 600
 #: 思维链特征词。命中**开头 300 字**内任意一个，就认为返回的是推理过程而非成品。
 #: 只扫开头是因为成品摘要不会以"我们需要回答用户"这类话起头，
 #: 而推理过程几乎必然以它起头；扫全文反而会误伤正当引用。
+#: 「创作规划」特征词 —— 用于识别**正文位置**上的内心独白/提纲。
+#:
+#: 与 `_COT_MARKERS` 不同：那组用于"短摘要"，命中一个就判；
+#: 这组用于**章节正文**，正文里 `让我想想` 完全可能是角色对白，
+#: 所以分两级：
+#:   - `_PLANNING_STRONG`：正常叙事**不可能**出现的（"用户希望我""字数控制"…），命中即判
+#:   - `_PLANNING_WEAK`：单独出现合法，**同时命中 ≥2 个**才判
+_PLANNING_STRONG = (
+    "用户希望我",
+    "用户要求续写",
+    "用户要求我",
+    "字数控制",
+    "正文开始",
+    "让我起草",
+    "这个感觉方向",
+    "我倾向于：",
+    "具体设计：",
+    "字数控制在",
+)
+_PLANNING_WEAK = (
+    "让我想想",
+    "让我再想",
+    "让我回顾",
+    "让我理一下",
+    "让我构思",
+    "或者更好",
+    "或者更直接",
+    "那我尽量",
+    "这就悬了",
+    "嗯，这",
+    "好，我这样写",
+    "我需要写约",
+    "让我写一个更自然",
+)
+
+
+def _looks_like_planning(text: str) -> bool:
+    """判断文本是否是模型的**创作规划/内心独白**，而不是小说正文。
+
+    为什么不能只看长度或只看一个词：
+    - 正文里可以有 `"让我想想。"`（角色对白）——单命中会误杀；
+    - 规划文字的特征是**成片出现**的元话语（"用户希望我…""或者更好…""字数控制…"）。
+
+    因此判据：
+    1. 任一强特征词出现 ⇒ 是规划；
+    2. 弱特征词命中 ≥2 个 ⇒ 是规划；
+    3. ≥3 行以全角括号包裹（`（他先回杂役房…）` 这类舞台说明）⇒ 是规划。
+    """
+    body = text or ""
+    if not body.strip():
+        return False
+    if any(marker in body for marker in _PLANNING_STRONG):
+        return True
+    weak_hits = sum(1 for marker in _PLANNING_WEAK if marker in body)
+    if weak_hits >= 2:
+        return True
+    bracket_lines = sum(
+        1 for line in body.splitlines() if line.strip().startswith("（") and line.strip().endswith("）")
+    )
+    return bracket_lines >= 3
+
+
 _COT_MARKERS = (
     "我们需要回答",
     "用户要求",
@@ -1240,7 +1302,14 @@ class NovelAgent:
 
         # 动态计算max_tokens：中文约2 tokens/字，预留足够空间
         max_tokens = max(word_count * 2, 8192)
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=max_tokens)
+        # 同分段生成：正文不要思考，也不要 reasoning 兜底
+        response = self.ai.chat(
+            [{"role": "user", "content": prompt}],
+            system=system,
+            max_tokens=max_tokens,
+            thinking_enabled=False,
+            allow_reasoning_fallback=False,
+        )
         self.log(f"[Writer] 第{chapter_num}章初稿完成，字数：{len(response) if response else 0}")
         return response or ""
 
@@ -1342,7 +1411,15 @@ class NovelAgent:
             sample = content
 
         prompt = f"请审校第{chapter_num}章内容：\n\n{sample}"
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000)
+        # 评审要的是 JSON：先想几千字再输出 JSON，既慢又容易把预算耗在思考上
+        # （本次两章评审全部失败的成因）。关掉思考，并要求"拿不到成品就报错"。
+        response = self.ai.chat(
+            [{"role": "user", "content": prompt}],
+            system=system,
+            max_tokens=4000,
+            thinking_enabled=False,
+            allow_reasoning_fallback=False,
+        )
 
         # 🔴 失败不伪装：解析不出来就给 None + error，**不再回落成 70 分**。
         # 旧实现 `{"overall_score": 70}` 让"评审失败"看起来像"70 分"，
@@ -1443,7 +1520,17 @@ class NovelAgent:
 3. 保持原文的优点和情节连贯性
 4. 直接输出正文，不要输出分析过程："""
 
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=needed_tokens)
+        # 修订稿会**覆盖**正文：必须不思考、不兜底。
+        # 否则「用户希望我…让我想想…」会被当成修订结果写进书里，
+        # 而字数还能通过"不少于原文"的检查（推理往往比正文长），
+        # 反而更容易骗过闸门。
+        response = self.ai.chat(
+            [{"role": "user", "content": prompt}],
+            system=system,
+            max_tokens=needed_tokens,
+            thinking_enabled=False,
+            allow_reasoning_fallback=False,
+        )
 
         # 如果修订后字数明显变短，可能是AI截断了，返回原文
         if response and len(response) < original_len * 0.5:
@@ -1502,6 +1589,10 @@ class NovelAgent:
                     [{"role": "user", "content": f"创作第{chapter_num}章：{chapter_title}，{word_count}字"}],
                     system=strict_system,
                     max_tokens=retry_tokens,
+                    # 正文：不思考、不兜底 —— 这份稿会**覆盖**已有内容，
+                    # 一旦写进工作笔记，等于把好稿毁掉
+                    thinking_enabled=False,
+                    allow_reasoning_fallback=False,
                 )
             except Exception as e:
                 self.log(f"第{chapter_num}章重试{retry + 1}失败: {e}")
@@ -1543,6 +1634,14 @@ class NovelAgent:
         """检测是否存在过度重复，返回 (has_repetition, actual_word_count)"""
         paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
         actual_words = self._count_words(content)
+
+        # 🔴 规划文字直接判不合格。
+        # 本次事故里，字数闸门把 4760 字「用户希望我…让我想想…」算进了字数，
+        # 于是 8029/4000 "达标"、章节顺利通过 —— 闸门本身成了帮凶。
+        # 字数统计没有任何办法分辨"这是正文还是内心独白"，只能在这里拦。
+        if _looks_like_planning(content):
+            self.log("[质量检测] ❌ 正文中检出创作规划文字（内心独白/提纲），判为不合格")
+            return (True, actual_words)
 
         # 字数严重不达标
         if actual_words < target_words * 0.3:
@@ -2449,7 +2548,13 @@ class NovelAgent:
 3. 内容要自然流畅，不要刻意模仿痕迹
 4. 直接输出创作内容，不要添加解释"""
 
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=word_count * 2)
+        response = self.ai.chat(
+            [{"role": "user", "content": prompt}],
+            system=system,
+            max_tokens=word_count * 2,
+            thinking_enabled=False,
+            allow_reasoning_fallback=False,
+        )
         return response or ""
 
     def blend_styles(self, styles: List[dict], prompt: str, word_count: int = 3000) -> str:
@@ -2473,7 +2578,13 @@ class NovelAgent:
 3. 不要生硬拼凑，要有机融合
 4. 直接输出创作内容，不要添加解释"""
 
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=word_count * 2)
+        response = self.ai.chat(
+            [{"role": "user", "content": prompt}],
+            system=system,
+            max_tokens=word_count * 2,
+            thinking_enabled=False,
+            allow_reasoning_fallback=False,
+        )
         return response or ""
 
     # ===== 工具方法 =====
@@ -2564,12 +2675,24 @@ class NovelAgent:
                     protagonist = self.memory.get_meta("protagonist", "")
                     protagonist_hint = f"\n【重要】主角名为「{protagonist}」，禁止更换！" if protagonist else ""
 
+                    # 🔴 正文生成**必须关闭思考**：
+                    # 开启时 4096 的预算会被 reasoning 吃光，content 为空后
+                    # 客户端会退回 reasoning —— 那一整段就会变成"用户希望我…让我想想…"
+                    # 的工作笔记写进章节（本次事故的确切成因）。
+                    # `allow_reasoning_fallback=False` 是第二道闸：宁可报错重试，
+                    # 也不把半成品当成品。
                     response = self.ai.chat(
                         [{"role": "user", "content": part_prompt}],
                         system=f"严密续写，绝不重复。每段给出自然结尾。禁止Markdown格式。{protagonist_hint}\n{context[:1500] if context else ''}",
                         max_tokens=4096,
+                        thinking_enabled=False,
+                        allow_reasoning_fallback=False,
                     )
                     if response and len(response) > 100:
+                        # 第三道闸：即使 provider 忽略了 thinking_enabled，
+                        # 规划文字也不能落盘。抛异常走重试，重试仍坏则保留已有段落。
+                        if _looks_like_planning(response):
+                            raise ValueError("返回内容疑似创作规划（内心独白/提纲），不是小说正文")
                         # 去除AI生成的标题
                         lines = response.split("\n", 2)
                         clean = []
@@ -2633,6 +2756,10 @@ class NovelAgent:
                             ],
                             system="你是文字校对。只输出补全的短语本身，不要重复已有内容，不要换行。",
                             max_tokens=1000,
+                            # 补全只有 10–30 字：1000 的预算若被思考吃掉，
+                            # 拿回来的是分析过程，会被"与原文重复/过长"判据丢弃，静默失效
+                            thinking_enabled=False,
+                            allow_reasoning_fallback=False,
                         )
                         completion = (completion or "").strip()
                         # ❗ 与原文重叠的补全一律丢弃（`in` 判据比原来的
@@ -2645,7 +2772,11 @@ class NovelAgent:
                         self.log(f"[长章节末段补全] 失败: {e}")
                 else:
                     # 无法确定是否断句 ⇒ **宁可不动**。静默是最安全的选择。
-                    self.log(f"[Writer] 第{chapter_num}章末尾以「{last_char}」收尾，判为完整，跳过补全")
+                    # 措辞要如实：这句原本写"判为完整"，但实际含义是"判不出来所以不动"，
+                    # 看日志的人会误以为系统确认了完整性。
+                    self.log(
+                        f"[Writer] 第{chapter_num}章末尾以「{last_char}」收尾，无法判定是否断句，保持原样不补全"
+                    )
 
         return result
 

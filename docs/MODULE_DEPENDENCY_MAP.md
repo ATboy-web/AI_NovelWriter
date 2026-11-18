@@ -8,9 +8,9 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 99 |
-| 依赖边数 | 290 |
-| 其中函数内延迟导入 | 56 |
+| 内部模块数 | 100 |
+| 依赖边数 | 299 |
+| 其中函数内延迟导入 | 61 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
@@ -54,7 +54,7 @@
 
 | 模块 | 被引用次数 |
 |---|---|
-| `app` | 31 |
+| `app` | 32 |
 | `dialogs` | 29 |
 | `storage` | 25 |
 | `ui_style` | 19 |
@@ -62,18 +62,18 @@
 | `events` | 12 |
 | `panels.base` | 11 |
 | `panels.ui_kit` | 10 |
-| `async_runner` | 8 |
-| `config` | 8 |
+| `async_runner` | 9 |
+| `config` | 9 |
+| `ai_client` | 7 |
 | `novel_toolkit` | 6 |
 | `token_estimator` | 6 |
-| `ai_client` | 5 |
 | `diagnostic_logger` | 5 |
 | `memory_manager` | 5 |
 | `providers.base` | 5 |
+| `text_stats` | 5 |
+| `writing_presets` | 5 |
 | `panels.registry` | 4 |
 | `parsing` | 4 |
-| `text_stats` | 4 |
-| `usage_tracker` | 4 |
 
 > 这些模块被最多人依赖 ⇒ 改它们的破坏面最大，应当优先保证测试覆盖。
 
@@ -102,6 +102,7 @@
 | `ai_settings_ui` | 🔴`app`, ⚪`ai_client`, ⚪`async_runner`, 🔴`config`, 🔴`dialogs`, 🔴`providers` |
 | `async_runner` | ⚪`app`, ⚪`dialogs` |
 | `biography` | 🔴`storage` |
+| `bulk_rewrite` | ⚪`app`, ⚪`ai_client`, 🔴`async_runner`, 🔴`rework`, 🔴`text_stats`, ⚪`writing_presets` |
 | `chapter_ui` | 🔴`app`, 🔴`dialogs`, 🔴`events` |
 | `character_system` | 🔴`parsing`, 🔴`storage` |
 | `character_ui` | 🔴`app`, 🔴`biography`, 🔴`character_system`, 🔴`dialogs`, 🔴`format_converter`, 🔴`memory_manager`, 🔴`parsing`, 🔴`storage`, 🔴`timeline_store` |
@@ -151,7 +152,7 @@
 | `panels.memory_viz_panel` | 🔴`ui_style` |
 | `panels.plugin_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`plugin_system`, 🔴`ui_style` |
 | `panels.registry` | ⚪`panels`, ⚪`panels.base`, ⚪`panels.legacy` |
-| `panels.rework_panel` | 🔴`async_runner`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`rework`, 🔴`ui_style` |
+| `panels.rework_panel` | ⚪`ai_client`, 🔴`async_runner`, 🔴`bulk_rewrite`, ⚪`config`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`rework`, 🔴`ui_style` |
 | `panels.skill_library_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`skill_library`, 🔴`style_dna`, 🔴`ui_style`, 🔴`writing_presets` |
 | `panels.story_flow_panel` | 🔴`app`, 🔴`dialogs`, 🔴`novel_toolkit`, 🔴`ui_style` |
 | `panels.style_panel` | 🔴`app`, 🔴`dialogs`, 🔴`novel_toolkit` |

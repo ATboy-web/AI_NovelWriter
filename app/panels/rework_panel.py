@@ -28,11 +28,13 @@
 from __future__ import annotations
 
 import tkinter as tk
+from tkinter import ttk
 from typing import Any, Optional
 
 from loguru import logger
 
-from app.async_runner import BackgroundRunner
+from app.async_runner import BackgroundRunner, CancelToken
+from app.bulk_rewrite import BulkProgress, BulkRewriter
 from app.dialogs import askyesno, show_text
 from app.rework import (
     MAX_ATTEMPTS,
@@ -123,6 +125,27 @@ class ReworkPanel(BasePanel):
         )
         self._count_badge = ui_kit.badge(bar["right"], "未扫描", kind="info")
         self._count_badge.pack(side=tk.RIGHT)
+
+        # ---- 全书重写区
+        # 与"回炉"的分工：回炉只把章**打回队列**（改状态），这里才真的**调模型重写正文**。
+        # 两者串起来是完整流水线：扫描 → 入炉 → 整书重写 → 审核 → 定稿。
+        bulk = tk.Frame(body, bg=C["bg_dark"])
+        bulk.pack(fill=tk.X, pady=(ui_kit.SPACE["xs"], 0))
+        ui_kit.section_title(bulk, "全书重写").pack(side=tk.LEFT)
+        self._bulk_start_btn = ui_kit.button(bulk, "开始整书重写", self._on_bulk_start, kind="primary")
+        self._bulk_start_btn.pack(side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0))
+        self._bulk_pause_btn = ui_kit.button(bulk, "暂停", self._on_bulk_toggle_pause, kind="ghost")
+        self._bulk_pause_btn.pack(side=tk.LEFT, padx=(ui_kit.SPACE["xs"], 0))
+        self._bulk_cancel_btn = ui_kit.button(bulk, "取消", self._on_bulk_cancel, kind="danger")
+        self._bulk_cancel_btn.pack(side=tk.LEFT, padx=(ui_kit.SPACE["xs"], 0))
+        self._bulk_bar = ttk.Progressbar(bulk, mode="determinate", maximum=100, length=220)
+        self._bulk_bar.pack(side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0))
+        self._bulk_status = ui_kit.hint(bulk, "未开始")
+        self._bulk_status.pack(side=tk.LEFT, padx=(ui_kit.SPACE["sm"], 0))
+        self._bulk_rewriter: Any = None
+        self._bulk_token: Any = None
+        self._bulk_busy = False
+        self._bulk_set_idle()
 
         # ---- 左右分栏
         split = tk.Frame(body, bg=C["bg_dark"])
@@ -348,6 +371,220 @@ class ReworkPanel(BasePanel):
             except Exception as exc:  # noqa: BLE001 - 宿主接口可能变化
                 logger.debug(f"[回炉] 跳转章节失败：{exc}")
         self._set_effect("宿主未提供章节跳转接口", "info")
+
+    # ------------------------------------------------------------------ 全书重写
+
+    def _bulk_ai_client(self) -> Any:
+        """优先用宿主已配置的客户端；宿主没有就自己构造一个。
+
+        构造失败返回 `None` —— 由调用方给出"请先在 AI 设置里配置"的提示，
+        而不是让按钮点了没反应。
+        """
+        client = getattr(self.app, "ai_client", None) if self.app is not None else None
+        if client is not None:
+            return client
+        try:
+            from app.ai_client import AIClient
+            from app.config import AppConfig
+
+            return AIClient(AppConfig())
+        except Exception as exc:  # noqa: BLE001 - 配置损坏也不该让面板崩
+            logger.warning(f"[整书重写] 构造 AI 客户端失败：{exc}")
+            return None
+
+    def _bulk_ui(self, fn) -> None:
+        """把回调排到主线程。`BulkRewriter` 的进度回调在**后台线程**触发。"""
+        root = getattr(self.app, "root", None) if self.app is not None else None
+        after = getattr(root, "after", None)
+        if callable(after):
+            try:
+                after(0, fn)
+                return
+            except tk.TclError:
+                pass
+        fn()
+
+    def _bulk_set_idle(self) -> None:
+        """回到空闲态：只有「开始」可点。"""
+        if not getattr(self, "_bulk_start_btn", None):
+            return
+        self._bulk_start_btn.config(state=tk.NORMAL)
+        self._bulk_pause_btn.config(state=tk.DISABLED, text="暂停")
+        self._bulk_cancel_btn.config(state=tk.DISABLED)
+
+    def _bulk_set_running(self) -> None:
+        self._bulk_start_btn.config(state=tk.DISABLED)
+        self._bulk_pause_btn.config(state=tk.NORMAL, text="暂停")
+        self._bulk_cancel_btn.config(state=tk.NORMAL)
+
+    def _on_bulk_start(self) -> None:
+        """整书重写：先实测 AI 可用性 + 出规模预估，确认后才执行。
+
+        🔴 顺序很重要：**先实测再执行**。本机出现过"配置文件里有 key 但服务端回 401"，
+        不实测就会让用户点完"开始"后看 1094 章连续失败。
+        """
+        if getattr(self, "_bulk_busy", False):
+            self._set_effect("正在执行中，请先暂停或取消", "info")
+            return
+
+        novel_dir = getattr(self.app, "current_novel_dir", None) if self.app is not None else None
+        if not novel_dir:
+            self._set_effect("没有打开的作品", "info")
+            return
+
+        ai = self._bulk_ai_client()
+        if ai is None:
+            self._set_effect("没有可用的 AI 客户端 —— 请先在「AI 设置」里配置服务与密钥", "error")
+            return
+
+        self._bulk_busy = True
+        self._bulk_start_btn.config(state=tk.DISABLED)
+        self._bulk_status.config(text="正在检查 AI 与统计规模…")
+        self._set_effect("正在检查 AI 可用性（会发一次最小请求）…", "info")
+
+        rewriter = BulkRewriter(novel_dir, ai)
+        self._bulk_rewriter = rewriter
+
+        def probe() -> tuple[bool, str, Any]:
+            ok, why = rewriter.check_ai()
+            return ok, why, (rewriter.plan() if ok else None)
+
+        self._runner.submit(
+            probe,
+            on_success=self._on_bulk_probed,
+            on_error=self._on_bulk_probe_failed,
+            log_errors=True,
+        )
+
+    def _on_bulk_probe_failed(self, exc: BaseException) -> None:
+        self._bulk_busy = False
+        self._bulk_set_idle()
+        self._bulk_status.config(text="检查失败")
+        self._set_effect(f"检查 AI 失败：{exc}", "error")
+
+    def _on_bulk_probed(self, result: tuple[bool, str, Any]) -> None:
+        ok, why, plan = result
+        if not ok:
+            self._bulk_busy = False
+            self._bulk_set_idle()
+            self._bulk_status.config(text="AI 不可用")
+            self._set_effect(f"AI 不可用：{why}", "error")
+            show_text(
+                self._host_widget(),
+                "AI 不可用，无法整书重写",
+                "整书重写需要调用大模型，但当前 AI 服务不可用：\n\n"
+                f"{why}\n\n"
+                "请到「AI 设置」检查服务地址与 API Key 是否有效，然后重试。\n"
+                "（这一检查是**实测**——发一次真实请求，而不是只看配置里有没有填 key。）",
+            )
+            return
+
+        if plan.todo_chapters == 0:
+            self._bulk_busy = False
+            self._bulk_set_idle()
+            self._bulk_status.config(text="无需重写")
+            self._set_effect(f"全部 {plan.chapters} 章都已重写，无需重复处理", "success")
+            return
+
+        if not askyesno(
+            "确认整书重写",
+            f"{plan.as_text()}\n\n"
+            "重写只改文字表达，不改情节、人物、对话与专名；\n"
+            "结果写入 chapters_rewritten/，**原文不会被覆盖**；\n"
+            "中途可暂停或取消，下次继续时只补未完成的章。\n\n开始执行？",
+        ):
+            self._bulk_busy = False
+            self._bulk_set_idle()
+            self._bulk_status.config(text="已取消")
+            self._set_effect("已取消，未做任何改动", "info")
+            return
+
+        self._bulk_run(plan)
+
+    def _bulk_run(self, plan: Any) -> None:
+        rewriter = self._bulk_rewriter
+        if rewriter is None:
+            self._bulk_busy = False
+            self._bulk_set_idle()
+            return
+
+        self._bulk_set_running()
+        self._bulk_bar["value"] = 0
+        self._bulk_status.config(text=f"开始：{plan.todo_chapters} 章待处理")
+
+        def progress(update: BulkProgress) -> None:
+            self._bulk_ui(lambda p=update: self._on_bulk_progress(p))
+
+        # 先建 token 再派发：work 通过**闭包捕获**它，不依赖"submit 之后赋值"的时序
+        # （旧写法 `self._bulk_token = submit(...)` 有竞态：work 可能先跑，读到 None）
+        token = CancelToken("用户取消")
+        self._bulk_token = token
+        self._runner.submit_cancellable(
+            lambda: rewriter.run(on_progress=progress, token=token),
+            token=token,
+            on_success=self._on_bulk_done,
+            on_cancelled=self._on_bulk_cancelled,
+            on_error=self._on_bulk_error,
+            log_errors=True,
+        )
+
+    def _on_bulk_progress(self, update: BulkProgress) -> None:
+        try:
+            self._bulk_bar["value"] = update.percent
+            self._bulk_status.config(text=update.as_line())
+        except tk.TclError:
+            return
+
+    def _on_bulk_toggle_pause(self) -> None:
+        rewriter = self._bulk_rewriter
+        if rewriter is None:
+            return
+        if rewriter.paused:
+            rewriter.resume()
+            self._bulk_pause_btn.config(text="暂停")
+            self._set_effect("已继续", "info")
+        else:
+            rewriter.pause()
+            self._bulk_pause_btn.config(text="继续")
+            self._set_effect("已暂停（当前块完成后停住）", "info")
+
+    def _on_bulk_cancel(self) -> None:
+        token = self._bulk_token
+        if token is not None:
+            try:
+                token.cancel("用户取消")
+            except Exception as exc:  # noqa: BLE001 - 取消失败也要给出反馈
+                logger.debug(f"[整书重写] 取消失败：{exc}")
+        if self._bulk_rewriter is not None:
+            self._bulk_rewriter.resume()  # 暂停中也能取消
+        self._set_effect("正在取消（当前块结束后停止）…", "info")
+
+    def _on_bulk_done(self, stats: Any) -> None:
+        self._bulk_busy = False
+        self._bulk_set_idle()
+        self._bulk_bar["value"] = 100
+        rewriter = self._bulk_rewriter
+        text = stats.as_text() if stats is not None else "完成"
+        self._bulk_status.config(text=text)
+        self._set_effect(text, "success" if not getattr(stats, "failed", 0) else "error")
+        if rewriter is not None:
+            show_text(self._host_widget(), "整书重写完成", rewriter.summary_text())
+        self._on_refresh()
+
+    def _on_bulk_cancelled(self) -> None:
+        self._bulk_busy = False
+        self._bulk_set_idle()
+        self._bulk_status.config(text="已取消")
+        self._set_effect("已取消（已完成的章已写入日志，下次继续时跳过）", "info")
+        self._on_refresh()
+
+    def _on_bulk_error(self, exc: BaseException) -> None:
+        self._bulk_busy = False
+        self._bulk_set_idle()
+        self._bulk_status.config(text="出错")
+        self._set_effect(f"整书重写出错：{exc}", "error")
+
+    # ------------------------------------------------------------------ 扫描
 
     def _on_scan(self) -> None:
         """扫描走后台：1094 章要逐章跑质检，放主线程会卡界面。"""

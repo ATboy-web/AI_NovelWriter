@@ -69,6 +69,8 @@ a = Analysis(
         # 回炉重造：面板 + 核心状态机（面板模块级 import，静态可见，但显式列出更稳）
         'app.panels.rework_panel',
         'app.rework',
+        # 整书重写引擎：面板按钮与 CLI 脚本共用这一份实现
+        'app.bulk_rewrite',
         # 写作预设（把技能规则装配成阶段/体裁/长度三个维度的能力单元）。
         # 由 novel_agent 与技能库面板延迟 import ⇒ 必须显式列出。
         'app.writing_presets',

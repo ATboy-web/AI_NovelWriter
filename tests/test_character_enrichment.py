@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import pathlib
+
 from app.character_enrichment import (
     EMPTY_FIELDS,
     build_enrich_prompt,
@@ -238,3 +240,50 @@ class TestEnrichContext:
         obj = _mixin(_FakeAI(""), _FakeMemory({}), _FakeSystem([]))
         obj._get_meta = lambda: (_ for _ in ()).throw(RuntimeError("meta 坏了"))
         assert obj._enrich_context(["甲"]) == "" or "甲" in obj._enrich_context(["甲"])
+
+
+# ====================================================================== 入口必须找得到
+
+
+class TestEntryPointsAreDiscoverable:
+    """「补全人设」必须挂在**用户能看见**的地方。
+
+    这条守卫来自一次真实事故：功能最初只加在左栏的 `char_cards_frame`，
+    而那个容器在滚动区里（内容高 1733px、可视 852px）——
+    用户打开软件根本翻不到，反馈「没有这个按钮」。
+
+    "代码里写了"和"用户看得见"是两件事，所以这里钉住三个入口：
+    菜单项 + 角色面板按钮 + 方法本身。
+    """
+
+    def test_method_exists(self):
+        from app.character_ui import CharacterUIMixin
+
+        assert callable(getattr(CharacterUIMixin, "_enrich_all_empty_characters", None))
+
+    def test_menu_item_exists(self):
+        """菜单是唯一不受布局/滚动影响的入口，必须有。"""
+        source = (pathlib.Path(__file__).resolve().parent.parent / "app" / "navigation.py").read_text(encoding="utf-8")
+        assert "补全角色人设" in source, "菜单项被删了：用户又该找不到入口"
+        assert "_enrich_all_empty_characters" in source
+
+    def test_role_panel_has_dedicated_button_row(self):
+        """角色面板要有独立一行的按钮（240px 宽塞不下第二个小按钮）。"""
+        source = (pathlib.Path(__file__).resolve().parent.parent / "app" / "shell_ui.py").read_text(encoding="utf-8")
+        assert "补全角色人设" in source
+        # 必须是 fill=X 的独立行，不是挤进 char_btn_frame 的 side=LEFT
+        block = source[source.index("补全角色人设") :]
+        assert "fill=tk.X" in block[:600], "按钮应独占一行；塞进按钮条会被挤出可视区"
+
+
+class TestButtonIsReachableWithoutScrolling:
+    """回归：左栏那个入口在滚动区底部，不能作为**唯一**入口。
+
+    不重复测 Tk 布局（那需要真实窗口），而是断言"至少有一个非滚动区的入口"：
+    菜单项不参与布局，天然满足。
+    """
+
+    def test_menu_provides_layout_independent_access(self):
+        source = (pathlib.Path(__file__).resolve().parent.parent / "app" / "navigation.py").read_text(encoding="utf-8")
+        create_menu = source[source.index("create_menu = tk.Menu") : source.index("settings_menu = tk.Menu")]
+        assert "补全角色人设" in create_menu, "应挂在「创作」菜单里"

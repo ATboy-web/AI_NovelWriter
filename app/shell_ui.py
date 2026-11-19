@@ -737,6 +737,20 @@ class ShellMixin:
             command=self._gen_char_biography,
         ).pack(side=tk.RIGHT, padx=2)
 
+        # 「补全空壳角色人设」：自动创建的角色只有名字，没有背景/性格/目标，
+        # 而后续章节的上下文注入读的正是这些字段 —— 空着等于让模型自由发挥。
+        # 独立占一行（fill=X）而不是塞进下面的 240px 按钮条：那里加必然被挤出可视区。
+        tk.Button(
+            char_frame,
+            text="补全角色人设（空壳角色）",
+            font=UIStyle.font("caption"),
+            bg=C["info"],
+            fg="white",
+            relief=tk.FLAT,
+            pady=3,
+            command=self._enrich_all_empty_characters,
+        ).pack(fill=tk.X, padx=5, pady=(2, 4))
+
         # 角色信息滚动显示
         char_canvas = tk.Canvas(char_frame, bg=C["bg_medium"], highlightthickness=0, bd=0)
         char_scrollbar = tk.Scrollbar(char_frame, orient=tk.VERTICAL, command=char_canvas.yview)

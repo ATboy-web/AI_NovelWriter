@@ -42,6 +42,11 @@ class NavigationManager:
             label="生成角色传记",
             command=lambda: self.app._open_panel("biography"),
         )
+        # 「补全角色人设」：自动检测出来的新角色只落骨架（category/faction/首现章），
+        # 人设字段是空的，而后续章节的上下文注入读的正是这些字段。
+        # ⚠️ 这个入口必须放在**菜单**里：角色卡片区在左栏滚动区底部
+        # （内容高 1733px、可视 852px），放在那里用户根本翻不到。
+        create_menu.add_command(label="补全角色人设", command=self.app._enrich_all_empty_characters)
         create_menu.add_command(label="生成书籍简介", command=self.app._generate_synopsis)
 
         # 设置菜单

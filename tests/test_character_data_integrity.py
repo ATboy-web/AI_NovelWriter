@@ -329,7 +329,11 @@ class TestNoCharacterDeletionEntryPoint:
     def test_detail_dialog_is_actually_wired(self):
         """反向断言：详情入口必须存在，否则重命名/休息/故事线又变成不可达。"""
         shell = (REPO_ROOT / "app" / "shell_ui.py").read_text(encoding="utf-8")
-        assert "command=self._show_char_detail" in shell
+        # 判据按「详情按钮确实绑到该方法」断言，而不是绑死某种代码形态：
+        # 按钮区已从 5 个 pack(side=LEFT) 改成元组 + grid 循环，
+        # 旧写法 command=self._show_char_detail 不再逐字出现，但接线是等价的。
+        assert "_show_char_detail" in shell, "详情入口从壳层消失了"
+        assert '("详情",' in shell, "角色按钮区的「详情」项不见了"
         detail = (REPO_ROOT / "app" / "character_ui.py").read_text(encoding="utf-8")
         for wired in (
             "self._rename_character(dialog)",

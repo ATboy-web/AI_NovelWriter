@@ -14,6 +14,7 @@ from loguru import logger
 
 from app import UIStyle, __version__, dialogs
 from app.async_runner import safe_after
+from app.ui_scroll import bind_wheel_to_tree
 
 
 class ShellMixin:
@@ -142,8 +143,9 @@ class ShellMixin:
         def on_left_scroll(event):
             left_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
+        # 容器自身先绑上；**内容**的递归绑定留到 `_create_widgets` 末尾
+        # （左栏的按钮/标签在第 500 行之后才创建，此刻递归等于绑了个空壳）。
         left_canvas.bind("<MouseWheel>", on_left_scroll)
-        left_panel.bind("<MouseWheel>", on_left_scroll)
         left_scrollbar.bind("<MouseWheel>", on_left_scroll)
 
         # 左侧 - 小说信息卡片
@@ -536,64 +538,41 @@ class ShellMixin:
         self.char_cards_container.pack(fill=tk.X)
 
         # 角色操作按钮
+        #
+        # 🔴 两行三列 `grid`，不用 `pack(side=LEFT)` 平铺 5 个：
+        # 容器只有 223px，pack 空间不足时**不换行**，只会把最后那个压成 8px
+        # —— 实测「详情」按钮 w=8 / req=43，文字完全不可见、几乎点不中。
+        # grid + 列权重让每个按钮等分宽度，容器再窄也只是整体缩小，不会"消失"。
         char_btn_frame = tk.Frame(char_cards_frame, bg=C["bg_medium"])
         char_btn_frame.pack(fill=tk.X, pady=5)
-        tk.Button(
-            char_btn_frame,
-            text="新建",
-            font=UIStyle.font("caption"),
-            bg=C["accent"],
-            fg="white",
-            relief=tk.FLAT,
-            padx=6,
-            command=self._create_character_dialog,
-        ).pack(side=tk.LEFT, padx=1)
-        tk.Button(
-            char_btn_frame,
-            text="AI生成",
-            font=UIStyle.font("caption"),
-            bg=C["success"],
-            fg="white",
-            relief=tk.FLAT,
-            padx=6,
-            command=self._ai_create_character,
-        ).pack(side=tk.LEFT, padx=1)
-        tk.Button(
-            char_btn_frame,
-            text="传记",
-            font=UIStyle.font("caption"),
-            bg=C["bg_light"],
-            fg=C["text_primary"],
-            relief=tk.FLAT,
-            padx=6,
-            command=self._gen_char_biography,
-        ).pack(side=tk.LEFT, padx=1)
-        # 「补全人设」：自动创建的角色只写名字不写人设（`_auto_detect_characters`
-        # 只落 category/faction/first_appearance），而后续章节的上下文注入读的正是
-        # 人设字段 —— 空着等于让模型自由发挥。自动流程已会静默补全，
-        # 这个按钮用于补救历史数据（以及自动补全失败时的兜底）。
-        tk.Button(
-            char_btn_frame,
-            text="补全人设",
-            font=UIStyle.font("caption"),
-            bg=C["info"],
-            fg="white",
-            relief=tk.FLAT,
-            padx=6,
-            command=self._enrich_all_empty_characters,
-        ).pack(side=tk.LEFT, padx=1)
-        # 「详情」入口：此前 _show_char_detail（含重命名 / 休息恢复 / 故事线）
-        # 是全仓零调用的孤儿对话框，这 3 项能力用户根本点不到。
-        tk.Button(
-            char_btn_frame,
-            text="详情",
-            font=UIStyle.font("caption"),
-            bg=C["accent_light"],
-            fg=C["text_primary"],
-            relief=tk.FLAT,
-            padx=6,
-            command=self._show_char_detail,
-        ).pack(side=tk.LEFT, padx=1)
+        _char_buttons = (
+            ("新建", C["accent"], "white", self._create_character_dialog),
+            ("AI生成", C["success"], "white", self._ai_create_character),
+            ("传记", C["bg_light"], C["text_primary"], self._gen_char_biography),
+            # 「补全人设」：自动创建的角色只写名字不写人设（`_auto_detect_characters`
+            # 只落 category/faction/first_appearance），而后续章节的上下文注入读的正是
+            # 人设字段 —— 空着等于让模型自由发挥。自动流程会静默补全，
+            # 这个按钮用于补救历史数据与自动补全失败的兜底。
+            ("补全人设", C["info"], "white", self._enrich_all_empty_characters),
+            # 「详情」入口：此前 `_show_char_detail`（含重命名 / 休息恢复 / 故事线）
+            # 是全仓零调用的孤儿对话框，这 3 项能力用户根本点不到。
+            ("详情", C["accent_light"], C["text_primary"], self._show_char_detail),
+        )
+        for _index, (_text, _bg, _fg, _cmd) in enumerate(_char_buttons):
+            _row, _col = divmod(_index, 3)
+            tk.Button(
+                char_btn_frame,
+                text=_text,
+                font=UIStyle.font("caption"),
+                bg=_bg,
+                fg=_fg,
+                relief=tk.FLAT,
+                padx=4,
+                pady=2,
+                command=_cmd,
+            ).grid(row=_row, column=_col, sticky="ew", padx=1, pady=1)
+        for _col in range(3):
+            char_btn_frame.columnconfigure(_col, weight=1)
 
         # ===== 右侧主内容区 =====
         right_panel = tk.Frame(main_container, bg=C["bg_dark"])
@@ -1006,6 +985,14 @@ class ShellMixin:
         usage_frame = tk.Frame(self.notebook, bg=C["bg_dark"])
         self.notebook.add(usage_frame, text=" 用量统计 ")
         self._build_usage_tab(usage_frame)
+
+        # 🔴 左栏滚轮：必须绑**整棵子树**，且必须在左栏内容全部建完之后。
+        # Tk 的 <MouseWheel> 不冒泡 —— 只绑 canvas 时，鼠标停在任意按钮/标签上
+        # 滚轮完全无效（实测 0.000 → 0.000）。而左栏占 1.67 屏高、处处是按钮，
+        # 用户几乎不可能把鼠标停在空白处 ⇒ 表现为"滚轮功能不存在"，
+        # 只能去拖那条 8px 宽的滚动条（这也是"功能入口加了却找不到"的成因之一）。
+        bound = bind_wheel_to_tree(left_panel, on_left_scroll)
+        logger.debug(f"[ui] 左栏滚轮绑定控件数: {bound}")
 
     def _log(self, message: str):
         """添加日志（线程安全）"""

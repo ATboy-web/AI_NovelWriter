@@ -8,8 +8,8 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 101 |
-| 依赖边数 | 324 |
+| 内部模块数 | 102 |
+| 依赖边数 | 325 |
 | 其中函数内延迟导入 | 61 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
@@ -181,7 +181,7 @@
 | `scene_detector` | — |
 | `secure_config` | 🔴`config`, 🔴`storage` |
 | `semantic_candidates` | ⚪`text_stats` |
-| `shell_ui` | 🔴`app`, ⚪`ai_client`, 🔴`async_runner`, ⚪`diagnostic_logger`, 🔴`dialogs`, ⚪`performance_monitor` |
+| `shell_ui` | 🔴`app`, ⚪`ai_client`, 🔴`async_runner`, ⚪`diagnostic_logger`, 🔴`dialogs`, ⚪`performance_monitor`, 🔴`ui_scroll` |
 | `skill_library` | ⚪`plugin_system`, 🔴`storage`, 🔴`token_estimator` |
 | `storage` | — |
 | `style_dna` | 🔴`storage`, ⚪`text_stats` |
@@ -190,6 +190,7 @@
 | `timeline_ui` | 🔴`app`, 🔴`async_runner`, ⚪`character_system`, 🔴`dialogs`, 🔴`lineage`, ⚪`memory_manager`, 🔴`storage` |
 | `token_estimator` | — |
 | `toolkit_ui` | 🔴`app`, 🔴`async_runner`, ⚪`diagnostic_logger`, 🔴`dialogs`, 🔴`format_converter`, 🔴`panels`, 🔴`panels.layout`, 🔴`panels.registry` |
+| `ui_scroll` | — |
 | `ui_style` | — |
 | `usage_tracker` | 🔴`events`, ⚪`providers.pricing`, 🔴`storage` |
 | `usage_ui` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`events`, 🔴`providers`, 🔴`providers.balance`, 🔴`providers.pricing`, 🔴`token_estimator`, 🔴`usage_tracker` |

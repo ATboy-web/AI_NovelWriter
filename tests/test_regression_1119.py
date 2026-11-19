@@ -269,3 +269,48 @@ class TestConceptNotPolluted:
         assert "concept = f\"{base_concept}" in body or "base_concept" in body, (
             "提示词应拼到局部变量 concept 上"
         )
+
+
+# ====================================================================== 默认不思考
+
+
+class TestThinkingDefaultsToOff:
+    """**不传 `thinking_enabled` ⇒ 不思考。**
+
+    改这条之前：`chat()` 默认跟随配置，而配置出厂是 `True`（设置页"深度思考"），
+    于是全仓 57 处调用里 **38 处**都在思考 —— 这不是"想得更深"，是"写不出来"：
+    思考与正文共用同一个 `max_tokens`，预算被吃光后 `content` 为空。
+    """
+
+    @staticmethod
+    def _resolve(explicit, master):
+        from app.ai_client import resolve_thinking_enabled
+
+        return resolve_thinking_enabled(explicit, master)
+
+    @pytest.mark.parametrize("master", [True, False])
+    def test_unset_means_off(self, master):
+        assert self._resolve(None, master) is False
+
+    def test_explicit_false_stays_off(self):
+        assert self._resolve(False, True) is False
+
+    def test_explicit_true_works_when_master_on(self):
+        """回归：关闭的修复不能把"显式要求思考"弄坏。"""
+        assert self._resolve(True, True) is True
+
+    def test_master_switch_can_veto(self):
+        """设置里的总开关仍能一票否决。"""
+        assert self._resolve(True, False) is False
+
+    def test_chat_no_longer_defaults_to_config(self):
+        """源码守卫：`chat()` 里不得再出现"默认继承配置"的写法。"""
+        import re
+
+        source = (REPO / "app" / "ai_client.py").read_text(encoding="utf-8")
+        code = re.sub(r'"""[\s\S]*?"""', "", source)
+        code = "\n".join(line for line in code.splitlines() if not line.strip().startswith("#"))
+        assert 'kwargs.get("thinking_enabled", self._as_bool' not in code, (
+            "又回到了「默认继承配置」——配置默认 True，等于全仓都在思考"
+        )
+        assert "resolve_thinking_enabled(" in code

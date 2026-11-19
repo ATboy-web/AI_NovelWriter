@@ -1034,10 +1034,24 @@ class AIClient:
         max_tokens = kwargs.get("max_tokens", self._cfg_int("max_tokens", 4096))
         temperature = kwargs.get("temperature", self._cfg_float("temperature", 0.8))
 
-        # 思考模式参数（修 P9：v2 里这两项从配置读取，但配置层从未定义过它们，
-        # 于是永远落到硬编码默认值；现在 config.DEFAULT_CONFIG 已补齐）
-        thinking_enabled = kwargs.get(
-            "thinking_enabled",
+        # 思考模式参数。
+        #
+        # 🔴 **默认不思考**（2026-11-19 改为不再继承全局配置的 True）。
+        #
+        # 原实现是 `kwargs.get("thinking_enabled", 配置里的 thinking_enabled)`，
+        # 而配置出厂默认 `True`（设置页的"深度思考模式"）——于是**全仓 57 处调用里
+        # 38 处**都在思考，包括正文分段、评审、角色成长、世界线检测、场景识别…
+        #
+        # 后果不是"想得更深"，而是"根本写不出来"：思考与正文共用同一个 max_tokens，
+        # 预算被推理吃光后 content 为空（实测 reasoning_len=5948/6086）。
+        # 这个应用没有任何"需要长链推理"的场景，思考在这里只有成本没有收益。
+        #
+        # 新语义：
+        #   - 不传 ⇒ 不思考（绝大多数生成类调用属此列）；
+        #   - 显式传 True ⇒ 思考，但仍受配置里的总开关约束（用户可以在设置里一票否决）；
+        #   - 显式传 False ⇒ 一定不思考。
+        thinking_enabled = resolve_thinking_enabled(
+            kwargs.get("thinking_enabled", None),
             self._as_bool(self.config.get("thinking_enabled", True), True),
         )
         reasoning_effort = kwargs.get("reasoning_effort", self.config.get("reasoning_effort", "high"))
@@ -1550,6 +1564,31 @@ class AIClient:
         if chat_result.reasoning:
             self._log_thinking(chat_result.reasoning)
         return self._finalize_text(chat_result, provider_name, "")
+
+
+def resolve_thinking_enabled(explicit, master_switch: bool) -> bool:
+    """决定本次调用是否启用思考。**默认不思考。**
+
+    三条规则（顺序即优先级）：
+
+    | explicit（调用方传的） | master_switch（设置里的总开关） | 结果 |
+    |---|---|---|
+    | 不传（None） | 任意 | **False** |
+    | False | 任意 | False |
+    | True | True | True |
+    | True | False | False |
+
+    为什么不传是 False 而不是跟随配置：配置出厂默认 True（设置页的"深度思考"），
+    全仓 57 处调用里 38 处不传参 ⇒ 它们全都在思考。而思考与正文共用同一个
+     预算，把预算吃光后  为空（实测 reasoning_len=5948/6086），
+    表现就是"正文写不出来 / JSON 解析失败"。这个应用没有需要长链推理的场景，
+    思考在这里只有成本没有收益。
+
+    保留  是为了让用户仍能在设置里**一票否决**（显式 True 也压不过它）。
+    """
+    if explicit is None:
+        return False
+    return bool(explicit) and bool(master_switch)
 
 
 def _label_adapter(label: str) -> OpenAICompatAdapter:

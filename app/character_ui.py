@@ -15,6 +15,7 @@ from loguru import logger
 from app import UIStyle, dialogs
 from app.async_runner import safe_after
 from app.biography import build_biography_prompt, read_story_arcs, split_sections, structured_biography
+from app.character_enrichment import build_enrich_prompt, is_empty_character, parse_enrichment
 from app.character_system import CharacterSystem
 from app.format_converter import FormatConverter, ImageManager
 from app.memory_manager import CharacterDataCorruptError, CharacterDataGuardError
@@ -198,12 +199,116 @@ class CharacterUIMixin:
                     # 同时同步到CharacterSystem
                     self._sync_characters_to_system(added, chapter_num)
                     self._log(f"[角色] 自动创建{len(added)}个新角色: {', '.join(added[:5])}")
+                    # 骨架建完立刻补人设：否则这些角色在后续章节里只有名字，
+                    # 模型对它们的言行没有任何约束（实测：苏清寒出场 65 次却无人设）。
+                    self._enrich_characters_silently(added)
         except (CharacterDataGuardError, CharacterDataCorruptError) as e:
             # 数据保护闸门触发：必须显式告知用户，不能只写进日志。
             self._log(f"[角色] ⚠️ 已阻止一次可能清空角色库的写入：{e}")
             logger.error(f"[character_ui] 角色写入被数据保护闸门拦截: {e}")
         except Exception as e:
             self._log(f"[角色] 角色检测异常: {type(e).__name__}: {e}")
+
+    def _enrich_characters_silently(self, names: list):
+        """为刚创建的角色补人设（后台静默，失败不影响主流程）。
+
+        与面板上的「补全空壳角色」按钮共用同一套 prompt/解析：
+        区别只在这里自动触发、面板由用户手动触发。
+        """
+        try:
+            if not names or not self.ai_client or not self.ai_client.is_configured():
+                return
+            characters = self.memory.get_characters() if self.memory else {}
+            # 只补"只有名字"的：用户手写过的人设一律不碰
+            targets = [n for n in names if n in characters and is_empty_character(characters[n])]
+            if not targets:
+                return
+
+            context = self._enrich_context(list(characters))
+            system, prompt = build_enrich_prompt(targets, context)
+            response = self.ai_client.chat(
+                [{"role": "user", "content": prompt}],
+                system=system,
+                max_tokens=2000,
+                thinking_enabled=False,
+            )
+            enriched = parse_enrichment(response, targets, parse_json_response)
+            if not enriched:
+                self._log(f"[角色] {len(targets)} 个新角色的人设补全未成功（保留骨架，不影响本章）")
+                return
+
+            self._apply_enrichment(enriched)
+            self._log(
+                f"[角色] 已补全 {len(enriched)} 个人设: {', '.join(list(enriched)[:5])}"
+            )
+        except Exception as e:  # noqa: BLE001 - 补人设是锦上添花，绝不能拖垮章节流程
+            self._log(f"[角色] 人设补全异常（已忽略）: {type(e).__name__}: {e}")
+
+    def _enrich_context(self, known_names: list) -> str:
+        """给补全用的世界上下文：书名、类型、已知角色。
+
+        只喂元信息，不喂正文 —— 正文片段会把补全变成"续写"，
+        容易让模型给新角色编造与主线冲突的剧情。
+        """
+        try:
+            meta = self._get_meta() or {}
+        except Exception:  # noqa: BLE001
+            meta = {}
+        parts = []
+        if meta.get("title"):
+            parts.append(f"书名：《{meta['title']}》")
+        if meta.get("genre"):
+            parts.append(f"类型：{meta['genre']}（{meta.get('sub_genre', '')}）")
+        if meta.get("concept"):
+            parts.append(f"核心概念：{str(meta['concept'])[:120]}")
+        others = [n for n in known_names if n][:15]
+        if others:
+            parts.append(f"已有人物：{'、'.join(others)}")
+        return "\n".join(parts)
+
+    def _apply_enrichment(self, enriched: dict):
+        """把补全结果同时写入 memory（`background`）与角色卡（`backstory`）。
+
+        ❗ 两处键名不同是既有事实（memory 用 AI 原始键 `background`，角色卡用 `backstory`），
+        只写一处就会出现"提示词里有、界面上没有"（或反之）。
+        """
+        def _mutate(chars: dict):
+            for name, fields in enriched.items():
+                target = chars.setdefault(name, {})
+                backstory = fields.get("backstory")
+                if backstory:
+                    target["background"] = backstory
+                for key in ("personality", "appearance", "goal", "relationship_to_main", "skill_suggestions"):
+                    if fields.get(key):
+                        target[key] = fields[key]
+
+        if self.memory:
+            self.memory.mutate_characters(_mutate)
+
+        if not self.character_system:
+            if self.current_novel_dir:
+                self.character_system = CharacterSystem(self.current_novel_dir)
+                self.character_system.load()
+            else:
+                return
+
+        for name, fields in enriched.items():
+            char = self.character_system.get_character(name)
+            if char is None:
+                continue
+            if fields.get("backstory"):
+                char.backstory = fields["backstory"]
+            if fields.get("personality"):
+                char.personality = fields["personality"]
+            if fields.get("appearance"):
+                char.appearance = fields["appearance"]
+            if fields.get("goal"):
+                char.goal = fields["goal"]
+            if fields.get("relationship_to_main"):
+                char.relationship_to_main = fields["relationship_to_main"]
+            if fields.get("skill_suggestions"):
+                char.skill_suggestions = list(fields["skill_suggestions"])
+            self.character_system.save_character(name)
 
     def _sync_characters_to_system(self, names: list, chapter_num: int):
         """同步角色到CharacterSystem"""
@@ -221,6 +326,70 @@ class CharacterUIMixin:
                 self.character_system.save_character(name)
         if names:
             self._update_char_display()
+
+    def _enrich_all_empty_characters(self):
+        """面板按钮：补全**所有**空壳角色的人设（分批调用 AI）。
+
+        为什么需要手动入口：自动补全只在"新角色被检测到"时触发，
+        历史上已经建好的空壳（以及自动补全失败的）需要一次性的补救手段。
+        """
+        if not self.ai_client or not self.ai_client.is_configured():
+            dialogs.showwarning("提示", "请先配置 AI")
+            return
+        if not self.memory:
+            dialogs.showwarning("提示", "请先打开一部小说")
+            return
+
+        characters = self.memory.get_characters() or {}
+        targets = [name for name, data in characters.items() if is_empty_character(data)]
+        if not targets:
+            dialogs.showinfo("提示", "没有缺少人设的角色")
+            return
+
+        batch_size = 6
+        batches = [targets[i : i + batch_size] for i in range(0, len(targets), batch_size)]
+        if not dialogs.askyesno(
+            "补全人设",
+            f"检测到 {len(targets)} 个角色缺少人设，将分 {len(batches)} 批调用 AI 补全。\n"
+            "只填空字段，不会覆盖已有内容。继续吗？",
+        ):
+            return
+
+        known = list(characters)
+        self._log(f"[角色] 开始补全 {len(targets)} 个空壳角色的人设（{len(batches)} 批）...")
+
+        def _enrich_worker():
+            total = 0
+            failed = 0
+            try:
+                context = self._enrich_context(known)
+                for index, batch in enumerate(batches, 1):
+                    try:
+                        system, prompt = build_enrich_prompt(batch, context)
+                        response = self.ai_client.chat(
+                            [{"role": "user", "content": prompt}],
+                            system=system,
+                            max_tokens=2000,
+                            thinking_enabled=False,
+                        )
+                        enriched = parse_enrichment(response, batch, parse_json_response)
+                        if enriched:
+                            self._apply_enrichment(enriched)
+                            total += len(enriched)
+                        else:
+                            failed += len(batch)
+                        self._log(f"[角色] 第 {index}/{len(batches)} 批完成（已补 {total} 个）")
+                    except Exception as exc:  # noqa: BLE001 - 单批失败不中断整体
+                        failed += len(batch)
+                        self._log(f"[角色] 第 {index}/{len(batches)} 批失败: {type(exc).__name__}: {exc}")
+            finally:
+                safe_after(self.root, self._update_char_display)
+                if total:
+                    self._log(f"[角色] 人设补全完成：成功 {total} 个，失败 {failed} 个")
+                else:
+                    self._log(f"[角色] 人设补全未成功（失败 {failed} 个），已有内容未改动")
+
+        threading.Thread(target=_enrich_worker, daemon=True).start()
 
     def _biography_materials(self, char_name: str) -> dict:
         """传记生成所需的全部材料：角色档案 / RAG 锚点 / 时间线事件 / 手工故事线 / 出场章。

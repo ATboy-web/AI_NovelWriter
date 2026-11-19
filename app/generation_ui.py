@@ -946,10 +946,16 @@ class GenerationMixin:
 {json.dumps([example], ensure_ascii=False)}
 如果没有明显的决策点，输出[]。只检测真正影响故事走向的选择。"""
 
+            # 1500 太小：思考一旦开启就会把预算吃光、content 为空，
+            # 调用方只能看到"没记录"，看不到"为什么没记录"。显式关掉思考。
             response = self.ai_client.chat(
-                [{"role": "user", "content": f"第{chapter_num}章:\n{content[:2000]}"}], system=system, max_tokens=1500
+                [{"role": "user", "content": f"第{chapter_num}章:\n{content[:2000]}"}],
+                system=system,
+                max_tokens=1500,
+                thinking_enabled=False,
             )
             if not response:
+                self._log(f"[世界线] 第{chapter_num}章 决策检测未返回内容，跳过（不影响本章正文）")
                 return
 
             # P2-7 收敛：此前这里是手写的三段式解析（约 55 行：括号深度追踪 →
@@ -972,10 +978,13 @@ class GenerationMixin:
                         data = {"decisions": parsed_decisions}
 
             if not data:
+                self._log(f"[世界线] 第{chapter_num}章 决策结果解析失败，跳过（不影响本章正文）")
                 return
 
             decisions = data.get("decisions", [])
             if not decisions:
+                # "本章没有决策点"是合法结果，但必须说出来 —— 否则和"功能没跑"无法区分
+                self._log(f"[世界线] 第{chapter_num}章 未检测到决策点")
                 return
 
             example_values = {v for v in example.values()}

@@ -8,8 +8,8 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 100 |
-| 依赖边数 | 323 |
+| 内部模块数 | 101 |
+| 依赖边数 | 324 |
 | 其中函数内延迟导入 | 61 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
@@ -104,8 +104,9 @@
 | `biography` | 🔴`storage` |
 | `bulk_rewrite` | ⚪`app`, ⚪`ai_client`, 🔴`async_runner`, 🔴`rework`, 🔴`storage`, 🔴`text_stats`, ⚪`writing_presets` |
 | `chapter_ui` | 🔴`app`, 🔴`dialogs`, 🔴`events`, ⚪`format_converter` |
+| `character_enrichment` | — |
 | `character_system` | 🔴`parsing`, 🔴`storage` |
-| `character_ui` | 🔴`app`, 🔴`async_runner`, 🔴`biography`, 🔴`character_system`, 🔴`dialogs`, 🔴`format_converter`, 🔴`memory_manager`, 🔴`parsing`, 🔴`storage`, 🔴`timeline_store` |
+| `character_ui` | 🔴`app`, 🔴`async_runner`, 🔴`biography`, 🔴`character_enrichment`, 🔴`character_system`, 🔴`dialogs`, 🔴`format_converter`, 🔴`memory_manager`, 🔴`parsing`, 🔴`storage`, 🔴`timeline_store` |
 | `cloud_storage` | ⚪`secure_config`, 🔴`storage` |
 | `config` | ⚪`secure_config`, 🔴`storage` |
 | `consistency` | — |

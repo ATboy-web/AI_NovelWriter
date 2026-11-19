@@ -568,6 +568,20 @@ class ShellMixin:
             padx=6,
             command=self._gen_char_biography,
         ).pack(side=tk.LEFT, padx=1)
+        # 「补全人设」：自动创建的角色只写名字不写人设（`_auto_detect_characters`
+        # 只落 category/faction/first_appearance），而后续章节的上下文注入读的正是
+        # 人设字段 —— 空着等于让模型自由发挥。自动流程已会静默补全，
+        # 这个按钮用于补救历史数据（以及自动补全失败时的兜底）。
+        tk.Button(
+            char_btn_frame,
+            text="补全人设",
+            font=UIStyle.font("caption"),
+            bg=C["info"],
+            fg="white",
+            relief=tk.FLAT,
+            padx=6,
+            command=self._enrich_all_empty_characters,
+        ).pack(side=tk.LEFT, padx=1)
         # 「详情」入口：此前 _show_char_detail（含重命名 / 休息恢复 / 故事线）
         # 是全仓零调用的孤儿对话框，这 3 项能力用户根本点不到。
         tk.Button(

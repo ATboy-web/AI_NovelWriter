@@ -854,11 +854,11 @@ class NovelAgent:
                 info = chars[name]
                 if isinstance(info, dict):
                     category = info.get("category", "未知")
-                    personality = info.get("personality", "")[:30]
-                    faction = info.get("faction", "")
-                    line = f"- [{category}] {name}: {personality}"
-                    if faction:
-                        line += f" (阵营:{faction})"
+                    line = self._format_character_line(name, info, category, compact=False)
+                    # 超预算就退回精简格式，**绝不因此丢掉这个角色**：
+                    # 角色从上下文消失比"信息少"危害大得多（模型会当他没出现过）。
+                    if used + len(line) > budget:
+                        line = self._format_character_line(name, info, category, compact=True)
                 else:
                     line = f"- {name}: {str(info)[:50]}"
                 if used + len(line) <= budget:
@@ -873,8 +873,9 @@ class NovelAgent:
                 if isinstance(info, dict):
                     category = info.get("category", "")
                     if category in ("主角", "女主角", "男主角", "关键人物"):
-                        personality = info.get("personality", "")[:20]
-                        line = f"- [{category}] {name}: {personality}"
+                        line = self._format_character_line(name, info, category, compact=False)
+                        if used + len(line) > budget:
+                            line = self._format_character_line(name, info, category, compact=True)
                         if used + len(line) <= budget:
                             result.append(line)
                             used += len(line)
@@ -937,6 +938,33 @@ class NovelAgent:
                 result.append(f"{key}: {val}")
                 used += len(val) + len(key) + 2
         return "\n".join(result)
+
+    @staticmethod
+    def _format_character_line(name: str, info: dict, category: str, *, compact: bool) -> str:
+        """渲染一行角色摘要。
+
+        `compact=True` 是**超预算时的降级格式**（只保留性格），
+        保证"角色不因字多而被整条丢弃"。
+        """
+        personality = info.get("personality", "")[:20 if compact else 30]
+        faction = info.get("faction", "")
+        line = f"- [{category}] {name}: {personality}"
+        if faction:
+            line += f" (阵营:{faction})"
+        if compact:
+            return line
+        # 只有核心角色才值得占篇幅写背景/目标；无名小卒写了也挤掉别人
+        if category in ("主角", "女主角", "男主角", "关键人物"):
+            backstory = str(info.get("backstory") or info.get("background") or "").strip()[:60]
+            goal = str(info.get("goal") or "").strip()[:20]
+            relationship = str(info.get("relationship_to_main") or "").strip()[:25]
+            if backstory:
+                line += f"｜背景:{backstory}"
+            if goal:
+                line += f"｜目标:{goal}"
+            if relationship:
+                line += f"｜与主角:{relationship}"
+        return line
 
     def _compress_characters(self, chars: dict, budget: int) -> str:
         core = ["name", "personality", "motivation"]

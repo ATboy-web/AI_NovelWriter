@@ -359,6 +359,64 @@ class GenerationMixin:
         """
         return parse_json_response(response, default)
 
+    def _build_chapter_context(self, ch_num: int, meta: dict | None = None) -> str:
+        """构建本章的上下文（前几章原文 + 整体/故事大纲 + 世界观 + 连贯性要求 + 内容模式）。
+
+        ❗ 这是 `_gen_chapter` 与 `_regen_current_chapter` 的**唯一**实现。
+        此前两个入口各有一份近乎相同的副本，diff 出三处差异，其中一处是真缺陷：
+        `_regen_current_chapter` 那份**漏了 18+/擦边注入** —— 用户开了内容模式后，
+        正常生成的章节带该指引，而"重新创作本章"的章节没有，同一本书风格不一致。
+
+        `meta` 可由调用方传入（它刚读过），避免重复读 meta.json。
+        """
+        if meta is None:
+            meta = self._get_meta()
+
+        prev_context = ""
+        chapters_dir = self.current_novel_dir / "chapters"
+        if chapters_dir.exists():
+            # 🔧 修复：获取所有章节文件，取最近3章（而非只匹配1个文件）
+            all_chapters = sorted(chapters_dir.glob("chapter_*.txt"))
+            recent_chapters = [f for f in all_chapters if f.stem < f"chapter_{ch_num:04d}"]
+            recent_chapters = recent_chapters[-3:]
+            if recent_chapters:
+                recent = []
+                for pf in recent_chapters:
+                    text = pf.read_text(encoding="utf-8")
+                    # 最近一章：开头回顾+完整结尾（连贯性关键）
+                    if pf == recent_chapters[-1]:
+                        ch_start = text[:800] if len(text) > 800 else text
+                        ch_end = text[-1500:] if len(text) > 2000 else text
+                        recent.append(f"【前一章·{pf.stem}开头回顾】\n{ch_start}")
+                        recent.append(f"【前一章·{pf.stem}结尾 — 必须紧接】\n{ch_end}")
+                    else:
+                        ch_sample = text[:600] if len(text) > 600 else text
+                        ch_tail = text[-400:] if len(text) > 1000 else ""
+                        recent.append(f"【{pf.stem}节选】\n{ch_sample}\n...(结尾) {ch_tail}")
+                prev_context = "\n\n---\n\n".join(recent)
+
+        outlines_ctx = self._get_outlines_context()
+        if outlines_ctx:
+            prev_context = outlines_ctx + "\n\n---\n\n" + prev_context
+
+        world_ctx = self._get_world_context()
+        if world_ctx:
+            prev_context = world_ctx + "\n\n---\n\n" + prev_context
+
+        # 添加强制连贯指令
+        coherence_hint = "\n\n【⚠️ 连贯性核心要求】\n1. 本章必须紧接前一章结尾的情节继续\n2. 不得更换世界观设定、场景类型、故事基调\n3. 保持与前几章一致的叙事风格和语言风格\n4. 所有已出现角色保持性格、关系、状态一致"
+        prev_context = prev_context + coherence_hint if prev_context else coherence_hint
+
+        # 🔥 18+/擦边内容注入
+        adult_content = self.config.get("adult_content", False)
+        edge_content = self.config.get("edge_content", False)
+        if adult_content or edge_content:
+            content_hint = self._build_content_hint(adult_content, edge_content, meta.get("genre", ""))
+            if content_hint:
+                prev_context = prev_context + "\n\n" + content_hint
+
+        return prev_context
+
     def _gen_chapter(self):
         """生成下一章"""
         if not self._check_ready():
@@ -382,48 +440,7 @@ class GenerationMixin:
                 meta = self._get_meta()
 
                 # 构建上下文（前几章完整内容 + 整体大纲 + 故事大纲）
-                prev_context = ""
-                chapters_dir = self.current_novel_dir / "chapters"
-                if chapters_dir.exists():
-                    # 🔧 修复：获取所有章节文件，取最近3章（而非只匹配1个文件）
-                    all_chapters = sorted(chapters_dir.glob("chapter_*.txt"))
-                    recent_chapters = [f for f in all_chapters if f.stem < f"chapter_{ch_num:04d}"]
-                    recent_chapters = recent_chapters[-3:]
-                    if recent_chapters:
-                        recent = []
-                        for pf in recent_chapters:
-                            text = pf.read_text(encoding="utf-8")
-                            # 最近一章：开头回顾+完整结尾（连贯性关键）
-                            if pf == recent_chapters[-1]:
-                                ch_start = text[:800] if len(text) > 800 else text
-                                ch_end = text[-1500:] if len(text) > 2000 else text
-                                recent.append(f"【前一章·{pf.stem}开头回顾】\n{ch_start}")
-                                recent.append(f"【前一章·{pf.stem}结尾 — 必须紧接】\n{ch_end}")
-                            else:
-                                ch_sample = text[:600] if len(text) > 600 else text
-                                ch_tail = text[-400:] if len(text) > 1000 else ""
-                                recent.append(f"【{pf.stem}节选】\n{ch_sample}\n...(结尾) {ch_tail}")
-                        prev_context = "\n\n---\n\n".join(recent)
-
-                outlines_ctx = self._get_outlines_context()
-                if outlines_ctx:
-                    prev_context = outlines_ctx + "\n\n---\n\n" + prev_context
-
-                world_ctx = self._get_world_context()
-                if world_ctx:
-                    prev_context = world_ctx + "\n\n---\n\n" + prev_context
-
-                # 添加强制连贯指令
-                coherence_hint = "\n\n【⚠️ 连贯性核心要求】\n1. 本章必须紧接前一章结尾的情节继续\n2. 不得更换世界观设定、场景类型、故事基调\n3. 保持与前几章一致的叙事风格和语言风格\n4. 所有已出现角色保持性格、关系、状态一致"
-                prev_context = prev_context + coherence_hint if prev_context else coherence_hint
-
-                # 🔥 18+/擦边内容注入
-                adult_content = self.config.get("adult_content", False)
-                edge_content = self.config.get("edge_content", False)
-                if adult_content or edge_content:
-                    content_hint = self._build_content_hint(adult_content, edge_content, meta.get("genre", ""))
-                    if content_hint:
-                        prev_context = prev_context + "\n\n" + content_hint
+                prev_context = self._build_chapter_context(ch_num, meta)
 
                 content = self.agent.generate_chapter(
                     ch_num,
@@ -1364,39 +1381,7 @@ class GenerationMixin:
                     chapter_info = self.outline[current_ch - 1]
 
                 # 构建上下文（前几章完整内容 + 整体大纲 + 故事大纲）
-                prev_context = ""
-                chapters_dir = self.current_novel_dir / "chapters"
-                if chapters_dir.exists():
-                    # 🔧 修复：获取所有章节文件，取最近3章（而非只匹配1个文件）
-                    all_chapters = sorted(chapters_dir.glob("chapter_*.txt"))
-                    recent_chapters = [f for f in all_chapters if f.stem < f"chapter_{current_ch:04d}"]
-                    recent_chapters = recent_chapters[-3:]
-                    if recent_chapters:
-                        recent = []
-                        for pf in recent_chapters:
-                            text = pf.read_text(encoding="utf-8")
-                            if pf == recent_chapters[-1]:
-                                ch_start = text[:800] if len(text) > 800 else text
-                                ch_end = text[-1500:] if len(text) > 2000 else text
-                                recent.append(f"【前一章·{pf.stem}开头回顾】\n{ch_start}")
-                                recent.append(f"【前一章·{pf.stem}结尾 — 必须紧接】\n{ch_end}")
-                            else:
-                                ch_sample = text[:600] if len(text) > 600 else text
-                                ch_tail = text[-400:] if len(text) > 1000 else ""
-                                recent.append(f"【{pf.stem}节选】\n{ch_sample}\n...(结尾) {ch_tail}")
-                        prev_context = "\n\n---\n\n".join(recent)
-
-                outlines_ctx = self._get_outlines_context()
-                if outlines_ctx:
-                    prev_context = outlines_ctx + "\n\n---\n\n" + prev_context
-
-                world_ctx = self._get_world_context()
-                if world_ctx:
-                    prev_context = world_ctx + "\n\n---\n\n" + prev_context
-
-                # 添加强制连贯指令
-                coherence_hint = "\n\n【⚠️ 连贯性核心要求】\n1. 本章必须紧接前一章结尾的情节继续\n2. 不得更换世界观设定、场景类型、故事基调\n3. 保持与前几章一致的叙事风格和语言风格\n4. 所有已出现角色保持性格、关系、状态一致"
-                prev_context = prev_context + coherence_hint if prev_context else coherence_hint
+                prev_context = self._build_chapter_context(current_ch, meta)
 
                 content = self.agent.generate_chapter(
                     current_ch,

@@ -706,7 +706,12 @@ class CharacterUIMixin:
             return
 
         names = self.character_system.get_character_names()
-        self.char_select_combo["values"] = names
+        # ❗ 下拉框只在**角色列表真的变了**时才重设：给 Combobox 塞 305 项是个不便宜
+        # 的 Tk 操作（实测占刷新耗时的大头），而刷新在切换角色、保存、EXP 奖励后
+        # 都会触发 —— 绝大多数时候列表根本没变。
+        if names != getattr(self, "_char_names_cache", None):
+            self.char_select_combo["values"] = names
+            self._char_names_cache = list(names)
 
         # 🔧 修复：同步下拉框选中项到当前活跃角色
         if self.character_system.active_name and self.character_system.active_name in names:
@@ -1014,10 +1019,18 @@ class CharacterUIMixin:
         self._generate_character_biography(name)
 
     def _on_char_select(self, event=None):
-        """切换活跃角色 - 重新加载确保显示最新数据"""
+        """切换活跃角色 —— 只重读**这一个**角色的文件。
+
+        ❗ 旧实现调 `character_system.load()`，而 `load()` → `_load_all()` 会遍历
+        `characters/*.json` 全量重解析。实测 305 个角色的作品里，切换一次角色
+        **166ms**（几乎全花在读 305 个 JSON 上），而用户只是想看另一个人的详情。
+
+        "显示最新数据"这个意图本身没错（用户可能在外部改过这个角色的文件），
+        所以仍然重读磁盘 —— 但只重读**选中的那个**，O(1) 而非 O(n)。
+        """
         name = self.char_select_var.get()
         if self.character_system and name:
-            self.character_system.load()  # 重新加载角色文件
+            self.character_system.reload_character(name)  # 单文件重读，失败则沿用内存中的旧对象
             self.character_system.set_active(name)
             self._update_char_display()
             self._log(f"切换到角色: {name}")

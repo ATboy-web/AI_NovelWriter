@@ -969,12 +969,20 @@ class ShellMixin:
         left_panel.update_idletasks()
         left_canvas.configure(scrollregion=left_canvas.bbox("all"))
 
-        # === 阅读管理器页 ===
+        # === 阅读管理器页（懒加载）===
+        #
+        # 实测 `_build_reader_ui` 本身约 **43ms**（不是早先误测的 310ms ——
+        # 那个数字把 `notebook.add` 触发的布局开销也算进去了）。
+        # 43ms 不算瓶颈，但这一页不在首屏：延后到首次切换再建，
+        # 可以少建 40 余个控件、缩短冷启动，也让"用不到的页不占资源"成为默认行为。
+        #
+        # 安全性：`self.reader_*` 全部只在 `reader_ui` 内部被使用，启动路径
+        # （shell_ui / lifecycle_ui）不引用它们（已 grep 确认），因此延后构建不会让
+        # 其他模块访问到不存在的属性。
         reader_frame = tk.Frame(self.notebook, bg=C["bg_dark"])
         self.notebook.add(reader_frame, text=" 阅读管理器 ")
-
-        # 阅读管理器内容
-        self._build_reader_ui(reader_frame)
+        self._lazy_tabs = {"reader": [reader_frame, self._build_reader_ui, False]}
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed_lazy, add="+")
 
         # === 写作技能页 ===
         writing_skills_frame = tk.Frame(self.notebook, bg=C["bg_dark"])
@@ -993,6 +1001,39 @@ class ShellMixin:
         # 只能去拖那条 8px 宽的滚动条（这也是"功能入口加了却找不到"的成因之一）。
         bound = bind_wheel_to_tree(left_panel, on_left_scroll)
         logger.debug(f"[ui] 左栏滚轮绑定控件数: {bound}")
+
+    def _on_tab_changed_lazy(self, event=None):
+        """页签懒加载：首次切到某页时才构建它的内容。
+
+        只对注册在 `self._lazy_tabs` 里的页签生效（目前是"阅读管理器"）。
+        构建成功后置位，重复切换不会重建。
+
+        **失败也置位**：避免用户每次切页都撞同一个异常；失败原因写日志，
+        页签留空但不影响其他功能（比"整窗启动失败"好）。
+        """
+        lazy = getattr(self, "_lazy_tabs", None)
+        if not lazy:
+            return
+        try:
+            current = str(self.notebook.select())
+        except Exception:  # noqa: BLE001 - 页签层异常不该影响主循环
+            return
+
+        for key, entry in list(lazy.items()):
+            frame, builder, built = entry
+            if built:
+                continue
+            try:
+                if str(frame) != current:
+                    continue
+            except Exception:  # noqa: BLE001
+                continue
+            try:
+                builder(frame)
+            except Exception as e:  # noqa: BLE001 - 单页构建失败不该拖垮整个界面
+                logger.warning(f"[ui] 懒加载页签「{key}」构建失败: {type(e).__name__}: {e}")
+            finally:
+                lazy[key] = [frame, builder, True]
 
     def _log(self, message: str):
         """添加日志（线程安全）"""

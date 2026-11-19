@@ -1619,14 +1619,21 @@ class GenerationMixin:
 
         meta = self._get_meta()
 
-        # 🔥 18+/擦边内容注入到概念中（影响世界观、角色、大纲生成）
+        # 🔥 18+/擦边内容注入（**只用于本次生成的 prompt，不写回 meta**）
+        #
+        # ❗ 旧实现是 `meta["concept"] = 原概念 + 提示词`，而 `_auto_generate` 结尾会
+        # `update_meta(meta)` 落盘 —— 于是：
+        #   1. 用户的 concept 被提示词挤占（项目里看到的就是「越交配越强\n\n【🔞 …」）；
+        #   2. **每跑一次自动创作就再追加一次**，同一段提示词无限堆叠。
+        # 提示词属于"本次请求的上下文"，不是作品元数据，因此改用局部变量承载。
+        base_concept = meta.get("concept", "")
+        concept = base_concept
         adult_content = self.config.get("adult_content", False)
         edge_content = self.config.get("edge_content", False)
         if adult_content or edge_content:
             content_hint = self._build_content_hint(adult_content, edge_content, meta.get("genre", ""))
             if content_hint:
-                original_concept = meta.get("concept", "")
-                meta["concept"] = original_concept + "\n\n" + content_hint if original_concept else content_hint
+                concept = f"{base_concept}\n\n{content_hint}" if base_concept else content_hint
                 self._log(f"[内容模式] 18+:{'开' if adult_content else '关'} 擦边:{'开' if edge_content else '关'}")
 
         def run():
@@ -1638,7 +1645,7 @@ class GenerationMixin:
                 settings_file = self.current_novel_dir / "memory" / "settings.json"
                 if not settings_file.exists():
                     try:
-                        concept = meta.get("concept", "")
+                        concept = concept
                         self.agent.generate_settings(meta["genre"], meta["title"], concept)
                         if concept:
                             self._log("[世界观] 已基于用户想法生成世界观")
@@ -1680,7 +1687,7 @@ class GenerationMixin:
                                 # 不同步的后果实测过：两份大纲失去主角约束，各自编出了不同的
                                 # 主角名（「苏妩」/「沈夜」），而章节大纲与正文是「陆昭」。
                                 # 注意是**逐键赋值**而不是 `meta = update_meta(...)` ——
-                                # 后者会用磁盘旧值覆盖掉上面刚注入的 `concept` 擦边提示。
+                                # 后者会把磁盘旧值整份套回内存副本，抹掉本次刚推导出的键。
                                 meta["protagonist"] = protagonist
                                 self._log(f"[角色] 主角已锁定: {protagonist}")
                         else:
@@ -1697,7 +1704,7 @@ class GenerationMixin:
                 outline_file = self.current_novel_dir / "outline.json"
                 if not outline_file.exists() or not self.outline:
                     try:
-                        concept = meta.get("concept", "")
+                        concept = concept
                         real_total = meta.get("total_chapters", meta.get("chapter_count"))
                         # 大题纲分批生成，超过50章先打前站
                         outline_count = min(real_total, 50) if real_total > 10 else real_total
@@ -1715,8 +1722,10 @@ class GenerationMixin:
                         # 这里曾用 `write_meta(meta)`，而 `meta` 是 `:1481` 的旧快照 ——
                         # 实测把 `:1537` 刚写好的 `protagonist` **整份覆盖抹掉了**
                         # （铁证：`meta.json.bak` 有 `protagonist:"陆昭"`，`meta.json` 没有）。
-                        # `update_meta` 会在锁内先读盘再合并，磁盘独有的键不会被覆盖，
-                        # 而本函数要持久化的 `concept` 擦边提示仍在内存副本里，拼接结果不变。
+                        # `update_meta` 会在锁内先读盘再合并，磁盘独有的键不会被覆盖。
+                        # ⚠️ 注意 `meta[concept]` 此时**仍是用户原值**：18+/擦边提示词
+                        # 只存在于局部变量 `concept` 里供本次生成使用，不写回元数据
+                        # （旧实现写回，导致提示词每跑一次就堆叠一次）。
                         self._novel_store().update_meta(meta)
                         safe_after(self.root, self._refresh_outline_list)
                         self._log(f"大纲已生成: {len(self.outline)}章 (总计划{real_total}章)")
@@ -1736,7 +1745,7 @@ class GenerationMixin:
 
                 if not overall_file.exists() or not stories_file.exists():
                     self._log("自动生成整体大纲和故事大纲...")
-                    concept = meta.get("concept", "")
+                    concept = concept
                     chapter_outline = self.outline  # 已生成的章节大纲作为上下文
 
                     # 生成整体大纲
@@ -1946,7 +1955,7 @@ class GenerationMixin:
 
                                 if not chapter_summary or chapter_summary == "待规划":
                                     # 注入世界观和概念到大纲，让 AI 有明确创作方向
-                                    concept_text = meta.get("concept", "")
+                                    concept_text = concept
                                     genre_text = meta.get("genre", "")
                                     chapter_summary = f"【{genre_text}】{concept_text[:150]}。第{ch_num}章：请基于世界观设定创作该章情节，保持风格一致。"
                             except Exception:

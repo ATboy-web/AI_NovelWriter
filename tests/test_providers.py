@@ -360,17 +360,32 @@ class TestReasoningAdapter:
         assert body["reasoning_effort"] == "medium"
         assert "temperature" not in body
 
-    def test_deepseek_without_thinking_keeps_temperature(self):
+    def test_deepseek_without_thinking_sends_explicit_disable(self):
+        """关闭思考必须**显式发送** 。
+
+        ❗ 这条断言原先是  —— 那正是缺陷本身：
+        DeepSeek 文档写明「省略  或传 null 时，模式由 
+        决定；两者都未提供 ⇒ **默认开启思考**」。所以不发送开启参数≠关闭，
+        实测正文分段与评审仍被思考吃光预算（，content 为空）。
+        """
         body = adapter_for("deepseek").build_request(req(thinking_enabled=False)).json_body
-        assert "thinking" not in body
+        assert body["thinking"] == {"type": "disabled"}
+        assert "reasoning_effort" not in body
         assert body["temperature"] == 0.7
 
     def test_small_request_disables_thinking(self):
-        """v2 的保护必须保留：小请求开思考会把预算耗光，content 为空。"""
+        """小请求开思考会把预算耗光，content 为空 —— 必须显式关掉（不是"不发送"）。"""
+        expected = {
+            "deepseek": {"type": "disabled"},
+            "glm": {"type": "disabled"},
+            "kimi": {"type": "disabled"},
+        }
         for key in ("deepseek", "glm", "qwen", "kimi"):
             body = adapter_for(key).build_request(req(thinking_enabled=True, max_tokens=500)).json_body
-            assert "thinking" not in body, key
-            assert "enable_thinking" not in body, key
+            if key == "qwen":
+                assert body["enable_thinking"] is False, key
+            else:
+                assert body["thinking"] == expected[key], key
 
     def test_threshold_boundary(self):
         body = adapter_for("deepseek").build_request(req(thinking_enabled=True, max_tokens=1000)).json_body

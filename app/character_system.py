@@ -137,9 +137,14 @@ class CharacterProfile:
         self.skills = []
         self.inventory = []
         self.achievements = []
-        self.backstory = ""  # 角色背景故事
+        self.backstory = ""  # 角色背景故事（AI 侧键名为 background，见 _load_from_dict）
         self.personality = ""  # 性格特点
         self.appearance = ""  # 外貌描述
+        # 以下三项原先**根本不存在**：`generate_characters` 的提示词要求 AI 输出它们，
+        # 但数据类不接收 ⇒ AI 写了也白写（静默丢弃）。
+        self.goal = ""  # 角色核心目标
+        self.relationship_to_main = ""  # 与主角的关系
+        self.skill_suggestions: list = []  # 建议技能
         self.stats = {
             "总战斗次数": 0,
             "胜利次数": 0,
@@ -181,9 +186,16 @@ class CharacterProfile:
         self.skills = data.get("skills", [])
         self.inventory = data.get("inventory", [])
         self.achievements = data.get("achievements", [])
-        self.backstory = data.get("backstory", "")
+        # 🔴 键名兼容：`generate_characters` 的提示词让 AI 输出 `background`，
+        # 而本字段叫 `backstory` —— 只认后者会让 AI 写的背景**每次都被丢掉**
+        # （实测：秦种玉的 backstory 为空，而同批的 personality/appearance 有内容）。
+        self.backstory = data.get("backstory") or data.get("background", "") or ""
         self.personality = data.get("personality", "")
         self.appearance = data.get("appearance", "")
+        self.goal = data.get("goal", "") or ""
+        self.relationship_to_main = data.get("relationship_to_main", "") or ""
+        suggestions = data.get("skill_suggestions", [])
+        self.skill_suggestions = list(suggestions) if isinstance(suggestions, (list, tuple)) else []
         self.stats = data.get("stats", {})
         self.created_at = data.get("created_at", datetime.now().isoformat())
         # 新增字段
@@ -216,6 +228,9 @@ class CharacterProfile:
             "backstory": self.backstory,
             "personality": self.personality,
             "appearance": self.appearance,
+            "goal": self.goal,
+            "relationship_to_main": self.relationship_to_main,
+            "skill_suggestions": list(self.skill_suggestions),
             "stats": self.stats,
             "created_at": self.created_at,
             "category": self.category,

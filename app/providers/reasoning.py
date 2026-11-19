@@ -14,6 +14,13 @@
 
 ⚠️ 关键约定：**小于 1000 max_tokens 时一律关闭思考** —— 否则思考过程会把
 本就不多的 token 预算耗尽，`content` 为空（旧实现已有的保护，必须保留）。
+
+🔴 **「关闭」必须是显式的**（2026-11-19 修正，踩过一次）：
+DeepSeek 文档写明「省略 `thinking` 或传 `null` 时，模式由 `reasoning_effort` 决定；
+两者都未提供 ⇒ **默认开启思考**」。所以"不发送开启参数"**不等于**关闭 ——
+必须发送 `thinking={"type":"disabled"}`（qwen 为 `enable_thinking=false`）。
+上一版只做了"不发送 enabled"，结果正文分段与评审仍被思考吃光预算
+（实测 `reasoning_len=5948/6086`，`finish=length`，`content` 为空）。
 """
 
 from __future__ import annotations
@@ -21,7 +28,13 @@ from __future__ import annotations
 from .base import ChatRequest
 from .openai_compat import OpenAICompatAdapter
 
-__all__ = ["ReasoningAdapter", "THINKING_STYLES", "apply_thinking_style"]
+__all__ = [
+    "ReasoningAdapter",
+    "THINKING_DISABLERS",
+    "THINKING_STYLES",
+    "apply_thinking_disable",
+    "apply_thinking_style",
+]
 
 #: 低于该 max_tokens 时禁用思考模式
 THINKING_MIN_TOKENS = 1000
@@ -50,6 +63,24 @@ def _style_qwen(body: dict, req: ChatRequest) -> None:
     body["thinking_budget"] = req.max_tokens // 2
 
 
+def _disable_deepseek(body: dict, req: ChatRequest) -> None:
+    # 显式关闭：省略该字段会被服务端当作"默认开启"
+    body["thinking"] = {"type": "disabled"}
+    # reasoning_effort 在 disabled 下会被忽略，但仍移除以免个别网关按它判定
+    body.pop("reasoning_effort", None)
+
+
+def _disable_glm(body: dict, req: ChatRequest) -> None:
+    body["thinking"] = {"type": "disabled"}
+    body.pop("reasoning_effort", None)
+
+
+def _disable_qwen(body: dict, req: ChatRequest) -> None:
+    # 通义的开关是布尔字段，没有 type 子结构
+    body["enable_thinking"] = False
+    body.pop("thinking_budget", None)
+
+
 def _style_kimi(body: dict, req: ChatRequest) -> None:
     # kimi-k2.7-code 始终思考，不接受 thinking 参数
     if "k2.7" in (req.model or "").lower():
@@ -64,6 +95,24 @@ THINKING_STYLES = {
     "qwen": _style_qwen,
     "kimi": _style_kimi,
 }
+
+
+#: 关闭思考的写法。**凡 `THINKING_STYLES` 里有的风格都必须在这里出现**，
+#: 否则该家的"关闭"仍然是空操作（向服务端默认值投降）。
+THINKING_DISABLERS = {
+    "deepseek": _disable_deepseek,
+    "glm": _disable_glm,
+    "qwen": _disable_qwen,
+    "kimi": _disable_glm,  # kimi 与 glm 同为 thinking.type 结构
+}
+
+
+def apply_thinking_disable(style: str, body: dict, req: ChatRequest) -> dict:
+    """就地写入"关闭思考"参数，返回同一个 dict。"""
+    disable = THINKING_DISABLERS.get(style)
+    if disable is not None:
+        disable(body, req)
+    return body
 
 
 def apply_thinking_style(style: str, body: dict, req: ChatRequest) -> dict:
@@ -86,8 +135,15 @@ class ReasoningAdapter(OpenAICompatAdapter):
 
         request = req if thinking == req.thinking_enabled else _clone_with_thinking(req, thinking)
         prepared = super().build_request(request)
+        style = self.spec.thinking_style
         if thinking:
-            apply_thinking_style(self.spec.thinking_style, prepared.json_body, request)
+            apply_thinking_style(style, prepared.json_body, request)
+        else:
+            # 🔴 必须显式禁用：省略 thinking 字段会被服务端按 reasoning_effort
+            # 或"默认开启"处理（DeepSeek 文档明文如此）。这里覆盖两种情况：
+            #   - 调用方本来就要求关闭；
+            #   - max_tokens 太小被上面强制关闭。
+            apply_thinking_disable(style, prepared.json_body, request)
         return prepared
 
 

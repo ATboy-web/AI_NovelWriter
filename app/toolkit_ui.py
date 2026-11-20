@@ -242,7 +242,7 @@ class ToolkitUIMixin:
                 self._log("[封面] 已保存到 cover/ 目录")
                 safe_after(
                     self.root,
-                                        lambda: dialogs.showinfo(
+                    lambda: dialogs.showinfo(
                         "完成",
                         "封面已生成:\n- 提示词: cover/cover_prompt.txt\n- 预览: cover/cover_preview.html\n\n将提示词复制到Midjourney/SD即可生成封面图",
                     ),
@@ -620,7 +620,9 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                             )
                             if success:
                                 self._log("下载成功！")
-                                safe_after(self.root, lambda: dialogs.showinfo("成功", f"小说已从 {provider_name} 下载"))
+                                safe_after(
+                                    self.root, lambda: dialogs.showinfo("成功", f"小说已从 {provider_name} 下载")
+                                )
                             else:
                                 self._log("下载失败")
                                 safe_after(self.root, lambda: dialogs.showerror("失败", "下载失败"))

@@ -424,9 +424,7 @@ class TestScan:
     def test_qc_blocker_found(self, novel: Path):
         """翻案腔密集 ⇒ 阻断项 ⇒ 建议回炉。"""
         body = "这不是存更多，而是记得更准。" * 120
-        (novel / "chapters" / "chapter_0005.txt").write_text(
-            "# 第5章：交界弃子" + NL + NL + body, encoding="utf-8"
-        )
+        (novel / "chapters" / "chapter_0005.txt").write_text("# 第5章：交界弃子" + NL + NL + body, encoding="utf-8")
         found = scan(novel, min_hanzi=100)
         assert found and found[0]["reason_code"] == "qc_blocker"
         assert "证据" not in found[0] or True  # 证据字段由 evidence 承载
@@ -457,6 +455,7 @@ class TestScan:
 
 
 # ====================================================================== 面板联动（不建 Tk）
+
 
 class TestPanelIntegration:
     def test_panel_registered(self):

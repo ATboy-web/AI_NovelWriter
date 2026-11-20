@@ -238,9 +238,7 @@ class CharacterUIMixin:
                 return
 
             self._apply_enrichment(enriched)
-            self._log(
-                f"[角色] 已补全 {len(enriched)} 个人设: {', '.join(list(enriched)[:5])}"
-            )
+            self._log(f"[角色] 已补全 {len(enriched)} 个人设: {', '.join(list(enriched)[:5])}")
         except Exception as e:  # noqa: BLE001 - 补人设是锦上添花，绝不能拖垮章节流程
             self._log(f"[角色] 人设补全异常（已忽略）: {type(e).__name__}: {e}")
 
@@ -272,6 +270,7 @@ class CharacterUIMixin:
         ❗ 两处键名不同是既有事实（memory 用 AI 原始键 `background`，角色卡用 `backstory`），
         只写一处就会出现"提示词里有、界面上没有"（或反之）。
         """
+
         def _mutate(chars: dict):
             for name, fields in enriched.items():
                 target = chars.setdefault(name, {})

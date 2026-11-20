@@ -196,10 +196,18 @@ ai-novel-writer/
 
 ## 发布流程
 
-1. 更新版本号（`pyproject.toml` 和 `build.gradle.kts`）
-2. 更新 CHANGELOG.md
-3. 创建 Git tag
-4. GitHub Actions 自动构建和发布
+> 完整规范见 [`docs/VERSION_RELEASE_SPEC.md`](docs/VERSION_RELEASE_SPEC.md)；
+> 以下每一步都由 `tests/test_version_consistency.py` 门禁校验。
+
+1. 改版本号，**四处保持一致**（权威源在前）：
+   - `pyproject.toml` 的 `version`
+   - `app/__init__.py` 的 `_FALLBACK_VERSION`（冻结 EXE 读不到元数据时的回退值）
+   - `README.md` 的标题与下载表版本列
+   - `README_EN.md` 的标题与下载表版本列（只改中文版会被门禁拦下）
+2. 在 `CHANGELOG.md` 顶部新增对应版本段落（CI 的发布说明由它派生，不要手写 Release 正文）
+3. 如需交付桌面版：`cd installer && pyinstaller novel_app.spec`，产物放在 `--distpath` 的上一级
+4. 提交后创建**附注**标签并推送：`git tag -a vX.Y.Z -m "…"` → `git push origin refs/tags/vX.Y.Z`
+5. GitHub Actions 在收到 `v*` 标签后自动构建 EXE 并创建 Release
 
 ## 行为准则
 

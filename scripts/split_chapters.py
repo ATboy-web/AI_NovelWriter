@@ -148,8 +148,7 @@ def slice_paragraphs(
 
         # 该切了：已够字数，且（当前段是新场景 或 已明显超出目标）
         if current.paragraphs and (
-            (current.hanzi >= target and (scene or current.hanzi >= target * 1.35))
-            or current.hanzi >= target * 1.6
+            (current.hanzi >= target and (scene or current.hanzi >= target * 1.35)) or current.hanzi >= target * 1.6
         ):
             slices.append(current)
             current = Slice(index=len(slices), starts_scene=scene)

@@ -176,6 +176,7 @@ class TestSimulateBattle:
 
     def test_crit_doubles_damage(self, system: CharacterSystem):
         """幸运 100 ⇒ 必暴击 ⇒ 伤害翻倍（与幸运 0 对比）。"""
+
         def run(luck: int) -> int:
             character = CharacterProfile(f"运气{luck}")
             character.attributes.update({"力量": 50, "体质": 100, "幸运": luck})

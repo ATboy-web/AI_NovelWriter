@@ -221,7 +221,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         item["path"].write_text(payload, encoding="utf-8")
         filled += 1
 
-    print(f"已补 {filled} 章" + ("" if args.dry_run else f"（备份：{backup_dir.relative_to(novel) if backup_dir else '-'}）"))
+    print(
+        f"已补 {filled} 章"
+        + ("" if args.dry_run else f"（备份：{backup_dir.relative_to(novel) if backup_dir else '-'}）")
+    )
     for row in skipped[:10]:
         print(f"  跳过第{row['chapter']}章：{row['reason']}")
     if args.dry_run:

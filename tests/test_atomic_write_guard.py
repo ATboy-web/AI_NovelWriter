@@ -78,7 +78,7 @@ def _is_comment_or_doc(line: str) -> bool:
         return True
     # 文档里**引用代码**也是在解释为什么不用它：这一行含反引号包裹的调用，
     # 不可能是真实写盘语句（真实语句不会带 markdown 反引号）。
-    if '`open(' in stripped or '`write_text(' in stripped:
+    if "`open(" in stripped or "`write_text(" in stripped:
         return True
     return any(marker in stripped for marker in ("为什么", "旧实现", "原先", "裸 `open"))
 
@@ -109,9 +109,7 @@ def _allowed(rel: str, line: str) -> bool:
 
 class TestAtomicWriteGuard:
     def test_no_unregistered_raw_writes(self):
-        offenders = [
-            f"{rel}:{number} {line[:80]}" for rel, number, line in scan() if not _allowed(rel, line)
-        ]
+        offenders = [f"{rel}:{number} {line[:80]}" for rel, number, line in scan() if not _allowed(rel, line)]
         assert not offenders, (
             "以下位置是裸写且未登记理由。若确实是一次性导出，请加入 ALLOWED_RAW_WRITES 并写明原因；"
             "若是状态/配置，请改用 atomic_write_text / atomic_write_json：\n  " + "\n  ".join(offenders)

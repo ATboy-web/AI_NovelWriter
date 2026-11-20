@@ -240,11 +240,7 @@ class TestTenChapterChecklist:
         checklist.append(("正文 10 章", len(chapters) == 10, "10 章齐全", f"实际 {len(chapters)} 章"))
 
         # 2 章标题规范
-        bad_title = [
-            p.name
-            for p in chapters
-            if not p.read_text(encoding="utf-8").lstrip().startswith("#")
-        ]
+        bad_title = [p.name for p in chapters if not p.read_text(encoding="utf-8").lstrip().startswith("#")]
         checklist.append(("章节首行是 # 标题", not bad_title, "全部规范", f"异常：{bad_title}"))
 
         # 3 摘要齐全
@@ -252,11 +248,7 @@ class TestTenChapterChecklist:
         checklist.append(("10 章都有摘要", not missing, "全部有", f"缺：{missing}"))
 
         # 4 摘要不是思维链/占位
-        thin = [
-            n
-            for n in range(1, 11)
-            if count_hanzi(memory.get_chapter_summary(n) or "") < 10
-        ]
+        thin = [n for n in range(1, 11) if count_hanzi(memory.get_chapter_summary(n) or "") < 10]
         checklist.append(("摘要长度合理", not thin, "均 ≥10 汉字", f"过短：{thin}"))
 
         # 5 索引落盘且覆盖 10 章
@@ -309,9 +301,7 @@ class TestReworkHandoff:
             _write_chapter(novel, number)
         # 第 3 章塞满翻案腔（阻断项），第 5 章标题是占位符
         broken = NL.join(["这不是存更多，而是记得更准。"] * 60)
-        (novel / "chapters" / "chapter_0003.txt").write_text(
-            f"# 第3章 测试3{NL}{NL}{broken}", encoding="utf-8"
-        )
+        (novel / "chapters" / "chapter_0003.txt").write_text(f"# 第3章 测试3{NL}{NL}{broken}", encoding="utf-8")
         (novel / "chapters" / "chapter_0005.txt").write_text(
             f"# 第5章{NL}{NL}" + "正常正文内容。" * 100, encoding="utf-8"
         )

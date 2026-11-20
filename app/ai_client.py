@@ -1251,9 +1251,7 @@ class AIClient:
         )
         if result.reasoning:
             self._log_thinking(result.reasoning)
-        return self._finalize_text(
-            result, adapter.label, model, allow_reasoning_fallback=allow_reasoning_fallback
-        )
+        return self._finalize_text(result, adapter.label, model, allow_reasoning_fallback=allow_reasoning_fallback)
 
     def _send(self, adapter: ProviderAdapter, spec: ProviderSpec, base: str, request: ChatRequest, api_key: str):
         """发送请求并对**瞬时故障**做指数退避重试（修 P3）。

@@ -946,7 +946,7 @@ class NovelAgent:
         `compact=True` 是**超预算时的降级格式**（只保留性格），
         保证"角色不因字多而被整条丢弃"。
         """
-        personality = info.get("personality", "")[:20 if compact else 30]
+        personality = info.get("personality", "")[: 20 if compact else 30]
         faction = info.get("faction", "")
         line = f"- [{category}] {name}: {personality}"
         if faction:
@@ -1231,7 +1231,9 @@ class NovelAgent:
         system = '你是专业情节设计师。分析章节大纲，输出JSON: {"type": "opening/writing/action/dialogue/ending", "pace": "slow/medium/fast", "foreshadowing": []}'
         prompt = f"第{chapter_num}章: {title}\n大纲: {outline[:500]}"
         try:
-            response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=1000, thinking_enabled=False)
+            response = self.ai.chat(
+                [{"role": "user", "content": prompt}], system=system, max_tokens=1000, thinking_enabled=False
+            )
             # P2-7 收敛：此前这里是手写的「括号深度追踪 + 正则兜底」两段解析
             # （约 30 行，含 `import re`、两处 `re.sub` 尾逗号修复）。
             # 改为走全仓唯一实现 `parse_json_response`：其 Strategy 1（截取 `{…}`）/
@@ -1756,7 +1758,9 @@ class NovelAgent:
   "扩展提示": ["后续可以发展的方向1", "后续可以发展的方向2"]
 }"""
         prompt = f"小说类型：{genre}\n标题：{title}\n概念：{concept}\n\n请生成一个灵活、可扩展的世界观。"
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=3000, thinking_enabled=False)
+        response = self.ai.chat(
+            [{"role": "user", "content": prompt}], system=system, max_tokens=3000, thinking_enabled=False
+        )
         settings = self._parse_json_response(response, {"raw": response})
         # ERR-2修复: 验证settings不为空或None
         # R21 修复：`parse_json_response` 在 **期望 dict 但 AI 返回顶层数组** 时会
@@ -1838,7 +1842,9 @@ class NovelAgent:
         response = None
         for attempt in range(3):
             try:
-                response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=12000, thinking_enabled=False)
+                response = self.ai.chat(
+                    [{"role": "user", "content": prompt}], system=system, max_tokens=12000, thinking_enabled=False
+                )
             except Exception as e:
                 if "401" in str(e) or "Authorization" in str(e) or "API Key" in str(e):
                     raise  # 认证错误不重试
@@ -2131,7 +2137,9 @@ class NovelAgent:
         system = f"你是专业故事架构师。为{chapter_count}章长篇规划故事弧线。输出简洁文本。"
         prompt = f"类型:{genre} 标题:{title} 概念:{concept[:200]}\n为{chapter_count}章规划: 1.开端(前15%) 2.发展(15-70%) 3.高潮(70-90%) 4.结局(90-100%)。每段50字。"
         try:
-            response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=1500, thinking_enabled=False)
+            response = self.ai.chat(
+                [{"role": "user", "content": prompt}], system=system, max_tokens=1500, thinking_enabled=False
+            )
             return response or ""
         except Exception as e:
             self.log(f"[故事弧线规划] 失败: {e}")
@@ -2152,7 +2160,12 @@ class NovelAgent:
         prompt = f"类型:{genre} 标题:{title} 从第{start_num}章起{count}章。{concept}"
 
         # 增加max_tokens: 每章约60 tokens，加上buffer
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=max(count * 150, 4000), thinking_enabled=False)
+        response = self.ai.chat(
+            [{"role": "user", "content": prompt}],
+            system=system,
+            max_tokens=max(count * 150, 4000),
+            thinking_enabled=False,
+        )
         outline = self._parse_json_response(response, [], is_list=True)
 
         if not outline or len(outline) < count:
@@ -2190,7 +2203,9 @@ class NovelAgent:
             f"输出JSON数组：[{{'chapter':{current_count + 1},'title':'','summary':'','key_events':[],'characters_involved':[]}}]"
         )
         prompt = f"小说类型：{genre}\n标题：{title}\n续写{add_count}章，从第{current_count + 1}章开始"
-        response = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=4000, thinking_enabled=False)
+        response = self.ai.chat(
+            [{"role": "user", "content": prompt}], system=system, max_tokens=4000, thinking_enabled=False
+        )
         outline = self._parse_json_response(response, [], is_list=True)
         if not outline:
             outline = [
@@ -2569,7 +2584,9 @@ class NovelAgent:
 
         prompt = f"请分析以下文本的写作风格（作者：{author_name}）：\n\n{text[:3000]}"
 
-        result = self.ai.chat([{"role": "user", "content": prompt}], system=system, max_tokens=2000, thinking_enabled=False)
+        result = self.ai.chat(
+            [{"role": "user", "content": prompt}], system=system, max_tokens=2000, thinking_enabled=False
+        )
         style = self._parse_json_response(result, {"author": author_name, "raw": result})
         # R21 修复：同 `_world_builder` —— 期望 dict 但拿到 list 时必须降级，
         # 否则这个 list 会被当成"风格配置"返回并参与后续拼装（下游多处按 dict 取值）。
@@ -2821,9 +2838,7 @@ class NovelAgent:
                     # 无法确定是否断句 ⇒ **宁可不动**。静默是最安全的选择。
                     # 措辞要如实：这句原本写"判为完整"，但实际含义是"判不出来所以不动"，
                     # 看日志的人会误以为系统确认了完整性。
-                    self.log(
-                        f"[Writer] 第{chapter_num}章末尾以「{last_char}」收尾，无法判定是否断句，保持原样不补全"
-                    )
+                    self.log(f"[Writer] 第{chapter_num}章末尾以「{last_char}」收尾，无法判定是否断句，保持原样不补全")
 
         return result
 

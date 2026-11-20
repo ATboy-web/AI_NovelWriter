@@ -58,11 +58,9 @@ class TestThinkingAlwaysExplicit:
         return rows
 
     def test_no_chat_call_relies_on_server_default(self):
-        missing = [
-            f"行 {line} ({func})" for line, func, kwargs in self._calls() if "thinking_enabled" not in kwargs
-        ]
-        assert not missing, (
-            "以下调用没传 thinking_enabled，会掉进 DeepSeek 的「默认开启思考」：\n  " + "\n  ".join(missing)
+        missing = [f"行 {line} ({func})" for line, func, kwargs in self._calls() if "thinking_enabled" not in kwargs]
+        assert not missing, "以下调用没传 thinking_enabled，会掉进 DeepSeek 的「默认开启思考」：\n  " + "\n  ".join(
+            missing
         )
 
     def test_call_count_is_sane(self):
@@ -260,15 +258,11 @@ class TestConceptNotPolluted:
 
     def test_meta_concept_is_never_assigned(self):
         body = self._auto_generate_source()
-        assert 'meta["concept"] =' not in body, (
-            "又在往 meta['concept'] 写东西了：提示词会被落盘并逐次堆叠"
-        )
+        assert 'meta["concept"] =' not in body, "又在往 meta['concept'] 写东西了：提示词会被落盘并逐次堆叠"
 
     def test_content_hint_goes_to_local_variable(self):
         body = self._auto_generate_source()
-        assert "concept = f\"{base_concept}" in body or "base_concept" in body, (
-            "提示词应拼到局部变量 concept 上"
-        )
+        assert 'concept = f"{base_concept}' in body or "base_concept" in body, "提示词应拼到局部变量 concept 上"
 
 
 # ====================================================================== 默认不思考

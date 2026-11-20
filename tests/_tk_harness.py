@@ -57,9 +57,7 @@ _CREATE_COUNT_LOG = pathlib.Path(tempfile.gettempdir()) / "anw_tk_create_count.t
 
 def _flush_create_count() -> None:
     try:
-        _CREATE_COUNT_LOG.write_text(
-            f"creations={_CREATE_COUNT} final_handles={_handle_count()}", encoding="utf-8"
-        )
+        _CREATE_COUNT_LOG.write_text(f"creations={_CREATE_COUNT} final_handles={_handle_count()}", encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
 
@@ -290,8 +288,7 @@ def optional_root():
         return create_root()
     except TkUnavailable as exc:
         warnings.warn(
-            f"[tk-harness] Tk 不可用，跳过本用例（{exc}）。"
-            f"现场记录见 {FAILURE_LOG}；若本机本应有显示环境请据此排查。",
+            f"[tk-harness] Tk 不可用，跳过本用例（{exc}）。现场记录见 {FAILURE_LOG}；若本机本应有显示环境请据此排查。",
             stacklevel=2,
         )
         pytest.skip(f"无可用 Tk 环境（已重试仍失败）：{exc}")

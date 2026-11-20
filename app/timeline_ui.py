@@ -798,7 +798,7 @@ class TimelineMixin:
                 self._log(f"[分支创作] 分支世界线完成: {branch_dir.name}")
                 safe_after(
                     self.root,
-                                        lambda: dialogs.showinfo(
+                    lambda: dialogs.showinfo(
                         "完成", f"分支世界线创作完成！\n{branch_dir.name}/\n共{n_chapters}章\n\n角色系统/摘要均已生成"
                     ),
                 )

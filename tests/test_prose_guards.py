@@ -81,9 +81,7 @@ class TestPlanningDetection:
 
 “让我想想。”秦纵把手搁在膝上，“这话不能这么答。”"""
 
-    @pytest.mark.parametrize(
-        "sample", [POLLUTION_1, POLLUTION_2, STAGE_DIRECTIONS], ids=["规划1", "规划2", "括号提纲"]
-    )
+    @pytest.mark.parametrize("sample", [POLLUTION_1, POLLUTION_2, STAGE_DIRECTIONS], ids=["规划1", "规划2", "括号提纲"])
     def test_planning_is_detected(self, sample):
         assert _looks_like_planning(sample) is True
 
@@ -161,9 +159,7 @@ class TestProseCallsAreHardened:
                 offenders.append(f"行 {line} ({func}): 未传 thinking_enabled")
             if "allow_reasoning_fallback" not in kwargs:
                 offenders.append(f"行 {line} ({func}): 未传 allow_reasoning_fallback")
-        assert not offenders, "以下正文类调用缺少闸门（会被 reasoning 工作笔记顶替）：\n  " + "\n  ".join(
-            offenders
-        )
+        assert not offenders, "以下正文类调用缺少闸门（会被 reasoning 工作笔记顶替）：\n  " + "\n  ".join(offenders)
 
     def test_critical_paths_covered(self):
         """确认这些函数确实被扫到了 —— 防止函数改名后守卫静默失效。"""
@@ -206,8 +202,7 @@ class TestQualityGateRejectsPlanning:
         has_rep, _words = self._gate()._has_excessive_repetition(content, 1000)
         assert has_rep is False, "正常正文被判为不合格（会触发无谓重写）"
 
-
-# ====================================================================== 闸 3：拒绝 reasoning 兜底class TestFinalizeTextContract:
+    # ====================================================================== 闸 3：拒绝 reasoning 兜底class TestFinalizeTextContract:
     @staticmethod
     def _client() -> AIClient:
         # 只测 _finalize_text 这个纯函数，不发起网络请求

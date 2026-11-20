@@ -536,10 +536,18 @@ class BulkRewriter:
 
         if self._is_done(chapter, body):
             self.stats.skipped += 1
-            self._notify(on_progress, BulkProgress(chapter=chapter, chapter_index=chapter_index,
-                                                   total_chapters=total_chapters, skipped=self.stats.skipped,
-                                                   done=self.stats.done, elapsed=self.stats.seconds,
-                                                   message="已重写，跳过"))
+            self._notify(
+                on_progress,
+                BulkProgress(
+                    chapter=chapter,
+                    chapter_index=chapter_index,
+                    total_chapters=total_chapters,
+                    skipped=self.stats.skipped,
+                    done=self.stats.done,
+                    elapsed=self.stats.seconds,
+                    message="已重写，跳过",
+                ),
+            )
             return "skipped"
 
         paragraphs = split_paragraphs(body)
@@ -578,9 +586,9 @@ class BulkRewriter:
             except CancelledError:
                 # 取消是**正常路径**，不是异常：记录后返回，让上层收尾。
                 # 不捕获的话它会一路抛到 CLI/线程顶层，已完成章的统计就丢了。
-                self._record(chapter, 'cancelled', message='用户取消')
+                self._record(chapter, "cancelled", message="用户取消")
                 self.stats.seconds += time.perf_counter() - started
-                return 'cancelled'
+                return "cancelled"
             if not ok:
                 elapsed = time.perf_counter() - started
                 self.stats.failed += 1

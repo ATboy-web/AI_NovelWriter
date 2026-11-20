@@ -102,7 +102,11 @@ def main() -> int:
             print("  " + line)
 
     # ---- 摘要覆盖
-    summaries = {int(m.group(1)) for p in (novel / "summaries").glob("chapter_*_summary.txt") if (m := re.search(r"chapter_(\d+)_summary", p.name))}
+    summaries = {
+        int(m.group(1))
+        for p in (novel / "summaries").glob("chapter_*_summary.txt")
+        if (m := re.search(r"chapter_(\d+)_summary", p.name))
+    }
     empty_summaries: list[int] = []
     for num in summaries:
         path = novel / "summaries" / f"chapter_{num:05d}_summary.txt"
@@ -159,7 +163,9 @@ def main() -> int:
 
     lines.extend(["", "## 逐章清单", "", "| 章 | 字数 | 格式 | 阻断项 | 摘要 |", "|---:|---:|---|---|---|"])
     for item in worklist:
-        blocker_text = "；".join(f"{label} {count}次({density}/千字)" for label, count, density in item["blockers"]) or "—"
+        blocker_text = (
+            "；".join(f"{label} {count}次({density}/千字)" for label, count, density in item["blockers"]) or "—"
+        )
         fmt = {"ok": "正常", "bold": "粗体标题", "no_hash": "缺#", "broken": "**标题丢失**"}[item["kind"]]
         summary_flag = "空" if item["empty_summary"] else ""
         lines.append(f"| {item['chapter']} | {item['hanzi']:,} | {fmt} | {blocker_text[:60]} | {summary_flag} |")

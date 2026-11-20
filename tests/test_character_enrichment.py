@@ -175,7 +175,7 @@ def _mixin(ai, memory, system, meta=None):
     obj.character_system = system
     obj.current_novel_dir = None
     obj._log = lambda *_a, **_k: None
-    obj._get_meta = lambda: (meta or {})
+    obj._get_meta = lambda: meta or {}
     return obj
 
 

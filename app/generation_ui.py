@@ -664,7 +664,7 @@ class GenerationMixin:
                         self._imported_styles.append(style)
                         safe_after(
                             self.root,
-                                                        lambda s=style: style_list.insert(
+                            lambda s=style: style_list.insert(
                                 tk.END, f"{s.get('author', '未知')} - {s.get('unique_features', '')[:30]}..."
                             ),
                         )
@@ -712,7 +712,7 @@ class GenerationMixin:
                 self._imported_styles.append(style)
                 safe_after(
                     self.root,
-                                        lambda: style_list.insert(
+                    lambda: style_list.insert(
                         tk.END, f"{style.get('author', '未知')} - {style.get('unique_features', '')[:30]}..."
                     ),
                 )
@@ -1913,15 +1913,11 @@ class GenerationMixin:
                                                 # （日志实录：连续两次「大纲不足，动态生成…」）。
                                                 chapter_no = coerce_chapter_no(item["chapter"])
                                                 if chapter_no is None:
-                                                    self._log(
-                                                        f"[大纲] 跳过章号异常的条目: {item.get('chapter')!r}"
-                                                    )
+                                                    self._log(f"[大纲] 跳过章号异常的条目: {item.get('chapter')!r}")
                                                     continue
                                                 idx = chapter_no - 1
                                                 if 0 <= idx < len(self.outline):
-                                                    self.outline[idx]["title"] = item.get(
-                                                        "title", f"第{chapter_no}章"
-                                                    )
+                                                    self.outline[idx]["title"] = item.get("title", f"第{chapter_no}章")
                                                     self.outline[idx]["summary"] = item.get(
                                                         "summary", f"第{chapter_no}章情节"
                                                     )
@@ -1937,8 +1933,7 @@ class GenerationMixin:
                                         (
                                             x
                                             for x in new_batch
-                                            if isinstance(x, dict)
-                                            and str(x.get("chapter", "")).strip() == str(ch_num)
+                                            if isinstance(x, dict) and str(x.get("chapter", "")).strip() == str(ch_num)
                                         ),
                                         None,
                                     )
@@ -2009,7 +2004,7 @@ class GenerationMixin:
                         if generated == 1 or batch_count % 5 == 0 or ch_num == total:
                             safe_after(
                                 self.root,
-                                                                lambda c=content, n=ch_num, t=chapter_info.get("title", ""): self._display_chapter(
+                                lambda c=content, n=ch_num, t=chapter_info.get("title", ""): self._display_chapter(
                                     n, t, c
                                 ),
                             )
@@ -2087,7 +2082,7 @@ class GenerationMixin:
                 if generated > 0:
                     safe_after(
                         self.root,
-                                                lambda: dialogs.showinfo("完成", f"《{meta['title']}》创作完成！\n本次生成 {generated} 章"),
+                        lambda: dialogs.showinfo("完成", f"《{meta['title']}》创作完成！\n本次生成 {generated} 章"),
                     )
                 elif skipped > 0:
                     safe_after(self.root, lambda: dialogs.showinfo("提示", "所有章节已完成，无需继续创作"))

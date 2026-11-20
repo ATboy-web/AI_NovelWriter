@@ -117,7 +117,7 @@ class TestCreateRoot:
         assert "3 次尝试" in str(exc.value)
 
         log = _tk_harness.FAILURE_LOG
-        assert log.exists(), "失败现场必须落盘，否则又回到\"查不出原因\""
+        assert log.exists(), '失败现场必须落盘，否则又回到"查不出原因"'
         record = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
         for key in ("error", "current_test", "argv", "cwd", "handles", "attempts"):
             assert key in record, f"现场缺少 {key}"
@@ -162,11 +162,7 @@ class TestSingleEntryPointGuard:
 
     @staticmethod
     def _test_files() -> list[pathlib.Path]:
-        return [
-            p
-            for p in sorted((REPO / "tests").rglob("*.py"))
-            if "__pycache__" not in str(p)
-        ]
+        return [p for p in sorted((REPO / "tests").rglob("*.py")) if "__pycache__" not in str(p)]
 
     def test_no_direct_tk_root_creation_outside_harness(self):
         pattern = re.compile(r"(?<![\w.])tk(?:inter)?\.Tk\(\)")
@@ -181,8 +177,8 @@ class TestSingleEntryPointGuard:
                     continue
                 if pattern.search(stripped):
                     offenders.append(f"{rel}:{number} {stripped[:70]}")
-        assert not offenders, (
-            "以下位置直接建 Tk 根窗口，绕过了 _tk_harness（无重试、无留痕）：\n  " + "\n  ".join(offenders)
+        assert not offenders, "以下位置直接建 Tk 根窗口，绕过了 _tk_harness（无重试、无留痕）：\n  " + "\n  ".join(
+            offenders
         )
 
     def test_harness_itself_still_creates_roots(self):

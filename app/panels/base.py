@@ -228,7 +228,6 @@ class BasePanel:
             return False
         return True
 
-
     # ------------------------------------------------------------------ 详情区
 
     def _set_detail(self, text: str) -> None:

@@ -63,6 +63,11 @@
 | [GENRE_SYSTEM.md](GENRE_SYSTEM.md) | **题材系统**：可扩展注册表 + 用户自定义题材/标签 + 配置格式 + 不破坏已有作品的约束 |
 | [MCP_SUPPORT.md](MCP_SUPPORT.md) | **MCP 支持**：客户端（stdio/http）与服务端、配置、安全边界、测试分层 |
 | [PLUGIN_SYSTEM.md](PLUGIN_SYSTEM.md) | **插件系统**：五种插件类型、接口约定、安装与启用、静态体检与安全边界 |
+| [SKILL_LIBRARY.md](SKILL_LIBRARY.md) | **技能库**（第 19 面板）：`SKILL.md` 解析、规则分级 A/B/C/F/H/X、提示词注入边界、不执行自带脚本 |
+| [REWORK.md](REWORK.md) | **回炉重造**（第 20 面板）：章节级 7 态状态机、原文归档、触发扫描、审核与废弃 |
+| [AGENT_OPTIMIZATION_PLAN.md](AGENT_OPTIMIZATION_PLAN.md) | AI Agent 全面优化方案（Harness 对齐、能力边界与落地顺序） |
+| [HARDWARE_ACCELERATION_PLAN.md](HARDWARE_ACCELERATION_PLAN.md) | 硬件资源加速与卸载方案（v1，含本机显存约束下的取舍） |
+| [ITERATION_LOG_R21.md](ITERATION_LOG_R21.md) | R21 迭代记录：测试 → 发现 → 修复 的完整链路 |
 | [NOVEL_AUDIT_1789640077.md](NOVEL_AUDIT_1789640077.md) | 《快速统治》生成审计：文件/功能一致性、6 类结构性错误、结尾「烂尾」成因与修复项 |
 
 ## 归档（对应功能模块已移除）

@@ -178,7 +178,18 @@ class TestTitle:
     def test_title_is_monotonic(self, hero: CharacterProfile):
         """等级越高，称号不能往回退。"""
         titles, last_index = [], -1
-        order = ["无名小卒", "初出茅庐", "小有名气", "崭露头角", "名声大噪", "一方霸主", "威震四方", "天下无敌", "超凡入圣", "万古不朽"]
+        order = [
+            "无名小卒",
+            "初出茅庐",
+            "小有名气",
+            "崭露头角",
+            "名声大噪",
+            "一方霸主",
+            "威震四方",
+            "天下无敌",
+            "超凡入圣",
+            "万古不朽",
+        ]
         for level in (1, 5, 10, 20, 30, 50, 70, 80, 90, 100):
             hero.level = level
             hero._update_title()

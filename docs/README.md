@@ -1,7 +1,7 @@
 # 文档索引
 
 本目录集中存放项目文档。根目录仅保留 `README.md`（中文主文档）、`README_EN.md`（英文）、
-`CHANGELOG.md`、`CONTRIBUTING.md`、`QUICKSTART.md`、`USAGE.md`、`LICENSE`。
+`CHANGELOG.md`、`CONTRIBUTING.md`、`QUICKSTART.md`、`USAGE.md`、`SECURITY.md`、`LICENSE`。
 
 > 版本号权威源为 `pyproject.toml`；`app.__version__`、README 与 CHANGELOG 的一致性由
 > `tests/test_version_consistency.py` 守护。

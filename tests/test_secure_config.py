@@ -119,6 +119,7 @@ class TestSecureConfig:
         assert secure_config.get("nonexistent", "default") == "default"
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="该用例依赖 Windows DPAPI")
 class TestSecureConfigEdgeCases:
     """边界条件测试"""
 

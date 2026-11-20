@@ -60,6 +60,7 @@ class _Boom:
         raise ZeroDivisionError("代码 bug，必须暴露")
 
 
+@pytest.mark.skipif(not _tk_harness.tk_available(), reason="无可用 Tk 显示环境（Linux 无头 CI）")
 class TestSafeAfterCore:
     def test_delivers_callback(self):
         root = _tk_harness.create_root()
@@ -116,6 +117,7 @@ class TestSafeAfterCore:
             root.destroy()
 
 
+@pytest.mark.skipif(not _tk_harness.tk_available(), reason="无可用 Tk 显示环境（Linux 无头 CI）")
 class TestDispatchContract:
     def test_dispatch_uses_after(self):
         root = _tk_harness.create_root()

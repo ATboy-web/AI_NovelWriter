@@ -10,6 +10,27 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from loguru import logger
+
+#: PDF 导出可用的中文字体候选（按优先级）。
+#: 覆盖三平台：Windows 系统字体、Linux 常见 CJK 包（Noto / 文泉驿 / 文鼎）、macOS 系统字体。
+#: ❗ 测试会引用这个常量判断当前环境能否真的生成 PDF —— 保持"一处定义"，
+#: 否则代码加了新路径而测试不知道，又会出现"本地过、CI 红"。
+CJK_FONT_CANDIDATES = (
+    "C:/Windows/Fonts/msyh.ttc",
+    "C:/Windows/Fonts/simhei.ttf",
+    "C:/Windows/Fonts/simsun.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    "/usr/share/fonts/truetype/arphic/uming.ttc",
+    "/System/Library/Fonts/PingFang.ttc",
+    "/System/Library/Fonts/STHeiti Light.ttc",
+    "/Library/Fonts/Arial Unicode.ttf",
+)
+
 
 class FormatConverter:
     """小说格式转换器"""
@@ -405,11 +426,12 @@ class FormatConverter:
         pdf.add_page()
 
         # 尝试添加中文字体
-        font_paths = [
-            "C:/Windows/Fonts/msyh.ttc",
-            "C:/Windows/Fonts/simhei.ttf",
-            "C:/Windows/Fonts/simsun.ttc",
-        ]
+        #
+        # ❗ 必须覆盖三大平台：原先只列了 Windows 字体，在 Linux / macOS 上一个都找不到，
+        # 于是回落到 Helvetica —— 而 fpdf2 用 Helvetica 渲染中文会抛
+        # `TypeError: expected str, bytes or os.PathLike object, not NoneType`
+        # （找不到中文字形）。即"在非 Windows 上导出 PDF 必崩"，CI 上实测复现。
+        font_paths = list(CJK_FONT_CANDIDATES)
 
         font_added = False
         for fp in font_paths:
@@ -423,7 +445,12 @@ class FormatConverter:
                     continue
 
         if not font_added:
-            pdf.set_font("Helvetica", size=12)
+            # 没有中文字体就别硬渲染：Helvetica 画中文必崩，用户还拿不到任何东西。
+            # 降级为 TXT —— 内容完整、可读，比"导出失败"有用。
+            logger.warning(
+                "[format_converter] 未找到中文字体（已尝试 %d 个路径），PDF 降级为 TXT", len(font_paths)
+            )
+            return self._to_txt(content, title, output_file.with_suffix(".txt"), chapters)
 
         # 标题
         pdf.set_font_size(24)

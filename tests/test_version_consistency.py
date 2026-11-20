@@ -34,6 +34,7 @@ EXPECTED_ROOT_DOCS = {
     "CONTRIBUTING.md",
     "QUICKSTART.md",
     "USAGE.md",
+    "SECURITY.md",
 }
 
 

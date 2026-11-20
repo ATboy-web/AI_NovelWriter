@@ -23,12 +23,13 @@ EPUB/PDF/DOCX 的二进制格式细节由第三方库决定，断言"第 3 字�
 from __future__ import annotations
 
 import builtins
+import os
 import sys
 from pathlib import Path
 
 import pytest
 
-from app.format_converter import FormatConverter, ImageManager
+from app.format_converter import CJK_FONT_CANDIDATES, FormatConverter, ImageManager
 
 CHAPTERS = [
     {"num": 1, "title": "第一章 起", "content": "第一段正文。\n\n第二段正文。"},
@@ -213,19 +214,34 @@ class TestEpub:
 
 
 class TestPdf:
+    #: 当前环境是否有可用的中文字体 —— 决定了"能真的出 PDF"还是"必须降级为 TXT"。
+    #: 直接引用产品代码里的候选列表（单一事实来源）：代码加路径、这里自动跟上。
+    _HAS_CJK_FONT = any(os.path.exists(p) for p in CJK_FONT_CANDIDATES)
+
     def test_produces_pdf(self, converter: FormatConverter):
         out = converter.convert("正文内容。", "书", "pdf", chapters=CHAPTERS)
-        assert out and Path(out).suffix == ".pdf"
-        # PDF 必须以 %PDF- 开头
-        assert Path(out).read_bytes().startswith(b"%PDF")
+        assert out, "导出没有返回路径"
+        if self._HAS_CJK_FONT:
+            assert Path(out).suffix == ".pdf"
+            # PDF 必须以 %PDF- 开头
+            assert Path(out).read_bytes().startswith(b"%PDF")
+        else:
+            # 无中文字体时必须**降级为 TXT**而不是崩：原实现回落到 Helvetica 渲染中文，
+            # fpdf2 会抛 TypeError（Linux CI 实测），用户什么都拿不到。
+            assert out.endswith(".txt"), "无中文字体时应降级 TXT，不能硬出 PDF"
 
     def test_without_chapters(self, converter: FormatConverter):
         out = converter.convert("正文", "书", "pdf")
-        assert Path(out).read_bytes().startswith(b"%PDF")
+        if self._HAS_CJK_FONT:
+            assert Path(out).read_bytes().startswith(b"%PDF")
+        else:
+            assert out.endswith(".txt")
 
     def test_with_metadata(self, converter: FormatConverter):
         out = converter.convert("正文", "书", "pdf", metadata=METADATA)
         assert Path(out).is_file()
+        if not self._HAS_CJK_FONT:
+            assert out.endswith(".txt")
 
     def test_falls_back_to_txt(self, converter: FormatConverter, monkeypatch):
         _hide_module(monkeypatch, "fpdf")

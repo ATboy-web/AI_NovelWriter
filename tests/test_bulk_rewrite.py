@@ -388,6 +388,7 @@ class TestControl:
 # ====================================================================== 面板
 
 
+@pytest.mark.skipif(not _tk_harness.tk_available(), reason="无可用 Tk 显示环境（Linux 无头 CI）")
 class TestPanelWiring:
     def test_panel_without_host(self):
         """未绑定宿主时面板方法不能崩。"""

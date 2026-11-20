@@ -78,6 +78,7 @@ def _clean_logs(monkeypatch, tmp_path):
     _tk_harness.tk_available.cache_clear()
 
 
+@pytest.mark.skipif(not _tk_harness.tk_available(), reason="无可用 Tk 显示环境（Linux 无头 CI）")
 class TestCreateRoot:
     def test_returns_withdrawn_root(self):
         root = _tk_harness.create_root()

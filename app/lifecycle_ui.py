@@ -88,7 +88,7 @@ class NovelLifecycleMixin:
         title_entry.grid(row=0, column=1, sticky=tk.EW, padx=(5, 0), pady=3)
 
         # 用户想法输入框
-        tk.Label(top, text="你的想法:", bg=C["bg_dark"], fg=C["warning"], font=UIStyle.font("label_bold")).grid(
+        tk.Label(top, text="你的想法:", bg=C["bg_dark"], fg=C["warning_text"], font=UIStyle.font("label_bold")).grid(
             row=1, column=0, sticky=tk.NW, pady=3
         )
         idea_frame = tk.Frame(top, bg=C["bg_dark"])

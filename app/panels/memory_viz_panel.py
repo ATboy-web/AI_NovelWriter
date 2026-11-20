@@ -63,7 +63,7 @@ class MemoryVizPanelMixin:
 
         # 建议
         if report.get("recommendations"):
-            tk.Label(f, text="建议:", font=UIStyle.font("system_bold"), bg=C["bg_dark"], fg=C["warning"]).pack(
+            tk.Label(f, text="建议:", font=UIStyle.font("system_bold"), bg=C["bg_dark"], fg=C["warning_text"]).pack(
                 anchor=tk.W, pady=(10, 3)
             )
             for rec in report["recommendations"]:

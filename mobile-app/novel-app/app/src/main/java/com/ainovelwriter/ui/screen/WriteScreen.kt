@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -298,7 +299,7 @@ private fun NovelDetailScreen(viewModel: MainViewModel, state: com.ainovelwriter
 
         // Content
         when (selectedSubTab) {
-            "概览" -> OverviewTab(viewModel, novel, state, progress)
+            "概览" -> OverviewTab(viewModel, novel, state)
             "大纲" -> OutlineTab(viewModel, novel, state)
             "角色" -> CharactersTab(viewModel, novel, state)
             "世界观" -> WorldTab(viewModel, novel, state)
@@ -310,7 +311,7 @@ private fun NovelDetailScreen(viewModel: MainViewModel, state: com.ainovelwriter
 // ==================== 概览 Tab ====================
 
 @Composable
-private fun OverviewTab(viewModel: MainViewModel, novel: NovelData, state: com.ainovelwriter.viewmodel.MainUiState, progress: Float) {
+private fun OverviewTab(viewModel: MainViewModel, novel: NovelData, state: com.ainovelwriter.viewmodel.MainUiState) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -338,7 +339,7 @@ private fun OverviewTab(viewModel: MainViewModel, novel: NovelData, state: com.a
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Success)
                 ) {
-                    Icon(Icons.Default.PlaylistAdd, null, Modifier.size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("自动创作")
                 }

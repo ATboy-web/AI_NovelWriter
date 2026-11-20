@@ -3,6 +3,66 @@
 > 版本号单一权威源为 `pyproject.toml`，`app.__version__` 与 README 均与之一致
 > （由 `tests/test_version_consistency.py` 守护）。
 
+## v3.4.1 (2026-11-20)
+
+**本次发布的定位**：**遗留问题处置（R1–R7）+ 语义色对比度全面达标 + 测试补强**。
+不改变任何业务流程与数据结构；桌面端与移动端令牌同步更新。
+
+> 用例数 **4317 → 4352**（CI 口径 4268 执行 + 84 条 Tk 用例本地全绿；
+> 覆盖率 85.21% → **86.11%**，门禁 84.5%–86.5% 双向达标）。
+> 新增语义填充守卫 8 例、真实阅读格式与面板逻辑补测 30 例。
+> `reading_manager` 覆盖率 74.5% → **100%**，`usage_ui` 41.7% → **79.6%**
+> （余下为 CI 无显示环境不可覆盖的纯 Tk 构建行）。
+
+### 修复：语义填充色与文字色分离（R2，WCAG AA 全面达标）
+
+- v3.4 的 warning/error/info 填充兼任深底文字色，白字对比度仅 2.15/3.76/3.68。
+  现填充加深为 `#a16207 / #dc2626 / #1e40af`（白字 4.92/4.83/8.72），
+  **填充只配白字，深底文字一律走 `*_text` 变体**；success 填充不变（6.2）。
+- `SEMANTIC_STATES` 状态梯补全 warning，并修正 success pressed 比 active 更亮
+  的既有倒挂（pressed 加深为 `#05392c`）；全部状态白字 ≥4.5:1 且明度逐级加深。
+- 8 处"填充色当深底文字色"反模式（timeline/lifecycle/shell/memory_viz）改用
+  `*_text`；shell_ui 状态文字字面值 `#f59e0b` 改走令牌（随主题联动）。
+- 角色头像四色与全屏写作器五个 AI 按钮色同步加深（白字全部 ≥4.5:1，色相不变）；
+  rework_panel 陈旧颜色 fallback 移除（键集有守卫保证存在）。
+- 新增 `TestSemanticFillContrast` 守卫类（白字达标/状态梯单调/调色板零撞值/
+  移动端映射/单一来源），替换旧"warning 双色两用"守卫。
+
+### 修复：移动端既有警告清零与长按删除接线（R6）
+
+- 4 处图标改用 AutoMirrored 版本（MenuBook×2 / PlaylistAdd / List），RTL 语言正确镜像。
+- ToolsScreen 内外层 `hasAPI` 遮蔽消除；WriteScreen OverviewTab 未用形参移除；
+  MainActivity 未用 `innerPadding` 按惯例改名 `_`。
+- **功能修复**：HomeScreen 长按删除回调从未接线（`onLongClick` 传而不用），
+  现以 `combinedClickable` 接通，长按书籍卡片弹出既有删除确认对话框。
+- 移动端 `Warning` 令牌映射改为 `warning_text`（其唯一用途是深底图标着色），
+  `ThemeTokens.kt` 重新生成，跨端守卫全绿。
+
+### 修复与补强：阅读管理同文件导入崩溃 + 真实格式测试（R3）
+
+- `import_book` 源文件本就在书库内时触发 `SameFileError` 崩溃，现跳过自复制。
+- 新增真实夹具测试：ebooklib 生成 EPUB、手工最小 PDF（含中文 Info 字典）、
+  python-docx 生成 DOCX，覆盖元数据提取/正文读取/坏页跳过/坏编码回落；
+  另覆盖 loguru/ebooklib/pypdf/docx 缺失时的导入回落分支。
+- 用量面板补测：状态栏异常分支、事件订阅、刷新与提示、导出 CSV 四分支、
+  打开目录、复制概览、余额查询异步接线（假 Runner 同步化，不碰真实网络）。
+
+### 数据治理与记录更正（R4/R1，不改数据结构）
+
+- 余额查询三个覆盖字段（URL/总额路径/币种路径）清空，回落内置 DeepSeek 探针
+  （此前币种路径被填成说明文字，自定义探针必坏）；操作前已备份 config.json。
+- 14 个 AI profile 字段顶层镜像逐一核验：**零漂移**。
+- 更正：大书 `chapter_count=1200` 是"当前批次大纲章数"（outline.json 恰 1200 条，
+  已写 1094 章），数据自洽，**非错误，未改动**。
+- 更正：远端仓库实测 **16.2MB**（本地 .git 17.6MB），交接文档"约 401MB"系误记，
+  无需 GitHub Support 垃圾回收工单。
+- 令牌经 API 核实有效（2026-12-18 到期）；撤销须所有者网页操作，见处置报告。
+
+### 文档
+
+- `docs/THEME_SYSTEM.md` 增补 v3.4.1 决策：填充/文字分离、状态梯规则、
+  全屏写作器遗留岛与稿纸模式对比度另题说明。
+
 ## v3.4.0 (2026-11-20)
 
 **本次发布的定位**：**UI 改版 —— 统一的极简主义视觉体系，三套可切换主题**。

@@ -768,13 +768,13 @@ class CharacterUIMixin:
         if status == "死亡":
             avatar_bg = "#666666"
         elif category == "关键人物":
-            avatar_bg = "#f59e0b"  # 金色
+            avatar_bg = "#a16207"  # 金色（v3.4.1 加深：白字 ≥4.5:1）
         elif category == "主角朋友":
-            avatar_bg = "#3b82f6"  # 蓝色
+            avatar_bg = "#1e40af"  # 蓝色（同上）
         elif category == "女友":
-            avatar_bg = "#ec4899"  # 粉色
+            avatar_bg = "#be185d"  # 粉色（同上）
         elif category == "反派":
-            avatar_bg = "#ef4444"  # 红色
+            avatar_bg = "#dc2626"  # 红色（同上）
         else:
             avatar_bg = "#6b7280"  # 灰色
 

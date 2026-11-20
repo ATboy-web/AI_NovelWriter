@@ -114,9 +114,9 @@ class TimelineMixin:
         detail_frame = tk.Frame(right_notebook, bg=C["bg_card"])
         right_notebook.add(detail_frame, text="📖 详情")
 
-        tk.Label(detail_frame, text="决策详情", font=UIStyle.font("body_bold"), bg=C["bg_card"], fg=C["warning"]).pack(
-            anchor=tk.W, padx=10, pady=5
-        )
+        tk.Label(
+            detail_frame, text="决策详情", font=UIStyle.font("body_bold"), bg=C["bg_card"], fg=C["warning_text"]
+        ).pack(anchor=tk.W, padx=10, pady=5)
 
         detail_text = tk.Text(
             detail_frame,
@@ -136,7 +136,7 @@ class TimelineMixin:
         right_notebook.add(impact_frame, text="🔍 影响分析")
 
         tk.Label(
-            impact_frame, text="决策影响分析", font=UIStyle.font("body_bold"), bg=C["bg_card"], fg=C["warning"]
+            impact_frame, text="决策影响分析", font=UIStyle.font("body_bold"), bg=C["bg_card"], fg=C["warning_text"]
         ).pack(anchor=tk.W, padx=10, pady=5)
 
         impact_text = tk.Text(
@@ -221,8 +221,8 @@ class TimelineMixin:
             # 格式化文本
             detail_text.tag_config("title", font=UIStyle.font("title"), foreground=C["accent"])
             detail_text.tag_config("section", font=UIStyle.font("body"), foreground=C["text_primary"])
-            detail_text.tag_config("chosen", font=UIStyle.font("body"), foreground=C["success"])
-            detail_text.tag_config("alternative", font=UIStyle.font("body"), foreground=C["warning"])
+            detail_text.tag_config("chosen", font=UIStyle.font("body"), foreground=C["success_text"])
+            detail_text.tag_config("alternative", font=UIStyle.font("body"), foreground=C["warning_text"])
             detail_text.tag_config("story", font=UIStyle.font("body"), foreground=C["text_primary"])
             detail_text.tag_config("hint", font=UIStyle.font("label"), foreground=C["text_muted"])
 
@@ -245,7 +245,7 @@ class TimelineMixin:
 
             impact_text.tag_config("title", font=UIStyle.font("title"), foreground=C["accent"])
             impact_text.tag_config("section", font=UIStyle.font("body_bold"), foreground=C["text_primary"])
-            impact_text.tag_config("alt", font=UIStyle.font("body_bold"), foreground=C["warning"])
+            impact_text.tag_config("alt", font=UIStyle.font("body_bold"), foreground=C["warning_text"])
 
             update_timeline_graph()
 

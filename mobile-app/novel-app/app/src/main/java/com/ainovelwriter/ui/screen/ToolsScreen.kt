@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -39,9 +41,9 @@ private val tools = listOf(
     ToolItem("自动创作", Icons.Default.AutoAwesome, "一键完成全部流程", AccentPurple) { vm -> vm.autoGenerate() },
     ToolItem("生成世界观", Icons.Default.Public, "AI构建世界观", AccentCyan) { vm -> vm.generateWorld() },
     ToolItem("生成角色", Icons.Default.Person, "自动生成角色", AccentPink) { vm -> vm.generateCharacters() },
-    ToolItem("生成大纲", Icons.Default.List, "章节大纲", Info) { vm -> vm.generateOutline() },
+    ToolItem("生成大纲", Icons.AutoMirrored.Filled.List, "章节大纲", Info) { vm -> vm.generateOutline() },
     ToolItem("整体大纲", Icons.Default.AccountTree, "全书规划", AccentAmber) { vm -> vm.generateOverallOutline() },
-    ToolItem("故事大纲", Icons.Default.MenuBook, "主线/副线", AccentEmerald) { vm -> vm.generateStoryOutline() },
+    ToolItem("故事大纲", Icons.AutoMirrored.Filled.MenuBook, "主线/副线", AccentEmerald) { vm -> vm.generateStoryOutline() },
     ToolItem("去AI味", Icons.Default.FindInPage, "检查AI痕迹", Warning) { vm -> vm.antiSlopCheck() },
     ToolItem("风格转换", Icons.Default.Palette, "转换文风", AccentPurple) { vm -> vm.styleTransfer("古风") },
     ToolItem("整合素材", Icons.Default.Hub, "已有素材→生成大纲", AccentAmber) { vm -> vm.integrateSettings() },
@@ -115,7 +117,6 @@ fun ToolsScreen(viewModel: MainViewModel) {
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(tools) { tool ->
-                val hasAPI = state.aiConfig.apiKey.isNotEmpty()
                 val enabled = (!tool.requiresAPI || hasAPI) && !state.isGenerating
                 ToolCard(
                     tool = tool,

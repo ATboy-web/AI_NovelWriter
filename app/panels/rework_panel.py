@@ -328,9 +328,9 @@ class ReworkPanel(BasePanel):
         if not getattr(self, "_effect_line", None):
             return
         colors = {
-            "info": UIStyle.COLORS.get("text_secondary", "#94a3b8"),
-            "success": UIStyle.COLORS.get("success_text", "#22c55e"),
-            "error": UIStyle.COLORS.get("error_text", "#ef4444"),
+            "info": UIStyle.COLORS["text_secondary"],
+            "success": UIStyle.COLORS["success_text"],
+            "error": UIStyle.COLORS["error_text"],
         }
         try:
             self._effect_line.config(text=text, fg=colors.get(kind, colors["info"]))

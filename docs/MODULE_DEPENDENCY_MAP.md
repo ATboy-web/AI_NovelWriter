@@ -9,7 +9,7 @@
 | 指标 | 值 |
 |---|---|
 | 内部模块数 | 104 |
-| 依赖边数 | 335 |
+| 依赖边数 | 337 |
 | 其中函数内延迟导入 | 66 |
 | 循环依赖环数 | 3（**会真炸的：0**） |
 | 语法错误文件 | 0 |
@@ -81,9 +81,9 @@
 | `memory_manager` | 5 |
 | `providers.base` | 5 |
 | `text_stats` | 5 |
+| `theme_system` | 5 |
 | `writing_presets` | 5 |
 | `panels.registry` | 4 |
-| `parsing` | 4 |
 
 > 这些模块被最多人依赖 ⇒ 改它们的破坏面最大，应当优先保证测试覆盖。
 
@@ -168,7 +168,7 @@
 | `panels.style_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`novel_toolkit` |
 | `panels.summary_mgmt_panel` | 🔴`ui_style` |
 | `panels.timeline_panel` | 🔴`async_runner`, 🔴`events`, ⚪`memory_manager`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, ⚪`storage`, 🔴`timeline_store`, 🔴`ui_style` |
-| `panels.ui_kit` | 🔴`ui_style` |
+| `panels.ui_kit` | 🔴`theme_system`, 🔴`ui_style` |
 | `panels.websearch_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`novel_toolkit`, 🔴`ui_style` |
 | `parsing` | — |
 | `performance_monitor` | — |
@@ -190,7 +190,7 @@
 | `scene_detector` | — |
 | `secure_config` | 🔴`config`, 🔴`storage` |
 | `semantic_candidates` | ⚪`text_stats` |
-| `shell_ui` | 🔴`app`, ⚪`ai_client`, 🔴`async_runner`, ⚪`diagnostic_logger`, 🔴`dialogs`, ⚪`performance_monitor`, 🔴`ui_scroll` |
+| `shell_ui` | 🔴`app`, ⚪`ai_client`, 🔴`async_runner`, ⚪`diagnostic_logger`, 🔴`dialogs`, ⚪`performance_monitor`, 🔴`theme_system`, 🔴`ui_scroll` |
 | `skill_library` | ⚪`plugin_system`, 🔴`storage`, 🔴`token_estimator` |
 | `storage` | — |
 | `style_dna` | 🔴`storage`, ⚪`text_stats` |

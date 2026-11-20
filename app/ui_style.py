@@ -57,16 +57,16 @@ class UIStyle:
         "accent_hover": "#6a62d0",  # 悬停色
         "accent_bg": "#2d1b69",  # 紫色背景
         # 语义色
-        # ⚠️ 基色是**填充色**（配 `text_inverse` 白字用），不要拿它们当深色背景上的文字色 ——
-        # 实测在 `bg_dark` 上：`success` 3.07、`accent` 2.75、`error` 5.06、`info` 5.17。
-        # 深色背景上的语义文字请用下面的 `*_text` 变体。
-        "success": "#0f6e56",  # 成功绿（填充）
+        # ⚠️ 基色是**填充色**（配白字用，v3.4.1 起全部满足白字 ≥4.5:1），
+        # 不要拿它们当深色背景上的文字色 —— 深色背景上的语义文字请用下面的 `*_text` 变体。
+        # 取值唯一权威在 theme_system._SEMANTIC_FILLS，此处默认值须与其一致。
+        "success": "#0f6e56",  # 成功绿（填充，白字 6.20）
         "success_bg": "#064e3b",  # 成功背景
-        "warning": "#f59e0b",  # 警告黄（填充；作文字色也达标 6.90）
+        "warning": "#a16207",  # 警告琥珀（填充，白字 4.92；v3.4.1 由 #f59e0b 加深）
         "warning_bg": "#78350f",  # 警告背景
-        "error": "#ef4444",  # 错误红（填充）
+        "error": "#dc2626",  # 错误红（填充，白字 4.83；v3.4.1 由 #ef4444 加深）
         "error_bg": "#7f1d1d",  # 错误背景
-        "info": "#3b82f6",  # 信息蓝（填充）
+        "info": "#1e40af",  # 信息蓝（填充，白字 8.72；v3.4.1 由 #3b82f6 加深）
         "info_bg": "#1e3a5f",  # 信息背景
         # 语义色的**文字变体**：实测在 bg_dark/bg_medium/bg_card/bg_hover 上**全部 ≥4.5:1**
         # （2026-09-16 用最小提亮法算出，保持色相不变；见 `tests/test_ui_contrast.py`）
@@ -74,7 +74,7 @@ class UIStyle:
         "success_text": "#16a27e",  # 最差 4.59
         "info_text": "#4c8df7",  # 最差 4.56
         "error_text": "#f15b5b",  # 最差 4.51
-        "warning_text": "#f59e0b",  # 最差 6.90（与基色同值，保留以统一用法）
+        "warning_text": "#f59e0b",  # 最差 6.90（深底文字用；与填充色 #a16207 不同值）
         # 文字色阶
         "text_primary": "#e0e0f0",  # 主文字（12.4:1 起）
         "text_secondary": "#a0a0b0",  # 次文字（6.3:1 起）
@@ -279,7 +279,11 @@ class UIStyle:
         )
         style.map(
             "Success.TButton",
-            background=[("active", "#059669"), ("pressed", "#047857"), ("disabled", C["bg_light"])],
+            background=[
+                ("active", theme_system.SEMANTIC_STATES["success"]["active"]),
+                ("pressed", theme_system.SEMANTIC_STATES["success"]["pressed"]),
+                ("disabled", C["bg_light"]),
+            ],
             foreground=[("disabled", C["text_muted"])],
         )
 
@@ -293,7 +297,11 @@ class UIStyle:
         )
         style.map(
             "Danger.TButton",
-            background=[("active", "#dc2626"), ("pressed", "#b91c1c"), ("disabled", C["bg_light"])],
+            background=[
+                ("active", theme_system.SEMANTIC_STATES["error"]["active"]),
+                ("pressed", theme_system.SEMANTIC_STATES["error"]["pressed"]),
+                ("disabled", C["bg_light"]),
+            ],
             foreground=[("disabled", C["text_muted"])],
         )
 

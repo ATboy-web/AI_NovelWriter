@@ -411,3 +411,254 @@ class TestTabStructure:
     def test_tk_end_used_without_root(self):
         """`tk.END` 只是常量字符串，不创建 Tk 根 —— 保证无 GUI 环境也能导入。"""
         assert tk.END == "end"
+
+
+# ==================================================================== R3 补测：
+# 状态栏 / 事件订阅 / 刷新 / 动作按钮的非 Tk 逻辑（v3.4.1）
+
+
+class FakeVar:
+    def __init__(self, value=""):
+        self.value = value
+
+    def set(self, value):
+        self.value = value
+
+    def get(self):
+        return self.value
+
+
+class FakeBus:
+    def __init__(self):
+        self.subscribed = []
+
+    def subscribe(self, topic, handler):
+        self.subscribed.append((topic, handler))
+        return "unsub-token"
+
+
+class TestStatusAndEvents:
+    def test_status_text_error_branch(self, panel, monkeypatch):
+        def boom():
+            raise RuntimeError("账本损坏")
+
+        monkeypatch.setattr("app.usage_ui.usage_tracker.summary", boom)
+        assert "用量统计不可用" in panel._usage_status_text()
+
+    def test_subscribe_without_bus_is_noop(self, panel):
+        panel._subscribe_usage_events()  # 无 event_bus 不得抛错
+        assert not hasattr(panel, "_usage_unsubscribe")
+
+    def test_subscribe_with_bus(self, panel):
+        from app.events import TOPIC_AI_USAGE
+
+        bus = FakeBus()
+        panel.event_bus = bus
+        panel._subscribe_usage_events()
+        assert panel._usage_unsubscribe == "unsub-token"
+        assert bus.subscribed[0][0] == TOPIC_AI_USAGE
+
+    def test_on_usage_recorded_without_var_is_noop(self, panel):
+        panel._on_usage_recorded("ai.usage")  # 面板未构建时不得抛错
+
+    def test_on_usage_recorded_updates_var(self, panel, tracker):
+        panel.usage_summary_var = FakeVar()
+        panel._on_usage_recorded("ai.usage")
+        assert "tokens" in panel.usage_summary_var.value
+
+    def test_on_usage_recorded_error_branch(self, panel, monkeypatch):
+        def boom():
+            raise RuntimeError("账本损坏")
+
+        monkeypatch.setattr("app.usage_ui.usage_tracker.summary", boom)
+        panel.usage_summary_var = FakeVar()
+        panel._on_usage_recorded("ai.usage")
+        assert "读取用量失败" in panel.usage_summary_var.value
+
+    def test_chapter_badges_error_branch(self, panel, monkeypatch):
+        def boom():
+            raise RuntimeError("读取失败")
+
+        monkeypatch.setattr("app.usage_ui.usage_tracker.chapter_tokens", boom)
+        assert panel._chapter_token_badges() == {}
+        assert any("章节用量" in line for line in panel.logs)
+
+
+class TestRefreshAndHint:
+    def _wire(self, panel):
+        panel.usage_summary_var = FakeVar()
+        panel.usage_hint_var = FakeVar()
+        panel.usage_chapter_tree = FakeTree()
+        panel.usage_provider_tree = FakeTree()
+        panel.usage_task_tree = FakeTree()
+        panel.usage_model_tree = FakeTree()
+        panel.usage_price_tree = FakeTree()
+
+    def test_refresh_error_branch(self, panel, monkeypatch):
+        self._wire(panel)
+
+        def boom():
+            raise RuntimeError("账本损坏")
+
+        monkeypatch.setattr("app.usage_ui.usage_tracker.summary", boom)
+        panel._refresh_usage_panel()
+        assert "读取用量失败" in panel.usage_summary_var.value
+        assert panel.usage_chapter_tree.rows == []
+
+    def test_refresh_fills_all_trees(self, panel, tracker, monkeypatch):
+        self._wire(panel)
+        summary = {
+            "totals": {"calls": 2, "total_tokens": 300, "costs": {}},
+            "by_provider": {"deepseek": {"calls": 2, "total_tokens": 300}},
+            "by_task": {"chapter": {"calls": 2, "total_tokens": 300}},
+            "by_model": {"deepseek-flash": {"calls": 2, "total_tokens": 300, "latency_ms": 1000}},
+        }
+        rows = [{"chapter": 1, "calls": 2, "total_tokens": 300}]
+        monkeypatch.setattr(tracker, "summary", lambda: summary)
+        monkeypatch.setattr(tracker, "chapter_rows", lambda: rows)
+        panel._refresh_usage_panel()
+        assert "tokens" in panel.usage_summary_var.value
+        assert "数据源" in panel.usage_hint_var.value
+        assert panel.usage_chapter_tree.rows
+        assert panel.usage_provider_tree.rows
+        assert panel.usage_task_tree.rows
+        assert panel.usage_model_tree.rows
+        assert panel.usage_price_tree.rows, "价目表必须有内置数据"
+
+    def test_hint_without_novel(self, panel, tracker, monkeypatch):
+        monkeypatch.setattr(tracker, "_novel_dir", None)
+        assert "未打开小说" in panel._usage_hint()
+
+    def test_clear_tree_removes_existing_rows(self, panel):
+        tree = FakeTree()
+        tree.insert("", "end", values=("旧行",))
+        panel._clear_tree(tree)
+        assert tree.rows == []
+
+
+class TestActionButtons:
+    def test_export_csv_empty(self, panel, tracker, monkeypatch):
+        calls = []
+        monkeypatch.setattr(tracker, "read_records", lambda: [])
+        monkeypatch.setattr("app.usage_ui.dialogs.showinfo", lambda *a: calls.append(a))
+        panel._export_usage_csv()
+        assert calls and "暂无可导出" in calls[0][1]
+
+    def test_export_csv_cancelled(self, panel, tracker, monkeypatch):
+        monkeypatch.setattr(tracker, "read_records", lambda: [{"time": "t"}])
+        monkeypatch.setattr("app.usage_ui.filedialog.asksaveasfilename", lambda **_kw: "")
+        exported = []
+        monkeypatch.setattr(tracker, "export_csv", lambda p: exported.append(p))
+        panel._export_usage_csv()
+        assert exported == []
+
+    def test_export_csv_oserror(self, panel, tracker, monkeypatch):
+        monkeypatch.setattr(tracker, "read_records", lambda: [{"time": "t"}])
+        monkeypatch.setattr("app.usage_ui.filedialog.asksaveasfilename", lambda **_kw: "X:\\不可写\\u.csv")
+
+        def boom(_path):
+            raise OSError("磁盘只读")
+
+        monkeypatch.setattr(tracker, "export_csv", boom)
+        errors = []
+        monkeypatch.setattr("app.usage_ui.dialogs.showerror", lambda *a: errors.append(a))
+        panel._export_usage_csv()
+        assert errors and "导出失败" in errors[0][0]
+
+    def test_export_csv_success(self, panel, tracker, monkeypatch, tmp_path):
+        target = tmp_path / "usage.csv"
+        monkeypatch.setattr(tracker, "read_records", lambda: [{"time": "t"}, {"time": "t2"}])
+        monkeypatch.setattr("app.usage_ui.filedialog.asksaveasfilename", lambda **_kw: str(target))
+        monkeypatch.setattr(tracker, "export_csv", lambda p: str(p))
+        infos = []
+        monkeypatch.setattr("app.usage_ui.dialogs.showinfo", lambda *a: infos.append(a))
+        panel._export_usage_csv()
+        assert infos and "2 条记录" in infos[0][1]
+        assert any("已导出" in line for line in panel.logs)
+
+    def test_open_dir_without_novel(self, panel, tracker, monkeypatch):
+        monkeypatch.setattr(tracker, "_novel_dir", None)
+        warnings = []
+        monkeypatch.setattr("app.usage_ui.dialogs.showwarning", lambda *a: warnings.append(a))
+        panel._open_usage_dir()
+        assert warnings and "请先打开小说" in warnings[0][1]
+
+    def test_open_dir_success_and_failure(self, panel, tracker, monkeypatch, tmp_path):
+        monkeypatch.setattr(tracker, "_novel_dir", tmp_path)
+        opened = []
+        monkeypatch.setattr("os.startfile", lambda p: opened.append(p))
+        panel._open_usage_dir()
+        assert opened and opened[0].endswith("usage")
+        assert (tmp_path / "usage").is_dir()
+
+        def boom(_p):
+            raise OSError("无资源管理器")
+
+        monkeypatch.setattr("os.startfile", boom)
+        infos = []
+        monkeypatch.setattr("app.usage_ui.dialogs.showinfo", lambda *a: infos.append(a))
+        panel._open_usage_dir()
+        assert infos and "无法自动打开" in infos[0][1]
+
+    def test_copy_summary_success_and_tclerror(self, panel):
+        panel.usage_summary_var = FakeVar("累计 1k tokens")
+        copied = []
+
+        class Root:
+            def clipboard_clear(self):
+                copied.clear()
+
+            def clipboard_append(self, text):
+                copied.append(text)
+
+        panel.root = Root()
+        panel._copy_usage_summary()
+        assert copied == ["累计 1k tokens"]
+
+        class BadRoot(Root):
+            def clipboard_append(self, text):
+                raise tk.TclError("剪贴板被占用")
+
+        panel.root = BadRoot()
+        panel._copy_usage_summary()
+        assert any("复制失败" in line for line in panel.logs)
+
+    def test_query_balance_async_wiring(self, panel, monkeypatch):
+        submitted = {}
+
+        class FakeRunner:
+            def __init__(self, ui=None, log=None):
+                submitted["ui"] = ui
+
+            def submit(self, work, on_success=None, on_error=None, name=""):
+                submitted["work"] = work
+                submitted["ok"] = on_success
+                submitted["err"] = on_error
+                submitted["name"] = name
+
+        monkeypatch.setattr("app.usage_ui.BackgroundRunner", FakeRunner)
+        panel.config = type("Cfg", (), {"get": lambda self, k, d=None: "deepseek"})()
+        panel.usage_balance_var = FakeVar()
+        panel.root = object()
+        queried = []
+
+        class Result:
+            def format_total(self):
+                return "¥12.34"
+
+        class Client:
+            def query_balance(self, provider, use_cache=True):
+                queried.append((provider, use_cache))
+                return Result()
+
+        panel.ai_client = Client()
+        panel._query_balance_async()
+        assert "正在查询 deepseek" in panel.usage_balance_var.value
+        assert submitted["name"] == "anw-balance"
+        result = submitted["work"]()
+        assert queried == [("deepseek", False)]
+        submitted["ok"](result)
+        assert "¥12.34" in panel.usage_balance_var.value
+        submitted["err"](ValueError("网络超时"))
+        assert "查询失败" in panel.usage_balance_var.value
+        assert "不影响其他功能" in panel.usage_balance_var.value

@@ -72,15 +72,30 @@ TYPE_SCALE = {
 }
 
 #: 语义填充色：跨主题恒定（决策 3）。各主题调色板直接引用，避免三处抄写漂移。
+#: v3.4.1 无障碍修正：填充色上一律配白字（桌面按钮 fg="white"、移动端 onError=White），
+#: 因此每个填充色对白色的对比度必须 ≥4.5:1（守卫 TestSemanticFillContrast）。
+#: 旧值 warning #f59e0b（白字 2.15）、error #ef4444（3.76）、info #3b82f6（3.68）
+#: 均低于 AA，按"保持色相、加深明度"修正为下列取值；success 原本达标保持不变。
+#: 选值时刻意避开三套调色板既有键值（wasteland accent_hover=#b45309、
+#: mechapunk accent_hover=#2563eb 不能复用），防止换肤按值映射产生歧义。
 _SEMANTIC_FILLS = {
     "success": "#0f6e56",
     "success_bg": "#064e3b",
-    "warning": "#f59e0b",
+    "warning": "#a16207",
     "warning_bg": "#78350f",
-    "error": "#ef4444",
+    "error": "#dc2626",
     "error_bg": "#7f1d1d",
-    "info": "#3b82f6",
+    "info": "#1e40af",
     "info_bg": "#1e3a5f",
+}
+
+#: 语义按钮的状态梯（active/pressed）：白字对比度同样 ≥4.5:1，
+#: 且明度逐级加深（base → active → pressed），保证悬停/按下反馈可感知。
+#: 桌面 Success.TButton / Danger.TButton 与 ui_kit danger 悬停共用这一份数据。
+SEMANTIC_STATES = {
+    "success": {"active": "#0a5744", "pressed": "#05392c"},
+    "warning": {"active": "#854d0e", "pressed": "#713f12"},
+    "error": {"active": "#b91c1c", "pressed": "#991b1b"},
 }
 
 #: 三套完整调色板。键集必须与 UIStyle.COLORS 完全一致（守卫测试钉住）。
@@ -116,7 +131,7 @@ THEMES: dict[str, dict[str, str]] = {
         "success_text": "#1cb88e",
         "info_text": "#639cf8",
         "error_text": "#f37777",
-        # 刻意与 warning 填充色（#f59e0b）不同值：换肤按"旧值→新值"映射，
+        # 刻意与 warning 填充色（#a16207）不同值：换肤按"旧值→新值"映射，
         # 同值不同键会产生歧义（守卫 test_palette_swap_map_is_unambiguous）。
         "warning_text": "#f7b32b",
         **_SEMANTIC_FILLS,
@@ -242,7 +257,10 @@ MOBILE_TOKEN_MAP = {
     "Primary600": "accent_hover",
     "Primary700": "accent_bg",
     "Success": "success",
-    "Warning": "warning",
+    # Warning 令牌在移动端的唯一用途是深底图标着色（ToolsScreen 警告图标），
+    # 属"文字/图标"语义而非填充语义 ⇒ 映射到逐主题调亮的 warning_text，
+    # 与桌面"深底用 *_text 变体"的规则对齐（v3.4.1）。
+    "Warning": "warning_text",
     "Error": "error",
     "Info": "info",
 }

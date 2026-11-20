@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -133,7 +134,7 @@ private fun EmptyBookshelf(onStartCreate: () -> Unit, modifier: Modifier = Modif
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Outlined.MenuBook,
+                    Icons.AutoMirrored.Outlined.MenuBook,
                     contentDescription = null,
                     modifier = Modifier.size(48.dp),
                     tint = Text4
@@ -175,8 +176,10 @@ private fun NovelCard(novel: NovelMeta, onClick: () -> Unit, onLongClick: () -> 
     val genreIcon = GenreIcons.get(novel.genre)
 
     Card(
-        modifier = Modifier.fillMaxWidth().animateContentSize(),
-        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Surface2),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)

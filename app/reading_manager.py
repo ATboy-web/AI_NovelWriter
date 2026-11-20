@@ -99,9 +99,10 @@ class ReadingManager:
         except (OSError, ValueError):
             safe_name = path.name
 
-        # 复制到书库
+        # 复制到书库（源文件已在书库内时跳过，避免 SameFileError）
         dest = self.books_dir / safe_name
-        shutil.copy2(path, dest)
+        if not (dest.exists() and dest.samefile(path)):
+            shutil.copy2(path, dest)
 
         # 提取元数据
         meta = self._extract_metadata(dest, ext)

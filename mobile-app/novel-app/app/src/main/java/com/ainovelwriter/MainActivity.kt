@@ -42,7 +42,7 @@ fun MainApp(viewModel: MainViewModel = viewModel()) {
                 onTabSelected = { viewModel.setTab(it) }
             )
         }
-    ) { innerPadding ->
+    ) { _ ->
         when (state.currentTab) {
             Tab.NOVELS -> HomeScreen(viewModel)
             Tab.CHAPTER -> WriteScreen(viewModel)

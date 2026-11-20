@@ -115,11 +115,11 @@ class FullscreenWriter:
 
         ai_features = [
             ("续写 (Tab)", self._ai_continue, "#7c3aed"),
-            ("扩写", self._ai_expand, "#3b82f6"),
-            ("简写", self._ai_compress, "#f59e0b"),
-            ("润色", self._ai_polish, "#10b981"),
-            ("改写", self._ai_rewrite, "#ef4444"),
-            ("对话", self._ai_dialogue, "#8b5cf6"),
+            ("扩写", self._ai_expand, "#1e40af"),
+            ("简写", self._ai_compress, "#a16207"),
+            ("润色", self._ai_polish, "#047857"),
+            ("改写", self._ai_rewrite, "#dc2626"),
+            ("对话", self._ai_dialogue, "#6d28d9"),
         ]
 
         for text, cmd, color in ai_features:

@@ -141,10 +141,55 @@ class TestContrastPerTheme:
         assert M.contrast_ratio("#ffd700", accent) >= AA, tid
 
     @pytest.mark.parametrize("tid", ts.THEME_IDS)
-    def test_warning_base_readable_as_text(self, tid):
+    def test_warning_text_variant_readable(self, tid):
+        # v3.4.1：warning 填充色专用于白字按钮；深底文字一律走 warning_text 变体
         pal = ts.THEMES[tid]
-        worst = min(M.contrast_ratio(pal["warning"], pal[k]) for k in BG_KEYS)
+        worst = min(M.contrast_ratio(pal["warning_text"], pal[k]) for k in BG_KEYS)
         assert worst >= AA, tid
+
+
+class TestSemanticFillContrast:
+    """v3.4.1 R2：语义填充色（含 hover/pressed）上的白字必须全部 ≥4.5:1。
+
+    历史教训：#f59e0b/#ef4444/#3b82f6 本是深底文字色，被复用为按钮填充后
+    白字只剩 2.15/3.76/3.68。填充色与文字色必须分离，且不得回退。
+    """
+
+    FILL_KEYS = ("success", "warning", "error", "info")
+
+    def test_white_on_every_fill_meets_aa(self):
+        for key in self.FILL_KEYS:
+            fill = ts.THEMES[ts.DEFAULT_THEME][key]
+            ratio = M.contrast_ratio("#ffffff", fill)
+            assert ratio >= AA, f"{key}={fill} white={ratio:.2f}"
+
+    def test_states_white_meets_aa_and_darken(self):
+        for key, states in ts.SEMANTIC_STATES.items():
+            base = ts.THEMES[ts.DEFAULT_THEME][key]
+            ladder = [base, states["active"], states["pressed"]]
+            for color in ladder:
+                assert M.contrast_ratio("#ffffff", color) >= AA, f"{key} {color}"
+            # 对纯黑对比度随明度单调增 ⇒ 用它断言「悬停/按下逐级加深」
+            blacks = [M.contrast_ratio(c, "#000000") for c in ladder]
+            assert blacks[0] > blacks[1] > blacks[2], f"{key} ladder={blacks}"
+
+    def test_fills_and_states_do_not_alias_palette_keys(self):
+        # 填充/状态色不得等于其它主题键的值，防止热切换按值映射时误伤
+        fills = {ts.THEMES[ts.DEFAULT_THEME][k].lower() for k in self.FILL_KEYS}
+        states = {c.lower() for st in ts.SEMANTIC_STATES.values() for c in st.values()}
+        for tid in ts.THEME_IDS:
+            for key, value in ts.THEMES[tid].items():
+                if key in self.FILL_KEYS:
+                    continue
+                assert value.lower() not in fills | states, f"{tid}.{key}={value}"
+
+    def test_mobile_warning_maps_to_text_variant(self):
+        # 移动端 Warning 令牌唯一用途是深底图标着色 ⇒ 必须映射亮色文字变体
+        assert ts.MOBILE_TOKEN_MAP["Warning"] == "warning_text"
+
+    def test_default_colors_single_source(self):
+        for key in self.FILL_KEYS:
+            assert UIStyle.COLORS[key] == ts.THEMES[ts.DEFAULT_THEME][key]
 
 
 # ============================================================ 3. 激活与换肤行为

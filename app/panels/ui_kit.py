@@ -38,6 +38,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from loguru import logger
 
+from app.theme_system import SEMANTIC_STATES
 from app.ui_style import UIStyle
 
 C = UIStyle.COLORS
@@ -182,7 +183,7 @@ def _kind_style(kind: str) -> tuple:
         "primary": (C["accent"], "white", C["accent_hover"], C["accent"]),
         "secondary": (C["bg_light"], C["text_primary"], C["hover"], C["border_light"]),
         "ghost": (C["bg_medium"], C["text_secondary"], C["hover"], C["bg_medium"]),
-        "danger": (C["error"], "white", "#dc2626", C["error"]),
+        "danger": (C["error"], "white", SEMANTIC_STATES["error"]["active"], C["error"]),
     }
     return table.get(kind, table["secondary"])
 

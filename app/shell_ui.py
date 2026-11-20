@@ -14,6 +14,7 @@ from loguru import logger
 
 from app import UIStyle, __version__, dialogs
 from app.async_runner import safe_after
+from app.theme_system import SEMANTIC_STATES
 from app.ui_scroll import bind_wheel_to_tree
 
 
@@ -115,7 +116,7 @@ class ShellMixin:
         status_frame.pack(side=tk.RIGHT, padx=15)
 
         self.ai_status_label = tk.Label(
-            status_frame, text="未连接AI", font=UIStyle.font("label"), bg=C["bg_medium"], fg=C["warning"]
+            status_frame, text="未连接AI", font=UIStyle.font("label"), bg=C["bg_medium"], fg=C["warning_text"]
         )
         self.ai_status_label.pack(side=tk.RIGHT, padx=10)
 
@@ -211,7 +212,7 @@ class ShellMixin:
             padx=10,
             pady=6,
             cursor="hand2",
-            activebackground="#dc2626",
+            activebackground=SEMANTIC_STATES["error"]["active"],
             command=self._stop_generate,
         )
         self.stop_btn.pack(side=tk.RIGHT)
@@ -243,7 +244,7 @@ class ShellMixin:
             padx=10,
             pady=6,
             cursor="hand2",
-            activebackground="#059669",
+            activebackground=SEMANTIC_STATES["success"]["active"],
             command=self._continue_novel,
         )
         self.continue_btn.pack(fill=tk.X, pady=2)
@@ -262,7 +263,7 @@ class ShellMixin:
             padx=8,
             pady=4,
             cursor="hand2",
-            activebackground="#d97706",
+            activebackground=SEMANTIC_STATES["warning"]["active"],
             command=self._regen_current_chapter,
         )
         self.regen_chapter_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
@@ -277,7 +278,7 @@ class ShellMixin:
             padx=8,
             pady=4,
             cursor="hand2",
-            activebackground="#dc2626",
+            activebackground=SEMANTIC_STATES["error"]["active"],
             command=self._regen_all_chapters,
         )
         self.regen_all_btn.pack(side=tk.RIGHT)
@@ -287,7 +288,7 @@ class ShellMixin:
             mode_frame,
             text="章节回顾 (F12)",
             font=UIStyle.font("body"),
-            bg=C["info"] if "info" in C else "#3b82f6",
+            bg=C["info"],
             fg="white",
             relief=tk.FLAT,
             padx=10,
@@ -1114,7 +1115,7 @@ class ShellMixin:
         else:
             self.status_indicator.config(text="未配置AI", fg="#ffd700")
             if hasattr(self, "ai_status_label"):
-                self.ai_status_label.config(text="未连接AI", fg="#f59e0b")
+                self.ai_status_label.config(text="未连接AI", fg=UIStyle.COLORS["warning_text"])
 
     def _check_ready(self, silent=False) -> bool:
         """检查是否就绪"""

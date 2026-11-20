@@ -1,4 +1,4 @@
-# 主题系统（v3.4，2026-11-20）
+# 主题系统（v3.4.1，2026-11-20）
 
 > 三套可切换的极简主义视觉体系：**赛博朋克 / 废土末日 / 机械朋克**。
 > 桌面端（Tk/ttk）与移动端（Kotlin Compose）共用同一套设计令牌。
@@ -30,7 +30,7 @@ app/theme_system.py            ← 唯一权威（纯数据，不 import tkinter
 | 背景 | `bg_dark / bg_medium / bg_light / bg_card / bg_hover` | 五级色阶；`bg_light == bg_card` 是结构别名 |
 | 文字 | `text_primary / secondary / muted / inverse` | 全部 ≥4.5:1（对全部背景） |
 | 强调 | `accent / accent_light / accent_hover / accent_bg / accent_text` | 填充用深色保证白字/金字可读；亮色只做文字/焦点 |
-| 语义 | `success / warning / error / info`（填充）+ `*_bg` + `*_text` | **填充跨主题恒定**；文字变体逐主题调亮 |
+| 语义 | `success / warning / error / info`（填充）+ `*_bg` + `*_text` | **填充跨主题恒定，只配白字**；深底文字一律 `*_text`；状态梯见 `SEMANTIC_STATES` |
 | 边框 | `border / border_light / border_focus` | 焦点环颜色随主题 |
 | 悬停 | `hover / hover_light`（`hover == bg_hover` 别名） | tk 控件悬停 + ttk active 态 |
 | 组件质感 | `STYLE_PARAMS`：内边距密度 / 边框粗细 / 行高 | 赛博紧凑、废土宽松、机械 2px 粗边框 |
@@ -52,6 +52,12 @@ app/theme_system.py            ← 唯一权威（纯数据，不 import tkinter
 4. **间距/字阶跨主题统一**：极简主义要求同一套栅格与字阶；主题差异在色彩与质感。
 5. **阅读器的 light/dark/sepia 是另一回事**：那是正文纸张模式（reader_ui），
    不是界面主题，两者互不干扰。
+6. **填充色与文字色分离（v3.4.1，R2）**：v3.4 曾让 warning/error/info 填充
+   兼任深底文字色，白字对比度只有 2.15/3.76/3.68。现填充加深为
+   `#a16207 / #dc2626 / #1e40af`（白字 4.92/4.83/8.72），深底文字走 `*_text`。
+   `SEMANTIC_STATES` 给出 active/pressed 状态梯：白字全部 ≥4.5:1 且明度逐级加深；
+   填充与状态值不得与任何调色板键同值（`TestSemanticFillContrast` 钉住）。
+   移动端 `Warning` 令牌唯一用途是深底图标着色，故映射 `warning_text`。
 
 ## 4. 怎么改 / 怎么加主题
 
@@ -67,3 +73,5 @@ app/theme_system.py            ← 唯一权威（纯数据，不 import tkinter
   "令牌 + 棘轮"渐进迁移策略；ttk 样式内边距已按主题区分。
 - `webview-app` 已归档冻结（M2 决策），未接入主题系统。
 - 换肤遍历只改**命中旧调色板**的颜色；语义常量（"white"、"#ffd700" 等）不动。
+- 全屏写作器工具栏是硬编码遗留岛（v3.4.1 已把其中白字不达标的按钮色加深，
+  结构色仍为字面值）；稿纸模式 `#f59e0b` 对纸底约 2.0:1 属另一问题，未在本次处理。

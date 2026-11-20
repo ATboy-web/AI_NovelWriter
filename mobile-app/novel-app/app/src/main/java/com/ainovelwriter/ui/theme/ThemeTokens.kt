@@ -40,9 +40,9 @@ object ThemeTokens {
             "Primary600" to 0xFF0E7490L,
             "Primary700" to 0xFF0A3A4AL,
             "Success" to 0xFF0F6E56L,
-            "Warning" to 0xFFF59E0BL,
-            "Error" to 0xFFEF4444L,
-            "Info" to 0xFF3B82F6L,
+            "Warning" to 0xFFF7B32BL,
+            "Error" to 0xFFDC2626L,
+            "Info" to 0xFF1E40AFL,
         ),
         "wasteland" to mapOf(
             "Surface0" to 0xFF14100CL,
@@ -63,9 +63,9 @@ object ThemeTokens {
             "Primary600" to 0xFFB45309L,
             "Primary700" to 0xFF3A1D0EL,
             "Success" to 0xFF0F6E56L,
-            "Warning" to 0xFFF59E0BL,
-            "Error" to 0xFFEF4444L,
-            "Info" to 0xFF3B82F6L,
+            "Warning" to 0xFFF5A623L,
+            "Error" to 0xFFDC2626L,
+            "Info" to 0xFF1E40AFL,
         ),
         "mechapunk" to mapOf(
             "Surface0" to 0xFF0E1116L,
@@ -86,9 +86,9 @@ object ThemeTokens {
             "Primary600" to 0xFF2563EBL,
             "Primary700" to 0xFF172554L,
             "Success" to 0xFF0F6E56L,
-            "Warning" to 0xFFF59E0BL,
-            "Error" to 0xFFEF4444L,
-            "Info" to 0xFF3B82F6L,
+            "Warning" to 0xFFFCD34DL,
+            "Error" to 0xFFDC2626L,
+            "Info" to 0xFF1E40AFL,
         ),
     )
 

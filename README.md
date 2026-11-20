@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/ATboy-web/AI_NovelWriter?label=release&color=blue)](https://github.com/ATboy-web/AI_NovelWriter/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT%20Modified-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-2985%20collected-brightgreen.svg)](#开发)
+[![Tests](https://img.shields.io/badge/tests-4277%20passed-brightgreen.svg)](#开发)
 
 基于 AI 的长篇小说创作工坊 —— **135 类内置题材（可自定义）**、**5 Agent 协作**、
 **20 面板工作台**、**世界线分支与世代传承**、**多 AI 服务适配与用量成本统计**、
@@ -18,7 +18,7 @@
 
 | 平台 | 版本 | 大小 | 链接 |
 |------|------|------|------|
-| **Windows** | **v3.3.2** | ~25 MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
+| **Windows** | **v3.3.2** | ~28 MB | [AI_NovelWriter.exe](https://github.com/ATboy-web/AI_NovelWriter/releases/latest) |
 | Android | v4.0.1（沿用上一次构建） | ~10.9 MB | [AI_NovelWriter_v4.0.1.apk](https://github.com/ATboy-web/AI_NovelWriter/releases/tag/v2.16.0) |
 
 > 单文件免安装：下载后直接双击运行。首次启动需在 **设置** 里配置 AI 服务。
@@ -29,7 +29,7 @@
 2. 打开 **设置 → AI 服务**，选择服务商并填入 API Key（或使用本地 Ollama，无需密钥）
 3. 点击 **新建小说**，输入标题、题材、核心概念
 4. 点击 **自动创作**：大纲 → 角色 → 章节全自动生成
-5. 在 **创作工具** 页用 15 个面板精修设定、时间线、角色传记与世代传承
+5. 在 **创作工具** 页用 20 个面板精修设定、时间线、角色传记与世代传承
 
 ## 功能特性
 
@@ -151,7 +151,7 @@
 ai-novel-writer/
 ├── novel_app.py              # 桌面端薄编排层
 ├── app/                      # 桌面端应用包（唯一需要安装的发行包）
-│   ├── panels/               #   ├─ 面板框架：registry / host / base / legacy / ui_kit + 15 个面板
+│   ├── panels/               #   ├─ 面板框架：registry / host / base / legacy / ui_kit + 20 个面板
 │   ├── providers/            #   ├─ 多 AI 服务：注册表 / 适配器 / 价目表 / 余额 / 推理模型
 │   ├── events/               #   ├─ 线程感知事件总线
 │   ├── ai_client.py          #   ├─ 统一 AI 客户端与路由

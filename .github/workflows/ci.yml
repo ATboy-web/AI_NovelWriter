@@ -40,7 +40,10 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install lint tools
-        run: pip install ruff mypy
+        # ❗ 必须 pin 版本：`pip install ruff` 取最新，上游一旦发新规则
+        # （实测 0.16.7 → 0.17.6 新增规则），全仓立刻变红，而代码并没有问题。
+        # lint 工具升级应当是一次**有意的改动**：改这里的 pin → 本地修完规则 → 再提交。
+        run: pip install "ruff==0.16.7" mypy
 
       - name: Ruff check
         run: ruff check app/ tests/ backend/ scripts/ --output-format=github

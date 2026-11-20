@@ -583,7 +583,7 @@ class CharacterSystem:
             return True
         return False
 
-    def promote_character(self, name: str, new_category: str, new_importance: int = None) -> bool:
+    def promote_character(self, name: str, new_category: str, new_importance: Optional[int] = None) -> bool:
         """提升角色分类"""
         if name in self.characters:
             self.characters[name].category = new_category
@@ -616,7 +616,7 @@ class CharacterSystem:
         ]
         if minors:
             name = random.choice(minors)
-            self.promote_character(name, "关键人物", importance=5)
+            self.promote_character(name, "关键人物", new_importance=5)
             self.characters[name].faction = random.choice(["主角阵营", "敌对阵营", "中立"])
             return name
         return None

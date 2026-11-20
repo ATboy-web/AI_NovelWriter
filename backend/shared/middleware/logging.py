@@ -50,10 +50,7 @@ class RequestLogger(BaseHTTPMiddleware):
     
     def _should_log(self, path: str) -> bool:
         """检查是否应该记录"""
-        for excluded in self.config.EXCLUDED_PATHS:
-            if path.startswith(excluded):
-                return False
-        return True
+        return all(not path.startswith(excluded) for excluded in self.config.EXCLUDED_PATHS)
     
     def _is_sensitive_key(self, key: Any) -> bool:
         """按 key 名判断是否敏感。

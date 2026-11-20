@@ -169,7 +169,7 @@ def sanitize_server_name(name: str) -> Optional[str]:
     cleaned = name.strip()
     if not cleaned or len(cleaned) > 64:
         return None
-    if cleaned.startswith(".") or cleaned.startswith("_"):
+    if cleaned.startswith((".", "_")):
         return None
     if any(ch not in _SERVER_NAME_PATTERN_CHARS and not ("\u4e00" <= ch <= "\u9fff") for ch in cleaned):
         return None

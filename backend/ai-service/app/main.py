@@ -178,7 +178,7 @@ async def generate_text(request: GenerationRequest):
         )
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @app.get("/models", tags=["模型管理"])
 async def list_models():
@@ -191,7 +191,7 @@ async def list_models():
             "count": len(models)
         }
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @app.post("/models/{model_type}/load", tags=["模型管理"])
 async def load_model(model_type: ModelType, model_name: Optional[str] = None):
@@ -204,7 +204,7 @@ async def load_model(model_type: ModelType, model_name: Optional[str] = None):
             "details": result
         }
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @app.post("/models/{model_type}/unload", tags=["模型管理"])
 async def unload_model(model_type: ModelType, model_name: Optional[str] = None):
@@ -217,7 +217,7 @@ async def unload_model(model_type: ModelType, model_name: Optional[str] = None):
             "details": result
         }
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @app.get("/models/{model_type}/status", tags=["模型管理"])
 async def get_model_status(model_type: ModelType, model_name: Optional[str] = None):
@@ -231,7 +231,7 @@ async def get_model_status(model_type: ModelType, model_name: Optional[str] = No
             "status": status
         }
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @app.post("/generate/novel", tags=["小说生成"])
 async def generate_novel_chapter(request: GenerationRequest):
@@ -260,7 +260,7 @@ async def generate_novel_chapter(request: GenerationRequest):
         return response
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 def build_novel_prompt(prompt: str, novel_type: str, chapter_count: int) -> str:
     """构建小说生成提示词"""

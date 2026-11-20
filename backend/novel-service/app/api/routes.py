@@ -111,7 +111,7 @@ async def analyze_style(request: StyleAnalysisRequest):
             )
             
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @router.post("/optimize/content", response_model=ContentOptimizationResponse, tags=["内容优化"])
 async def optimize_content(request: ContentOptimizationRequest):
@@ -185,7 +185,7 @@ async def optimize_content(request: ContentOptimizationRequest):
             )
             
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @router.post("/check/continuity", response_model=ContinuityCheckResponse, tags=["质量检查"])
 async def check_continuity(request: ContinuityCheckRequest):
@@ -266,7 +266,7 @@ async def check_continuity(request: ContinuityCheckRequest):
         )
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @router.get("/supported-types", tags=["小说类型"])
 async def get_supported_types():

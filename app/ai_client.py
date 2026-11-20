@@ -1322,7 +1322,7 @@ class AIClient:
 
     def _record_usage(
         self,
-        usage: UsageData,
+        usage: Optional[UsageData],
         provider: str,
         model: str,
         *,

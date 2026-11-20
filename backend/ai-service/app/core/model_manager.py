@@ -238,15 +238,15 @@ class ModelManager:
                     "model_path": model_path
                 }
                 
-            except ImportError:
-                raise ValueError("llama_cpp未安装，无法加载本地模型")
+            except ImportError as _audit_exc:
+                raise ValueError("llama_cpp未安装，无法加载本地模型") from _audit_exc
             except Exception as e:
                 model_info.status = ModelStatus.ERROR
                 model_info.error_message = str(e)
-                raise ValueError(f"本地模型加载失败: {e}")
+                raise ValueError(f"本地模型加载失败: {e}") from e
                 
         except Exception as e:
-            raise ValueError(f"加载本地模型失败: {e}")
+            raise ValueError(f"加载本地模型失败: {e}") from e
     
     async def _load_openai_model(self, model_name: Optional[str] = None) -> Dict[str, Any]:
         """加载OpenAI模型"""
@@ -262,7 +262,7 @@ class ModelManager:
                 "available_models": [m.id for m in models.data[:5]]
             }
         except Exception as e:
-            raise ValueError(f"OpenAI连接失败: {e}")
+            raise ValueError(f"OpenAI连接失败: {e}") from e
     
     async def _load_claude_model(self, model_name: Optional[str] = None) -> Dict[str, Any]:
         """加载Claude模型"""
@@ -282,7 +282,7 @@ class ModelManager:
                 "model": model_name or "claude-3-sonnet-20240229"
             }
         except Exception as e:
-            raise ValueError(f"Claude连接失败: {e}")
+            raise ValueError(f"Claude连接失败: {e}") from e
     
     async def unload_model(self, model_type: str, model_name: Optional[str] = None) -> Dict[str, Any]:
         """卸载指定模型"""
@@ -328,7 +328,7 @@ class ModelManager:
             }
             
         except Exception as e:
-            raise ValueError(f"卸载本地模型失败: {e}")
+            raise ValueError(f"卸载本地模型失败: {e}") from e
     
     async def unload_all_models(self) -> Dict[str, Any]:
         """卸载所有模型"""

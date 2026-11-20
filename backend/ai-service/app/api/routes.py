@@ -145,7 +145,7 @@ async def generate_chapter(request: ChapterRequest, inference_engine=Depends(get
         )
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @router.post("/generate/outline", response_model=NovelOutlineResponse, tags=["小说生成"])
 async def generate_outline(request: NovelOutlineRequest, inference_engine=Depends(get_inference_engine)):
@@ -241,7 +241,7 @@ async def generate_outline(request: NovelOutlineRequest, inference_engine=Depend
         )
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @router.post("/generate/character", response_model=CharacterResponse, tags=["人物生成"])
 async def generate_character(request: CharacterRequest, inference_engine=Depends(get_inference_engine)):
@@ -328,7 +328,7 @@ async def generate_character(request: CharacterRequest, inference_engine=Depends
         )
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @router.post("/analyze/style", response_model=StyleAnalysisResponse, tags=["文本分析"])
 async def analyze_style(request: StyleAnalysisRequest, inference_engine=Depends(get_inference_engine)):
@@ -402,7 +402,7 @@ async def analyze_style(request: StyleAnalysisRequest, inference_engine=Depends(
         )
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @router.get("/novel-types", tags=["小说类型"])
 async def get_novel_types():
@@ -465,7 +465,7 @@ async def get_statistics(inference_engine=Depends(get_inference_engine)):
             "statistics": stats
         }
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 def _internal_error(e: Exception):
     """通用内部错误处理：记录详细错误到日志，仅返回通用提示给客户端。"""

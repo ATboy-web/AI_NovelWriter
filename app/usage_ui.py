@@ -246,7 +246,7 @@ class UsagePanelMixin:
         notebook.add(frame, text=title)
 
         tree = ttk.Treeview(frame, columns=columns, show="headings", height=14)
-        for column, width in zip(columns, widths):
+        for column, width in zip(columns, widths, strict=True):
             tree.heading(column, text=column)
             tree.column(
                 column,

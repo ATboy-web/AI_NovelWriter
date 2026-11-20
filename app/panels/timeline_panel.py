@@ -359,7 +359,7 @@ class TimelinePanel(BasePanel):
             f"{stats.get('world_lines', 0)}",
             f"{stats.get('branch_dirs', 0)}",
         ]
-        for label, value in zip(getattr(self._kpi, "value_labels", []), values):
+        for label, value in zip(getattr(self._kpi, "value_labels", []), values, strict=False):
             label.configure(text=value)
 
     def _query(self) -> str:

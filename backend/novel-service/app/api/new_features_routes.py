@@ -45,7 +45,7 @@ async def search_vector(request: VectorSearchRequest):
         )
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 class VectorAddRequest(BaseModel):
     """向量添加请求"""
@@ -70,7 +70,7 @@ async def add_to_vector(request: VectorAddRequest):
         return {"success": result}
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 # ==================== 一致性审校 API ====================
 
@@ -120,7 +120,7 @@ async def check_consistency(request: ConsistencyCheckRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "一致性检查失败"))
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 # ==================== 定稿系统 API ====================
 
@@ -182,7 +182,7 @@ async def finalize_chapter(request: FinalizeChapterRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "定稿失败"))
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @router.get("/finalization/summary/{novel_id}", tags=["定稿系统"])
 async def get_novel_summary(novel_id: str):
@@ -202,7 +202,7 @@ async def get_novel_summary(novel_id: str):
         }
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 # ==================== 对话推演 API ====================
 
@@ -258,7 +258,7 @@ async def generate_dialogue_api(request: DialogueRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "对话生成失败"))
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 class ContinueDialogueRequest(BaseModel):
     """继续对话请求"""
@@ -283,7 +283,7 @@ async def continue_dialogue_api(request: ContinueDialogueRequest):
         return result
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 # ==================== 故事流推演 API ====================
 
@@ -337,7 +337,7 @@ async def generate_story_flow_api(request: StoryFlowRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "故事流推演失败"))
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 class BranchingScenariosRequest(BaseModel):
     """分支场景请求"""
@@ -364,7 +364,7 @@ async def generate_branching_scenarios_api(request: BranchingScenariosRequest):
         return result
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 class ConflictEscalationRequest(BaseModel):
     """冲突升级请求"""
@@ -389,7 +389,7 @@ async def generate_conflict_escalation_api(request: ConflictEscalationRequest):
         return result
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 # ==================== 风格转换 API ====================
 
@@ -435,7 +435,7 @@ async def transfer_style_api(request: StyleTransferRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "风格转换失败"))
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 class ImitateAuthorRequest(BaseModel):
     """模仿作家请求"""
@@ -458,7 +458,7 @@ async def imitate_author_style_api(request: ImitateAuthorRequest):
         return result
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @router.get("/style-transfer/templates", tags=["风格转换"])
 async def get_style_templates():
@@ -474,7 +474,7 @@ async def get_style_templates():
         }
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 # ==================== 事物描写库 API ====================
 
@@ -520,7 +520,7 @@ async def generate_description_api(request: DescriptionRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "描写生成失败"))
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 class SceneDescriptionRequest(BaseModel):
     """场景描写请求"""
@@ -547,7 +547,7 @@ async def generate_scene_description_api(request: SceneDescriptionRequest):
         return result
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @router.get("/description/search", tags=["事物描写库"])
 async def search_descriptions_api(query: str, category: Optional[str] = None):
@@ -567,7 +567,7 @@ async def search_descriptions_api(query: str, category: Optional[str] = None):
         }
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @router.get("/description/categories", tags=["事物描写库"])
 async def get_description_categories():
@@ -583,7 +583,7 @@ async def get_description_categories():
         }
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 # ==================== 角色桥段库 API ====================
 
@@ -623,7 +623,7 @@ async def generate_bridge_api(request: BridgeRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "桥段生成失败"))
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 class CombineBridgesRequest(BaseModel):
     """组合桥段请求"""
@@ -646,7 +646,7 @@ async def combine_bridges_api(request: CombineBridgesRequest):
         return result
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @router.get("/bridge/search", tags=["角色桥段库"])
 async def search_bridges_api(query: str, category: Optional[str] = None):
@@ -666,7 +666,7 @@ async def search_bridges_api(query: str, category: Optional[str] = None):
         }
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @router.get("/bridge/categories", tags=["角色桥段库"])
 async def get_bridge_categories():
@@ -682,7 +682,7 @@ async def get_bridge_categories():
         }
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 # ==================== 健康检查 API ====================
 

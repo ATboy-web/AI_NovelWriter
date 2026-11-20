@@ -173,4 +173,10 @@ precision = 1
 #
 # 判定由 scripts/check_coverage.py 执行，它额外做了「阈值也要往上走」的反向检查：
 # 实测超过 fail_under + 2 个百分点即失败并提示收紧，防止门禁退化成橡皮图章。
-fail_under = 84.5
+#   2026-11-20 全仓审计补测（theme_switch 56.3→92%+ / image_generator 73.9→95%+，
+#     新增 79 条回归与补测用例）：升至 **86.77%（Windows，-k "not Tk" 口径）**——
+#     86.77 > 84.5+2 的上界 ⇒ ratchet 触发。阈值上调到 **85.5**：
+#     - 按最低平台估算（Linux CI ≈ 86.5，Windows 减平台分支差）留约 1.0 缓冲；
+#     - Windows 86.77 富余 1.27，上界 87.5 ⇒ 不触发 ratchet；
+#     - 不取脚本建议的 85.8（那是 actual-1 的单平台值），避免按单平台卡死。
+fail_under = 85.5

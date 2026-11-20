@@ -191,7 +191,7 @@ async def generate_novel(request: NovelRequest):
             raise HTTPException(status_code=500, detail=result.get("error", "小说生成失败"))
             
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @app.post("/generate/chapter", response_model=ChapterResponse, tags=["章节生成"])
 async def generate_chapter(request: ChapterRequest):
@@ -225,7 +225,7 @@ async def generate_chapter(request: ChapterRequest):
         )
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @app.post("/generate/character", response_model=CharacterResponse, tags=["人物生成"])
 async def generate_character(request: CharacterRequest):
@@ -256,7 +256,7 @@ async def generate_character(request: CharacterRequest):
         )
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @app.post("/generate/outline", response_model=OutlineResponse, tags=["大纲生成"])
 async def generate_outline(request: OutlineRequest):
@@ -289,7 +289,7 @@ async def generate_outline(request: OutlineRequest):
         )
         
     except Exception as e:
-        raise _internal_error(e)
+        raise _internal_error(e) from e
 
 @app.get("/novel-types", tags=["小说类型"])
 async def get_novel_types():

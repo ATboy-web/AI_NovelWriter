@@ -72,7 +72,7 @@ def _safe_import(module_name: str, class_name: str):
     except (ImportError, AttributeError) as e:
         import warnings
 
-        warnings.warn(f"Failed to import {class_name} from {module_name}: {e}")
+        warnings.warn(f"Failed to import {class_name} from {module_name}: {e}", stacklevel=2)
         # 创建占位类型，实例化时报错而非静默失败
         return type(class_name, (_ImportStub,), {"_import_error": str(e)})
 

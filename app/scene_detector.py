@@ -10,7 +10,7 @@
 """
 
 import json
-from typing import Dict, List
+from typing import Any, Dict, List, Tuple
 
 
 class CinematicPromptGenerator:
@@ -87,8 +87,12 @@ class CinematicPromptGenerator:
         return cls.ASPECT_RATIOS["landscape"]
 
     @classmethod
-    def get_cinematic_prompt(cls, scene: dict) -> str:
-        """生成电影级提示词"""
+    def get_cinematic_prompt(cls, scene: dict) -> Tuple[str, Dict[str, Any]]:
+        """生成电影级提示词。返回 ``(prompt, ratio_info)`` 二元组。
+
+        审计修复：原注解 ``-> str`` 与实际返回不符（所有调用点均按二元组解包），
+        修正注解以消除接口不一致；运行时行为不变。
+        """
         scene_type = scene.get("type", "epic")
         description = scene.get("description", "")
         mood = scene.get("mood", "dramatic")
@@ -238,8 +242,8 @@ class SceneDetector:
     ]
 
     @staticmethod
-    def detect(content: str) -> List[Dict[str, str]]:
-        """检测内容中的名场面"""
+    def detect(content: str) -> List[Dict[str, Any]]:
+        """检测内容中的名场面（值含 str 与后补的 int 章号，故用 Any）。"""
         scenes = []
 
         # 优化：将分句操作提升到循环外部，避免重复O(N)操作

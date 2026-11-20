@@ -81,7 +81,7 @@ class InferenceEngine:
             }
             
         except Exception as e:
-            raise ValueError(f"本地模型生成失败: {e}")
+            raise ValueError(f"本地模型生成失败: {e}") from e
     
     async def generate_openai(
         self,
@@ -136,7 +136,7 @@ class InferenceEngine:
             }
             
         except Exception as e:
-            raise ValueError(f"OpenAI生成失败: {e}")
+            raise ValueError(f"OpenAI生成失败: {e}") from e
     
     async def generate_claude(
         self,
@@ -189,7 +189,7 @@ class InferenceEngine:
             }
             
         except Exception as e:
-            raise ValueError(f"Claude生成失败: {e}")
+            raise ValueError(f"Claude生成失败: {e}") from e
     
     async def generate_with_fallback(
         self,
@@ -282,7 +282,7 @@ class InferenceEngine:
             return result
             
         except Exception as e:
-            raise ValueError(f"小说章节生成失败: {e}")
+            raise ValueError(f"小说章节生成失败: {e}") from e
     
     def _build_chapter_prompt(
         self,

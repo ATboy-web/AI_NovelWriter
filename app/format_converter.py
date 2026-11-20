@@ -419,6 +419,7 @@ class FormatConverter:
         """转换为PDF"""
         try:
             from fpdf import FPDF
+            from fpdf.enums import XPos, YPos
         except ImportError:
             return self._to_txt(content, title, output_file.with_suffix(".txt"), chapters)
 
@@ -437,7 +438,7 @@ class FormatConverter:
         for fp in font_paths:
             if os.path.exists(fp):
                 try:
-                    pdf.add_font("Chinese", "", fp, uni=True)
+                    pdf.add_font("Chinese", "", fp)
                     pdf.set_font("Chinese", size=12)
                     font_added = True
                     break
@@ -452,17 +453,24 @@ class FormatConverter:
 
         # 标题
         pdf.set_font_size(24)
-        pdf.cell(0, 20, title, ln=True, align="C")
+        pdf.cell(0, 20, title, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
         pdf.ln(10)
 
         # 元信息
         meta = metadata or {}
         pdf.set_font_size(10)
         if meta.get("author"):
-            pdf.cell(0, 8, f"作者: {meta['author']}", ln=True, align="C")
+            pdf.cell(0, 8, f"作者: {meta['author']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
         if meta.get("genre"):
-            pdf.cell(0, 8, f"类型: {meta['genre']}", ln=True, align="C")
-        pdf.cell(0, 8, f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=True, align="C")
+            pdf.cell(0, 8, f"类型: {meta['genre']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+        pdf.cell(
+            0,
+            8,
+            f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            new_x=XPos.LMARGIN,
+            new_y=YPos.NEXT,
+            align="C",
+        )
         pdf.ln(20)
 
         # 内容
@@ -474,7 +482,7 @@ class FormatConverter:
                 ch_content = ch.get("content", "")
 
                 pdf.set_font_size(16)
-                pdf.cell(0, 12, ch_title, ln=True)
+                pdf.cell(0, 12, ch_title, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                 pdf.ln(5)
 
                 pdf.set_font_size(12)

@@ -100,7 +100,7 @@ class NovelGenerator(ABC):
                 response.raise_for_status()
                 return response.json()
         except Exception as e:
-            raise ValueError(f"AI服务调用失败: {e}")
+            raise ValueError(f"AI服务调用失败: {e}") from e
     
     async def generate_full_novel(self, title: str, synopsis: str, chapter_count: int = 10) -> Dict[str, Any]:
         """生成完整小说"""

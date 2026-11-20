@@ -352,12 +352,14 @@ class GenerationMixin:
         }
         return fallback
 
-    def _parse_json_response(self, response: str, default):
+    def _parse_json_response(self, response: str, default, is_list: bool = False):
         """解析JSON响应 — 多层修复（与novel_agent一致的健壮版本）
 
         P2-6: 纯逻辑已抽取至 app.parsing.parse_json_response（可独立单测）。
+        审计修复：签名与 `NovelAgent._parse_json_response` 对齐，补齐 `is_list`
+        透传 —— 此前世界线决策抽取调用点传 `is_list=True` 会直接 TypeError。
         """
-        return parse_json_response(response, default)
+        return parse_json_response(response, default, is_list=is_list)
 
     def _build_chapter_context(self, ch_num: int, meta: dict | None = None) -> str:
         """构建本章的上下文（前几章原文 + 整体/故事大纲 + 世界观 + 连贯性要求 + 内容模式）。

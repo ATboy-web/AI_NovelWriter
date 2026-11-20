@@ -208,8 +208,8 @@ class NovelWriterApp(
         except Exception as e:
             logger.debug(f"图标加载失败（非致命）: {e}")
 
-        # 应用主题
-        UIStyle.apply_theme(self.root)
+        # 应用主题（v3.4：按配置选择三主题之一；遗留/非法值回落默认）
+        UIStyle.apply_theme(self.root, theme=self.config.get("theme", "cyberpunk"))
 
         # v3 P4：领域事件总线 —— 面板 ↔ 主面板联动的唯一通道（见 app/events/bus.py）。
         # 必须在 _create_widgets() 之前建好：面板宿主在构建界面时就要订阅它。

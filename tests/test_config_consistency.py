@@ -79,13 +79,18 @@ class TestSensitiveFieldsSingleSource:
 
 
 class TestDeadConfigKeysRemoved:
-    """`theme` / `auto_save` 已**有意移除**（声明了却完全无对应功能）。"""
+    """`auto_save` 已**有意移除**（声明了却完全无对应功能）。
 
-    @pytest.mark.parametrize("key", ["theme", "auto_save"])
+    `theme` 曾在 2026-09-17 审计中同样作为死键移除，但 v3.4（2026-11-20 UI 改版）
+    起**重新启用且真实接线**：设置对话框「高级」页有主题选择控件，
+    `app/theme_switch.py` 据此换肤并持久化。接线守卫见 `tests/test_theme_system.py`。
+    """
+
+    @pytest.mark.parametrize("key", ["auto_save"])
     def test_not_in_default_config(self, key):
         assert key not in DEFAULT_CONFIG, f"{key} 又被加回来了 —— 它没有任何对应功能"
 
-    @pytest.mark.parametrize("key", ["theme", "auto_save"])
+    @pytest.mark.parametrize("key", ["auto_save"])
     def test_not_read_anywhere(self, key):
         offenders = []
         for path in (_REPO_ROOT / "app").rglob("*.py"):

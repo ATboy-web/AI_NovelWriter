@@ -21,8 +21,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            AINovelWriterTheme {
-                MainApp()
+            val viewModel: MainViewModel = viewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            AINovelWriterTheme(themeId = state.themeId) {
+                MainApp(viewModel)
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.ainovelwriter.ui.screen
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -68,6 +69,31 @@ fun SettingsScreen(viewModel: MainViewModel) {
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // 界面主题（v3.4：与桌面同一套令牌，选择即生效并持久化）
+            Card(colors = CardDefaults.cardColors(containerColor = Surface2), shape = RoundedCornerShape(14.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("界面主题", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
+                    Spacer(Modifier.height(8.dp))
+                    ThemeTokens.THEME_IDS.forEach { tid ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { viewModel.setTheme(tid) }.padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = state.themeId == tid,
+                                onClick = { viewModel.setTheme(tid) },
+                                colors = RadioButtonDefaults.colors(selectedColor = Primary400)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Column {
+                                Text(ThemeTokens.THEME_NAMES.getValue(tid), style = MaterialTheme.typography.bodyMedium)
+                                Text(ThemeTokens.THEME_DESCRIPTIONS.getValue(tid), style = MaterialTheme.typography.labelSmall.copy(color = Text4))
+                            }
+                        }
+                    }
+                }
+            }
+
             // API Config
             Card(colors = CardDefaults.cardColors(containerColor = Surface2), shape = RoundedCornerShape(14.dp)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

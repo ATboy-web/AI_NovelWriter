@@ -1,15 +1,43 @@
 """
 UI样式管理模块 - 现代化UI样式
-AI小说创作工坊 v2.0 设计系统
+AI小说创作工坊 设计系统（v3.4 起为三主题可切换体系）
+
+调色板的**唯一权威**在 `app/theme_system.py`（赛博朋克 / 废土末日 / 机械朋克）。
+`UIStyle.COLORS` 是**当前激活主题**的调色板：`set_palette()` 原地更新它
+（保持字典对象同一性 —— 全仓 `C = UIStyle.COLORS` 的模块级别名依赖这一点），
+`apply_theme()` 据此配置全部 ttk 样式。换肤遍历见 `app/theme_switch.py`。
 """
 
 # D4：`import tkinter as tk` 随四个 `create_styled_*` 工厂一起移除 ——
 # 本模块现在只用 `ttk`（`ttk.Style()` 配置全局主题）。
 from tkinter import ttk
 
+from . import theme_system
+
 
 class UIStyle:
-    """现代化UI样式 - 深色主题设计系统"""
+    """现代化UI样式 - 多主题设计系统（默认深色：赛博朋克）"""
+
+    #: 当前激活主题 id（theme_system.THEME_IDS 之一）
+    ACTIVE_THEME = theme_system.DEFAULT_THEME
+
+    @classmethod
+    def set_palette(cls, theme_id: str) -> str:
+        """激活一套主题调色板，返回归一后的主题 id。
+
+        **原地更新** COLORS（clear+update），不替换字典对象 ——
+        各面板 `C = UIStyle.COLORS` 的别名必须立即看到新值。
+        同时刷新 DesignTokens 的派生快照（单一来源链条不断）。
+        """
+        tid = theme_system.normalize_theme(theme_id)
+        cls.COLORS.clear()
+        cls.COLORS.update(theme_system.THEMES[tid])
+        cls.ACTIVE_THEME = tid
+        # 延迟导入：design_tokens 在模块级 import 本模块，顶层互引会成环
+        from .design_tokens import DesignTokens
+
+        DesignTokens.refresh()
+        return tid
 
     # ═══════════════════════════════════════════
     # 设计令牌 (Design Tokens)
@@ -149,13 +177,21 @@ class UIStyle:
     }
 
     @classmethod
-    def apply_theme(cls, root):
-        """应用主题到根窗口"""
+    def apply_theme(cls, root, theme=None):
+        """应用主题到根窗口。
+
+        `theme` 传入主题 id 时先激活对应调色板（`set_palette`）；
+        不传则按当前激活调色板重新配置样式（换肤 / 初始化共用这一条路径）。
+        可重复调用：ttk 样式是全局注册表，重配置即对既有控件生效。
+        """
+        if theme is not None:
+            cls.set_palette(theme)
         style = ttk.Style()
         style.theme_use("clam")
 
         C = cls.COLORS
         F = cls.FONTS
+        P = theme_system.STYLE_PARAMS[cls.ACTIVE_THEME]
 
         # 配置全局样式
         root.configure(bg=C["bg_dark"])
@@ -192,13 +228,13 @@ class UIStyle:
             "Accent.TLabel", background=C["bg_dark"], foreground=C["accent_light"], font=(F["family"], F["size_base"])
         )
         style.configure(
-            "Success.TLabel", background=C["bg_dark"], foreground=C["success"], font=(F["family"], F["size_base"])
+            "Success.TLabel", background=C["bg_dark"], foreground=C["success_text"], font=(F["family"], F["size_base"])
         )
         style.configure(
-            "Warning.TLabel", background=C["bg_dark"], foreground=C["warning"], font=(F["family"], F["size_base"])
+            "Warning.TLabel", background=C["bg_dark"], foreground=C["warning_text"], font=(F["family"], F["size_base"])
         )
         style.configure(
-            "Error.TLabel", background=C["bg_dark"], foreground=C["error"], font=(F["family"], F["size_base"])
+            "Error.TLabel", background=C["bg_dark"], foreground=C["error_text"], font=(F["family"], F["size_base"])
         )
         style.configure(
             "Muted.TLabel", background=C["bg_dark"], foreground=C["text_muted"], font=(F["family"], F["size_sm"])
@@ -211,7 +247,7 @@ class UIStyle:
             background=C["accent"],
             foreground="white",
             font=(F["family"], F["size_base"], "bold"),
-            padding=(20, 10),
+            padding=P["primary_pad"],
         )
         style.map(
             "Accent.TButton",
@@ -225,7 +261,7 @@ class UIStyle:
             background=C["bg_light"],
             foreground=C["text_primary"],
             font=(F["family"], F["size_base"]),
-            padding=(16, 8),
+            padding=P["secondary_pad"],
         )
         style.map(
             "Secondary.TButton",
@@ -239,9 +275,13 @@ class UIStyle:
             background=C["success"],
             foreground="white",
             font=(F["family"], F["size_base"], "bold"),
-            padding=(20, 10),
+            padding=P["primary_pad"],
         )
-        style.map("Success.TButton", background=[("active", "#059669"), ("pressed", "#047857")])
+        style.map(
+            "Success.TButton",
+            background=[("active", "#059669"), ("pressed", "#047857"), ("disabled", C["bg_light"])],
+            foreground=[("disabled", C["text_muted"])],
+        )
 
         # 危险按钮 - 红色
         style.configure(
@@ -249,19 +289,27 @@ class UIStyle:
             background=C["error"],
             foreground="white",
             font=(F["family"], F["size_base"], "bold"),
-            padding=(16, 8),
+            padding=P["secondary_pad"],
         )
-        style.map("Danger.TButton", background=[("active", "#dc2626"), ("pressed", "#b91c1c")])
+        style.map(
+            "Danger.TButton",
+            background=[("active", "#dc2626"), ("pressed", "#b91c1c"), ("disabled", C["bg_light"])],
+            foreground=[("disabled", C["text_muted"])],
+        )
 
         # 幽灵按钮 - 透明
         style.configure(
             "Ghost.TButton",
             background=C["bg_dark"],
-            foreground=C["accent_light"],
+            foreground=C["accent_text"],
             font=(F["family"], F["size_base"]),
-            padding=(12, 6),
+            padding=P["ghost_pad"],
         )
-        style.map("Ghost.TButton", background=[("active", C["hover"]), ("pressed", C["bg_light"])])
+        style.map(
+            "Ghost.TButton",
+            background=[("active", C["hover"]), ("pressed", C["bg_light"]), ("disabled", C["bg_dark"])],
+            foreground=[("disabled", C["text_muted"])],
+        )
 
         # ═══════ Notebook 样式 ═══════
         style.configure("Dark.TNotebook", background=C["bg_dark"], borderwidth=0, padding=[4, 4])
@@ -269,13 +317,13 @@ class UIStyle:
             "Dark.TNotebook.Tab",
             background=C["bg_medium"],
             foreground=C["text_secondary"],
-            padding=[20, 10],
+            padding=list(P["tab_pad"]),
             font=(F["family"], F["size_base"]),
         )
         style.map(
             "Dark.TNotebook.Tab",
-            background=[("selected", C["accent"]), ("active", C["hover_light"])],
-            foreground=[("selected", "white"), ("active", C["text_primary"])],
+            background=[("selected", C["accent"]), ("active", C["hover_light"]), ("disabled", C["bg_medium"])],
+            foreground=[("selected", "white"), ("active", C["text_primary"]), ("disabled", C["text_muted"])],
         )
 
         # ═══════ Entry 样式 ═══════
@@ -287,13 +335,33 @@ class UIStyle:
             bordercolor=C["border"],
             lightcolor=C["border_light"],
             darkcolor=C["border"],
+            borderwidth=P["borderwidth"],
             font=(F["family"], F["size_base"]),
-            padding=[10, 8],
+            padding=list(P["entry_pad"]),
         )
         style.map(
             "Dark.TEntry",
-            fieldbackground=[("focus", C["bg_light"]), ("disabled", C["bg_dark"])],
-            bordercolor=[("focus", C["border_focus"])],
+            fieldbackground=[("focus", C["bg_light"]), ("disabled", C["bg_dark"]), ("invalid", C["error_bg"])],
+            bordercolor=[("focus", C["border_focus"]), ("invalid", C["error"])],
+            foreground=[("disabled", C["text_muted"])],
+        )
+
+        # 错误态输入框（校验失败时显式指定此样式）
+        style.configure(
+            "Error.TEntry",
+            fieldbackground=C["error_bg"],
+            foreground=C["text_primary"],
+            insertcolor=C["text_primary"],
+            bordercolor=C["error"],
+            lightcolor=C["error"],
+            darkcolor=C["error"],
+            borderwidth=P["borderwidth"],
+            font=(F["family"], F["size_base"]),
+            padding=list(P["entry_pad"]),
+        )
+        style.map(
+            "Error.TEntry",
+            bordercolor=[("focus", C["error_text"])],
             foreground=[("disabled", C["text_muted"])],
         )
 
@@ -304,14 +372,16 @@ class UIStyle:
             foreground=C["text_primary"],
             bordercolor=C["border"],
             arrowcolor=C["text_secondary"],
+            borderwidth=P["borderwidth"],
             font=(F["family"], F["size_base"]),
-            padding=[10, 8],
+            padding=list(P["entry_pad"]),
         )
         style.map(
             "Dark.TCombobox",
-            fieldbackground=[("focus", C["bg_light"]), ("readonly", C["bg_medium"])],
-            bordercolor=[("focus", C["border_focus"])],
-            arrowcolor=[("focus", C["accent_light"])],
+            fieldbackground=[("focus", C["bg_light"]), ("readonly", C["bg_medium"]), ("disabled", C["bg_dark"])],
+            bordercolor=[("focus", C["border_focus"]), ("invalid", C["error"])],
+            arrowcolor=[("focus", C["accent_light"]), ("disabled", C["text_muted"])],
+            foreground=[("disabled", C["text_muted"])],
         )
 
         # ═══════ Checkbutton 样式 ═══════
@@ -324,8 +394,9 @@ class UIStyle:
         )
         style.map(
             "Dark.TCheckbutton",
-            background=[("active", C["bg_dark"])],
-            indicatorcolor=[("selected", C["accent"]), ("pressed", C["accent_hover"])],
+            background=[("active", C["bg_dark"]), ("disabled", C["bg_dark"])],
+            foreground=[("disabled", C["text_muted"])],
+            indicatorcolor=[("selected", C["accent"]), ("pressed", C["accent_hover"]), ("disabled", C["bg_medium"])],
         )
 
         # ═══════ Radiobutton 样式 ═══════
@@ -337,7 +408,10 @@ class UIStyle:
             indicatorcolor=C["bg_medium"],
         )
         style.map(
-            "Dark.TRadiobutton", background=[("active", C["bg_dark"])], indicatorcolor=[("selected", C["accent"])]
+            "Dark.TRadiobutton",
+            background=[("active", C["bg_dark"]), ("disabled", C["bg_dark"])],
+            foreground=[("disabled", C["text_muted"])],
+            indicatorcolor=[("selected", C["accent"]), ("disabled", C["bg_medium"])],
         )
 
         # ═══════ LabelFrame 样式 ═══════
@@ -377,6 +451,7 @@ class UIStyle:
             arrowcolor=C["text_muted"],
             relief="flat",
         )
+        style.map("Dark.Horizontal.TScrollbar", background=[("active", C["hover_light"]), ("pressed", C["accent"])])
 
         # ═══════ Progressbar 样式 ═══════
         style.configure(
@@ -398,9 +473,169 @@ class UIStyle:
             foreground=C["text_primary"],
             bordercolor=C["border"],
             arrowcolor=C["text_secondary"],
+            borderwidth=P["borderwidth"],
             font=(F["family"], F["size_base"]),
-            padding=[10, 8],
+            padding=list(P["entry_pad"]),
         )
+        style.map(
+            "Dark.TSpinbox",
+            fieldbackground=[("focus", C["bg_light"]), ("disabled", C["bg_dark"])],
+            bordercolor=[("focus", C["border_focus"])],
+            foreground=[("disabled", C["text_muted"])],
+            arrowcolor=[("disabled", C["text_muted"])],
+        )
+
+        # ═══════ 基础样式（未显式指定 style 的 ttk 控件也落在主题内）═══════
+        # v3.4 前只有 Dark.* 命名样式，未指定 style 的控件退回 clam 默认浅色，
+        # 全靠 polish_legacy 事后补救。这里把基础样式一并配置，
+        # 新建控件**默认即主题**，润色只负责 tk 经典控件。
+        style.configure("TFrame", background=C["bg_dark"])
+        style.configure(
+            "TLabel", background=C["bg_dark"], foreground=C["text_primary"], font=(F["family"], F["size_base"])
+        )
+        style.configure(
+            "TButton",
+            background=C["bg_light"],
+            foreground=C["text_primary"],
+            font=(F["family"], F["size_base"]),
+            padding=list(P["secondary_pad"]),
+            borderwidth=P["borderwidth"],
+        )
+        style.map(
+            "TButton",
+            background=[("active", C["hover_light"]), ("pressed", C["hover"]), ("disabled", C["bg_dark"])],
+            foreground=[("disabled", C["text_muted"])],
+        )
+        style.configure(
+            "TEntry",
+            fieldbackground=C["bg_medium"],
+            foreground=C["text_primary"],
+            insertcolor=C["text_primary"],
+            bordercolor=C["border"],
+            lightcolor=C["border_light"],
+            darkcolor=C["border"],
+            borderwidth=P["borderwidth"],
+            font=(F["family"], F["size_base"]),
+            padding=list(P["entry_pad"]),
+        )
+        style.map(
+            "TEntry",
+            fieldbackground=[("focus", C["bg_light"]), ("disabled", C["bg_dark"]), ("invalid", C["error_bg"])],
+            bordercolor=[("focus", C["border_focus"]), ("invalid", C["error"])],
+            foreground=[("disabled", C["text_muted"])],
+        )
+        style.configure(
+            "TCombobox",
+            fieldbackground=C["bg_medium"],
+            foreground=C["text_primary"],
+            bordercolor=C["border"],
+            arrowcolor=C["text_secondary"],
+            borderwidth=P["borderwidth"],
+            font=(F["family"], F["size_base"]),
+            padding=list(P["entry_pad"]),
+        )
+        style.map(
+            "TCombobox",
+            fieldbackground=[("focus", C["bg_light"]), ("readonly", C["bg_medium"]), ("disabled", C["bg_dark"])],
+            bordercolor=[("focus", C["border_focus"])],
+            arrowcolor=[("focus", C["accent_light"]), ("disabled", C["text_muted"])],
+            foreground=[("disabled", C["text_muted"])],
+        )
+        style.configure(
+            "TCheckbutton", background=C["bg_dark"], foreground=C["text_primary"], font=(F["family"], F["size_base"])
+        )
+        style.map(
+            "TCheckbutton",
+            background=[("active", C["bg_dark"])],
+            foreground=[("disabled", C["text_muted"])],
+            indicatorcolor=[("selected", C["accent"]), ("pressed", C["accent_hover"])],
+        )
+        style.configure(
+            "TRadiobutton", background=C["bg_dark"], foreground=C["text_primary"], font=(F["family"], F["size_base"])
+        )
+        style.map(
+            "TRadiobutton",
+            background=[("active", C["bg_dark"])],
+            foreground=[("disabled", C["text_muted"])],
+            indicatorcolor=[("selected", C["accent"])],
+        )
+        style.configure("TLabelframe", background=C["bg_card"], foreground=C["text_primary"], bordercolor=C["border"])
+        style.configure(
+            "TLabelframe.Label", background=C["bg_card"], foreground=C["accent_text"], font=cls.font("label_bold")
+        )
+        style.configure("TNotebook", background=C["bg_dark"], borderwidth=0)
+        style.configure(
+            "TNotebook.Tab",
+            background=C["bg_medium"],
+            foreground=C["text_secondary"],
+            padding=list(P["tab_pad"]),
+            font=(F["family"], F["size_base"]),
+        )
+        style.map(
+            "TNotebook.Tab",
+            background=[("selected", C["accent"]), ("active", C["hover_light"])],
+            foreground=[("selected", "white"), ("active", C["text_primary"]), ("disabled", C["text_muted"])],
+        )
+        style.configure(
+            "Treeview",
+            background=C["bg_card"],
+            fieldbackground=C["bg_card"],
+            foreground=C["text_primary"],
+            rowheight=P["tree_row_height"],
+            borderwidth=0,
+            font=cls.font("label"),
+        )
+        style.configure(
+            "Treeview.Heading",
+            background=C["bg_medium"],
+            foreground=C["text_secondary"],
+            relief="flat",
+            font=cls.font("label_bold"),
+        )
+        style.map(
+            "Treeview",
+            background=[("selected", C["accent"])],
+            foreground=[("selected", "white")],
+        )
+        style.map("Treeview.Heading", background=[("active", C["hover_light"])])
+        style.configure(
+            "Vertical.TScrollbar",
+            background=C["bg_medium"],
+            troughcolor=C["bg_dark"],
+            bordercolor=C["bg_dark"],
+            arrowcolor=C["text_muted"],
+            relief="flat",
+        )
+        style.map("Vertical.TScrollbar", background=[("active", C["hover_light"]), ("pressed", C["accent"])])
+        style.configure(
+            "Horizontal.TScrollbar",
+            background=C["bg_medium"],
+            troughcolor=C["bg_dark"],
+            bordercolor=C["bg_dark"],
+            arrowcolor=C["text_muted"],
+            relief="flat",
+        )
+        style.map("Horizontal.TScrollbar", background=[("active", C["hover_light"]), ("pressed", C["accent"])])
+        style.configure(
+            "Horizontal.TProgressbar",
+            background=C["accent"],
+            troughcolor=C["bg_medium"],
+            bordercolor=C["bg_dark"],
+            lightcolor=C["accent_light"],
+            darkcolor=C["accent_hover"],
+        )
+        style.configure("TScale", background=C["bg_dark"], troughcolor=C["bg_medium"], bordercolor=C["bg_dark"])
+        style.configure(
+            "TSpinbox",
+            fieldbackground=C["bg_medium"],
+            foreground=C["text_primary"],
+            bordercolor=C["border"],
+            arrowcolor=C["text_secondary"],
+            font=(F["family"], F["size_base"]),
+            padding=list(P["entry_pad"]),
+        )
+        style.configure("TSeparator", background=C["border"])
+        style.configure("TPanedwindow", background=C["bg_dark"])
 
         return style
 

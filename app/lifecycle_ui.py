@@ -1461,6 +1461,33 @@ class NovelLifecycleMixin:
         advanced_frame = ttk.Frame(notebook)
         notebook.add(advanced_frame, text="高级")
 
+        # 界面主题（v3.4：三主题可切换；选择即预览，「保存配置」才落盘，
+        # 取消/关窗回滚到打开对话框时的主题 —— 预览不产生副作用）
+        from app import theme_system
+        from app.theme_switch import switch_theme
+
+        theme_frame = tk.LabelFrame(advanced_frame, text=" 界面主题 ", padx=10, pady=10)
+        theme_frame.pack(fill=tk.X, padx=15, pady=10)
+
+        theme_names = [theme_system.THEME_META[t]["name_cn"] for t in theme_system.THEME_IDS]
+        theme_by_name = {theme_system.THEME_META[t]["name_cn"]: t for t in theme_system.THEME_IDS}
+        saved_theme = theme_system.normalize_theme(self.config.get("theme", theme_system.DEFAULT_THEME))
+        theme_var = tk.StringVar(value=theme_system.THEME_META[saved_theme]["name_cn"])
+        theme_combo = ttk.Combobox(theme_frame, textvariable=theme_var, values=theme_names, state="readonly", width=14)
+        theme_combo.pack(anchor=tk.W, pady=3)
+        theme_desc_var = tk.StringVar(value=theme_system.THEME_META[saved_theme]["description"])
+        tk.Label(theme_frame, textvariable=theme_desc_var, fg="gray", font=UIStyle.font("caption")).pack(anchor=tk.W)
+
+        def on_theme_preview(_event=None):
+            tid = theme_by_name.get(theme_var.get(), theme_system.DEFAULT_THEME)
+            theme_desc_var.set(theme_system.THEME_META[tid]["description"])
+            switch_theme(self.root, tid)  # 仅预览，不写配置
+
+        theme_combo.bind("<<ComboboxSelected>>", on_theme_preview)
+
+        def revert_theme():
+            switch_theme(self.root, saved_theme)
+
         # 18+内容开关（隐藏按钮）
         adult_frame = tk.LabelFrame(advanced_frame, text=" 内容控制 ", padx=10, pady=10)
         adult_frame.pack(fill=tk.X, padx=15, pady=10)
@@ -1579,6 +1606,8 @@ class NovelLifecycleMixin:
                 self.config.set("biography_word_count", _num(bio_words_var, int, "传记字数"))
                 self.config.set("smart_context", context_var.get())
                 self.config.set("auto_summary", summary_var.get())
+                # 主题：预览阶段已即时生效，这里只把选择落盘
+                self.config.set("theme", theme_by_name.get(theme_var.get(), theme_system.DEFAULT_THEME))
             except (ValueError, RuntimeError) as exc:
                 dialogs.showerror("配置未保存", f"输入有误：{exc}", parent=dialog)
                 return
@@ -1603,8 +1632,14 @@ class NovelLifecycleMixin:
         btn_frame = tk.Frame(content_frame)
         btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=5)
 
+        def cancel_settings():
+            # 主题预览回滚：取消/关窗不得留下"没保存却变了"的外观
+            revert_theme()
+            dialog.destroy()
+
         ttk.Button(btn_frame, text="保存配置", command=save).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_frame, text="取消", command=cancel_settings).pack(side=tk.RIGHT, padx=5)
+        dialog.protocol("WM_DELETE_WINDOW", cancel_settings)
 
     def _generate_synopsis(self):
         """AI生成书籍简介"""

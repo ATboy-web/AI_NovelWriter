@@ -116,7 +116,9 @@ class DesignTokens:
     }
 
     BUTTON_SECONDARY = {
-        "bg": "#2a2a45",
+        # v3.4：原字面值 "#2a2a45" 与 UIStyle.COLORS["hover_light"] 逐值相等，
+        # 改为派生（等值替换），换肤时才能跟着主题走。
+        "bg": UIStyle.COLORS["hover_light"],
         "fg": COLORS["text_secondary"],
         "hover_bg": COLORS["bg_hover"],
         "border": COLORS["border_light"],
@@ -149,3 +151,28 @@ class DesignTokens:
         "font_size": FONTS["sizes"]["sm"],
         "font_weight": 500,
     }
+
+    @classmethod
+    def refresh(cls) -> None:
+        """主题切换后刷新派生快照（由 `UIStyle.set_palette` 调用）。
+
+        COLORS 与组件样式里的颜色字段**原地更新**，保持对象同一性 ——
+        与 UIStyle.COLORS 的理由相同：调用方可能持有别名。
+        `success_light` / `error_dark` 是刻意独立项（见模块文档），不随主题变。
+        """
+        cls.COLORS.clear()
+        cls.COLORS.update(_derive_colors())
+        cls.BUTTON_PRIMARY.update(
+            bg=cls.COLORS["primary"],
+            fg=cls.COLORS["text_inverse"],
+            hover_bg=cls.COLORS["primary_hover"],
+            active_bg=cls.COLORS["primary"],
+        )
+        cls.BUTTON_SECONDARY.update(
+            bg=UIStyle.COLORS["hover_light"],
+            fg=cls.COLORS["text_secondary"],
+            hover_bg=cls.COLORS["bg_hover"],
+            border=cls.COLORS["border_light"],
+        )
+        cls.BUTTON_DANGER.update(bg=cls.COLORS["error"], fg=cls.COLORS["text_inverse"])
+        cls.CARD.update(bg=cls.COLORS["bg_card"], border=cls.COLORS["border"])

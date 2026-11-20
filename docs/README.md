@@ -12,7 +12,8 @@
 | [../QUICKSTART.md](../QUICKSTART.md) | 快速开始 |
 | [../USAGE.md](../USAGE.md) | 使用说明 |
 | [API.md](API.md) | 后端 API 文档 |
-| [UI_DESIGN.md](UI_DESIGN.md) | UI 设计 |
+| [UI_DESIGN.md](UI_DESIGN.md) | UI 设计（v3.0 历史布局方案） |
+| [THEME_SYSTEM.md](THEME_SYSTEM.md) | 主题系统（v3.4：三主题切换与跨端令牌） |
 | [ui_review/](ui_review/) | 界面改造前后对照截图（同窗口尺寸，含改造前后各 4 张） |
 | [development-roadmap.md](development-roadmap.md) | 开发路线图 |
 
@@ -52,7 +53,8 @@
 | 文档 | 说明 |
 |------|------|
 | [ARCHITECTURE_BOUNDARY.md](ARCHITECTURE_BOUNDARY.md) | 桌面端/后端架构边界约定（P2-2） |
-| [UI_DESIGN.md](UI_DESIGN.md) | UI 设计 |
+| [THEME_SYSTEM.md](THEME_SYSTEM.md) | **主题系统（v3.4 现行权威）**：三主题令牌体系、即时换肤、跨端同步与守卫 |
+| [UI_DESIGN.md](UI_DESIGN.md) | UI 设计（v3.0 历史布局方案，视觉取值以 THEME_SYSTEM.md 为准） |
 | [ROADMAP_V3_PANELS_AND_PROVIDERS.md](ROADMAP_V3_PANELS_AND_PROVIDERS.md) | v3 改造方案与实施进度：面板化框架与联动 · 多 API 适配与用量统计 · 模块整合去重（**P0–P4b 已随 v3.0.0 发布**，P5 样式收敛待做） |
 | [MODULE_DEPENDENCY_MAP.md](MODULE_DEPENDENCY_MAP.md) | **模块依赖关系图**（由 `scripts/module_graph.py` 从源码生成，勿手工编辑） |
 | [NEXT_STEPS.md](NEXT_STEPS.md) | 下一步行动计划：优先级的建议 / 目标 / 风险 / 执行顺序（含 S1–S7 执行情况与两轮面板 UI 改造记录） |

@@ -68,12 +68,15 @@ DEFAULT_CONFIG = {
     "balance_total_path": "",
     "balance_currency_path": "",
     # ---- 非 AI 参数（扁平存放）----
-    # ❗ 已移除两个**声明了却完全没有对应功能**的键（审计发现，属"看起来能调其实没用"）：
-    #   - `theme`：全仓无主题选择控件，`UIStyle.apply_theme` 里 `theme_use("clam")` 是写死的
-    #     —— 只有一套主题。留着会让"设置里改了没用"变成一次无声的失望。
+    # ❗ 历史审计曾移除两个**声明了却完全没有对应功能**的键：
     #   - `auto_save`：章节保存是无条件执行的（`chapter_ui` 里没有读这个键做分支），
-    #     所以它既不能开也不能关。
-    # 移除是安全的：配置读取用 `.get(key, default)`，旧配置文件里多出来的键会被忽略。
+    #     所以它既不能开也不能关。**保持移除**。
+    #   - `theme`：v3.4（2026-11-20 UI 改版）起**重新启用且真实接线** ——
+    #     设置对话框「高级」页有主题选择控件，`theme_switch.switch_theme`
+    #     据此换肤并持久化；取值见 `app/theme_system.py`（cyberpunk/wasteland/mechapunk）。
+    #     旧文件里的遗留值（如 "light"）由 normalize_theme 回落默认，不会报错。
+    # 配置读取用 `.get(key, default)`，旧配置文件里多出来的键会被忽略。
+    "theme": "cyberpunk",
     "adult_content": False,
     "edge_content": False,
     "img_provider": "comfyui",

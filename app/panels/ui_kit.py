@@ -171,12 +171,20 @@ def hint(parent: tk.Misc, text: str, *, bg: str | None = None) -> tk.Label:
     )
 
 
-_KIND_STYLE = {
-    "primary": (C["accent"], "white", C["accent_hover"], C["accent"]),
-    "secondary": (C["bg_light"], C["text_primary"], C["hover"], C["border_light"]),
-    "ghost": (C["bg_medium"], C["text_secondary"], C["hover"], C["bg_medium"]),
-    "danger": (C["error"], "white", "#dc2626", C["error"]),
-}
+def _kind_style(kind: str) -> tuple:
+    """按钮角色的 (bg, fg, hover_bg, active_bg)。
+
+    v3.4 前是模块级常量 `_KIND_STYLE`（import 时快照）——换肤后快照失效。
+    改为**每次调用时读活调色板**，主题切换后新建按钮立即正确；
+    已建按钮由 `theme_switch.retheme_widgets` 负责改色。
+    """
+    table = {
+        "primary": (C["accent"], "white", C["accent_hover"], C["accent"]),
+        "secondary": (C["bg_light"], C["text_primary"], C["hover"], C["border_light"]),
+        "ghost": (C["bg_medium"], C["text_secondary"], C["hover"], C["bg_medium"]),
+        "danger": (C["error"], "white", "#dc2626", C["error"]),
+    }
+    return table.get(kind, table["secondary"])
 
 
 def button(
@@ -190,7 +198,7 @@ def button(
     pady: int | None = None,
 ) -> tk.Button:
     """统一样式的按钮：角色字体、手型光标、悬停反馈、满足最小点击高度。"""
-    bg, fg, hover_bg, active_bg = _KIND_STYLE.get(kind, _KIND_STYLE["secondary"])
+    bg, fg, hover_bg, active_bg = _kind_style(kind)
     widget = tk.Button(
         parent,
         text=text,
@@ -210,23 +218,33 @@ def button(
     )
     if width:
         widget.configure(width=width)
-    add_hover(widget, bg, hover_bg)
+    # 悬停色用**活引用**（闭包读当前调色板）：换肤后无需重绑事件
+    add_hover(widget, lambda: _kind_style(kind)[0], lambda: _kind_style(kind)[2])
     return widget
 
 
-def add_hover(widget: tk.Misc, normal: str, hover: str) -> None:
-    """悬停高亮（`<Enter>/<Leave>`），并在销毁后不再回调（避免 TclError）。"""
+def add_hover(widget: tk.Misc, normal, hover) -> None:
+    """悬停高亮（`<Enter>/<Leave>`），并在销毁后不再回调（避免 TclError）。
+
+    `normal` / `hover` 可以是颜色字符串，也可以是**返回颜色的零参 callable**
+    （v3.4 换肤支持：callable 在事件触发时读活调色板；字符串则由
+    `theme_switch.retheme_widgets` 在换肤时按旧→新映射更新 `_ui_hover`）。
+    """
+    widget._ui_hover = (normal, hover)  # type: ignore[attr-defined]
+
+    def resolve(ref) -> str:
+        return ref() if callable(ref) else ref
 
     def on_enter(_event=None) -> None:
         try:
-            widget.configure(bg=hover)
-        except tk.TclError:
+            widget.configure(bg=resolve(widget._ui_hover[1]))  # type: ignore[attr-defined]
+        except (tk.TclError, AttributeError):
             pass
 
     def on_leave(_event=None) -> None:
         try:
-            widget.configure(bg=normal)
-        except tk.TclError:
+            widget.configure(bg=resolve(widget._ui_hover[0]))  # type: ignore[attr-defined]
+        except (tk.TclError, AttributeError):
             pass
 
     widget.bind("<Enter>", on_enter, add="+")

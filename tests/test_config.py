@@ -58,16 +58,22 @@ class TestAppConfig:
         assert app_config.get("img_height") == 1024
 
     def test_removed_dead_keys_stay_removed(self, app_config):
-        """`auto_save` / `theme` 已被**有意移除**：它们声明了却完全没有对应功能。
+        """`auto_save` 已被**有意移除**：章节保存是无条件执行的，这个键既不能开也不能关。
 
-        - `theme`：全仓无主题选择控件，`UIStyle.apply_theme` 里 `theme_use("clam")` 写死；
-        - `auto_save`：章节保存是无条件执行的，这个键既不能开也不能关。
-
-        留着的唯一效果是"设置里改了没用" ⇒ 移除更诚实。
-        这条守卫防的是有人不加思考地把它们加回来。
+        `theme` 曾在 2026-09-17 审计中同样作为死键移除，但 v3.4（2026-11-20 UI 改版）
+        起**重新启用且真实接线**：设置对话框「高级」页有主题选择控件，
+        `theme_switch.switch_theme` 据此换肤并持久化（接线守卫见
+        `tests/test_theme_system.py`）。本守卫防的是有人不加思考地加回
+        "声明了却没有功能"的键。
         """
         assert "auto_save" not in DEFAULT_CONFIG
-        assert "theme" not in DEFAULT_CONFIG
+
+    def test_theme_key_is_live_and_valid(self, app_config):
+        """`theme` 必须有默认值且为合法主题 id —— 它是接了线的活键，不是死键。"""
+        from app.theme_system import THEME_IDS
+
+        assert "theme" in DEFAULT_CONFIG
+        assert app_config.get("theme") in THEME_IDS
 
     def test_get_existing_key(self, app_config):
         """测试获取已存在的键"""

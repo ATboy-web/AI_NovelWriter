@@ -20,6 +20,7 @@ class SettingsRepository(private val context: Context) {
         val AI_API_KEY = stringPreferencesKey("ai_api_key")
         val AI_MODEL = stringPreferencesKey("ai_model")
         val AI_THINKING = booleanPreferencesKey("ai_thinking")
+        val THEME = stringPreferencesKey("theme")
     }
 
     val aiConfig: Flow<AIConfig> = context.dataStore.data.map { prefs ->
@@ -29,6 +30,15 @@ class SettingsRepository(private val context: Context) {
             model = prefs[Keys.AI_MODEL] ?: AIConfig().model,
             thinking = prefs[Keys.AI_THINKING] ?: true
         )
+    }
+
+    // v3.4：界面主题（与桌面 config.json 的 theme 键同语义；取值见 ThemeTokens.THEME_IDS）
+    val themeId: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[Keys.THEME] ?: "cyberpunk"
+    }
+
+    suspend fun saveTheme(themeId: String) {
+        context.dataStore.edit { prefs -> prefs[Keys.THEME] = themeId }
     }
 
     suspend fun saveAIConfig(config: AIConfig) {

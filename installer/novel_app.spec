@@ -26,6 +26,10 @@ a = Analysis(
         'app.novel_agent',
         'app.reading_manager',
         'app.ui_style',
+        # v3.4 主题系统：theme_system 由 ui_style 静态 import；
+        # theme_switch 由 lifecycle_ui 在函数内 import —— 显式列出更稳。
+        'app.theme_system',
+        'app.theme_switch',
         'app.writing_skills',
         'app.writing_skills_panel',
         # P2-1 巨石拆分产生的功能域 Mixin

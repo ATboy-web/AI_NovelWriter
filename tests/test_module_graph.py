@@ -63,6 +63,11 @@ mg = _load_module_graph()
 KNOWN_LATENT_CYCLES: set[frozenset[str]] = {
     frozenset({"app.panels.base", "app.panels.legacy", "app.panels.registry"}),
     frozenset({"app.config", "app.secure_config"}),
+    # v3.4 主题系统：design_tokens 在模块级 import ui_style 做派生（既有），
+    # ui_style.set_palette 在**方法内**延迟 import design_tokens.refresh()
+    # 刷新派生快照 —— 与 config↔secure_config 同型的"脆弱但安全"latent 环。
+    # 把延迟导入提到模块级会立刻变红（TestNoHardCycles）。
+    frozenset({"app.design_tokens", "app.ui_style"}),
 }
 
 

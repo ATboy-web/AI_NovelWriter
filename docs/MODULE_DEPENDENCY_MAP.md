@@ -8,10 +8,10 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 102 |
-| 依赖边数 | 325 |
-| 其中函数内延迟导入 | 61 |
-| 循环依赖环数 | 2（**会真炸的：0**） |
+| 内部模块数 | 104 |
+| 依赖边数 | 335 |
+| 其中函数内延迟导入 | 66 |
+| 循环依赖环数 | 3（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
 > **口径说明**：`if TYPE_CHECKING:` 里的 import **不计入** —— 运行时根本不执行。
@@ -50,19 +50,29 @@
 | `config` → `secure_config` | 🟡 延迟（函数内） |
 | `secure_config` → `config` | 🔴 模块级 |
 
+### 🟡 环 3 · latent（2 个模块）
+
+- `design_tokens`
+- `ui_style`
+
+| 边 | 种类 |
+|---|---|
+| `design_tokens` → `ui_style` | 🔴 模块级 |
+| `ui_style` → `design_tokens` | 🟡 延迟（函数内） |
+
 ## 3. 被依赖最多的模块（改动风险最高）
 
 | 模块 | 被引用次数 |
 |---|---|
-| `app` | 32 |
+| `app` | 34 |
 | `storage` | 30 |
 | `dialogs` | 29 |
 | `async_runner` | 27 |
-| `ui_style` | 19 |
-| `panels` | 13 |
+| `ui_style` | 20 |
+| `panels` | 14 |
 | `events` | 12 |
 | `panels.base` | 11 |
-| `panels.ui_kit` | 10 |
+| `panels.ui_kit` | 11 |
 | `config` | 9 |
 | `ai_client` | 7 |
 | `novel_toolkit` | 6 |
@@ -82,7 +92,6 @@
 > ❗ 本仓最高频失效模式「注册即遗忘」的第一道筛查。
 > 但要人工确认：**面板、入口脚本、按字符串加载的模块会正常出现在这里**。
 
-- `design_tokens`
 - `events.bus`
 - `fullscreen_writer`
 - `live_data`
@@ -122,7 +131,7 @@
 | `genres` | 🔴`genres_data`, ⚪`storage` |
 | `genres_data` | — |
 | `image_generator` | 🔴`config` |
-| `lifecycle_ui` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`events`, 🔴`genres`, 🔴`storage` |
+| `lifecycle_ui` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`events`, 🔴`genres`, 🔴`storage`, ⚪`theme_switch`, ⚪`theme_system` |
 | `lineage` | 🔴`storage` |
 | `live_data` | — |
 | `mcp_system` | — |
@@ -186,12 +195,14 @@
 | `storage` | — |
 | `style_dna` | 🔴`storage`, ⚪`text_stats` |
 | `text_stats` | — |
+| `theme_switch` | 🔴`app`, ⚪`panels`, ⚪`panels.ui_kit`, 🔴`theme_system`, 🔴`ui_style` |
+| `theme_system` | — |
 | `timeline_store` | ⚪`events`, ⚪`lineage`, ⚪`memory_manager`, 🔴`storage` |
 | `timeline_ui` | 🔴`app`, 🔴`async_runner`, ⚪`character_system`, 🔴`dialogs`, 🔴`lineage`, ⚪`memory_manager`, 🔴`storage` |
 | `token_estimator` | — |
 | `toolkit_ui` | 🔴`app`, 🔴`async_runner`, ⚪`diagnostic_logger`, 🔴`dialogs`, 🔴`format_converter`, 🔴`panels`, 🔴`panels.layout`, 🔴`panels.registry` |
 | `ui_scroll` | — |
-| `ui_style` | — |
+| `ui_style` | 🔴`app`, ⚪`design_tokens`, 🔴`theme_system` |
 | `usage_tracker` | 🔴`events`, ⚪`providers.pricing`, 🔴`storage` |
 | `usage_ui` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`events`, 🔴`providers`, 🔴`providers.balance`, 🔴`providers.pricing`, 🔴`token_estimator`, 🔴`usage_tracker` |
 | `writing_presets` | ⚪`semantic_candidates`, ⚪`skill_library`, 🔴`storage`, ⚪`style_dna`, 🔴`text_stats` |

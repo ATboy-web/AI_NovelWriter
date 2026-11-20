@@ -29,7 +29,9 @@ data class MainUiState(
     val isGenerating: Boolean = false,
     val generationProgress: String = "",               // 当前生成步骤描述
     val editingChapter: Chapter? = null,
-    val aiConfig: AIConfig = AIConfig()
+    val aiConfig: AIConfig = AIConfig(),
+    // 界面主题（v3.4：cyberpunk / wasteland / mechpunk，与桌面同一套令牌）
+    val themeId: String = "cyberpunk"
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -49,6 +51,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             settingsRepo.aiConfig.collect { config ->
                 _state.value = _state.value.copy(aiConfig = config)
+            }
+        }
+        viewModelScope.launch {
+            settingsRepo.themeId.collect { tid ->
+                _state.value = _state.value.copy(themeId = tid)
             }
         }
     }
@@ -647,6 +654,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             settingsRepo.saveAIConfig(config)
             devLog("AI配置更新: model=${config.model}, endpoint=${config.endpoint}")
         }
+    }
+
+    /** 切换界面主题：即时生效（状态驱动令牌）+ 持久化（DataStore）。 */
+    fun setTheme(themeId: String) {
+        _state.value = _state.value.copy(themeId = themeId)
+        viewModelScope.launch { settingsRepo.saveTheme(themeId) }
     }
 
     // endregion

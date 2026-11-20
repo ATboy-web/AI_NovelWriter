@@ -447,9 +447,7 @@ class FormatConverter:
         if not font_added:
             # 没有中文字体就别硬渲染：Helvetica 画中文必崩，用户还拿不到任何东西。
             # 降级为 TXT —— 内容完整、可读，比"导出失败"有用。
-            logger.warning(
-                "[format_converter] 未找到中文字体（已尝试 %d 个路径），PDF 降级为 TXT", len(font_paths)
-            )
+            logger.warning("[format_converter] 未找到中文字体（已尝试 %d 个路径），PDF 降级为 TXT", len(font_paths))
             return self._to_txt(content, title, output_file.with_suffix(".txt"), chapters)
 
         # 标题

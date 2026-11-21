@@ -13,8 +13,12 @@ for _cand in (
     _os.path.join(_os.path.dirname(_SVC_DIR), "shared"),
 ):
     if _os.path.isdir(_cand):
-        if _cand not in _sys.path:
-            _sys.path.insert(0, _cand)
+        # 同时加入 shared 自身（兼容 `from middleware import ...` 的旧式导入）
+        # 与其父目录（支持 `from shared.api_errors import ...` 的包式导入）。
+        # 只加 shared 自身会让包式导入在独立启动服务时失败。
+        for _p in (_cand, _os.path.dirname(_cand)):
+            if _p not in _sys.path:
+                _sys.path.insert(0, _p)
         break
 
 __version__ = "1.0.0"

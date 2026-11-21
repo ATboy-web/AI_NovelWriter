@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from loguru import logger
+
 from .storage import atomic_write_json
 
 # ==================== 小说元素库 ====================
@@ -1193,8 +1195,8 @@ class WebSearchAdaptEngine:
                         self.HOT_MEMES[cat].extend(items)
                     else:
                         self.HOT_MEMES[cat] = items
-            except (FileNotFoundError, json.JSONDecodeError):
-                pass
+            except (FileNotFoundError, json.JSONDecodeError) as exc:
+                logger.debug(f"[novel_toolkit] 已忽略异常（(FileNotFoundError, json.JSONDecodeError)）：{exc}")
 
     def add_custom_meme(self, category: str, name: str, desc: str, adapt_template: str):
         """用户自行添加热点内容"""
@@ -1210,8 +1212,8 @@ class WebSearchAdaptEngine:
             try:
                 with open(f, "r", encoding="utf-8") as fp:
                     custom = json.load(fp)
-            except (FileNotFoundError, json.JSONDecodeError):
-                pass
+            except (FileNotFoundError, json.JSONDecodeError) as exc:
+                logger.debug(f"[novel_toolkit] 已忽略异常（(FileNotFoundError, json.JSONDecodeError)）：{exc}")
         if category not in custom:
             custom[category] = []
         custom[category].append(item)
@@ -1234,8 +1236,8 @@ class WebSearchAdaptEngine:
             try:
                 with open(f, "r", encoding="utf-8") as fp:
                     custom = json.load(fp)
-            except (FileNotFoundError, json.JSONDecodeError):
-                pass
+            except (FileNotFoundError, json.JSONDecodeError) as exc:
+                logger.debug(f"[novel_toolkit] 已忽略异常（(FileNotFoundError, json.JSONDecodeError)）：{exc}")
         custom[category] = [i for i in items if i.get("custom")]
         atomic_write_json(f, custom, indent=2)
 

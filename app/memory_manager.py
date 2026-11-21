@@ -268,8 +268,8 @@ class MemoryManager:
                         f"（{self.inverted_index_file.name}）；如需重建请显式删除该文件"
                     )
                     return
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug(f"[memory_manager] 已忽略异常（OSError）：{exc}")
         atomic_write_json(self.inverted_index_file, self._inverted_index, indent=None)
 
     def _load_character_activity(self) -> Dict:

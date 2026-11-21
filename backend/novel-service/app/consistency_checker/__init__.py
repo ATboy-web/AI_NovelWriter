@@ -15,5 +15,5 @@ __all__ = [
     "ConflictType",
     "ConflictSeverity",
     "get_consistency_checker",
-    "check_chapter_consistency"
+    "check_chapter_consistency",
 ]

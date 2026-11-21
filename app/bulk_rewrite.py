@@ -49,6 +49,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from loguru import logger
 
 from .async_runner import CancelledError, CancelToken
+from .parsing import split_paragraphs as _split_paragraphs
+from .parsing import split_title as _split_title
 from .rework import ReworkError
 from .storage import atomic_write_json, atomic_write_text
 from .text_stats import count_hanzi
@@ -205,17 +207,13 @@ class BulkStats:
 
 
 def split_title(text: str) -> Tuple[str, str]:
-    lines = (text or "").splitlines()
-    if not lines:
-        return "", ""
-    first = lines[0].strip()
-    if first.startswith("#"):
-        return first, "\n".join(lines[1:]).strip()
-    return "", (text or "").strip()
+    """委托 `app.parsing.split_title`（本模块口径：保留 `#` 前缀）。"""
+    return _split_title(text, strip_marks=False)
 
 
 def split_paragraphs(body: str) -> List[str]:
-    return [p.strip() for p in re.split(r"\n\s*\n", body or "") if p.strip()]
+    """委托 `app.parsing.split_paragraphs`（本模块口径：段内换行保留）。"""
+    return _split_paragraphs(body, merge_lines=False)
 
 
 def chunk_paragraphs(paragraphs: Sequence[str], target: int = CHUNK_HANZI) -> List[List[str]]:

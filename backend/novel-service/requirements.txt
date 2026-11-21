@@ -1,41 +1,32 @@
 # 小说生成服务依赖
+#
+# P1-5 依赖治理（2026-11-21）：
+# 1) 删除全仓零引用的挂名依赖：sqlalchemy / asyncpg / alembic / redis /
+#    numpy / pandas / python-multipart（全仓无 UploadFile/Form/File 用法）。
+#    numpy 由 chromadb 自身按需带入，无需在此显式声明。
+# 2) 补上真正被 import 却漏声明的 PyJWT（backend/shared/middleware/auth.py: import jwt）。
+# 3) Web 框架版本对齐到 CI/本地实际跑通的组合（原 pin fastapi==0.104.1 与 CI 不一致）。
+# 4) python-dotenv 必须保留：app/core/config.py 的 BaseSettings 用 env_file=".env"。
 
 # Web框架
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
-
-# 数据库
-sqlalchemy==2.0.23
-asyncpg==0.29.0
-alembic==1.13.0
-
-# 缓存
-redis==5.0.1
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+pydantic==2.13.5
+pydantic-settings==2.16.3
 
 # HTTP客户端
-httpx==0.25.2
+httpx==0.28.1
 
 # 工具库
-python-dotenv==1.0.0
-python-multipart==0.0.6
+python-dotenv==1.2.4
+PyJWT==2.14.0
 
-# 数据处理
-numpy==1.26.2
-pandas==2.1.4
-
-# 向量数据库
+# 向量数据库（core/vector_manager.py 内为可选导入，缺失时降级为关键词检索）
 chromadb==0.4.22
 sentence-transformers==2.3.1
 
-# 日志和监控
-loguru==0.7.2
+# 日志
+loguru==0.7.3
 
-# 开发工具 (仅开发环境需要)
-# pytest==7.4.3
-# pytest-asyncio==0.23.2
-# black==23.11.0
-# isort==5.12.0
-# flake8==6.1.0
-# mypy==1.7.1
+# 开发工具 (仅开发环境需要，统一由仓库根 pyproject 的 [dev] extra 提供)
+# pip install -e ".[dev]"

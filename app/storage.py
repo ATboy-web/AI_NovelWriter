@@ -31,6 +31,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional, Tuple
 
+from loguru import logger
+
 __all__ = [
     "atomic_write_text",
     "atomic_write_json",
@@ -135,14 +137,14 @@ def atomic_write_text(
         if mode is not None:
             try:
                 os.chmod(tmp, mode)
-            except (OSError, AttributeError):
-                pass
+            except (OSError, AttributeError) as exc:
+                logger.debug(f"[storage] 已忽略异常（(OSError, AttributeError)）：{exc}")
         os.replace(tmp, path)
     except BaseException:
         try:
             tmp.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug(f"[storage] 已忽略异常（OSError）：{exc}")
         raise
     return path
 
@@ -170,8 +172,8 @@ def backup_file(path, suffix: str = ".bak", validate: bool = False) -> Optional[
     except BaseException:
         try:
             tmp.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug(f"[storage] 已忽略异常（OSError）：{exc}")
         raise
     return dst
 
@@ -225,18 +227,18 @@ def read_json_with_backup(path, default: Any = None) -> Tuple[Any, str]:
         if bak.exists():
             try:
                 return read_json(bak), STATUS_BACKUP
-            except _READ_ERRORS:
-                pass
+            except _READ_ERRORS as exc:
+                logger.debug(f"[storage] 已忽略异常（_READ_ERRORS）：{exc}")
         return default, STATUS_MISSING
 
     try:
         return read_json(path), STATUS_OK
-    except _READ_ERRORS:
-        pass
+    except _READ_ERRORS as exc:
+        logger.debug(f"[storage] 已忽略异常（_READ_ERRORS）：{exc}")
 
     if bak.exists():
         try:
             return read_json(bak), STATUS_BACKUP
-        except _READ_ERRORS:
-            pass
+        except _READ_ERRORS as exc:
+            logger.debug(f"[storage] 已忽略异常（_READ_ERRORS）：{exc}")
     return default, STATUS_CORRUPT

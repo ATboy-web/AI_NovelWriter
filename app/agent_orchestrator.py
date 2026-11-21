@@ -5,6 +5,8 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Dict, List
 
+from loguru import logger
+
 from .ai_client import AIClient
 from .token_estimator import estimate_tokens, truncate_to_tokens
 
@@ -27,8 +29,8 @@ class AgentOrchestrator:
         """析构时关闭线程池"""
         try:
             self.shutdown(wait=False)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"[agent_orchestrator] 已忽略异常（Exception）：{exc}")
 
     def run_parallel(self, tasks: List[Dict]) -> List[Dict]:
         """并行执行多个AI任务"""

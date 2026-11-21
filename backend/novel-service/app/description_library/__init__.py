@@ -21,5 +21,5 @@ __all__ = [
     "generate_description",
     "generate_scene_description",
     "enhance_description",
-    "search_descriptions"
+    "search_descriptions",
 ]

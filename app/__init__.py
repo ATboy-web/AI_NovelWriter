@@ -52,14 +52,21 @@ def _load_version() -> str:
 __version__ = _load_version()
 
 
+#: 记录所有安全导入失败（模块 -> 原因）。UI/诊断据此明确告知"哪些能力不可用"，
+#: 而不是让用户点了按钮才发现功能静默缺失。
+IMPORT_FAILURES: dict = {}
+
+
 class _ImportStub:
     """安全导入占位类 - 在实例化时抛出明确的 ImportError"""
 
     _import_error = ""
+    _module_name = ""
 
     def __init__(self, *args, **kwargs):
         raise ImportError(
-            f"Module not available (import failed: {self._import_error}). Please install missing dependencies."
+            f"Module {self._module_name} not available (import failed: {self._import_error}). "
+            "Please install missing dependencies."
         )
 
 
@@ -73,8 +80,9 @@ def _safe_import(module_name: str, class_name: str):
         import warnings
 
         warnings.warn(f"Failed to import {class_name} from {module_name}: {e}", stacklevel=2)
+        IMPORT_FAILURES[module_name] = str(e)
         # 创建占位类型，实例化时报错而非静默失败
-        return type(class_name, (_ImportStub,), {"_import_error": str(e)})
+        return type(class_name, (_ImportStub,), {"_import_error": str(e), "_module_name": module_name})
 
 
 # 核心模块（必须可用）
@@ -94,6 +102,7 @@ UIStyle = _safe_import("app.ui_style", "UIStyle")
 
 __all__ = [
     "__version__",
+    "IMPORT_FAILURES",
     "AppConfig",
     "AIClient",
     "token_stats",

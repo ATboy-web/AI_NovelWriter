@@ -743,8 +743,8 @@ class SkillLibraryPanel(BasePanel):
             path = Path(novel_dir) / "chapters" / f"chapter_{int(chapter or 0):04d}.txt"
             try:
                 return path.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug(f"[skill_library_panel] 已忽略异常（OSError）：{exc}")
         return ""
 
     def _on_match(self) -> None:

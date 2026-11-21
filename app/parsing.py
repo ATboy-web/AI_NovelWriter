@@ -22,8 +22,13 @@
 
 import json
 import re
+from typing import List, Tuple
+
+from loguru import logger
 
 __all__ = [
+    "split_title",
+    "split_paragraphs",
     "parse_json_response",
     "parse_exp_json",
     "clean_ai_json_text",
@@ -313,8 +318,8 @@ def _extract_complete_objects(text: str) -> dict:
         if close is not None:
             try:
                 result[name] = json.loads(text[brace_start : close + 1])
-            except (json.JSONDecodeError, ValueError):
-                pass
+            except (json.JSONDecodeError, ValueError) as exc:
+                logger.debug(f"[parsing] 已忽略异常（(json.JSONDecodeError, ValueError)）：{exc}")
             continue
         # 该对象未闭合（响应被截断）→ 补括号后重试
         tail = text[brace_start:]
@@ -653,10 +658,10 @@ def parse_exp_json(response: str) -> dict:
                 result = json.loads(json_str)
                 if isinstance(result, dict):
                     return _normalize_exp_entries(result)
-            except (json.JSONDecodeError, ValueError):
+            except (json.JSONDecodeError, ValueError) as exc:
                 # M12: 超长数字串会让 json.loads 抛 ValueError（非 JSONDecodeError），
                 # 旧实现只捕获 JSONDecodeError → 异常直接冒到调用方的 UI 线程
-                pass
+                logger.debug(f"[parsing] 已忽略异常（(json.JSONDecodeError, ValueError)）：{exc}")
 
     # Strategy 2: 清理markdown后重试
     cleaned = response.strip()
@@ -685,8 +690,8 @@ def parse_exp_json(response: str) -> dict:
                 parsed = json.loads(cleaned[start:end_idx])
                 if isinstance(parsed, dict):
                     return _normalize_exp_entries(parsed)
-            except (json.JSONDecodeError, ValueError):
-                pass
+            except (json.JSONDecodeError, ValueError) as exc:
+                logger.debug(f"[parsing] 已忽略异常（(json.JSONDecodeError, ValueError)）：{exc}")
 
     # Strategy 3: 逐行提取key-value对
     result = {}
@@ -731,3 +736,43 @@ def parse_exp_json(response: str) -> dict:
                 break
 
     return result
+
+
+def split_title(text: str, *, strip_marks: bool = False) -> Tuple[str, str]:
+    """把章节文本拆成 `(标题行, 正文)`；首行不是 `#` 标题时标题为空。
+
+    两种历史口径在此收敛为一份实现，避免各写一遍后悄悄漂移：
+    - `strip_marks=False`（bulk_rewrite 口径）：标题行原样保留 `#` 前缀；
+    - `strip_marks=True`（rework / fill_empty_summaries 口径）：去掉 `#` 前缀。
+    """
+    lines = (text or "").splitlines()
+    if not lines:
+        return "", ""
+    first = lines[0].strip()
+    if first.startswith("#"):
+        title = first.lstrip("#").strip() if strip_marks else first
+        return title, "\n".join(lines[1:]).strip()
+    return "", (text or "").strip()
+
+
+def split_paragraphs(text: str, *, merge_lines: bool = False) -> List[str]:
+    """按空行切段。两种历史口径同样收敛为一份：
+
+    - `merge_lines=False`（bulk_rewrite 口径）：正则空行切分并 strip，段内换行保留；
+    - `merge_lines=True`（semantic_candidates / writing_presets.structure_metrics 口径）：
+      逐行累积、段内以空格连接。用 `splitlines()` 而非换行转义，后者在多次拼接后易被破坏。
+    """
+    if not merge_lines:
+        return [p.strip() for p in re.split(r"\n\s*\n", text or "") if p.strip()]
+    paragraphs: List[str] = []
+    buffer: List[str] = []
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        if stripped:
+            buffer.append(stripped)
+        elif buffer:
+            paragraphs.append(" ".join(buffer))
+            buffer = []
+    if buffer:
+        paragraphs.append(" ".join(buffer))
+    return paragraphs

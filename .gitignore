@@ -65,6 +65,9 @@ dist/
 backend/*/dist/
 coverage.json
 coverage.xml
+# 后端 / 无显示口径的覆盖率报告（CI 与 scripts/coverage_visibility.py 产物）
+coverage-*.json
+coverage_*.json
 .coverage
 .coverage.*
 htmlcov/

@@ -19,5 +19,5 @@ __all__ = [
     "get_story_flow_manager",
     "generate_story_flow",
     "generate_branching_scenarios",
-    "generate_conflict_escalation"
+    "generate_conflict_escalation",
 ]

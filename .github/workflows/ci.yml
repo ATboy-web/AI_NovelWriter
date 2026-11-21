@@ -52,14 +52,26 @@ jobs:
       # 之后任何未格式化的改动都会在这里失败 —— 这条门禁才真正有意义。
       # 2026-09-17 扩到 `scripts/`：发布脚本（release_notes.py / fix_release_metadata.py）
       # 也是长期维护的代码，格式一致性不该漏掉它们（`ruff check` 早已覆盖 scripts/）。
+      # 2026-11-21 扩到 `backend/`（P2-10）：此前 check 覆盖 backend 而 format 不覆盖，
+      # 等于后端 53 个文件长期游离在格式门禁之外；已一次性格式化达标后纳入。
       - name: Ruff format check
-        run: ruff format --check app/ tests/ scripts/
+        run: ruff format --check app/ tests/ backend/ scripts/
 
-      # ⚠️ 暂为**非阻断**：存量还有约 100 条类型错误，集中在
-      # app/providers/*、app/ai_client.py、app/memory_manager.py、app/novel_toolkit.py、
-      # app/diagnostic_logger.py、app/writing_skills.py。
-      # 待分批收敛后与 format 一样转为阻断；新增代码应保持 0 错误。
-      - name: Mypy type check
+      # P2-10：mypy 由"整步非阻断"改为**分模块阻断**。
+      # 整体仍有 643 条存量错误，一次性转阻断只会让 CI 长期红着；
+      # 但整步 continue-on-error 会让**新增代码**的类型错误也漏过去。
+      # 故对 scripts/mypy_blocking_modules.txt 里"当前零错误"的核心模块阻断，
+      # 清单只增不减，存量逐步收敛。
+      - name: Mypy (blocking subset)
+        run: |
+          grep -v '^#' scripts/mypy_blocking_modules.txt | grep -v '^[[:space:]]*$' \
+            | xargs mypy --ignore-missing-imports --follow-imports=silent
+
+      # ⚠️ 整体仍为**非阻断**：存量错误集中在
+      # app/generation_ui.py、app/format_converter.py、app/lifecycle_ui.py、
+      # app/character_ui.py、app/novel_agent.py 等（清单外的模块）。
+      # 每修完一个模块就把它加进上面的清单，直到本步可以删除。
+      - name: Mypy type check (advisory)
         run: mypy app/ --ignore-missing-imports --no-error-summary
         continue-on-error: true
 
@@ -100,6 +112,26 @@ jobs:
         # 该脚本还会反向检查「实测高出阈值 2 个百分点就失败并提示收紧」，
         # 避免真实覆盖率上涨后阈值长期不动、门禁退化成橡皮图章。
         run: python scripts/check_coverage.py --report coverage.json
+
+      # P0-2：门禁只看"计入口径"，而 pyproject 的 omit 排除了 44 个 UI 模块
+      # （11042 语句，占 app 语句的 42%）。只打印前者会让 86% 被误读成
+      # "整个桌面端测到 86%"——实测全 app 口径只有 50%。
+      # 本步不改判定，只把真实风险面**摆到 CI 日志里**，并给出补测优先级。
+      - name: Coverage visibility (full-app scope)
+        run: python scripts/coverage_visibility.py --report coverage.json --json-out coverage_visibility.json
+
+      # P1-6：后端此前从不计覆盖率（--cov=app 只统计桌面端）。
+      # 单独跑一遍 backend/tests 并出报告：与桌面端门禁**互不干扰**
+      # （合并分母会让 app 的阈值失去意义），先建立可见性再谈阈值。
+      # 注意：服务入口测试用子进程隔离（两个服务的包名都叫 app），
+      # 子进程内的执行不计入本报告，故这里反映的是进程内可测部分。
+      - name: Backend coverage (visibility)
+        # 用后端专用 rc（backend/.coveragerc，其中 fail_under=0），
+        # 不在命令行传覆盖率阈值参数：tests/test_coverage_gate.py 明确禁止那样做
+        # （会制造第二个阈值真相源）。根 pyproject 的阈值是**桌面端**的，不适用于后端。
+        run: |
+          COVERAGE_RCFILE=backend/.coveragerc python -m pytest backend/tests/ -q \
+            --cov=backend --cov-report=json:coverage-backend.json --cov-report=term
 
       - name: Upload coverage
         if: matrix.python-version == '3.13'
@@ -165,14 +197,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check for secrets
-        uses: trufflesecurity/trufflehog@main
+        # P2-10：原先用 `@main` —— 上游任何一次提交都会直接改变本仓的扫描行为，
+        # 与 ruff 必须 pin 的理由完全相同。改为 pin 到发布 tag，升级是一次有意的改动。
+        uses: trufflesecurity/trufflehog@v3.99.9
         with:
           extra_args: --only-verified
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
       - name: Check dependencies
+        # P2-10：safety 换成 pip-audit（safety 的免费漏洞库已受限，扫描结果不可信）。
+        # 更关键的是：原步骤**没有安装任何依赖**就扫描，扫的是一个空环境，
+        # 无论工具是谁都不可能发现问题。这里先按 pyproject 装齐再审计。
+        # 暂保持非阻断：首次真实报告需要先人工过一遍（含传递依赖的既有 CVE），
+        # 确认无阻断项后再去掉 continue-on-error。
         run: |
-          pip install safety
-          safety check --full-report
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install pip-audit
+          pip-audit --progress-spinner off --format columns
         continue-on-error: true
 
   # ---------- 发布：构建 EXE 并创建 Release（仅 tag） ----------
@@ -192,7 +237,7 @@ jobs:
 
       - name: Install build deps
         # ⚠️ 此前只装 `pyinstaller loguru` 就构建 —— 打出的 EXE **缺少运行时依赖**
-        # （httpx / Pillow / cryptography / python-docx / pypdf / ebooklib / markdown / bs4 …）。
+        # （httpx / Pillow / cryptography / python-docx / pypdf / ebooklib / fpdf2 …）。
         # 由于 `app/__init__.py` 对导入失败采用 `_ImportStub` 降级而非崩溃，
         # 这种残缺包不会报错，只会让对应功能静默失效（导出、加密配置、图片处理等）。
         # 故必须按 pyproject 安装完整依赖后再打包。

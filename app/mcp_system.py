@@ -197,8 +197,8 @@ def parse_sse_payload(text: str) -> Optional[dict]:
         try:
             data = json.loads(stripped)
             return data if isinstance(data, dict) else None
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            logger.debug(f"[mcp_system] 已忽略异常（json.JSONDecodeError）：{exc}")
     # 形态 2/3：SSE
     for line in stripped.splitlines():
         line = line.strip()

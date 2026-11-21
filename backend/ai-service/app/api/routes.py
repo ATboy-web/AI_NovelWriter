@@ -6,17 +6,21 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from shared.api_errors import internal_error as _internal_error
 
 # 创建路由器
 router = APIRouter()
+
 
 # 依赖注入函数
 def get_inference_engine():
     """获取推理引擎实例（延迟导入避免循环依赖）"""
     from ..main import inference_engine
+
     return inference_engine
+
 
 class NovelType(str, Enum):
     # 基础类型
@@ -37,8 +41,10 @@ class NovelType(str, Enum):
     SYSTEM_FLOW = "system_flow"
     APOCALYPSE = "apocalypse"
 
+
 class ChapterRequest(BaseModel):
     """章节生成请求"""
+
     novel_type: NovelType = Field(..., description="小说类型")
     chapter_title: str = Field(..., description="章节标题", max_length=200)
     chapter_outline: str = Field(..., description="章节大纲", max_length=50000)
@@ -48,8 +54,10 @@ class ChapterRequest(BaseModel):
     max_tokens: int = Field(2000, description="最大token数", ge=1, le=200000)
     temperature: float = Field(0.8, description="生成温度", ge=0.0, le=2.0)
 
+
 class ChapterResponse(BaseModel):
     """章节生成响应"""
+
     success: bool
     content: str
     chapter_title: str
@@ -60,8 +68,10 @@ class ChapterResponse(BaseModel):
     word_count: int
     metadata: Dict[str, Any]
 
+
 class NovelOutlineRequest(BaseModel):
     """小说大纲生成请求"""
+
     novel_type: NovelType = Field(..., description="小说类型")
     title: str = Field(..., description="小说标题", max_length=200)
     synopsis: str = Field(..., description="小说简介", max_length=20000)
@@ -69,8 +79,10 @@ class NovelOutlineRequest(BaseModel):
     model_type: str = Field("local", description="模型类型", max_length=50)
     model_name: Optional[str] = Field(None, description="模型名称", max_length=100)
 
+
 class NovelOutlineResponse(BaseModel):
     """小说大纲生成响应"""
+
     success: bool
     title: str
     novel_type: str
@@ -80,8 +92,10 @@ class NovelOutlineResponse(BaseModel):
     tokens_used: int
     generation_time: float
 
+
 class CharacterRequest(BaseModel):
     """人物生成请求"""
+
     novel_type: NovelType = Field(..., description="小说类型")
     character_name: str = Field(..., description="人物姓名", max_length=100)
     character_role: str = Field(..., description="人物角色", max_length=100)
@@ -89,8 +103,10 @@ class CharacterRequest(BaseModel):
     model_type: str = Field("local", description="模型类型", max_length=50)
     model_name: Optional[str] = Field(None, description="模型名称", max_length=100)
 
+
 class CharacterResponse(BaseModel):
     """人物生成响应"""
+
     success: bool
     character_name: str
     character_profile: Dict[str, Any]
@@ -98,20 +114,25 @@ class CharacterResponse(BaseModel):
     tokens_used: int
     generation_time: float
 
+
 class StyleAnalysisRequest(BaseModel):
     """风格分析请求"""
+
     content: str = Field(..., description="待分析内容", max_length=100000)
     analysis_type: str = Field("comprehensive", description="分析类型", max_length=50)
     model_type: str = Field("local", description="模型类型", max_length=50)
     model_name: Optional[str] = Field(None, description="模型名称", max_length=100)
 
+
 class StyleAnalysisResponse(BaseModel):
     """风格分析响应"""
+
     success: bool
     analysis_results: Dict[str, Any]
     model_used: str
     tokens_used: int
     generation_time: float
+
 
 @router.post("/generate/chapter", response_model=ChapterResponse, tags=["小说生成"])
 async def generate_chapter(request: ChapterRequest, inference_engine=Depends(get_inference_engine)):
@@ -126,12 +147,12 @@ async def generate_chapter(request: ChapterRequest, inference_engine=Depends(get
             model_type=request.model_type,
             model_name=request.model_name,
             max_tokens=request.max_tokens,
-            temperature=request.temperature
+            temperature=request.temperature,
         )
-        
+
         # 计算字数
         word_count = len(result["content"])
-        
+
         return ChapterResponse(
             success=True,
             content=result["content"],
@@ -141,11 +162,12 @@ async def generate_chapter(request: ChapterRequest, inference_engine=Depends(get
             tokens_used=result["tokens_used"],
             generation_time=result["generation_time"],
             word_count=word_count,
-            metadata=result["metadata"]
+            metadata=result["metadata"],
         )
-        
+
     except Exception as e:
         raise _internal_error(e) from e
+
 
 @router.post("/generate/outline", response_model=NovelOutlineResponse, tags=["小说生成"])
 async def generate_outline(request: NovelOutlineRequest, inference_engine=Depends(get_inference_engine)):
@@ -181,7 +203,7 @@ async def generate_outline(request: NovelOutlineRequest, inference_engine=Depend
         }}
     ]
 }}"""
-        
+
         # 生成大纲
         start_time = datetime.now()
         result = await inference_engine.generate_with_fallback(
@@ -189,19 +211,20 @@ async def generate_outline(request: NovelOutlineRequest, inference_engine=Depend
             preferred_model=request.model_type,
             model_name=request.model_name,
             max_tokens=3000,
-            temperature=0.7
+            temperature=0.7,
         )
         generation_time = (datetime.now() - start_time).total_seconds()
-        
+
         # 解析JSON响应
         try:
             import json
+
             # 尝试提取JSON部分
             content = result["content"]
             # 查找JSON开始和结束位置
             json_start = content.find("{")
             json_end = content.rfind("}") + 1
-            
+
             if json_start != -1 and json_end != -1:
                 json_str = content[json_start:json_end]
                 outline_data = json.loads(json_str)
@@ -209,26 +232,16 @@ async def generate_outline(request: NovelOutlineRequest, inference_engine=Depend
             else:
                 # 如果无法解析JSON，创建默认结构
                 chapters = [
-                    {
-                        "title": f"第{i+1}章",
-                        "summary": f"章节{i+1}内容",
-                        "plot": "待补充",
-                        "characters": []
-                    }
+                    {"title": f"第{i + 1}章", "summary": f"章节{i + 1}内容", "plot": "待补充", "characters": []}
                     for i in range(request.chapter_count)
                 ]
         except json.JSONDecodeError:
             # JSON解析失败，创建默认结构
             chapters = [
-                {
-                    "title": f"第{i+1}章",
-                    "summary": f"章节{i+1}内容",
-                    "plot": "待补充",
-                    "characters": []
-                }
+                {"title": f"第{i + 1}章", "summary": f"章节{i + 1}内容", "plot": "待补充", "characters": []}
                 for i in range(request.chapter_count)
             ]
-        
+
         return NovelOutlineResponse(
             success=True,
             title=request.title,
@@ -237,11 +250,12 @@ async def generate_outline(request: NovelOutlineRequest, inference_engine=Depend
             total_chapters=len(chapters),
             model_used=result["model_used"],
             tokens_used=result["tokens_used"],
-            generation_time=generation_time
+            generation_time=generation_time,
         )
-        
+
     except Exception as e:
         raise _internal_error(e) from e
+
 
 @router.post("/generate/character", response_model=CharacterResponse, tags=["人物生成"])
 async def generate_character(request: CharacterRequest, inference_engine=Depends(get_inference_engine)):
@@ -277,7 +291,7 @@ async def generate_character(request: CharacterRequest, inference_engine=Depends
     "growth": "成长轨迹",
     "skills": ["技能1", "技能2"]
 }}"""
-        
+
         # 生成人物设定
         start_time = datetime.now()
         result = await inference_engine.generate_with_fallback(
@@ -285,17 +299,18 @@ async def generate_character(request: CharacterRequest, inference_engine=Depends
             preferred_model=request.model_type,
             model_name=request.model_name,
             max_tokens=2000,
-            temperature=0.7
+            temperature=0.7,
         )
         generation_time = (datetime.now() - start_time).total_seconds()
-        
+
         # 解析JSON响应
         try:
             import json
+
             content = result["content"]
             json_start = content.find("{")
             json_end = content.rfind("}") + 1
-            
+
             if json_start != -1 and json_end != -1:
                 json_str = content[json_start:json_end]
                 character_data = json.loads(json_str)
@@ -306,7 +321,7 @@ async def generate_character(request: CharacterRequest, inference_engine=Depends
                     "background": "待补充",
                     "relationships": [],
                     "growth": "待补充",
-                    "skills": []
+                    "skills": [],
                 }
         except json.JSONDecodeError:
             character_data = {
@@ -315,20 +330,21 @@ async def generate_character(request: CharacterRequest, inference_engine=Depends
                 "background": "待补充",
                 "relationships": [],
                 "growth": "待补充",
-                "skills": []
+                "skills": [],
             }
-        
+
         return CharacterResponse(
             success=True,
             character_name=request.character_name,
             character_profile=character_data,
             model_used=result["model_used"],
             tokens_used=result["tokens_used"],
-            generation_time=generation_time
+            generation_time=generation_time,
         )
-        
+
     except Exception as e:
         raise _internal_error(e) from e
+
 
 @router.post("/analyze/style", response_model=StyleAnalysisResponse, tags=["文本分析"])
 async def analyze_style(request: StyleAnalysisRequest, inference_engine=Depends(get_inference_engine)):
@@ -350,7 +366,7 @@ async def analyze_style(request: StyleAnalysisRequest, inference_engine=Depends(
 7. 整体评价
 
 请以JSON格式输出分析结果："""
-        
+
         # 生成分析结果
         start_time = datetime.now()
         result = await inference_engine.generate_with_fallback(
@@ -358,17 +374,18 @@ async def analyze_style(request: StyleAnalysisRequest, inference_engine=Depends(
             preferred_model=request.model_type,
             model_name=request.model_name,
             max_tokens=1500,
-            temperature=0.3
+            temperature=0.3,
         )
         generation_time = (datetime.now() - start_time).total_seconds()
-        
+
         # 解析JSON响应
         try:
             import json
+
             content = result["content"]
             json_start = content.find("{")
             json_end = content.rfind("}") + 1
-            
+
             if json_start != -1 and json_end != -1:
                 json_str = content[json_start:json_end]
                 analysis_data = json.loads(json_str)
@@ -380,7 +397,7 @@ async def analyze_style(request: StyleAnalysisRequest, inference_engine=Depends(
                     "literary_devices": [],
                     "sentence_features": "待分析",
                     "vocabulary_features": "待分析",
-                    "overall_evaluation": "待分析"
+                    "overall_evaluation": "待分析",
                 }
         except json.JSONDecodeError:
             analysis_data = {
@@ -390,19 +407,20 @@ async def analyze_style(request: StyleAnalysisRequest, inference_engine=Depends(
                 "literary_devices": [],
                 "sentence_features": "待分析",
                 "vocabulary_features": "待分析",
-                "overall_evaluation": "待分析"
+                "overall_evaluation": "待分析",
             }
-        
+
         return StyleAnalysisResponse(
             success=True,
             analysis_results=analysis_data,
             model_used=result["model_used"],
             tokens_used=result["tokens_used"],
-            generation_time=generation_time
+            generation_time=generation_time,
         )
-        
+
     except Exception as e:
         raise _internal_error(e) from e
+
 
 @router.get("/novel-types", tags=["小说类型"])
 async def get_novel_types():
@@ -414,34 +432,35 @@ async def get_novel_types():
                 "type": "scifi",
                 "name": "科幻小说",
                 "description": "具有前瞻性的科技设定和世界观",
-                "features": ["未来科技", "太空探索", "人工智能", "时间旅行"]
+                "features": ["未来科技", "太空探索", "人工智能", "时间旅行"],
             },
             {
                 "type": "mystery",
                 "name": "悬疑推理",
                 "description": "逻辑严密、情节曲折的推理故事",
-                "features": ["犯罪谜题", "逻辑推理", "悬疑氛围", "意外结局"]
+                "features": ["犯罪谜题", "逻辑推理", "悬疑氛围", "意外结局"],
             },
             {
                 "type": "romance",
                 "name": "言情小说",
                 "description": "情感细腻、人物关系复杂的情感故事",
-                "features": ["爱情故事", "情感纠葛", "人物成长", "温馨治愈"]
+                "features": ["爱情故事", "情感纠葛", "人物成长", "温馨治愈"],
             },
             {
                 "type": "fantasy",
                 "name": "奇幻小说",
                 "description": "丰富的魔法和世界观设定的奇幻故事",
-                "features": ["魔法系统", "异世界", "史诗冒险", "神话传说"]
+                "features": ["魔法系统", "异世界", "史诗冒险", "神话传说"],
             },
             {
                 "type": "urban",
                 "name": "都市小说",
                 "description": "贴近现实、人物鲜明的都市故事",
-                "features": ["现实生活", "职场故事", "社会现象", "人生百态"]
-            }
-        ]
+                "features": ["现实生活", "职场故事", "社会现象", "人生百态"],
+            },
+        ],
     }
+
 
 @router.get("/health", tags=["健康检查"])
 async def health_check(inference_engine=Depends(get_inference_engine)):
@@ -450,26 +469,14 @@ async def health_check(inference_engine=Depends(get_inference_engine)):
         health_status = await inference_engine.health_check()
         return health_status
     except Exception as e:
-        return {
-            "status": "unhealthy",
-            "error": str(e)
-        }
+        return {"status": "unhealthy", "error": str(e)}
+
 
 @router.get("/statistics", tags=["统计信息"])
 async def get_statistics(inference_engine=Depends(get_inference_engine)):
     """获取服务统计信息"""
     try:
         stats = await inference_engine.get_statistics()
-        return {
-            "success": True,
-            "statistics": stats
-        }
+        return {"success": True, "statistics": stats}
     except Exception as e:
         raise _internal_error(e) from e
-
-def _internal_error(e: Exception):
-    """通用内部错误处理：记录详细错误到日志，仅返回通用提示给客户端。"""
-    import logging
-    logging.getLogger(__name__).error(f"请求处理失败: {e}", exc_info=True)
-    return HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
-

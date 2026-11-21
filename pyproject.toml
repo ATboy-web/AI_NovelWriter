@@ -5,23 +5,29 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ai-novel-writer"
 version = "3.4.1"
-description = "AI 长篇小说创作工坊：135 类题材（可自定义）、5 Agent 协作、世界线分支与 18 面板工作台"
+description = "AI 长篇小说创作工坊：135 类题材（可自定义）、5 Agent 协作、世界线分支与 20 面板工作台"
 requires-python = ">=3.11"
+# P2-10：运行期依赖统一加**主版本上界**。原先只有下界（`httpx>=0.24` 之类），
+# 意味着任何一次全新安装都可能拿到破坏性大版本（httpx 1.0 / Pillow 13 …），
+# 而 CI 与用户装到的版本会不一致。上界按"当前实测可用的大版本"设定，
+# 升级大版本必须是一次有意的改动（改这里 → 跑全量 → 再提交）。
 dependencies = [
-    "httpx>=0.24",
-    "loguru>=0.7.0",
-    "python-docx>=0.8.11",
-    "pypdf>=3.0",
-    "ebooklib>=0.18",
-    "markdown>=3.4",
-    "beautifulsoup4>=4.12",
-    "Pillow>=9.0",
-    "cryptography>=41.0",
+    "httpx>=0.24,<1.0",
+    "loguru>=0.7.0,<1.0",
+    "python-docx>=0.8.11,<2.0",
+    "pypdf>=3.0,<7.0",
+    "ebooklib>=0.18,<1.0",
+    # P1-5: 删除 markdown —— 全仓（app/backend/scripts/installer）零处 import markdown，
+    # 属于纯挂名依赖，只会扩大安装体积与安全面。
+    # P1-5: beautifulsoup4 移入 dev —— 唯一使用者是 scripts/check_bundle.py（构建期校验），
+    # 运行期不需要；ebooklib 自身也会按需带上它。
+    "Pillow>=9.0,<13.0",
+    "cryptography>=41.0,<50.0",
     # PDF **导出**用（`app/format_converter.py` 的 `_to_pdf` 里 `from fpdf import FPDF`）。
     # ❗ 原先漏声明：`_to_pdf` 对 ImportError 是**静默降级成 TXT**，
     # 于是"选 PDF 导出"会得到一个 .txt 且不报错（审计实测：fpdf 未安装也未声明）。
     # 包名是 fpdf2，import 名是 fpdf —— 两者不同名，别写错。
-    "fpdf2>=2.7.0",
+    "fpdf2>=2.7.0,<3.0",
 ]
 
 [project.optional-dependencies]
@@ -42,6 +48,13 @@ dev = [
     # 与 JWT 验签逻辑，否则该目录下的测试在 CI 中无法收集。
     "fastapi>=0.110",
     "PyJWT>=2.8",
+    # P1-6: 两个后端服务的 app/core/config.py 用 pydantic_settings.BaseSettings，
+    # app/main.py 顶层 import uvicorn。二者此前不在 dev 里，导致 CI 中
+    # **两个 FastAPI 应用根本无法被导入**，服务入口长期零测试覆盖。
+    "pydantic-settings>=2.1",
+    "uvicorn>=0.24",
+    # 构建期脚本 scripts/check_bundle.py 解析 HTML 用（运行期不需要）。
+    "beautifulsoup4>=4.12",
 ]
 
 # flat-layout 下存在多个顶层目录 (app / backend / shared / installer / ...),
@@ -179,4 +192,13 @@ precision = 1
 #     - 按最低平台估算（Linux CI ≈ 86.5，Windows 减平台分支差）留约 1.0 缓冲；
 #     - Windows 86.77 富余 1.27，上界 87.5 ⇒ 不触发 ratchet；
 #     - 不取脚本建议的 85.8（那是 actual-1 的单平台值），避免按单平台卡死。
-fail_under = 85.5
+#   2026-11-21 全部修复（P0-1…P2-10，新增 5 个测试文件 / 84 条用例）：
+#     升至 **89.39%（Windows）/ 86.90%（排除新增 Tk 用例，≈ Linux CI）**——
+#     ai_settings_ui 11.6% → 83.7%（巨石拆分后首次可测）、dialogs 31.2% → 大幅提升，
+#     另加云存储客户端缓存 / 降级留痕 / 切分收敛 / 分层守卫等回归。
+#   阈值上调到 **86.0**：
+#     - 仍按**最低平台**定：Linux 口径实测 86.90，留 0.9 个百分点缓冲；
+#     - Windows 89.39 富余 3.39 —— 超过旧棘轮余量 2.0，故同步把
+#       `scripts/check_coverage.py` 的 RATCHET_MARGIN 调到 4.0（见该处注释：
+#       两平台实测差 2.49 个百分点，旧余量下两边不可能同时通过）。
+fail_under = 86.0

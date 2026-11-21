@@ -259,14 +259,10 @@ def _read_chapter(novel_dir: Path, chapter: int) -> str:
 
 
 def split_title(text: str) -> Tuple[str, str]:
-    """把章节文件拆成 `(标题行, 正文)`。第一行不是标题时标题为空。"""
-    lines = (text or "").splitlines()
-    if not lines:
-        return "", ""
-    first = lines[0].strip()
-    if first.startswith("#"):
-        return first.lstrip("#").strip(), "\n".join(lines[1:]).strip()
-    return "", (text or "").strip()
+    """委托 `app.parsing.split_title`（本模块口径：去掉 `#` 前缀）。"""
+    from .parsing import split_title as _split_title
+
+    return _split_title(text, strip_marks=True)
 
 
 # ====================================================================== 队列存储

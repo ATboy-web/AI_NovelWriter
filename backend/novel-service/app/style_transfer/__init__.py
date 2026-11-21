@@ -21,5 +21,5 @@ __all__ = [
     "analyze_style",
     "transfer_style",
     "imitate_author_style",
-    "adapt_to_genre"
+    "adapt_to_genre",
 ]

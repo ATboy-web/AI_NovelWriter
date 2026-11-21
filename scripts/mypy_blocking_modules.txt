@@ -1,0 +1,46 @@
+# mypy 分模块阻断清单（P2-10）
+#
+# 背景：`mypy app/` 整体仍有 643 条存量错误（集中在 generation_ui / format_converter /
+# lifecycle_ui / character_ui / novel_agent 等），一次性转阻断只会让 CI 长期红着，
+# 于是此前整步写了 continue-on-error: true —— 结果是**新增代码的类型错误也拦不住**。
+#
+# 做法：把"当前零错误"的核心模块列在这里，CI 对这份清单**阻断**；
+# 其余模块继续跑整体 mypy 但保持非阻断。清单只增不减：
+# 修完一个模块就把它加进来，存量逐步收敛，门禁同时真正生效。
+#
+# 校验口径（与 CI 一致）：
+#   mypy <本清单> --ignore-missing-imports --follow-imports=silent
+# `--follow-imports=silent` 是必需的：否则被导入的存量脏模块会把错误带进来，
+# 清单就永远无法阻断。
+#
+# 一行一个路径；# 开头为注释；空行忽略。
+app/__init__.py
+app/biography.py
+app/bulk_rewrite.py
+app/character_enrichment.py
+app/config.py
+app/consistency.py
+app/events/__init__.py
+app/events/bus.py
+app/genres_data.py
+app/live_data.py
+app/novel_store.py
+app/parsing.py
+app/performance_monitor.py
+app/plugin_system.py
+app/providers/__init__.py
+app/providers/anthropic.py
+app/providers/openai_compat.py
+app/providers/reasoning.py
+app/rework.py
+app/scene_detector.py
+app/secure_config.py
+app/semantic_candidates.py
+app/skill_library.py
+app/storage.py
+app/style_dna.py
+app/text_stats.py
+app/theme_system.py
+app/timeline_store.py
+app/token_estimator.py
+app/writing_presets.py

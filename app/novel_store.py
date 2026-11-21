@@ -31,6 +31,8 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from loguru import logger
+
 from .storage import (
     STATUS_CORRUPT,
     atomic_write_json,
@@ -87,8 +89,8 @@ class NovelStore:
             return
         try:
             self.events.publish(topic, payload)
-        except Exception:  # 事件订阅方的异常不得影响数据写入
-            pass
+        except Exception as exc:  # 事件订阅方的异常不得影响数据写入
+            logger.debug(f"[novel_store] 已忽略异常（Exception）：{exc}")
 
     # ------------------------------------------------------------ meta
 

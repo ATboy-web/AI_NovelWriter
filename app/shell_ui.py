@@ -1051,8 +1051,8 @@ class ShellMixin:
 
         try:
             safe_after(self.root, _do_log)
-        except RuntimeError:
-            pass
+        except RuntimeError as exc:
+            logger.debug(f"[shell_ui] 已忽略异常（RuntimeError）：{exc}")
 
     def _publish_event(self, topic: str, payload=None):
         """发布领域事件（v3 §2.3）—— 全应用统一的出口。

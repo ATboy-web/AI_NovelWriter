@@ -21,5 +21,5 @@ __all__ = [
     "generate_bridge",
     "combine_bridges",
     "generate_bridge_with_variation",
-    "search_bridges"
+    "search_bridges",
 ]

@@ -62,8 +62,8 @@ class FormatConverter:
     def _discard_output(tmp: Path) -> None:
         try:
             tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug(f"[format_converter] 已忽略异常（OSError）：{exc}")
 
     SUPPORTED_FORMATS = {
         "txt": {"name": "TXT纯文本", "ext": ".txt", "desc": "纯文本格式，通用性最强"},
@@ -76,6 +76,16 @@ class FormatConverter:
 
     def __init__(self, novel_dir: Path = None):
         self.novel_dir = novel_dir
+        #: 本次转换发生的降级说明（供 UI 明确告知用户，避免"选 PDF 却拿到 TXT"）。
+        self.degradations: List[str] = []
+        #: 本次转换的失败原因（convert 返回 None 时供 UI 展示）。
+        self.last_error: str = ""
+
+    def _degrade(self, reason: str, fallback: str) -> None:
+        """记录一次显式降级：写日志 + 留痕给调用方，绝不静默。"""
+        message = f"{reason}，已降级为 {fallback}"
+        self.degradations.append(message)
+        logger.warning("[format_converter] {}", message)
 
     def get_formats(self) -> Dict:
         return self.SUPPORTED_FORMATS
@@ -99,7 +109,10 @@ class FormatConverter:
         而统一实现原来只会往固定目录写 —— 不加这个参数就没法把旧入口收敛过来，
         于是同一件"导出"的事会永远停留在两套代码上。
         """
+        self.degradations = []
+        self.last_error = ""
         if format_type not in self.SUPPORTED_FORMATS:
+            self.last_error = f"不支持的格式：{format_type}"
             return None
 
         ext = self.SUPPORTED_FORMATS[format_type]["ext"]
@@ -126,7 +139,8 @@ class FormatConverter:
             elif format_type == "docx":
                 return self._to_docx(content, title, output_file, chapters, metadata)
         except Exception as e:
-            print(f"格式转换失败: {e}")
+            self.last_error = str(e)
+            logger.error("[format_converter] 格式转换失败: {}", e)
             return None
 
         return None
@@ -346,8 +360,9 @@ class FormatConverter:
         """转换为EPUB"""
         try:
             from ebooklib import epub
-        except ImportError:
-            # 如果没有ebooklib，生成HTML版本作为替代
+        except ImportError as exc:
+            # 缺少 ebooklib：仍给出可读产物，但必须让用户知道拿到的是 HTML 而非 EPUB
+            self._degrade(f"缺少 ebooklib（{exc}）", "HTML")
             return self._to_html(content, title, output_file.with_suffix(".html"), chapters, metadata)
 
         book = epub.EpubBook()
@@ -420,7 +435,8 @@ class FormatConverter:
         try:
             from fpdf import FPDF
             from fpdf.enums import XPos, YPos
-        except ImportError:
+        except ImportError as exc:
+            self._degrade(f"缺少 fpdf2（{exc}）", "TXT")
             return self._to_txt(content, title, output_file.with_suffix(".txt"), chapters)
 
         pdf = FPDF()
@@ -448,7 +464,7 @@ class FormatConverter:
         if not font_added:
             # 没有中文字体就别硬渲染：Helvetica 画中文必崩，用户还拿不到任何东西。
             # 降级为 TXT —— 内容完整、可读，比"导出失败"有用。
-            logger.warning("[format_converter] 未找到中文字体（已尝试 %d 个路径），PDF 降级为 TXT", len(font_paths))
+            self._degrade(f"未找到中文字体（已尝试 {len(font_paths)} 个路径）", "TXT")
             return self._to_txt(content, title, output_file.with_suffix(".txt"), chapters)
 
         # 标题
@@ -517,7 +533,8 @@ class FormatConverter:
             from docx import Document
             from docx.enum.text import WD_ALIGN_PARAGRAPH
             from docx.shared import Inches, Pt  # noqa: F401 -- 与上方导入一同用于探测 python-docx 是否可用
-        except ImportError:
+        except ImportError as exc:
+            self._degrade(f"缺少 python-docx（{exc}）", "TXT")
             return self._to_txt(content, title, output_file.with_suffix(".txt"), chapters)
 
         doc = Document()

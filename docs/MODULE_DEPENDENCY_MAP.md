@@ -9,8 +9,8 @@
 | 指标 | 值 |
 |---|---|
 | 内部模块数 | 104 |
-| 依赖边数 | 337 |
-| 其中函数内延迟导入 | 66 |
+| 依赖边数 | 340 |
+| 其中函数内延迟导入 | 68 |
 | 循环依赖环数 | 3（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
@@ -75,6 +75,7 @@
 | `panels.ui_kit` | 11 |
 | `config` | 9 |
 | `ai_client` | 7 |
+| `parsing` | 7 |
 | `novel_toolkit` | 6 |
 | `token_estimator` | 6 |
 | `diagnostic_logger` | 5 |
@@ -83,7 +84,6 @@
 | `text_stats` | 5 |
 | `theme_system` | 5 |
 | `writing_presets` | 5 |
-| `panels.registry` | 4 |
 
 > 这些模块被最多人依赖 ⇒ 改它们的破坏面最大，应当优先保证测试覆盖。
 
@@ -111,7 +111,7 @@
 | `ai_settings_ui` | 🔴`app`, ⚪`ai_client`, ⚪`async_runner`, 🔴`config`, 🔴`dialogs`, 🔴`providers` |
 | `async_runner` | ⚪`app`, ⚪`dialogs` |
 | `biography` | 🔴`storage` |
-| `bulk_rewrite` | ⚪`app`, ⚪`ai_client`, 🔴`async_runner`, 🔴`rework`, 🔴`storage`, 🔴`text_stats`, ⚪`writing_presets` |
+| `bulk_rewrite` | ⚪`app`, ⚪`ai_client`, 🔴`async_runner`, 🔴`parsing`, 🔴`rework`, 🔴`storage`, 🔴`text_stats`, ⚪`writing_presets` |
 | `chapter_ui` | 🔴`app`, 🔴`dialogs`, 🔴`events`, ⚪`format_converter` |
 | `character_enrichment` | — |
 | `character_system` | 🔴`parsing`, 🔴`storage` |
@@ -186,10 +186,10 @@
 | `reader_ui` | 🔴`app`, 🔴`dialogs` |
 | `reading_manager` | 🔴`config` |
 | `review_store` | 🔴`storage`, ⚪`writing_presets` |
-| `rework` | ⚪`review_store`, 🔴`storage`, 🔴`text_stats`, ⚪`writing_presets` |
+| `rework` | ⚪`parsing`, ⚪`review_store`, 🔴`storage`, 🔴`text_stats`, ⚪`writing_presets` |
 | `scene_detector` | — |
 | `secure_config` | 🔴`config`, 🔴`storage` |
-| `semantic_candidates` | ⚪`text_stats` |
+| `semantic_candidates` | ⚪`parsing`, ⚪`text_stats` |
 | `shell_ui` | 🔴`app`, ⚪`ai_client`, 🔴`async_runner`, ⚪`diagnostic_logger`, 🔴`dialogs`, ⚪`performance_monitor`, 🔴`theme_system`, 🔴`ui_scroll` |
 | `skill_library` | ⚪`plugin_system`, 🔴`storage`, 🔴`token_estimator` |
 | `storage` | — |

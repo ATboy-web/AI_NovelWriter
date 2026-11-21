@@ -18,7 +18,7 @@ URL 预览由 `ProviderSpec.resolved_url` 直接算 —— 三者都不会另写
 
 import tkinter as tk
 from tkinter import ttk
-from typing import Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 from app import UIStyle, dialogs
 
@@ -72,6 +72,55 @@ def describe_capabilities(caps: dict, note: str = "") -> str:
     return f"{text}。{note}" if note else text
 
 
+class _AIForm:
+    """AI 页签的控件与变量载体。
+
+    原实现靠一个 440 行闭包共享 30 多个控件/变量；拆成分区方法后需要一个
+    显式载体在方法之间传递。这里只收纳属性，不含任何逻辑。
+    """
+
+    cfg: Any
+    dialog: Any
+    labels: List[str]
+    key_of: Dict[str, str]
+    # Profile
+    active_var: Any
+    prof_combo: Any
+    key_state: Any
+    # 连接
+    provider_var: Any
+    provider_combo: Any
+    base_entry: Any
+    base_hint: Any
+    key_entry: Any
+    # 模型与采样
+    model_var: Any
+    model_combo: Any
+    local_var: Any
+    local_row: Any
+    max_tokens_var: Any
+    temp_var: Any
+    ctx_var: Any
+    # 深度思考
+    think_var: Any
+    think_check: Any
+    effort_var: Any
+    effort_combo: Any
+    think_note: Any
+    # 网络与重试
+    timeout_var: Any
+    connect_var: Any
+    retries_var: Any
+    # 余额
+    bal_state: Any
+    bal_url_entry: Any
+    bal_total_entry: Any
+    bal_cur_entry: Any
+    # 动作区
+    result_var: Any
+    result_label: Any
+
+
 # ============================================================ 界面 Mixin
 
 
@@ -81,139 +130,110 @@ class AISettingsMixin:
     # ------------------------------------------------------------ 入口
 
     def _build_ai_settings_tab(self, parent, dialog) -> Callable[[], None]:
-        """构建 AI 页签，返回保存回调 `save() -> None`。"""
-        cfg = self.config
-        labels, key_of = provider_choices()
+        """构建 AI 页签，返回保存回调 `save() -> None`。
 
-        # ============================================== Profile 区
+        P1-4：原实现是 440 行、圈复杂度 44 的巨石函数（全仓最高），
+        所有控件靠闭包共享，改一处要在整段里上下翻找，也几乎无法单测。
+        现按表单分区拆成独立方法，控件与变量统一挂在 `_AIForm` 上传递。
+        **分区构建顺序、各控件的 pack 参数与回调语义逐字保持不变**。
+        """
+        f = _AIForm()
+        f.cfg = self.config
+        f.dialog = dialog
+        f.labels, f.key_of = provider_choices()
+
+        self._ai_build_profile_section(f, parent)
+        self._ai_build_connection_section(f, parent)
+        self._ai_build_model_section(f, parent)
+        self._ai_build_thinking_section(f, parent)
+        self._ai_build_network_section(f, parent)
+        self._ai_build_balance_section(f, parent)
+        self._ai_build_action_section(f, parent)
+
+        f.provider_combo.bind("<<ComboboxSelected>>", lambda *_: self._ai_on_provider_change(f))
+
+        # 初始化：先把活跃 Profile 灌进表单（内含 provider 下拉与能力联动）
+        f.prof_combo.bind("<<ComboboxSelected>>", lambda *_: self._ai_switch_profile(f))
+        self._ai_refresh_key_state(f)
+
+        return lambda: self._ai_save(f)
+
+    # ------------------------------------------------------------ 分区构建
+
+    def _ai_build_profile_section(self, f: "_AIForm", parent) -> None:
+        cfg = f.cfg
         prof_box = ttk.LabelFrame(parent, text="配置档案（Profile）")
         prof_box.pack(fill=tk.X, padx=20, pady=(10, 6))
 
         prof_row = tk.Frame(prof_box)
         prof_row.pack(fill=tk.X, padx=8, pady=6)
 
-        active_var = tk.StringVar(value=cfg.active_profile)
-        prof_combo = ttk.Combobox(
+        f.active_var = tk.StringVar(value=cfg.active_profile)
+        f.prof_combo = ttk.Combobox(
             prof_row,
-            textvariable=active_var,
+            textvariable=f.active_var,
             values=cfg.profile_names(),
             state="readonly",
             width=18,
         )
-        prof_combo.pack(side=tk.LEFT)
+        f.prof_combo.pack(side=tk.LEFT)
 
-        key_state = tk.StringVar()
-
-        def refresh_key_state(*_):
-            name = active_var.get()
-            if cfg.profile_has_key(name):
-                key_state.set(f"密钥：{cfg.mask_api_key(cfg.profile_api_key(name))}")
-            else:
-                key_state.set("密钥：未设置")
-            # 表单内容必须跟着 Profile 走，否则会"改着 A 存到 B"
-            _load_profile_into_form(name)
-
-        key_label = tk.Label(prof_row, textvariable=key_state, fg="#666")
+        f.key_state = tk.StringVar()
+        key_label = tk.Label(prof_row, textvariable=f.key_state, fg="#666")
         key_label.pack(side=tk.LEFT, padx=10)
 
-        def _switch(*_):
-            name = active_var.get()
-            if name == cfg.active_profile:
-                return
-            try:
-                cfg.switch_profile(name)
-            except ValueError as exc:
-                dialogs.showerror("切换失败", str(exc), parent=dialog)
-                active_var.set(cfg.active_profile)
-                return
-            self._refresh_ai_client()
-            self._reopen_settings(dialog, "已切换配置档案")
-
-        def _create():
-            name = _ask_text(dialog, "新建配置档案", "档案名称（如 work、gemini-备用）：")
-            if not name:
-                return
-            try:
-                cfg.create_profile(name, activate=True)
-            except ValueError as exc:
-                dialogs.showerror("新建失败", str(exc), parent=dialog)
-                return
-            self._reopen_settings(dialog, f"已新建并切换到档案《{name}》")
-
-        def _rename():
-            old = active_var.get()
-            name = _ask_text(dialog, "重命名配置档案", "新的名称：", initial=old)
-            if not name or name == old:
-                return
-            try:
-                cfg.rename_profile(old, name)
-            except ValueError as exc:
-                dialogs.showerror("重命名失败", str(exc), parent=dialog)
-                return
-            self._reopen_settings(dialog, f"档案已重命名为《{name}》")
-
-        def _delete():
-            name = active_var.get()
-            if not dialogs.askyesno(
-                "删除配置档案",
-                f"确定删除档案《{name}》？\n该档案单独保存的 API Key 也会一并删除。",
-                parent=dialog,
-            ):
-                return
-            try:
-                cfg.delete_profile(name)
-            except ValueError as exc:
-                dialogs.showerror("删除失败", str(exc), parent=dialog)
-                return
-            self._reopen_settings(dialog, f"已删除档案《{name}》")
-
-        for text, command in (("切换", _switch), ("新建", _create), ("重命名", _rename), ("删除", _delete)):
+        for text, command in (
+            ("切换", lambda: self._ai_switch_profile(f)),
+            ("新建", lambda: self._ai_create_profile(f)),
+            ("重命名", lambda: self._ai_rename_profile(f)),
+            ("删除", lambda: self._ai_delete_profile(f)),
+        ):
             ttk.Button(prof_row, text=text, command=command, width=6).pack(side=tk.LEFT, padx=2)
 
-        # ============================================== 连接区
+    def _ai_build_connection_section(self, f: "_AIForm", parent) -> None:
         conn_box = ttk.LabelFrame(parent, text="连接")
         conn_box.pack(fill=tk.X, padx=20, pady=6)
 
         _label(conn_box, "AI 服务商")
-        provider_var = tk.StringVar()
-        provider_combo = ttk.Combobox(
+        f.provider_var = tk.StringVar()
+        f.provider_combo = ttk.Combobox(
             conn_box,
-            textvariable=provider_var,
-            values=labels,
+            textvariable=f.provider_var,
+            values=f.labels,
             state="readonly",
             width=42,
         )
-        provider_combo.pack(anchor=tk.W, padx=20, pady=2)
+        f.provider_combo.pack(anchor=tk.W, padx=20, pady=2)
 
         _label(conn_box, "API 地址")
-        base_entry = ttk.Entry(conn_box, width=52)
-        base_entry.pack(anchor=tk.W, padx=20, pady=2)
-        base_hint = tk.Label(conn_box, text="", fg="#666", anchor=tk.W, justify=tk.LEFT)
-        base_hint.pack(anchor=tk.W, padx=20)
+        f.base_entry = ttk.Entry(conn_box, width=52)
+        f.base_entry.pack(anchor=tk.W, padx=20, pady=2)
+        f.base_hint = tk.Label(conn_box, text="", fg="#666", anchor=tk.W, justify=tk.LEFT)
+        f.base_hint.pack(anchor=tk.W, padx=20)
 
         _label(conn_box, "API 密钥")
         key_row = tk.Frame(conn_box)
         key_row.pack(anchor=tk.W, padx=20, pady=2)
-        key_entry = ttk.Entry(key_row, width=44, show="*")
-        key_entry.pack(side=tk.LEFT)
+        f.key_entry = ttk.Entry(key_row, width=44, show="*")
+        f.key_entry.pack(side=tk.LEFT)
         show_key = tk.BooleanVar(value=False)
 
         def _toggle_key():
-            key_entry.configure(show="" if show_key.get() else "*")
+            f.key_entry.configure(show="" if show_key.get() else "*")
 
         ttk.Checkbutton(key_row, text="显示", variable=show_key, command=_toggle_key).pack(side=tk.LEFT, padx=6)
         tk.Label(conn_box, text="密钥加密后保存，不明文落盘；每个档案各存各的。", fg="#666", anchor=tk.W).pack(
             anchor=tk.W, padx=20
         )
 
-        # ============================================== 模型与采样
+    def _ai_build_model_section(self, f: "_AIForm", parent) -> None:
         model_box = ttk.LabelFrame(parent, text="模型与采样")
         model_box.pack(fill=tk.X, padx=20, pady=6)
 
         _label(model_box, "模型名称")
-        model_var = tk.StringVar()
-        model_combo = ttk.Combobox(model_box, textvariable=model_var, width=42)
-        model_combo.pack(anchor=tk.W, padx=20, pady=2)
+        f.model_var = tk.StringVar()
+        f.model_combo = ttk.Combobox(model_box, textvariable=f.model_var, width=42)
+        f.model_combo.pack(anchor=tk.W, padx=20, pady=2)
 
         # ---- 本地模型：从服务实际拉取"已安装"的模型
         # 为什么需要：`AIClient.get_ollama_models()` 早就实现了，但**全仓零界面调用**
@@ -221,307 +241,369 @@ class AISettingsMixin:
         # **静态建议表**（`_OLLAMA_MODELS`），未必与这台机器上真实装了哪些模型一致。
         # 显示与否由能力位 `local` 决定（`can_list_local_models`），
         # 而不是 `provider == "ollama"` —— 以后接 llama.cpp / vLLM 只要声明 local 即可复用。
-        local_var = tk.StringVar(value="")
-        local_row = tk.Frame(model_box)
-        local_row.pack(anchor=tk.W, padx=20, pady=(0, 2))
+        f.local_var = tk.StringVar(value="")
+        f.local_row = tk.Frame(model_box)
+        f.local_row.pack(anchor=tk.W, padx=20, pady=(0, 2))
 
         def _refresh_local_models():
-            local_var.set("正在读取本地模型…")
+            f.local_var.set("正在读取本地模型…")
 
             def _after(models):
                 if isinstance(models, dict):  # `_run_in_background` 的异常形状
-                    local_var.set(f"读取失败：{models.get('reason', '未知错误')}")
+                    f.local_var.set(f"读取失败：{models.get('reason', '未知错误')}")
                     return
                 names = [m.name for m in (models or [])]
                 if not names:
-                    local_var.set("未读到模型（服务未启动，或尚未拉取任何模型）")
+                    f.local_var.set("未读到模型（服务未启动，或尚未拉取任何模型）")
                     return
                 # 只更新候选列表，**不覆盖用户已填的模型名** —— 覆盖会把配置改掉
-                model_combo["values"] = names
-                local_var.set(f"已读到 {len(names)} 个本地模型，可下拉选择")
+                f.model_combo["values"] = names
+                f.local_var.set(f"已读到 {len(names)} 个本地模型，可下拉选择")
 
-            self._run_in_background(_list_local_models, _after, dialog)
+            self._run_in_background(_list_local_models, _after, f.dialog)
 
         def _list_local_models():
             return self.ai_client.list_local_models()
 
         def _check_local_service():
-            local_var.set("正在检测本地服务…")
+            f.local_var.set("正在检测本地服务…")
 
             def _after(result):
                 if isinstance(result, dict) and "reason" in result:
-                    local_var.set(f"检测失败：{result.get('reason')}")
+                    f.local_var.set(f"检测失败：{result.get('reason')}")
                     return
                 ok, message = result if isinstance(result, tuple) else (False, str(result))
-                local_var.set(("✅ " if ok else "❌ ") + str(message))
+                f.local_var.set(("✅ " if ok else "❌ ") + str(message))
 
-            self._run_in_background(self.ai_client.check_local_service, _after, dialog)
+            self._run_in_background(self.ai_client.check_local_service, _after, f.dialog)
 
-        local_refresh_btn = ttk.Button(local_row, text="刷新本地模型", command=_refresh_local_models)
+        local_refresh_btn = ttk.Button(f.local_row, text="刷新本地模型", command=_refresh_local_models)
         local_refresh_btn.pack(side=tk.LEFT)
-        local_check_btn = ttk.Button(local_row, text="检测本地服务", command=_check_local_service)
+        local_check_btn = ttk.Button(f.local_row, text="检测本地服务", command=_check_local_service)
         local_check_btn.pack(side=tk.LEFT, padx=6)
-        tk.Label(local_row, textvariable=local_var, fg="#666", anchor=tk.W).pack(side=tk.LEFT, padx=6)
-
-        def _sync_local_controls():
-            """按当前服务商的能力决定这一行是否出现。"""
-            try:
-                show = bool(self.ai_client.can_list_local_models(_current_provider()))
-            except Exception:  # noqa: BLE001 - 能力查询失败时按"不显示"处理
-                show = False
-            if show:
-                local_row.pack(anchor=tk.W, padx=20, pady=(0, 2))
-            else:
-                local_row.pack_forget()
+        tk.Label(f.local_row, textvariable=f.local_var, fg="#666", anchor=tk.W).pack(side=tk.LEFT, padx=6)
 
         _label(model_box, "最大输出 token")
-        max_tokens_var = tk.StringVar()
-        ttk.Entry(model_box, textvariable=max_tokens_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
+        f.max_tokens_var = tk.StringVar()
+        ttk.Entry(model_box, textvariable=f.max_tokens_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
 
         _label(model_box, "温度（0 ~ 2，越高越发散）")
-        temp_var = tk.StringVar()
-        ttk.Spinbox(model_box, from_=0, to=2, increment=0.1, textvariable=temp_var, width=12).pack(
+        f.temp_var = tk.StringVar()
+        ttk.Spinbox(model_box, from_=0, to=2, increment=0.1, textvariable=f.temp_var, width=12).pack(
             anchor=tk.W, padx=20, pady=2
         )
 
         _label(model_box, "上下文窗口")
-        ctx_var = tk.StringVar()
+        f.ctx_var = tk.StringVar()
         ttk.Combobox(
             model_box,
-            textvariable=ctx_var,
+            textvariable=f.ctx_var,
             width=12,
             values=["8000", "16000", "32000", "64000", "128000", "200000"],
         ).pack(anchor=tk.W, padx=20, pady=2)
 
-        # ============================================== 思考模式
+    def _ai_build_thinking_section(self, f: "_AIForm", parent) -> None:
         think_box = ttk.LabelFrame(parent, text="深度思考")
         think_box.pack(fill=tk.X, padx=20, pady=6)
 
-        think_var = tk.BooleanVar()
-        think_check = tk.Checkbutton(
+        f.think_var = tk.BooleanVar()
+        f.think_check = tk.Checkbutton(
             think_box,
             text="启用深度思考（reasoning / thinking 参数）",
-            variable=think_var,
+            variable=f.think_var,
         )
-        think_check.pack(anchor=tk.W, padx=20, pady=(6, 2))
+        f.think_check.pack(anchor=tk.W, padx=20, pady=(6, 2))
 
         _label(think_box, "思考强度")
-        effort_var = tk.StringVar()
-        effort_combo = ttk.Combobox(
+        f.effort_var = tk.StringVar()
+        f.effort_combo = ttk.Combobox(
             think_box,
-            textvariable=effort_var,
+            textvariable=f.effort_var,
             values=list(REASONING_EFFORTS),
             state="readonly",
             width=14,
         )
-        effort_combo.pack(anchor=tk.W, padx=20, pady=2)
-        think_note = tk.Label(think_box, text="", fg="#666", anchor=tk.W, justify=tk.LEFT, wraplength=520)
-        think_note.pack(anchor=tk.W, padx=20, pady=(0, 6))
+        f.effort_combo.pack(anchor=tk.W, padx=20, pady=2)
+        f.think_note = tk.Label(think_box, text="", fg="#666", anchor=tk.W, justify=tk.LEFT, wraplength=520)
+        f.think_note.pack(anchor=tk.W, padx=20, pady=(0, 6))
 
-        # ============================================== 网络与重试
+    def _ai_build_network_section(self, f: "_AIForm", parent) -> None:
         net_box = ttk.LabelFrame(parent, text="网络与重试")
         net_box.pack(fill=tk.X, padx=20, pady=6)
 
         _label(net_box, "读取超时（秒）—— 单次请求等待响应的上限")
-        timeout_var = tk.StringVar()
-        ttk.Entry(net_box, textvariable=timeout_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
+        f.timeout_var = tk.StringVar()
+        ttk.Entry(net_box, textvariable=f.timeout_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
 
         _label(net_box, "连接超时（秒）—— 建连阶段的独立上限")
-        connect_var = tk.StringVar()
-        ttk.Entry(net_box, textvariable=connect_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
+        f.connect_var = tk.StringVar()
+        ttk.Entry(net_box, textvariable=f.connect_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
 
         _label(net_box, "瞬时故障重试次数（仅对 429 / 5xx / 网络错误生效）")
-        retries_var = tk.StringVar()
-        ttk.Spinbox(net_box, from_=0, to=10, textvariable=retries_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
+        f.retries_var = tk.StringVar()
+        ttk.Spinbox(net_box, from_=0, to=10, textvariable=f.retries_var, width=12).pack(anchor=tk.W, padx=20, pady=2)
 
-        # ============================================== 余额
+    def _ai_build_balance_section(self, f: "_AIForm", parent) -> None:
         bal_box = ttk.LabelFrame(parent, text="余额查询")
         bal_box.pack(fill=tk.X, padx=20, pady=6)
 
-        bal_state = tk.StringVar()
-        tk.Label(bal_box, textvariable=bal_state, fg="#666", anchor=tk.W, justify=tk.LEFT, wraplength=520).pack(
+        f.bal_state = tk.StringVar()
+        tk.Label(bal_box, textvariable=f.bal_state, fg="#666", anchor=tk.W, justify=tk.LEFT, wraplength=520).pack(
             anchor=tk.W, padx=20, pady=(6, 2)
         )
 
         _label(bal_box, "余额接口地址（留空使用内置）")
-        bal_url_entry = ttk.Entry(bal_box, width=52)
-        bal_url_entry.pack(anchor=tk.W, padx=20, pady=2)
+        f.bal_url_entry = ttk.Entry(bal_box, width=52)
+        f.bal_url_entry.pack(anchor=tk.W, padx=20, pady=2)
 
         _label(bal_box, "余额字段路径（如 balance_infos.0.total_balance）")
-        bal_total_entry = ttk.Entry(bal_box, width=40)
-        bal_total_entry.pack(anchor=tk.W, padx=20, pady=2)
+        f.bal_total_entry = ttk.Entry(bal_box, width=40)
+        f.bal_total_entry.pack(anchor=tk.W, padx=20, pady=2)
 
         _label(bal_box, "币种字段路径（如 balance_infos.0.currency）")
-        bal_cur_entry = ttk.Entry(bal_box, width=40)
-        bal_cur_entry.pack(anchor=tk.W, padx=20, pady=(2, 8))
+        f.bal_cur_entry = ttk.Entry(bal_box, width=40)
+        f.bal_cur_entry.pack(anchor=tk.W, padx=20, pady=(2, 8))
 
-        # ============================================== 动作按钮
+    def _ai_build_action_section(self, f: "_AIForm", parent) -> None:
         action_box = tk.Frame(parent)
         action_box.pack(fill=tk.X, padx=20, pady=(4, 12))
 
-        result_var = tk.StringVar(value="")
-        result_label = tk.Label(
-            action_box, textvariable=result_var, fg="#333", anchor=tk.W, justify=tk.LEFT, wraplength=560
+        f.result_var = tk.StringVar(value="")
+        f.result_label = tk.Label(
+            action_box, textvariable=f.result_var, fg="#333", anchor=tk.W, justify=tk.LEFT, wraplength=560
         )
-        result_label.pack(anchor=tk.W, pady=(0, 6))
+        f.result_label.pack(anchor=tk.W, pady=(0, 6))
 
-        def _current_provider() -> str:
-            return key_of.get(provider_var.get(), "custom")
+        ttk.Button(action_box, text="请求 URL 预览", command=lambda: self._ai_show_url(f)).pack(side=tk.LEFT)
+        ttk.Button(action_box, text="测试连接", command=lambda: self._ai_test_connection(f)).pack(side=tk.LEFT, padx=6)
+        ttk.Button(action_box, text="查询余额", command=lambda: self._ai_query_balance(f)).pack(side=tk.LEFT)
 
-        def _show_result(text: str, ok=None):
-            """ok=True 绿 / False 红 / None 中性灰。
+    # ------------------------------------------------------------ Profile 动作
 
-            余额的"该服务未提供余额接口"属于**正常事实**而不是错误，
-            用红色显示会让用户以为功能坏了。
-            """
-            result_var.set(text)
-            color = "#333" if ok is None else ("#1a7f37" if ok else "#b42318")
-            result_label.configure(fg=color)
+    def _ai_refresh_key_state(self, f: "_AIForm") -> None:
+        cfg = f.cfg
+        name = f.active_var.get()
+        if cfg.profile_has_key(name):
+            f.key_state.set(f"密钥：{cfg.mask_api_key(cfg.profile_api_key(name))}")
+        else:
+            f.key_state.set("密钥：未设置")
+        # 表单内容必须跟着 Profile 走，否则会"改着 A 存到 B"
+        self._ai_load_profile_into_form(f, name)
 
-        def _show_url():
-            spec_key = _current_provider()
-            spec = get_spec(spec_key)
-            base = base_entry.get().strip() or spec.base_url
-            preview = spec.resolved_url(base)
-            _show_result(f"[URL 预览] {preview}\n（按表单当前填写的内容计算；服务商默认地址 {spec.base_url}）")
+    def _ai_switch_profile(self, f: "_AIForm") -> None:
+        cfg = f.cfg
+        name = f.active_var.get()
+        if name == cfg.active_profile:
+            return
+        try:
+            cfg.switch_profile(name)
+        except ValueError as exc:
+            dialogs.showerror("切换失败", str(exc), parent=f.dialog)
+            f.active_var.set(cfg.active_profile)
+            return
+        self._refresh_ai_client()
+        self._reopen_settings(f.dialog, "已切换配置档案")
 
-        def _test_connection():
-            spec_key = _current_provider()
-            _show_result("正在测试连接（会发送一个 1 token 的请求）…")
-            params = dict(
-                provider=spec_key,
-                api_base=base_entry.get().strip(),
-                api_key=key_entry.get().strip(),
-                model=model_var.get().strip(),
-            )
-            self._run_in_background(
-                lambda: self.ai_client.probe_connection(**params),
-                lambda r: _show_result(_format_probe(spec_key, r), bool(r.get("ok"))),
-                dialog,
-            )
+    def _ai_create_profile(self, f: "_AIForm") -> None:
+        name = _ask_text(f.dialog, "新建配置档案", "档案名称（如 work、gemini-备用）：")
+        if not name:
+            return
+        try:
+            f.cfg.create_profile(name, activate=True)
+        except ValueError as exc:
+            dialogs.showerror("新建失败", str(exc), parent=f.dialog)
+            return
+        self._reopen_settings(f.dialog, f"已新建并切换到档案《{name}》")
 
-        def _query_balance():
-            spec_key = _current_provider()
-            _show_result("正在按已保存的配置查询余额…")
-            self._run_in_background(
-                lambda: self.ai_client.query_balance(spec_key, use_cache=False),
-                lambda r: _show_result(
-                    f"[余额] {r.format_total()}",
-                    None if not getattr(r, "supported", False) else getattr(r, "ok", False),
-                ),
-                dialog,
-            )
+    def _ai_rename_profile(self, f: "_AIForm") -> None:
+        old = f.active_var.get()
+        name = _ask_text(f.dialog, "重命名配置档案", "新的名称：", initial=old)
+        if not name or name == old:
+            return
+        try:
+            f.cfg.rename_profile(old, name)
+        except ValueError as exc:
+            dialogs.showerror("重命名失败", str(exc), parent=f.dialog)
+            return
+        self._reopen_settings(f.dialog, f"档案已重命名为《{name}》")
 
-        ttk.Button(action_box, text="请求 URL 预览", command=_show_url).pack(side=tk.LEFT)
-        ttk.Button(action_box, text="测试连接", command=_test_connection).pack(side=tk.LEFT, padx=6)
-        ttk.Button(action_box, text="查询余额", command=_query_balance).pack(side=tk.LEFT)
+    def _ai_delete_profile(self, f: "_AIForm") -> None:
+        name = f.active_var.get()
+        if not dialogs.askyesno(
+            "删除配置档案",
+            f"确定删除档案《{name}》？\n该档案单独保存的 API Key 也会一并删除。",
+            parent=f.dialog,
+        ):
+            return
+        try:
+            f.cfg.delete_profile(name)
+        except ValueError as exc:
+            dialogs.showerror("删除失败", str(exc), parent=f.dialog)
+            return
+        self._reopen_settings(f.dialog, f"已删除档案《{name}》")
 
-        # ============================================== 联动逻辑
-        def _load_profile_into_form(name: str):
-            prof = cfg.profiles().get(name, {})
-            spec_key = str(prof.get("api_provider", "ollama"))
-            provider_var.set(_label_for(spec_key, labels, key_of))
-            base_entry.delete(0, tk.END)
-            base_entry.insert(0, str(prof.get("api_base", "")))
-            key_entry.delete(0, tk.END)
-            key_entry.insert(0, cfg.profile_api_key(name))
-            model_var.set(str(prof.get("model", "")))
-            max_tokens_var.set(str(prof.get("max_tokens", 4096)))
-            temp_var.set(str(prof.get("temperature", 0.8)))
-            ctx_var.set(str(prof.get("context_window", 32000)))
-            think_var.set(bool(prof.get("thinking_enabled", True)))
-            effort_var.set(str(prof.get("reasoning_effort", "high")))
-            timeout_var.set(str(prof.get("timeout", 600.0)))
-            connect_var.set(str(prof.get("connect_timeout", 10.0)))
-            retries_var.set(str(prof.get("max_retries", 3)))
-            for entry, key in (
-                (bal_url_entry, "balance_url"),
-                (bal_total_entry, "balance_total_path"),
-                (bal_cur_entry, "balance_currency_path"),
-            ):
-                entry.delete(0, tk.END)
-                entry.insert(0, str(prof.get(key, "")))
-            model_combo["values"] = models_for_provider(spec_key)
-            _apply_capabilities()
+    # ------------------------------------------------------------ 联动逻辑
 
-        def _apply_capabilities(*_):
-            spec_key = _current_provider()
-            spec = get_spec(spec_key)
-            caps = spec.supports.as_dict()
-            base_hint.configure(
-                text=f"该服务商的默认地址：{spec.base_url}" + ("（已含 /v1）" if spec.base_url_includes_v1 else "")
-            )
-            # 能力驱动显隐：不再靠 `if provider == "claude"` 之类的硬编码
-            if caps.get("thinking"):
-                think_check.configure(state="normal")
-                effort_combo.configure(state="readonly")
-                think_note.configure(text="该服务商支持思考模式参数。")
-            else:
-                think_check.configure(state="disabled")
-                effort_combo.configure(state="disabled")
-                think_note.configure(text="该服务商不支持思考模式参数，上面的开关不会发送任何额外字段。")
-            if caps.get("balance"):
-                bal_state.set(f"该服务商有余额接口（{spec.note}）。可直接点「查询余额」。")
-            else:
-                bal_state.set(f"该服务商未提供余额接口（{spec.note}）。若你确知自建/代理端点，可在下面填写以启用查询。")
-            # 本地模型控件同样由能力位驱动（`local`）——
-            # 放在这里可以同时覆盖"切换服务商"与"载入档案"两条路径
-            _sync_local_controls()
+    def _ai_current_provider(self, f: "_AIForm") -> str:
+        return f.key_of.get(f.provider_var.get(), "custom")
 
-        def _on_provider_change(*_):
-            spec_key = _current_provider()
-            spec = get_spec(spec_key)
-            # 换服务商必须换地址：沿用旧地址是本项目历史上最容易配错的地方
-            base_entry.delete(0, tk.END)
-            base_entry.insert(0, spec.base_url)
-            candidates = models_for_provider(spec_key)
-            model_combo["values"] = candidates
-            if candidates:
-                model_var.set(candidates[0])
-            _apply_capabilities()
+    def _ai_sync_local_controls(self, f: "_AIForm") -> None:
+        """按当前服务商的能力决定这一行是否出现。"""
+        try:
+            show = bool(self.ai_client.can_list_local_models(self._ai_current_provider(f)))
+        except Exception:  # noqa: BLE001 - 能力查询失败时按"不显示"处理
+            show = False
+        if show:
+            f.local_row.pack(anchor=tk.W, padx=20, pady=(0, 2))
+        else:
+            f.local_row.pack_forget()
 
-        provider_combo.bind("<<ComboboxSelected>>", _on_provider_change)
+    def _ai_load_profile_into_form(self, f: "_AIForm", name: str) -> None:
+        cfg = f.cfg
+        prof = cfg.profiles().get(name, {})
+        spec_key = str(prof.get("api_provider", "ollama"))
+        f.provider_var.set(_label_for(spec_key, f.labels, f.key_of))
+        f.base_entry.delete(0, tk.END)
+        f.base_entry.insert(0, str(prof.get("api_base", "")))
+        f.key_entry.delete(0, tk.END)
+        f.key_entry.insert(0, cfg.profile_api_key(name))
+        f.model_var.set(str(prof.get("model", "")))
+        f.max_tokens_var.set(str(prof.get("max_tokens", 4096)))
+        f.temp_var.set(str(prof.get("temperature", 0.8)))
+        f.ctx_var.set(str(prof.get("context_window", 32000)))
+        f.think_var.set(bool(prof.get("thinking_enabled", True)))
+        f.effort_var.set(str(prof.get("reasoning_effort", "high")))
+        f.timeout_var.set(str(prof.get("timeout", 600.0)))
+        f.connect_var.set(str(prof.get("connect_timeout", 10.0)))
+        f.retries_var.set(str(prof.get("max_retries", 3)))
+        for entry, key in (
+            (f.bal_url_entry, "balance_url"),
+            (f.bal_total_entry, "balance_total_path"),
+            (f.bal_cur_entry, "balance_currency_path"),
+        ):
+            entry.delete(0, tk.END)
+            entry.insert(0, str(prof.get(key, "")))
+        f.model_combo["values"] = models_for_provider(spec_key)
+        self._ai_apply_capabilities(f)
 
-        # ============================================== 保存
-        def save() -> None:
-            """把表单写入当前 Profile。非法输入当场报错，不做静默夹断。"""
-            name = active_var.get()
-            if name != cfg.active_profile:
-                cfg.switch_profile(name)
-            fields = [
-                ("api_provider", _current_provider()),
-                ("api_key", key_entry.get().strip()),
-                ("api_base", base_entry.get().strip()),
-                ("model", model_var.get().strip()),
-                ("max_tokens", max_tokens_var.get().strip()),
-                ("temperature", temp_var.get().strip()),
-                ("context_window", ctx_var.get().strip()),
-                ("thinking_enabled", think_var.get()),
-                ("reasoning_effort", effort_var.get().strip()),
-                ("timeout", timeout_var.get().strip()),
-                ("connect_timeout", connect_var.get().strip()),
-                ("max_retries", retries_var.get().strip()),
-                ("balance_url", bal_url_entry.get().strip()),
-                ("balance_total_path", bal_total_entry.get().strip()),
-                ("balance_currency_path", bal_cur_entry.get().strip()),
-            ]
-            for key, value in fields:
-                try:
-                    cfg.set(key, value)
-                except (ValueError, RuntimeError) as exc:
-                    dialogs.showerror(
-                        "配置未保存",
-                        f"{AI_PROFILE_LABELS.get(key, key)} 的值不合法：\n{exc}\n\n"
-                        "已停止保存，请修正后重试（前面的字段已写入）。",
-                        parent=dialog,
-                    )
-                    return
+    def _ai_apply_capabilities(self, f: "_AIForm") -> None:
+        spec = get_spec(self._ai_current_provider(f))
+        caps = spec.supports.as_dict()
+        f.base_hint.configure(
+            text=f"该服务商的默认地址：{spec.base_url}" + ("（已含 /v1）" if spec.base_url_includes_v1 else "")
+        )
+        # 能力驱动显隐：不再靠 `if provider == "claude"` 之类的硬编码
+        if caps.get("thinking"):
+            f.think_check.configure(state="normal")
+            f.effort_combo.configure(state="readonly")
+            f.think_note.configure(text="该服务商支持思考模式参数。")
+        else:
+            f.think_check.configure(state="disabled")
+            f.effort_combo.configure(state="disabled")
+            f.think_note.configure(text="该服务商不支持思考模式参数，上面的开关不会发送任何额外字段。")
+        if caps.get("balance"):
+            f.bal_state.set(f"该服务商有余额接口（{spec.note}）。可直接点「查询余额」。")
+        else:
+            f.bal_state.set(f"该服务商未提供余额接口（{spec.note}）。若你确知自建/代理端点，可在下面填写以启用查询。")
+        # 本地模型控件同样由能力位驱动（`local`）——
+        # 放在这里可以同时覆盖"切换服务商"与"载入档案"两条路径
+        self._ai_sync_local_controls(f)
 
-        # 初始化：先把活跃 Profile 灌进表单（内含 provider 下拉与能力联动）
-        prof_combo.bind("<<ComboboxSelected>>", _switch)
-        refresh_key_state()
+    def _ai_on_provider_change(self, f: "_AIForm") -> None:
+        spec_key = self._ai_current_provider(f)
+        spec = get_spec(spec_key)
+        # 换服务商必须换地址：沿用旧地址是本项目历史上最容易配错的地方
+        f.base_entry.delete(0, tk.END)
+        f.base_entry.insert(0, spec.base_url)
+        candidates = models_for_provider(spec_key)
+        f.model_combo["values"] = candidates
+        if candidates:
+            f.model_var.set(candidates[0])
+        self._ai_apply_capabilities(f)
 
-        return save
+    # ------------------------------------------------------------ 动作按钮
+
+    def _ai_show_result(self, f: "_AIForm", text: str, ok=None) -> None:
+        """ok=True 绿 / False 红 / None 中性灰。
+
+        余额的"该服务未提供余额接口"属于**正常事实**而不是错误，
+        用红色显示会让用户以为功能坏了。
+        """
+        f.result_var.set(text)
+        color = "#333" if ok is None else ("#1a7f37" if ok else "#b42318")
+        f.result_label.configure(fg=color)
+
+    def _ai_show_url(self, f: "_AIForm") -> None:
+        spec_key = self._ai_current_provider(f)
+        spec = get_spec(spec_key)
+        base = f.base_entry.get().strip() or spec.base_url
+        preview = spec.resolved_url(base)
+        self._ai_show_result(f, f"[URL 预览] {preview}\n（按表单当前填写的内容计算；服务商默认地址 {spec.base_url}）")
+
+    def _ai_test_connection(self, f: "_AIForm") -> None:
+        spec_key = self._ai_current_provider(f)
+        self._ai_show_result(f, "正在测试连接（会发送一个 1 token 的请求）…")
+        params = dict(
+            provider=spec_key,
+            api_base=f.base_entry.get().strip(),
+            api_key=f.key_entry.get().strip(),
+            model=f.model_var.get().strip(),
+        )
+        self._run_in_background(
+            lambda: self.ai_client.probe_connection(**params),
+            lambda r: self._ai_show_result(f, _format_probe(spec_key, r), bool(r.get("ok"))),
+            f.dialog,
+        )
+
+    def _ai_query_balance(self, f: "_AIForm") -> None:
+        spec_key = self._ai_current_provider(f)
+        self._ai_show_result(f, "正在按已保存的配置查询余额…")
+        self._run_in_background(
+            lambda: self.ai_client.query_balance(spec_key, use_cache=False),
+            lambda r: self._ai_show_result(
+                f,
+                f"[余额] {r.format_total()}",
+                None if not getattr(r, "supported", False) else getattr(r, "ok", False),
+            ),
+            f.dialog,
+        )
+
+    # ------------------------------------------------------------ 保存
+
+    def _ai_save(self, f: "_AIForm") -> None:
+        """把表单写入当前 Profile。非法输入当场报错，不做静默夹断。"""
+        cfg = f.cfg
+        name = f.active_var.get()
+        if name != cfg.active_profile:
+            cfg.switch_profile(name)
+        fields = [
+            ("api_provider", self._ai_current_provider(f)),
+            ("api_key", f.key_entry.get().strip()),
+            ("api_base", f.base_entry.get().strip()),
+            ("model", f.model_var.get().strip()),
+            ("max_tokens", f.max_tokens_var.get().strip()),
+            ("temperature", f.temp_var.get().strip()),
+            ("context_window", f.ctx_var.get().strip()),
+            ("thinking_enabled", f.think_var.get()),
+            ("reasoning_effort", f.effort_var.get().strip()),
+            ("timeout", f.timeout_var.get().strip()),
+            ("connect_timeout", f.connect_var.get().strip()),
+            ("max_retries", f.retries_var.get().strip()),
+            ("balance_url", f.bal_url_entry.get().strip()),
+            ("balance_total_path", f.bal_total_entry.get().strip()),
+            ("balance_currency_path", f.bal_cur_entry.get().strip()),
+        ]
+        for key, value in fields:
+            try:
+                cfg.set(key, value)
+            except (ValueError, RuntimeError) as exc:
+                dialogs.showerror(
+                    "配置未保存",
+                    f"{AI_PROFILE_LABELS.get(key, key)} 的值不合法：\n{exc}\n\n"
+                    "已停止保存，请修正后重试（前面的字段已写入）。",
+                    parent=f.dialog,
+                )
+                return
 
     # ------------------------------------------------------------ 辅助
 

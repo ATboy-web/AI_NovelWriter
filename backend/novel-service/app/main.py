@@ -10,6 +10,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from shared.api_errors import internal_error as _internal_error
 
 from .api.routes import router as api_router
 
@@ -30,6 +31,7 @@ from .middleware import (
 # 延迟导入新功能路由（避免PyInstaller打包问题）
 try:
     from .api.new_features_routes import router as new_features_router
+
     HAS_NEW_FEATURES = True
 except ImportError:
     HAS_NEW_FEATURES = False
@@ -41,7 +43,7 @@ app = FastAPI(
     description="负责小说生成的核心业务逻辑",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
 # 配置CORS
@@ -73,14 +75,17 @@ if HAS_NEW_FEATURES and new_features_router:
 
 class NovelRequest(BaseModel):
     """小说生成请求"""
+
     title: str = Field(..., description="小说标题", max_length=200)
     synopsis: str = Field(..., description="小说简介", max_length=20000)
     novel_type: NovelType = Field(NovelType.SCIFI, description="小说类型")
     chapter_count: int = Field(10, description="章节数量", ge=1, le=500)
     ai_service_url: str = Field("http://localhost:8001", description="AI服务地址", max_length=200)
 
+
 class NovelResponse(BaseModel):
     """小说生成响应"""
+
     success: bool
     title: str
     novel_type: str
@@ -89,16 +94,20 @@ class NovelResponse(BaseModel):
     statistics: Dict[str, Any]
     generation_time: float
 
+
 class ChapterRequest(BaseModel):
     """章节生成请求"""
+
     novel_type: NovelType = Field(NovelType.SCIFI, description="小说类型")
     chapter_title: str = Field(..., description="章节标题", max_length=200)
     chapter_outline: str = Field(..., description="章节大纲", max_length=50000)
     previous_content: Optional[str] = Field(None, description="前文内容", max_length=200000)
     ai_service_url: str = Field("http://localhost:8001", description="AI服务地址", max_length=200)
 
+
 class ChapterResponse(BaseModel):
     """章节生成响应"""
+
     success: bool
     content: str
     chapter_title: str
@@ -106,31 +115,39 @@ class ChapterResponse(BaseModel):
     word_count: int
     generation_time: float
 
+
 class CharacterRequest(BaseModel):
     """人物生成请求"""
+
     novel_type: NovelType = Field(NovelType.SCIFI, description="小说类型")
     character_name: str = Field(..., description="人物姓名", max_length=100)
     character_role: str = Field(..., description="人物角色", max_length=100)
     character_traits: List[str] = Field(..., description="人物特征")
     ai_service_url: str = Field("http://localhost:8001", description="AI服务地址", max_length=200)
 
+
 class CharacterResponse(BaseModel):
     """人物生成响应"""
+
     success: bool
     character_name: str
     character_profile: Dict[str, Any]
     generation_time: float
 
+
 class OutlineRequest(BaseModel):
     """大纲生成请求"""
+
     novel_type: NovelType = Field(NovelType.SCIFI, description="小说类型")
     title: str = Field(..., description="小说标题", max_length=200)
     synopsis: str = Field(..., description="小说简介", max_length=20000)
     chapter_count: int = Field(10, description="章节数量", ge=1, le=500)
     ai_service_url: str = Field("http://localhost:8001", description="AI服务地址", max_length=200)
 
+
 class OutlineResponse(BaseModel):
     """大纲生成响应"""
+
     success: bool
     title: str
     novel_type: str
@@ -138,45 +155,37 @@ class OutlineResponse(BaseModel):
     characters: List[Dict[str, Any]]
     generation_time: float
 
+
 @app.get("/", tags=["根路径"])
 async def root():
     """根路径信息"""
-    return {
-        "message": "小说生成服务运行中",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
+    return {"message": "小说生成服务运行中", "version": "1.0.0", "docs": "/docs"}
+
 
 @app.get("/health", tags=["健康检查"])
 async def health_check():
     """健康检查端点"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now(),
-        "version": "1.0.0"
-    }
+    return {"status": "healthy", "timestamp": datetime.now(), "version": "1.0.0"}
+
 
 @app.post("/generate/novel", response_model=NovelResponse, tags=["小说生成"])
 async def generate_novel(request: NovelRequest):
     """生成完整小说"""
     try:
         start_time = datetime.now()
-        
+
         # 创建小说生成器
         generator = NovelGeneratorFactory.create_generator(
-            novel_type=request.novel_type,
-            ai_service_url=request.ai_service_url
+            novel_type=request.novel_type, ai_service_url=request.ai_service_url
         )
-        
+
         # 生成完整小说
         result = await generator.generate_full_novel(
-            title=request.title,
-            synopsis=request.synopsis,
-            chapter_count=request.chapter_count
+            title=request.title, synopsis=request.synopsis, chapter_count=request.chapter_count
         )
-        
+
         generation_time = (datetime.now() - start_time).total_seconds()
-        
+
         if result.get("success"):
             return NovelResponse(
                 success=True,
@@ -185,119 +194,114 @@ async def generate_novel(request: NovelRequest):
                 chapters=result["chapters"],
                 characters=result["characters"],
                 statistics=result["statistics"],
-                generation_time=generation_time
+                generation_time=generation_time,
             )
         else:
             raise HTTPException(status_code=500, detail=result.get("error", "小说生成失败"))
-            
+
     except Exception as e:
         raise _internal_error(e) from e
+
 
 @app.post("/generate/chapter", response_model=ChapterResponse, tags=["章节生成"])
 async def generate_chapter(request: ChapterRequest):
     """生成单个章节"""
     try:
         start_time = datetime.now()
-        
+
         # 创建小说生成器
         generator = NovelGeneratorFactory.create_generator(
-            novel_type=request.novel_type,
-            ai_service_url=request.ai_service_url
+            novel_type=request.novel_type, ai_service_url=request.ai_service_url
         )
-        
+
         # 生成章节内容
         content = await generator.generate_chapter(
-            chapter_index=0,
-            chapter_outline=request.chapter_outline,
-            previous_content=request.previous_content or ""
+            chapter_index=0, chapter_outline=request.chapter_outline, previous_content=request.previous_content or ""
         )
-        
+
         generation_time = (datetime.now() - start_time).total_seconds()
         word_count = len(content)
-        
+
         return ChapterResponse(
             success=True,
             content=content,
             chapter_title=request.chapter_title,
             novel_type=request.novel_type.value,
             word_count=word_count,
-            generation_time=generation_time
+            generation_time=generation_time,
         )
-        
+
     except Exception as e:
         raise _internal_error(e) from e
+
 
 @app.post("/generate/character", response_model=CharacterResponse, tags=["人物生成"])
 async def generate_character(request: CharacterRequest):
     """生成人物设定"""
     try:
         start_time = datetime.now()
-        
+
         # 创建小说生成器
         generator = NovelGeneratorFactory.create_generator(
-            novel_type=request.novel_type,
-            ai_service_url=request.ai_service_url
+            novel_type=request.novel_type, ai_service_url=request.ai_service_url
         )
-        
+
         # 生成人物设定
         character_profile = await generator.generate_character(
             character_name=request.character_name,
             character_role=request.character_role,
-            character_traits=request.character_traits
+            character_traits=request.character_traits,
         )
-        
+
         generation_time = (datetime.now() - start_time).total_seconds()
-        
+
         return CharacterResponse(
             success=True,
             character_name=request.character_name,
             character_profile=character_profile,
-            generation_time=generation_time
+            generation_time=generation_time,
         )
-        
+
     except Exception as e:
         raise _internal_error(e) from e
+
 
 @app.post("/generate/outline", response_model=OutlineResponse, tags=["大纲生成"])
 async def generate_outline(request: OutlineRequest):
     """生成小说大纲"""
     try:
         start_time = datetime.now()
-        
+
         # 创建小说生成器
         generator = NovelGeneratorFactory.create_generator(
-            novel_type=request.novel_type,
-            ai_service_url=request.ai_service_url
+            novel_type=request.novel_type, ai_service_url=request.ai_service_url
         )
-        
+
         # 生成大纲
         outline_result = await generator.generate_outline(
-            title=request.title,
-            synopsis=request.synopsis,
-            chapter_count=request.chapter_count
+            title=request.title, synopsis=request.synopsis, chapter_count=request.chapter_count
         )
-        
+
         generation_time = (datetime.now() - start_time).total_seconds()
-        
+
         return OutlineResponse(
             success=True,
             title=request.title,
             novel_type=request.novel_type.value,
             chapters=outline_result.get("chapters", []),
             characters=outline_result.get("characters", []),
-            generation_time=generation_time
+            generation_time=generation_time,
         )
-        
+
     except Exception as e:
         raise _internal_error(e) from e
+
 
 @app.get("/novel-types", tags=["小说类型"])
 async def get_novel_types():
     """获取支持的小说类型"""
-    return {
-        "success": True,
-        "novel_types": NovelGeneratorFactory.get_supported_types()
-    }
+    return {"success": True, "novel_types": NovelGeneratorFactory.get_supported_types()}
+
 
 @app.get("/statistics", tags=["统计信息"])
 async def get_statistics():
@@ -308,34 +312,37 @@ async def get_statistics():
             "service": "小说生成服务",
             "version": "1.0.0",
             "supported_types": len(NovelGeneratorFactory.get_supported_types()),
-            "status": "running"
-        }
+            "status": "running",
+        },
     }
+
 
 @app.get("/metrics", tags=["监控"])
 async def get_metrics():
     """获取性能指标"""
     from .middleware.logging import performance_monitor
+
     return performance_monitor.get_metrics()
+
 
 @app.get("/api/v1/rate-limit/info", tags=["限流"])
 async def get_rate_limit_info(request: Request):
     """获取限流信息"""
     from .middleware.rate_limiter import DynamicRateLimiter, RateLimitConfig, RateLimitInfo
-    
+
     limiter = DynamicRateLimiter(app, RateLimitConfig())
     rate_info = RateLimitInfo(limiter)
-    
+
     # 获取客户端ID（仅信任 socket 层真实地址，不信任 X-Forwarded-For）
     client_ip = request.client.host if request.client else "unknown"
-    
+
     client_id = f"ip:{client_ip}"
-    
+
     # 获取各类别的使用情况
     usage = {}
     for category in ["health", "default", "generate", "generate_long", "model_manage"]:
         usage[category] = await rate_info.get_usage(client_id, category)
-    
+
     return {
         "client_id": client_id,
         "usage": usage,
@@ -345,8 +352,9 @@ async def get_rate_limit_info(request: Request):
                 "long_chapter": {"max_requests": 5, "window": 60},
                 "very_long_chapter": {"max_requests": 3, "window": 60},
             }
-        }
+        },
     }
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -354,24 +362,13 @@ async def startup_event():
     print("小说生成服务启动中...")
     print("小说生成服务启动完成")
 
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """应用关闭事件"""
     print("小说生成服务关闭中...")
     print("小说生成服务已关闭")
 
+
 if __name__ == "__main__":
-    uvicorn.run(
-        "app.main:app",
-        host=settings.HOST,
-        port=settings.PORT,
-        reload=settings.DEBUG,
-        workers=settings.WORKERS
-    )
-
-def _internal_error(e: Exception):
-    """通用内部错误处理：记录详细错误到日志，仅返回通用提示给客户端。"""
-    import logging
-    logging.getLogger(__name__).error(f"请求处理失败: {e}", exc_info=True)
-    return HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
-
+    uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=settings.DEBUG, workers=settings.WORKERS)

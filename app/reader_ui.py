@@ -8,6 +8,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
 
+from loguru import logger
+
 from app import UIStyle, dialogs
 
 
@@ -310,8 +312,8 @@ class ReaderUIMixin:
         try:
             size = int(self.font_size_var.get())
             self.reader_text.configure(font=("微软雅黑", size))
-        except ValueError:
-            pass
+        except ValueError as exc:
+            logger.debug(f"[reader_ui] 已忽略异常（ValueError）：{exc}")
 
     def _change_reader_theme(self):
         """改变阅读主题"""

@@ -373,7 +373,17 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
 
             if result:
                 self._log(f"格式转换完成: {result}")
+                degraded = list(getattr(self.format_converter, "degradations", []))
+                for note in degraded:
+                    self._log(f"导出降级: {note}")
                 dialog.destroy()
+
+                # 降级必须让用户看见：否则会以为拿到的是所选格式
+                if degraded:
+                    dialogs.showwarning(
+                        "导出已降级",
+                        "未能按所选格式导出：\n\n" + "\n".join(degraded) + f"\n\n实际文件：{result}",
+                    )
 
                 # 询问是否打开
                 if dialogs.askyesno("成功", f"已导出为{formats[fmt]['name']}格式\n\n{result}\n\n是否打开文件？"):
@@ -386,7 +396,8 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                         self._log(f"打开文件失败: {e}")
                         dialogs.showinfo("提示", f"文件已保存到：\n{result}")
             else:
-                dialogs.showerror("错误", "格式转换失败")
+                reason = getattr(self.format_converter, "last_error", "") or "未知原因"
+                dialogs.showerror("错误", f"格式转换失败：{reason}")
 
         tk.Button(
             dialog,

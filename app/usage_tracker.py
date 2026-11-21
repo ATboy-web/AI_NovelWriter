@@ -37,6 +37,8 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
+from loguru import logger
+
 from .events import TOPIC_AI_USAGE
 from .storage import atomic_write_json
 
@@ -94,10 +96,10 @@ def reset_usage_context(token) -> None:
     """还原到 `set_usage_context` 之前的状态。"""
     try:
         _CTX.reset(token)
-    except (ValueError, LookupError, RuntimeError):
+    except (ValueError, LookupError, RuntimeError) as exc:
         # token 已被本上下文用过（`ContextVar.reset` 这时抛 RuntimeError）、
         # 或来自别的上下文（ValueError）—— 忽略，不因清理失败影响业务。
-        pass
+        logger.debug(f"[usage_tracker] 已忽略异常（(ValueError, LookupError, RuntimeError)）：{exc}")
 
 
 def current_usage_context() -> dict:
@@ -256,8 +258,8 @@ class UsageTracker:
             return
         try:
             sink.publish(TOPIC_AI_USAGE, record)
-        except Exception:  # noqa: BLE001 - 广播是尽力而为的旁路
-            pass
+        except Exception as exc:  # noqa: BLE001 - 广播是尽力而为的旁路
+            logger.debug(f"[usage_tracker] 已忽略异常（Exception）：{exc}")
 
     # ------------------------------------------------------------ 目录
 
@@ -411,11 +413,11 @@ class UsageTracker:
                     handle.flush()
                     try:
                         os.fsync(handle.fileno())
-                    except OSError:
-                        pass
-        except OSError:
+                    except OSError as exc:
+                        logger.debug(f"[usage_tracker] 已忽略异常（OSError）：{exc}")
+        except OSError as exc:
             # 磁盘写不进去（权限/盘满）不能反过来弄崩生成流程
-            pass
+            logger.debug(f"[usage_tracker] 已忽略异常（OSError）：{exc}")
 
     # ------------------------------------------------------------ 聚合
 
@@ -438,8 +440,8 @@ class UsageTracker:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 if isinstance(data, dict) and data.get("version") == SUMMARY_VERSION:
                     return data
-            except (OSError, ValueError):
-                pass
+            except (OSError, ValueError) as exc:
+                logger.debug(f"[usage_tracker] 已忽略异常（(OSError, ValueError)）：{exc}")
         # summary 缺失/损坏/版本不符 → 从明细重建，绝不返回空聚合
         return self._rebuild_summary(self.read_records(target))
 
@@ -487,8 +489,8 @@ class UsageTracker:
             return
         try:
             atomic_write_json(usage_dir / USAGE_SUMMARY_FILE, summary, backup=False)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug(f"[usage_tracker] 已忽略异常（OSError）：{exc}")
 
     # ------------------------------------------------------------ 读取
 

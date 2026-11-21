@@ -36,6 +36,8 @@ _REPO = Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
+from app.parsing import split_paragraphs as _split_paragraphs  # noqa: E402
+from app.parsing import split_title as _split_title  # noqa: E402
 from app.text_stats import count_hanzi  # noqa: E402
 
 #: 少于这个汉字数的摘要视为"空/过短"，需要补。
@@ -52,17 +54,13 @@ MACHINE_MARK = "（机器摘要·抽取式，待润色）"
 
 
 def split_title(text: str) -> tuple[str, str]:
-    lines = (text or "").splitlines()
-    if not lines:
-        return "", ""
-    first = lines[0].strip()
-    if first.startswith("#"):
-        return first.lstrip("#").strip(), "\n".join(lines[1:]).strip()
-    return "", (text or "").strip()
+    """委托 `app.parsing.split_title`（本脚本口径：去掉 `#` 前缀）。"""
+    return _split_title(text, strip_marks=True)
 
 
 def split_paragraphs(body: str) -> List[str]:
-    return [p.strip() for p in re.split(r"\n\s*\n", body or "") if p.strip()]
+    """委托 `app.parsing.split_paragraphs`（本脚本口径：段内换行保留）。"""
+    return _split_paragraphs(body, merge_lines=False)
 
 
 def split_sentences(text: str) -> List[str]:

@@ -670,8 +670,8 @@ class TimelineMixin:
                         json_str = re.sub(r",\s*]", "]", json_str)
                         try:
                             outline_data = json.loads(json_str)
-                        except json.JSONDecodeError:
-                            pass
+                        except json.JSONDecodeError as exc:
+                            logger.debug(f"[timeline_ui] 已忽略异常（json.JSONDecodeError）：{exc}")
 
                 # Strategy 2: 清理markdown后重试
                 if not outline_data:
@@ -686,8 +686,8 @@ class TimelineMixin:
                     if match:
                         try:
                             outline_data = json.loads(match.group())
-                        except json.JSONDecodeError:
-                            pass
+                        except json.JSONDecodeError as exc:
+                            logger.debug(f"[timeline_ui] 已忽略异常（json.JSONDecodeError）：{exc}")
 
                 if not outline_data:
                     self._log("[分支创作] 大纲JSON解析失败")

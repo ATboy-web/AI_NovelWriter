@@ -219,11 +219,11 @@ class ChapterUIMixin:
         try:
             from app.format_converter import FormatConverter
 
-            result = FormatConverter(self.current_novel_dir).convert(
-                "", title, "txt", chapters=chapters, output_file=Path(save_path)
-            )
+            converter = FormatConverter(self.current_novel_dir)
+            result = converter.convert("", title, "txt", chapters=chapters, output_file=Path(save_path))
             if not result:
-                dialogs.showerror("导出失败", "格式转换未返回结果，请检查导出目录权限。")
+                reason = converter.last_error or "请检查导出目录权限。"
+                dialogs.showerror("导出失败", f"格式转换未返回结果：{reason}")
                 return
         except Exception as exc:  # noqa: BLE001 - 导出失败要能看见原因
             self._log(f"导出失败: {exc}")

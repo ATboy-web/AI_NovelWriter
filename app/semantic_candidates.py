@@ -156,23 +156,10 @@ MAX_PER_KIND = 80
 
 
 def split_paragraphs(text: str) -> List[str]:
-    """按空行切段（与 `writing_presets.structure_metrics` 同口径）。
+    """委托 `app.parsing.split_paragraphs`（与 `writing_presets.structure_metrics` 同口径）。"""
+    from .parsing import split_paragraphs as _split_paragraphs
 
-    用 `splitlines()` 逐行累积，不依赖换行转义 —— 换行转义的写法在
-    多次拼接/工具链处理下容易被破坏（本项目踩过）。
-    """
-    paragraphs: List[str] = []
-    buffer: List[str] = []
-    for line in (text or "").splitlines():
-        stripped = line.strip()
-        if stripped:
-            buffer.append(stripped)
-        elif buffer:
-            paragraphs.append(" ".join(buffer))
-            buffer = []
-    if buffer:
-        paragraphs.append(" ".join(buffer))
-    return paragraphs
+    return _split_paragraphs(text, merge_lines=True)
 
 
 #: 句子的最小字数。低于它视为碎片（"好。"），不参与切分统计。

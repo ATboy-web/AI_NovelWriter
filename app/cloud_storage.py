@@ -171,29 +171,73 @@ class CloudProvider(ABC):
     #: False 时 `sync_novel` 退回本地清单比对（见 `_load_manifest`）。
     supports_recursive_listing = False
 
+    #: 未显式指定 timeout 时的兜底值。httpx 默认仅 5s，网盘大文件传输必然误超时。
+    DEFAULT_TIMEOUT = 30.0
+
     def __init__(self, config: Dict):
         self.config = config
         self.name = "Unknown"
         self.connected = False
         self.client: Optional[httpx.Client] = None
+        # 按「生效参数」分桶缓存：同参数复用连接，不同参数各建一个客户端。
+        self._clients: Dict[tuple, httpx.Client] = {}
+        # 首次显式建连的参数作为该 provider 的基准（base_url/auth 等），
+        # 后续裸调用沿用它，避免"先 upload 后 connect"丢掉鉴权与站点。
+        self._base_kwargs: Optional[Dict] = None
 
     # ------------------------------------------------------------------ 连接
 
+    @staticmethod
+    def _client_key(kwargs: Dict) -> tuple:
+        """把生效参数归一化成可哈希的缓存键（auth 元组等按 repr 稳定序列化）。"""
+        return tuple(sorted((k, repr(v)) for k, v in kwargs.items()))
+
     def _get_client(self, **kwargs) -> httpx.Client:
-        """懒创建客户端（构造 provider 时不建，避免未使用的连接泄漏）。"""
-        if self.client is None:
-            self.client = httpx.Client(**kwargs)
-        return self.client
+        """懒创建客户端（构造 provider 时不建，避免未使用的连接泄漏）。
+
+        ❗ 旧实现是 `if self.client is None: self.client = httpx.Client(**kwargs)`，
+        **首次调用的参数被永久固化**：connect() 先以 timeout=30 建连后，
+        配额/上传再传 timeout=60 会被静默忽略；反之若首次是裸调用，
+        则整条链路落到 httpx 默认的 5s，大文件同步必然超时。
+        现改为「基准参数 + 本次覆盖」合并后按参数分桶缓存：
+        裸调用沿用基准（保持 WebDAV 的 base_url/auth 语义），
+        显式覆盖则拿到真正生效的新客户端。
+        """
+        if self.client is not None and not self._clients:
+            # 外部注入/历史默认客户端：沿用它（既有契约），但显式 timeout 必须生效，
+            # 不能像旧实现那样把传进来的 60s 静默丢掉。
+            timeout = kwargs.get("timeout")
+            if timeout is not None:
+                try:
+                    self.client.timeout = timeout
+                except Exception as exc:  # noqa: BLE001 - 测试替身可能不支持该属性
+                    logger.debug(f"[云存储] 注入客户端不支持 timeout 覆盖：{exc}")
+            return self.client
+        if not kwargs and self.client is not None:
+            # 裸调用沿用当前默认客户端（含外部注入的替身），保持既有语义
+            return self.client
+        if self._base_kwargs is None:
+            self._base_kwargs = dict(kwargs)
+        merged = {**self._base_kwargs, **kwargs}
+        merged.setdefault("timeout", self.DEFAULT_TIMEOUT)
+        key = self._client_key(merged)
+        client = self._clients.get(key)
+        if client is None:
+            client = httpx.Client(**merged)
+            self._clients[key] = client
+        self.client = client
+        return client
 
     def close(self) -> None:
-        """释放连接。幂等。"""
-        if self.client is not None:
+        """释放全部连接。幂等。"""
+        for client in self._clients.values():
             try:
-                self.client.close()
+                client.close()
             except Exception as exc:  # noqa: BLE001 - 关闭失败不该影响退出
                 logger.debug(f"[云存储] 关闭 {self.name} 客户端失败：{exc}")
-            finally:
-                self.client = None
+        self._clients.clear()
+        self._base_kwargs = None
+        self.client = None
 
     # ------------------------------------------------------------------ 厂商字段归一化
 
@@ -295,8 +339,8 @@ class CloudProvider(ABC):
             logger.warning(f"[云存储] 下载写入失败：{_safe_error('下载失败', exc)}")
             try:
                 tmp.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug(f"[cloud_storage] 已忽略异常（OSError）：{exc}")
             return False
 
 
@@ -327,7 +371,7 @@ class WebDAVProvider(CloudProvider):
             self.connected = resp.status_code in (200, 207)
             return self.connected
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("WebDAV连接失败", e, self.password))
+            logger.warning(_safe_error("WebDAV连接失败", e, self.password))
             return False
 
     def upload(self, local_path: Path, remote_path: str) -> bool:
@@ -338,7 +382,7 @@ class WebDAVProvider(CloudProvider):
                 resp = client.put(remote_path, content=f)
             return resp.status_code in (200, 201, 204)
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("上传失败", e, self.password))
+            logger.warning(_safe_error("上传失败", e, self.password))
             return False
 
     def download(self, remote_path: str, local_path: Path) -> bool:
@@ -349,7 +393,7 @@ class WebDAVProvider(CloudProvider):
                     return False
                 return self._stream_to_file(resp, local_path)
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("下载失败", e, self.password))
+            logger.warning(_safe_error("下载失败", e, self.password))
             return False
 
     def list_files(self, remote_path: str = "/") -> List[Dict]:
@@ -530,7 +574,7 @@ class BaiduPanProvider(CloudProvider):
             )
             return resp.status_code == 200
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("百度网盘上传失败", e, self.access_token, self.refresh_token))
+            logger.warning(_safe_error("百度网盘上传失败", e, self.access_token, self.refresh_token))
             return False
 
     def download(self, remote_path: str, local_path: Path) -> bool:
@@ -545,7 +589,7 @@ class BaiduPanProvider(CloudProvider):
                     return False
                 return self._stream_to_file(resp, local_path)
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("百度网盘下载失败", e, self.access_token))
+            logger.warning(_safe_error("百度网盘下载失败", e, self.access_token))
             return False
 
     def list_files(self, remote_path: str = "/") -> List[Dict]:
@@ -645,7 +689,7 @@ class QuarkPanProvider(CloudProvider):
                 resp = client.put(f"{self.API_BASE}/file/upload/{upload_id}", headers=self._headers(), content=f)
             return resp.status_code == 200
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("夸克网盘上传失败", e, self.cookie))
+            logger.warning(_safe_error("夸克网盘上传失败", e, self.cookie))
             return False
 
     def download(self, remote_path: str, local_path: Path) -> bool:
@@ -658,7 +702,7 @@ class QuarkPanProvider(CloudProvider):
                     return False
                 return self._stream_to_file(resp, local_path)
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("夸克网盘下载失败", e, self.cookie))
+            logger.warning(_safe_error("夸克网盘下载失败", e, self.cookie))
             return False
 
     def list_files(self, remote_path: str = "/") -> List[Dict]:
@@ -746,7 +790,7 @@ class XunleiPanProvider(CloudProvider):
                 resp = client.put(f"{self.API_BASE}/file/{upload_id}", headers=self._headers(), content=f)
             return resp.status_code == 200
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("迅雷网盘上传失败", e, self.access_token))
+            logger.warning(_safe_error("迅雷网盘上传失败", e, self.access_token))
             return False
 
     def download(self, remote_path: str, local_path: Path) -> bool:
@@ -757,7 +801,7 @@ class XunleiPanProvider(CloudProvider):
                     return False
                 return self._stream_to_file(resp, local_path)
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("迅雷网盘下载失败", e, self.access_token))
+            logger.warning(_safe_error("迅雷网盘下载失败", e, self.access_token))
             return False
 
     def list_files(self, remote_path: str = "/") -> List[Dict]:
@@ -864,7 +908,7 @@ class AliyunPanProvider(CloudProvider):
                 )
             return resp.status_code == 200
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("阿里云盘上传失败", e, self.access_token, self.refresh_token))
+            logger.warning(_safe_error("阿里云盘上传失败", e, self.access_token, self.refresh_token))
             return False
 
     def download(self, remote_path: str, local_path: Path) -> bool:
@@ -885,7 +929,7 @@ class AliyunPanProvider(CloudProvider):
                     return False
                 return self._stream_to_file(stream, local_path)
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("阿里云盘下载失败", e, self.access_token))
+            logger.warning(_safe_error("阿里云盘下载失败", e, self.access_token))
             return False
 
     def list_files(self, remote_path: str = "/") -> List[Dict]:
@@ -1151,7 +1195,7 @@ class CloudStorageManager:
                 return False
             return True
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("上传小说失败", e))
+            logger.warning(_safe_error("上传小说失败", e))
             return False
 
     # ------------------------------------------------------------------ 列举
@@ -1247,7 +1291,7 @@ class CloudStorageManager:
                 return False
             return True
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("下载小说失败", e))
+            logger.warning(_safe_error("下载小说失败", e))
             return False
 
     # ------------------------------------------------------------------ 同步
@@ -1318,5 +1362,5 @@ class CloudStorageManager:
                 return False
             return True
         except Exception as e:  # noqa: BLE001
-            print(_safe_error("同步小说失败", e))
+            logger.warning(_safe_error("同步小说失败", e))
             return False

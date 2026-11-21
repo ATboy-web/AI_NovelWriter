@@ -48,17 +48,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 JUSTIFIED: dict[str, str] = {
     "app/__init__.py:41": "`_ImportStub` 降级：导入失败必须能继续跑，否则打包缺陷不可见",
     "app/__init__.py:47": "元数据读取失败时回落到 `_FALLBACK_VERSION`，是版本探测的正常分支",
-    "app/agent_orchestrator.py:30": "`__del__` 析构：抛异常会让解释器打印 ignored 并干扰线程池清理",
     "app/diagnostic_logger.py:192": "日志组件自身：在这里报错会把「记录失败」升级成「业务失败」",
-    "app/novel_store.py:90": "事件订阅方抛异常不得影响写盘（此时写盘已经成功）",
-    "app/storage.py:138": "临时文件名生成：拿不到 pid/tid 就退化为无前缀，仍能唯一",
-    "app/storage.py:144": "旧临时文件的尽力清理：清理失败不该让本次写入失败",
-    "app/storage.py:173": "备份轮转失败不该阻断主写入（备份是加值，不是前提）",
-    "app/storage.py:228": "损坏文件归档是尽力而为；归档失败仍要继续读取回退链",
-    "app/storage.py:234": "读取回退链的某一级不可用就试下一级，属正常分支",
-    "app/storage.py:240": "回退链同上：候选文件缺失/损坏时继续尝试下一个",
-    "app/usage_tracker.py:259": "用量事件广播是旁路，失败绝不回滚已经记账的数据",
 }
+# 2026-11-21（P0-3）：agent_orchestrator / novel_store / storage / usage_tracker
+# 共 9 处原本登记在此的静默吞，已改为 `logger.debug(f"...已忽略异常...")` ——
+# 失败可见后就不该继续占用豁免名额，故按本守卫的反向断言要求删除登记。
 
 #: 允许"无日志吞"的异常类型白名单。
 #: 这些都是**明确的、可预期的**失败类别，吞掉有确定语义：

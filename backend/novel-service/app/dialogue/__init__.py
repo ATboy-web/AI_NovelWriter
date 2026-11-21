@@ -17,5 +17,5 @@ __all__ = [
     "DialogueType",
     "get_dialogue_manager",
     "generate_dialogue",
-    "continue_dialogue"
+    "continue_dialogue",
 ]

@@ -15,10 +15,10 @@ from starlette.responses import JSONResponse
 
 class RateLimitConfig:
     """限流配置"""
-    
+
     # 是否启用限流（默认关闭）
     ENABLED = False
-    
+
     # 默认限流规则 (requests, seconds)
     DEFAULT_RULES = {
         # 健康检查 - 宽松限制
@@ -32,11 +32,11 @@ class RateLimitConfig:
         # 模型管理 - 宽松限制
         "model_manage": (10000, 60),
     }
-    
+
     # 章节字数阈值
     LONG_CHAPTER_THRESHOLD = 5000  # 5000字以上视为长章节
     VERY_LONG_CHAPTER_THRESHOLD = 10000  # 10000字以上视为超长章节
-    
+
     # 用户级别乘数
     USER_LEVEL_MULTIPLIERS = {
         "free": 1.0,
@@ -47,67 +47,93 @@ class RateLimitConfig:
 
 
 class RateLimitStore:
-    """限流存储（内存实现，可扩展为Redis）"""
-    
-    def __init__(self):
+    """限流存储（**进程内**内存实现）。
+
+    ⚠️ 部署约束：计数只存在于当前进程。多 worker / 多副本会各自计数，
+    因此本中间件只保证「单进程内」的限流语义；要水平扩容必须先换成共享存储
+    （如 Redis）再增加副本，不能直接加 worker 当作限流仍然生效。
+
+    内存治理：旧实现只在"被访问到的 key"上裁剪时间戳，key 本身永不淘汰，
+    且 `get_usage` 经 defaultdict 读一次就会凭空建 key —— 长期运行下
+    key 数量随不同客户端/端点组合无界增长。现按 TTL 淘汰 + 容量上限兜底。
+    """
+
+    #: 最多保留的 key 数量；超出时淘汰最久未活跃的 key。
+    MAX_KEYS = 10000
+
+    def __init__(self, max_keys: int = MAX_KEYS):
         self._store: Dict[str, list] = defaultdict(list)
         self._lock = asyncio.Lock()
-    
-    async def check_rate_limit(
-        self, 
-        key: str, 
-        max_requests: int, 
-        window_seconds: int
-    ) -> Tuple[bool, int, int]:
+        self._max_keys = max_keys
+        # 见过的最大窗口：淘汰必须按最长窗口判定，否则会误删长窗口类别的计数
+        self._max_window = 0.0
+
+    def _evict_locked(self, now: float, reserve: int = 0) -> None:
+        """调用方必须已持锁：先按 TTL 清空过期 key，再按容量上限淘汰最久未活跃者。
+
+        reserve 为"本次即将新增的 key 数"：淘汰发生在写入之前，不预留名额会让
+        实际上限变成 MAX_KEYS+1（软上限）。
+        """
+        ttl = self._max_window
+        expired = [k for k, stamps in self._store.items() if not stamps or stamps[-1] <= now - ttl]
+        for key in expired:
+            del self._store[key]
+        overflow = len(self._store) + reserve - self._max_keys
+        if overflow > 0:
+            coldest = sorted(self._store.items(), key=lambda kv: kv[1][-1] if kv[1] else 0.0)[:overflow]
+            for key, _ in coldest:
+                del self._store[key]
+
+    async def check_rate_limit(self, key: str, max_requests: int, window_seconds: int) -> Tuple[bool, int, int]:
         """
         检查限流
-        
+
         返回: (是否允许, 剩余请求数, 重置时间)
         """
         async with self._lock:
             now = time.time()
             window_start = now - window_seconds
-            
+            self._max_window = max(self._max_window, float(window_seconds))
+            self._evict_locked(now, reserve=0 if key in self._store else 1)
+
             # 清理过期记录
-            self._store[key] = [
-                t for t in self._store[key] 
-                if t > window_start
-            ]
-            
+            self._store[key] = [t for t in self._store[key] if t > window_start]
+
             current_count = len(self._store[key])
-            
+
             if current_count >= max_requests:
                 # 已达限制
                 oldest = self._store[key][0] if self._store[key] else now
                 reset_time = int(oldest + window_seconds - now)
                 return False, 0, max(0, reset_time)
-            
+
             # 允许请求
             self._store[key].append(now)
             remaining = max_requests - current_count - 1
             reset_time = window_seconds
-            
+
             return True, remaining, reset_time
-    
+
     async def get_usage(self, key: str, window_seconds: int) -> int:
-        """获取当前使用量"""
+        """获取当前使用量（只读：不得因查询而创建 key）"""
         async with self._lock:
             now = time.time()
             window_start = now - window_seconds
-            return len([
-                t for t in self._store[key] 
-                if t > window_start
-            ])
+            return len([t for t in self._store.get(key, []) if t > window_start])
+
+    def key_count(self) -> int:
+        """当前保留的 key 数量（供测试与运维观测内存治理效果）。"""
+        return len(self._store)
 
 
 class DynamicRateLimiter(BaseHTTPMiddleware):
     """动态限流中间件"""
-    
+
     def __init__(self, app, config: Optional[RateLimitConfig] = None):
         super().__init__(app)
         self.config = config or RateLimitConfig()
         self.store = RateLimitStore()
-    
+
     def _get_endpoint_category(self, path: str, method: str) -> str:
         """根据路径和方法确定端点类别"""
         if "/health" in path:
@@ -118,29 +144,24 @@ class DynamicRateLimiter(BaseHTTPMiddleware):
             return "model_manage"
         else:
             return "default"
-    
+
     def _estimate_chapter_length(self, request_body: Optional[dict]) -> int:
         """估算章节长度"""
         if not request_body:
             return 0
-        
+
         # 从请求体中提取max_tokens作为估算
         max_tokens = request_body.get("max_tokens", 0)
-        
+
         # 中文大约1.5-2 tokens/字
         estimated_words = max_tokens / 1.5
-        
+
         return int(estimated_words)
-    
-    def _get_dynamic_limits(
-        self, 
-        category: str, 
-        estimated_words: int,
-        user_level: str = "free"
-    ) -> Tuple[int, int]:
+
+    def _get_dynamic_limits(self, category: str, estimated_words: int, user_level: str = "free") -> Tuple[int, int]:
         """
         获取动态限流参数
-        
+
         返回: (最大请求数, 窗口秒数)
         """
         # 基础限制
@@ -154,17 +175,14 @@ class DynamicRateLimiter(BaseHTTPMiddleware):
             logger.info(f"长章节限流: {estimated_words}字, 限制{max_requests}/{window}s")
         else:
             # 使用默认限制
-            max_requests, window = self.config.DEFAULT_RULES.get(
-                category, 
-                self.config.DEFAULT_RULES["default"]
-            )
-        
+            max_requests, window = self.config.DEFAULT_RULES.get(category, self.config.DEFAULT_RULES["default"])
+
         # 应用用户级别乘数
         multiplier = self.config.USER_LEVEL_MULTIPLIERS.get(user_level, 1.0)
         max_requests = int(max_requests * multiplier)
-        
+
         return max_requests, window
-    
+
     def _get_user_level(self, request: Request) -> str:
         """从已认证的请求状态获取用户级别（可信来源，防伪造）"""
         # 优先使用认证中间件写入的 request.state.user（已通过 JWT/API Key 校验）
@@ -172,7 +190,7 @@ class DynamicRateLimiter(BaseHTTPMiddleware):
         if user and isinstance(user, dict):
             return user.get("level", "free")
         return "free"
-    
+
     def _get_client_id(self, request: Request) -> str:
         """获取客户端标识。
 
@@ -185,34 +203,34 @@ class DynamicRateLimiter(BaseHTTPMiddleware):
         user = getattr(request.state, "user", None)
         if user and isinstance(user, dict) and user.get("user_id"):
             return f"user:{user.get('user_id')}"
-        
+
         # 使用 socket 层真实 IP
         client_ip = request.client.host if request.client else "unknown"
         return f"ip:{client_ip}"
-    
+
     async def dispatch(self, request: Request, call_next):
         """处理请求"""
         # 如果限流未启用，直接放行
         if not self.config.ENABLED:
             return await call_next(request)
-        
+
         # 跳过不需要限流的路径
         if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
             return await call_next(request)
-        
+
         # 获取端点类别
         category = self._get_endpoint_category(request.url.path, request.method)
-        
+
         # 健康检查不限流
         if category == "health":
             return await call_next(request)
-        
+
         # 获取客户端标识
         client_id = self._get_client_id(request)
-        
+
         # 获取用户级别
         user_level = self._get_user_level(request)
-        
+
         # 估算章节长度（仅对生成类API）
         estimated_words = 0
         if category == "generate":
@@ -221,27 +239,24 @@ class DynamicRateLimiter(BaseHTTPMiddleware):
                 body = await request.body()
                 if body:
                     import json
+
                     request_body = json.loads(body)
                     estimated_words = self._estimate_chapter_length(request_body)
-            except Exception:
-                pass
-        
+            except Exception as exc:
+                logger.debug(f"[rate_limiter] 已忽略异常（Exception）：{exc}")
+
         # 获取动态限流参数
-        max_requests, window = self._get_dynamic_limits(
-            category, estimated_words, user_level
-        )
-        
+        max_requests, window = self._get_dynamic_limits(category, estimated_words, user_level)
+
         # 构建限流key
         rate_limit_key = f"{client_id}:{category}"
-        
+
         # 检查限流
-        allowed, remaining, reset_time = await self.store.check_rate_limit(
-            rate_limit_key, max_requests, window
-        )
-        
+        allowed, remaining, reset_time = await self.store.check_rate_limit(rate_limit_key, max_requests, window)
+
         if not allowed:
             logger.warning(f"限流触发: {client_id}, 类别: {category}, 估算字数: {estimated_words}")
-            
+
             return JSONResponse(
                 status_code=429,
                 content={
@@ -251,52 +266,45 @@ class DynamicRateLimiter(BaseHTTPMiddleware):
                     "limit": max_requests,
                     "window": window,
                     "category": category,
-                    "estimated_words": estimated_words
+                    "estimated_words": estimated_words,
                 },
                 headers={
                     "X-RateLimit-Limit": str(max_requests),
                     "X-RateLimit-Remaining": "0",
                     "X-RateLimit-Reset": str(reset_time),
-                    "Retry-After": str(reset_time)
-                }
+                    "Retry-After": str(reset_time),
+                },
             )
-        
+
         # 处理请求
         response = await call_next(request)
-        
+
         # 添加限流头
         response.headers["X-RateLimit-Limit"] = str(max_requests)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(window)
-        
+
         return response
 
 
 class RateLimitInfo:
     """限流信息（用于依赖注入）"""
-    
+
     def __init__(self, limiter: DynamicRateLimiter):
         self.limiter = limiter
-    
+
     async def get_usage(self, client_id: str, category: str) -> int:
         """获取当前使用量"""
         key = f"{client_id}:{category}"
         return await self.limiter.store.get_usage(key, 60)
-    
-    async def get_limits(
-        self, 
-        category: str, 
-        estimated_words: int = 0,
-        user_level: str = "free"
-    ) -> Dict:
+
+    async def get_limits(self, category: str, estimated_words: int = 0, user_level: str = "free") -> Dict:
         """获取限流配置"""
-        max_requests, window = self.limiter._get_dynamic_limits(
-            category, estimated_words, user_level
-        )
+        max_requests, window = self.limiter._get_dynamic_limits(category, estimated_words, user_level)
         return {
             "max_requests": max_requests,
             "window": window,
             "category": category,
             "estimated_words": estimated_words,
-            "user_level": user_level
+            "user_level": user_level,
         }

@@ -718,8 +718,8 @@ class PluginManager:
                 return PluginResult(False, "源目录就是插件根目录，无需安装")
             if self.plugins_dir.resolve().is_relative_to(source_dir.resolve()):
                 return PluginResult(False, "源目录包含了插件根目录，会造成递归复制")
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug(f"[plugin_system] 已忽略异常（OSError）：{exc}")
         return self._install_into_store(source_dir)
 
     def _install_into_store(self, plugin_src: Path) -> PluginResult:
@@ -777,8 +777,8 @@ class PluginManager:
                     config = json.load(f) or {}
                 if config.get("name"):
                     return str(config["name"])
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.debug(f"[plugin_system] 已忽略异常（(json.JSONDecodeError, OSError)）：{exc}")
         return plugin_dir.name
 
     @staticmethod

@@ -175,8 +175,8 @@ class SecureConfig:
     def _chmod_key(self) -> None:
         try:
             os.chmod(self.key_file, 0o600)
-        except (OSError, AttributeError):
-            pass
+        except (OSError, AttributeError) as exc:
+            logger.debug(f"[secure_config] 已忽略异常（(OSError, AttributeError)）：{exc}")
 
     def _rotate_key(self, exc: BaseException) -> bytes:
         """旧密钥无法解保护时，换一把新密钥并保留旧文件（可取证、可回滚）。

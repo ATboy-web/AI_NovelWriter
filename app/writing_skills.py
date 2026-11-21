@@ -16,6 +16,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+from loguru import logger
+
 from .storage import atomic_write_json
 
 
@@ -624,7 +626,7 @@ class KnowledgeGraph:
             self.relations = data.get("relations", [])
             self.events = data.get("events", [])
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"加载知识图谱失败: {e}")
+            logger.warning(f"加载知识图谱失败: {e}")
 
 
 class TimeAwareMemory:
@@ -769,7 +771,7 @@ class TimeAwareMemory:
             if isinstance(data, list):
                 self.memories = data
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"加载时间记忆失败: {e}")
+            logger.warning(f"加载时间记忆失败: {e}")
 
 
 class WritingSkillManager:
@@ -873,7 +875,7 @@ class WritingSkillManager:
         try:
             skills = manager.all_writing_skills()
         except Exception as exc:  # noqa: BLE001 - 插件数据坏了不该影响正文生成
-            print(f"[插件] 读取写作技能包失败：{exc}")
+            logger.warning(f"[插件] 读取写作技能包失败：{exc}")
             return ""
         if not skills:
             return ""
@@ -1007,7 +1009,7 @@ class WritingSkillManager:
                 self.knowledge_graph.save(os.path.join(skills_dir, "knowledge_graph.json"))
                 self.time_memory.save(os.path.join(skills_dir, "time_memory.json"))
             except Exception as e:
-                print(f"[写作技能] 自动保存失败: {e}")
+                logger.warning(f"[写作技能] 自动保存失败: {e}")
 
     def save_all(self, base_dir: str):
         """保存全部写作技能数据（三个文件都是原子写）。"""
@@ -1050,7 +1052,7 @@ class WritingSkillManager:
                     self.style_config = WritingStyleConfig()
             except (OSError, json.JSONDecodeError) as e:
                 # 配置坏了就回默认：比"沿用上一本书的旋钮"安全得多
-                print(f"加载风格配置失败，已重置为默认值: {e}")
+                logger.warning(f"加载风格配置失败，已重置为默认值: {e}")
                 self.style_config = WritingStyleConfig()
         else:
             # 新作品没有配置文件 ⇒ 明确的默认值，而不是上一个作品遗留的

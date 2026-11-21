@@ -1,47 +1,33 @@
 # AI模型服务依赖
+#
+# P1-5 依赖治理（2026-11-21）：
+# 1) 删除全仓零引用的挂名依赖：sqlalchemy / asyncpg / alembic / redis /
+#    numpy / pandas / python-jose / passlib / aiofiles / prometheus-client /
+#    python-multipart（全仓无 UploadFile/Form/File 用法）。
+# 2) 补上真正被 import 却漏声明的 PyJWT：backend/shared/middleware/auth.py 用的是
+#    `import jwt`（PyJWT），而原先声明的 python-jose 提供的是 `jose` 包，等于没声明。
+# 3) Web 框架版本对齐到 CI/本地实际跑通的组合，消除“测试版本≠交付版本”：
+#    原先 pin fastapi==0.104.1 / pydantic==2.5.0，而 CI 装的是 fastapi>=0.110 + 最新 pydantic。
+#    下列版本为 backend/tests 全量实测通过的组合。
 
 # Web框架
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+pydantic==2.13.5
+pydantic-settings==2.16.3
 
-# 数据库
-sqlalchemy==2.0.23
-asyncpg==0.29.0
-alembic==1.13.0
-
-# 缓存
-redis==5.0.1
-
-# AI模型
+# AI模型（core/model_manager.py 内为懒加载，按需生效）
 openai==1.3.7
 anthropic==0.8.1
 llama-cpp-python==0.2.23
 
 # 工具库
-python-dotenv==1.0.0
-python-multipart==0.0.6
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-httpx==0.25.2
-aiofiles==23.2.1
+python-dotenv==1.2.4
+httpx==0.28.1
+PyJWT==2.14.0
 
-# 数据处理
-numpy==1.26.2
-pandas==2.1.4
+# 日志
+loguru==0.7.3
 
-# 日志和监控
-loguru==0.7.2
-prometheus-client==0.19.0
-
-# 开发工具 (仅开发环境需要)
-# pytest==7.4.3
-# pytest-asyncio==0.23.2
-# black==23.11.0
-# isort==5.12.0
-# flake8==6.1.0
-# mypy==1.7.1
-# types-redis==4.6.0.11
-# mkdocs==1.5.3
-# mkdocs-material==9.4.14
+# 开发工具 (仅开发环境需要，统一由仓库根 pyproject 的 [dev] extra 提供)
+# pip install -e ".[dev]"

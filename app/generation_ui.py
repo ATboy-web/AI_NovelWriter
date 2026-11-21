@@ -1770,8 +1770,8 @@ class GenerationMixin:
                     try:
                         num = int(f.stem.split("_")[-1])
                         existing_chapters.add(num)
-                    except ValueError:
-                        pass
+                    except ValueError as exc:
+                        logger.debug(f"[generation_ui] 已忽略异常（ValueError）：{exc}")
 
                 with self._state_lock:
                     outline_snapshot = list(self.outline)

@@ -1,0 +1,20 @@
+# 后端覆盖率专用配置（P1-6）
+#
+# 为什么单独一份：仓库根 pyproject 的 `fail_under = 85.5` 是**桌面端 app/** 的阈值，
+# 后端体量与测试成熟度都不同，直接套用会让 CI 立刻失败。
+#
+# 为什么不用 `--cov-fail-under=0`：tests/test_coverage_gate.py 有一条守卫，
+# 禁止在 workflow 里出现该参数 —— 那会制造"第二个阈值真相源"。
+# 用独立 rc 文件既避开该参数，又不削弱守卫。
+#
+# 当前阶段只做**可见性**（fail_under = 0），不设门禁：
+# 等 CI 上积累几轮真实数据后，再按最低平台值单独设定后端阈值。
+[run]
+source = backend
+omit =
+    backend/tests/*
+
+[report]
+fail_under = 0
+show_missing = false
+precision = 1

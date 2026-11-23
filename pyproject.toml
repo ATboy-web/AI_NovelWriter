@@ -122,7 +122,8 @@ omit = [
     # adapt/story_flow 15%、bridges 14%、elements 12%、websearch 11%、
     # batch_ops 10%、summary_mgmt 8%、chapter_analysis 6%。
     "app/panels/ui_kit.py",
-    "app/panels/base.py",
+    # base.py 已于 2026-11-23 纳入：33 条契约测试钉住代理语义
+    # （tests/test_panel_base_contract.py，无显示依赖）。
     "app/panels/skill_library_panel.py",
     "app/panels/plugin_panel.py",
     "app/panels/mcp_panel.py",

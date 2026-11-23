@@ -212,7 +212,9 @@ class TestOpenNovelDir:
 
     def test_successful_load_returns_true(self, panel):
         assert panel.open_novel_dir("books/x") is True
-        assert panel.__dict__["app"].calls == [("load", "books\\x")] or ("load", "books/x") in panel.__dict__["app"].calls
+        assert (
+            panel.__dict__["app"].calls == [("load", "books\\x")] or ("load", "books/x") in panel.__dict__["app"].calls
+        )
 
     def test_loader_error_returns_false(self):
         class _BadHost:

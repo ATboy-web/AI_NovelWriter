@@ -111,7 +111,38 @@ source = ["app"]
 # UI 粘合层（Tkinter 窗口/事件/带副作用的网络与磁盘操作）不计入覆盖率：
 # 这些模块难以单测；其可测的业务逻辑已抽取到独立模块（如 app/parsing.py）。
 omit = [
-    "app/panels/*",
+    # panels：2026-11-23 起按实测覆盖率精确排除（探针数据见下）。
+    # 已纳入门禁（实测 ≥84%）：__init__.py(100%) / layout.py(99%) /
+    # registry.py(98%) / legacy.py(95%) / host.py(84%，面板宿主框架) ——
+    # 这 5 个文件共 787 语句进入口径，host 作为全部 20 面板的宿主最值得看住。
+    # 仍排除的是构建/交互主体（探针实测 <75%）：ui_kit 71%、base 70%、
+    # skill_library_panel 60%、plugin 54%、mcp 53%、lineage 47%、
+    # illustration 43%、timeline 42%、rework 40%、biography 38%、
+    # style 26%、descriptions/dialogue 17%、memory_viz 16%、
+    # adapt/story_flow 15%、bridges 14%、elements 12%、websearch 11%、
+    # batch_ops 10%、summary_mgmt 8%、chapter_analysis 6%。
+    "app/panels/ui_kit.py",
+    "app/panels/base.py",
+    "app/panels/skill_library_panel.py",
+    "app/panels/plugin_panel.py",
+    "app/panels/mcp_panel.py",
+    "app/panels/lineage_panel.py",
+    "app/panels/illustration_panel.py",
+    "app/panels/timeline_panel.py",
+    "app/panels/rework_panel.py",
+    "app/panels/biography_panel.py",
+    "app/panels/style_panel.py",
+    "app/panels/descriptions_panel.py",
+    "app/panels/dialogue_panel.py",
+    "app/panels/memory_viz_panel.py",
+    "app/panels/adapt_panel.py",
+    "app/panels/story_flow_panel.py",
+    "app/panels/bridges_panel.py",
+    "app/panels/elements_panel.py",
+    "app/panels/websearch_panel.py",
+    "app/panels/batch_ops_panel.py",
+    "app/panels/summary_mgmt_panel.py",
+    "app/panels/chapter_analysis_panel.py",
     "app/fullscreen_writer.py",
     "app/ui_style.py",
     "app/navigation.py",
@@ -128,8 +159,12 @@ omit = [
     "app/reader_ui.py",
     "app/timeline_ui.py",
     "app/toolkit_ui.py",
-    "app/persistence_ui.py",
     "app/note_ui.py",
+    # persistence_ui 已于 2026-11-23 纳入门禁：全部方法为纯逻辑
+    # （备份/检查点/断电恢复），tests/test_persistence_backup.py 用假宿主
+    # 完整覆盖，无显示环境同样可跑（同 theme_switch 路径）。
+    # ⚠️ outline_ui 暂不纳入：纯函数已测（test_outline_context_logic.py），
+    # 但 Tk 构建部分未测，整文件计入会把 CI 无显示口径拉到 86.0 门禁以下。
 ]
 
 [tool.coverage.report]

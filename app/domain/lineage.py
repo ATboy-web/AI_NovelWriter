@@ -27,7 +27,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping, Protocol
 
 __all__ = [
     "LINEAGE_KEY",
@@ -237,6 +237,49 @@ class InheritancePlan:
         if self.missing:
             parts.append(f"父代缺失 {len(self.missing)} 项")
         return "；".join(parts)
+
+
+class _PathProbe(Protocol):
+    """判断父代里的相对路径是否存在。
+
+    契约与 `app.ports.PathProbe` 相同，这里**内联定义**是为了让领域层保持
+    「零 app 依赖」（否则架构守卫会报 domain 越界 import ports）。
+    """
+
+    def exists(self, relative_path: str) -> bool: ...
+
+
+def build_inheritance_plan(
+    parent_dir: str,
+    inherited: Mapping[str, bool] | None,
+    probe: _PathProbe,
+) -> InheritancePlan:
+    """算出"勾选的维度各要拷哪些路径、哪些不存在"。**不碰磁盘** —— 存在性由 probe 提供。
+
+    先算后做，是为了让面板能在用户点"创建"之前就把"父代缺大纲/缺时间线"
+    如实说出来 —— 续集最常见的失望就是"以为继承了其实没有"。
+
+    与旧 `lineage.plan_inheritance(parent_dir, inherited)` 的关系：
+    那条保留原签名（面板在用），内部构造 `FilesystemProbe` 后调本函数。
+    拆开之后，本函数可以用假 probe 穷举所有维度组合，无需造目录。
+    """
+    want = dict(DEFAULT_INHERITED)
+    if inherited:
+        for key in INHERIT_DIMENSIONS:
+            if key in inherited:
+                want[key] = bool(inherited[key])
+
+    plan = InheritancePlan(parent_dir=str(parent_dir or ""), inherited=want)
+    for dim in INHERIT_DIMENSIONS:
+        entry: dict[str, Any] = {"copy": [], "missing": [], "skipped": not want.get(dim, False)}
+        if not entry["skipped"] and parent_dir:
+            for rel in DIMENSION_SOURCES[dim]:
+                if probe.exists(rel):
+                    entry["copy"].append(rel)
+                else:
+                    entry["missing"].append(rel)
+        plan.items[dim] = entry
+    return plan
 
 
 def _as_int(value: Any) -> int | None:

@@ -8,7 +8,7 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 114 |
+| 内部模块数 | 115 |
 | 依赖边数 | 353 |
 | 其中函数内延迟导入 | 72 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
@@ -83,6 +83,7 @@
 > 但要人工确认：**面板、入口脚本、按字符串加载的模块会正常出现在这里**。
 
 - `adapters.file_lineage`
+- `adapters.path_probe`
 - `application.list_branches`
 - `domain.branch`
 - `events.bus`
@@ -101,6 +102,7 @@
 | `app` | — |
 | `adapters` | — |
 | `adapters.file_lineage` | 🔴`storage` |
+| `adapters.path_probe` | — |
 | `agent_orchestrator` | 🔴`ai_client`, 🔴`token_estimator` |
 | `ai_client` | 🔴`config`, ⚪`diagnostic_logger`, ⚪`performance_monitor`, 🔴`providers`, 🔴`token_estimator`, 🔴`usage_tracker` |
 | `ai_settings_ui` | 🔴`app`, ⚪`ai_client`, ⚪`async_runner`, 🔴`config`, 🔴`dialogs`, 🔴`providers` |

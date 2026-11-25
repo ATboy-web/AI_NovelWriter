@@ -37,7 +37,7 @@ from loguru import logger
 
 # 分层样板（2026-11-25）：discover_branches 委托给这三层。
 # 见 `app/domain/branch.py` 顶部说明为什么值得拆。
-from app.adapters import FileBranchMetaReader
+from app.adapters import FileBranchMetaReader, FilesystemProbe, NeverExistsProbe
 from app.application import ListBranches
 
 # 纯领域部分已搬到 `app/domain/lineage.py`（2026-11-25 分层迁移第二步）。
@@ -58,6 +58,7 @@ from app.domain.lineage import (  # noqa: F401 - 对外接口的一部分
     _as_int,
     apply_age_progression,
     apply_death_status,
+    build_inheritance_plan,  # 继承计划：纯规则在 domain
     dedupe_preserve_order,
     describe_plan_items,
     extract_unresolved_plots,
@@ -362,27 +363,16 @@ def plan_inheritance(parent_dir: Any, inherited: Mapping[str, bool] | None = Non
 
     先算后做，是为了让面板能在用户点"创建"之前就把"父代缺大纲/缺时间线"
     如实说出来 —— 续集最常见的失望就是"以为继承了其实没有"。
+
+    ## 分层说明（2026-11-25）
+
+    判定规则在 `domain.build_inheritance_plan`（纯函数，存在性由 `PathProbe` 提供）。
+    本函数只做两件事：把父代目录包成 `FilesystemProbe`、转调。
+    **签名与返回值不变** —— 面板与既有测试无需改动。
     """
     parent_p = Path(parent_dir) if parent_dir else None
-    want = dict(DEFAULT_INHERITED)
-    if inherited:
-        for key in INHERIT_DIMENSIONS:
-            if key in inherited:
-                want[key] = bool(inherited[key])
-
-    plan = InheritancePlan(parent_dir=str(parent_p) if parent_p else "", inherited=want)
-    for dim in INHERIT_DIMENSIONS:
-        # 显式标注：否则 mypy 推成 `dict[str, object]`，下面 `entry["copy"].append` 会被
-        # 误报为「object 没有 append」。
-        entry: dict[str, Any] = {"copy": [], "missing": [], "skipped": not want.get(dim, False)}
-        if not entry["skipped"] and parent_p is not None:
-            for rel in DIMENSION_SOURCES[dim]:
-                if (parent_p / rel).exists():
-                    entry["copy"].append(rel)
-                else:
-                    entry["missing"].append(rel)
-        plan.items[dim] = entry
-    return plan
+    probe = FilesystemProbe(parent_p) if parent_p is not None else NeverExistsProbe()
+    return build_inheritance_plan(str(parent_p) if parent_p else "", inherited, probe)
 
 
 # ====================================================================== 代际数据换算

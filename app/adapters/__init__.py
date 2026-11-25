@@ -14,5 +14,6 @@
 from __future__ import annotations
 
 from .file_lineage import FileBranchMetaReader
+from .path_probe import FilesystemProbe, NeverExistsProbe
 
-__all__ = ["FileBranchMetaReader"]
+__all__ = ["FileBranchMetaReader", "FilesystemProbe", "NeverExistsProbe"]

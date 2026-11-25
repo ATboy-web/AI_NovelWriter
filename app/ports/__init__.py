@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-__all__ = ["BranchMetaReader"]
+__all__ = ["BranchMetaReader", "PathProbe"]
 
 
 @runtime_checkable
@@ -32,4 +32,18 @@ class BranchMetaReader(Protocol):
         - 某个分支的 meta 缺失或损坏 ⇒ 该条目的字典为 `{}`（由领域层判定不可打开）；
         - 不改动任何文件。
         """
+        ...
+
+
+@runtime_checkable
+class PathProbe(Protocol):
+    """判断「父代里的某个相对路径是否存在」。
+
+    这个端口存在，是为了把**继承计划**里的唯一一处磁盘操作抽出来：
+    `domain.build_inheritance_plan` 需要知道"父代有没有 outline.json"，
+    但它不该自己去碰文件系统 —— 否则那条规则只能在"造一套目录"的条件下测。
+    """
+
+    def exists(self, relative_path: str) -> bool:
+        """`relative_path` 是相对父代根目录的路径（如 `memory/settings.json`）。"""
         ...

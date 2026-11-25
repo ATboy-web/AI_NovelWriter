@@ -8,10 +8,10 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 104 |
-| 依赖边数 | 342 |
-| 其中函数内延迟导入 | 70 |
-| 循环依赖环数 | 3（**会真炸的：0**） |
+| 内部模块数 | 106 |
+| 依赖边数 | 347 |
+| 其中函数内延迟导入 | 72 |
+| 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
 > **口径说明**：`if TYPE_CHECKING:` 里的 import **不计入** —— 运行时根本不执行。
@@ -42,16 +42,6 @@
 
 ### 🟡 环 2 · latent（2 个模块）
 
-- `config`
-- `secure_config`
-
-| 边 | 种类 |
-|---|---|
-| `config` → `secure_config` | 🟡 延迟（函数内） |
-| `secure_config` → `config` | 🔴 模块级 |
-
-### 🟡 环 3 · latent（2 个模块）
-
 - `design_tokens`
 - `ui_style`
 
@@ -64,21 +54,21 @@
 
 | 模块 | 被引用次数 |
 |---|---|
-| `app` | 35 |
+| `app` | 36 |
+| `storage` | 31 |
 | `dialogs` | 30 |
-| `storage` | 30 |
 | `async_runner` | 27 |
 | `ui_style` | 20 |
 | `panels` | 14 |
 | `events` | 12 |
 | `panels.base` | 11 |
 | `panels.ui_kit` | 11 |
-| `config` | 9 |
+| `config` | 8 |
 | `ai_client` | 7 |
 | `parsing` | 7 |
+| `diagnostic_logger` | 6 |
 | `novel_toolkit` | 6 |
 | `token_estimator` | 6 |
-| `diagnostic_logger` | 5 |
 | `memory_manager` | 5 |
 | `providers.base` | 5 |
 | `text_stats` | 5 |
@@ -117,8 +107,10 @@
 | `character_system` | 🔴`parsing`, 🔴`storage` |
 | `character_ui` | 🔴`app`, 🔴`async_runner`, 🔴`biography`, 🔴`character_enrichment`, 🔴`character_system`, 🔴`dialogs`, 🔴`format_converter`, 🔴`memory_manager`, 🔴`parsing`, 🔴`storage`, 🔴`timeline_store` |
 | `cloud_storage` | ⚪`secure_config`, 🔴`storage` |
-| `config` | ⚪`secure_config`, 🔴`storage` |
+| `config` | 🔴`config_defaults`, ⚪`secure_config`, 🔴`storage` |
+| `config_defaults` | — |
 | `consistency` | — |
+| `crash_reporter` | ⚪`app`, 🔴`diagnostic_logger`, 🔴`storage` |
 | `design_tokens` | 🔴`ui_style` |
 | `diagnostic_logger` | — |
 | `dialogs` | 🔴`ui_style` |
@@ -188,7 +180,7 @@
 | `review_store` | 🔴`storage`, ⚪`writing_presets` |
 | `rework` | ⚪`parsing`, ⚪`review_store`, 🔴`storage`, 🔴`text_stats`, ⚪`writing_presets` |
 | `scene_detector` | — |
-| `secure_config` | 🔴`config`, 🔴`storage` |
+| `secure_config` | 🔴`config_defaults`, 🔴`storage` |
 | `semantic_candidates` | ⚪`parsing`, ⚪`text_stats` |
 | `shell_ui` | 🔴`app`, ⚪`ai_client`, 🔴`async_runner`, ⚪`diagnostic_logger`, 🔴`dialogs`, ⚪`performance_monitor`, 🔴`theme_system`, 🔴`ui_scroll` |
 | `skill_library` | ⚪`plugin_system`, 🔴`storage`, 🔴`token_estimator` |
@@ -208,7 +200,7 @@
 | `writing_presets` | ⚪`semantic_candidates`, ⚪`skill_library`, 🔴`storage`, ⚪`style_dna`, 🔴`text_stats` |
 | `writing_skills` | ⚪`plugin_system`, 🔴`storage` |
 | `writing_skills_panel` | 🔴`app`, 🔴`dialogs`, ⚪`ui_style`, ⚪`writing_skills` |
-| `novel_app` | 🔴`app`, 🔴`ai_settings_ui`, 🔴`chapter_ui`, 🔴`character_ui`, 🔴`cloud_storage`, 🔴`editor_ui`, 🔴`events`, 🔴`generation_ui`, 🔴`lifecycle_ui`, 🔴`navigation`, 🔴`note_ui`, 🔴`novel_toolkit`, 🔴`outline_ui`, 🔴`panels`, 🔴`persistence_ui`, 🔴`reader_ui`, 🔴`shell_ui`, 🔴`timeline_ui`, 🔴`toolkit_ui`, 🔴`usage_tracker`, 🔴`usage_ui`, 🔴`writing_skills_panel` |
+| `novel_app` | 🔴`app`, 🔴`ai_settings_ui`, 🔴`chapter_ui`, 🔴`character_ui`, 🔴`cloud_storage`, ⚪`crash_reporter`, 🔴`editor_ui`, 🔴`events`, 🔴`generation_ui`, 🔴`lifecycle_ui`, 🔴`navigation`, 🔴`note_ui`, 🔴`novel_toolkit`, 🔴`outline_ui`, 🔴`panels`, 🔴`persistence_ui`, 🔴`reader_ui`, 🔴`shell_ui`, 🔴`timeline_ui`, 🔴`toolkit_ui`, 🔴`usage_tracker`, 🔴`usage_ui`, 🔴`writing_skills_panel` |
 
 ## 6. 动态加载说明
 

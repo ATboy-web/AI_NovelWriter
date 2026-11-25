@@ -30,7 +30,7 @@ from typing import Dict, List, Optional
 
 from cryptography.fernet import Fernet
 
-from .config import AI_KEYS_FIELD, DEFAULT_CONFIG, DEFAULT_PROFILE_NAME, SENSITIVE_CONFIG_FIELDS
+from .config_defaults import AI_KEYS_FIELD, DEFAULT_CONFIG, DEFAULT_PROFILE_NAME, SENSITIVE_CONFIG_FIELDS
 from .storage import atomic_write_json, read_json_object
 
 logger = logging.getLogger(__name__)

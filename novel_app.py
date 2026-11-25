@@ -238,5 +238,16 @@ class NovelWriterApp(
 # ==================== 入口 ====================
 
 if __name__ == "__main__":
+    # 崩溃报告必须在建窗口**之前**装好：Tk 主循环里抛出的异常不会再回到这里，
+    # 只有提前接管 excepthook / threading.excepthook / faulthandler 才留得下现场。
+    # 只装在脚本入口，不在 `NovelWriterApp.__init__` 里：那会让测试跑一次就
+    # 在真实用户目录下建 faulthandler.log。
+    try:
+        from app.crash_reporter import install_crash_hooks
+
+        install_crash_hooks()
+    except Exception as _crash_hook_exc:  # noqa: BLE001 - 崩溃报告装不上也不该阻止启动
+        logger.debug(f"崩溃报告未启用：{_crash_hook_exc}")
+
     app = NovelWriterApp()
     app.run()

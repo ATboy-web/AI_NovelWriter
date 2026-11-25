@@ -45,57 +45,24 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# 默认配置、敏感字段名单与档案常量在 `config_defaults`（纯常量模块）：
+# 目的是打断 config ↔ secure_config 的 latent 循环依赖 —— secure_config 只需要
+# 这几个常量，却为此在模块级 import 了整个 config。这里**原样 re-export**，
+# `from app.config import DEFAULT_CONFIG` 等既有写法全部保持可用。
+from .config_defaults import (  # noqa: F401 - 对外接口的一部分，不是未使用导入
+    AI_KEYS_FIELD,
+    DEFAULT_CONFIG,
+    DEFAULT_PROFILE_NAME,
+    SENSITIVE_CONFIG_FIELDS,
+)
 from .storage import atomic_write_json, read_json_object
 
 logger = logging.getLogger(__name__)
-
-# 默认配置（单一定义，避免重复）
-DEFAULT_CONFIG = {
-    # ---- AI 连接参数（会进 Profile）----
-    "api_provider": "ollama",
-    "api_key": "",
-    "api_base": "http://localhost:11434",
-    "model": "qwen2.5:14b",
-    "max_tokens": 4096,
-    "temperature": 0.8,
-    "context_window": 32000,
-    "thinking_enabled": True,
-    "reasoning_effort": "high",
-    "timeout": 600.0,
-    "connect_timeout": 10.0,
-    "max_retries": 3,
-    "balance_url": "",
-    "balance_total_path": "",
-    "balance_currency_path": "",
-    # ---- 非 AI 参数（扁平存放）----
-    # ❗ 历史审计曾移除两个**声明了却完全没有对应功能**的键：
-    #   - `auto_save`：章节保存是无条件执行的（`chapter_ui` 里没有读这个键做分支），
-    #     所以它既不能开也不能关。**保持移除**。
-    #   - `theme`：v3.4（2026-11-20 UI 改版）起**重新启用且真实接线** ——
-    #     设置对话框「高级」页有主题选择控件，`theme_switch.switch_theme`
-    #     据此换肤并持久化；取值见 `app/theme_system.py`（cyberpunk/wasteland/mechapunk）。
-    #     旧文件里的遗留值（如 "light"）由 normalize_theme 回落默认，不会报错。
-    # 配置读取用 `.get(key, default)`，旧配置文件里多出来的键会被忽略。
-    "theme": "cyberpunk",
-    "adult_content": False,
-    "edge_content": False,
-    "img_provider": "comfyui",
-    "img_api_base": "http://127.0.0.1:8188",
-    "img_model": "sd_xl_base_1.0.safetensors",
-    "img_width": 1024,
-    "img_height": 1024,
-    "auto_detect_scene": True,
-}
-
-#: 需要加密落盘的字段（单一来源：SecureConfig 与本模块共用，避免两处定义漂移）
-SENSITIVE_CONFIG_FIELDS = ("api_key", "img_api_key", "secret_key")
 
 # ============================================================ 多 Profile 常量
 
 PROFILES_SECTION = "ai"
 PROFILES_SCHEMA_VERSION = 2
-AI_KEYS_FIELD = "ai_keys"
-DEFAULT_PROFILE_NAME = "default"
 
 #: 属于「AI 连接档案」的字段。
 #: 这些字段的权威副本在 `ai.profiles.<name>`，顶层扁平键只是活跃 Profile 的镜像。

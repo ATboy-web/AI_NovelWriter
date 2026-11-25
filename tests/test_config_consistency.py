@@ -59,13 +59,15 @@ class TestSensitiveFieldsSingleSource:
                     raise AssertionError(f"secure_config.py:{node.lineno} 又出现了敏感字段清单的字面量副本")
 
     def test_no_second_literal_definition(self):
-        """全仓只允许 `config.py` 出现该清单的**字面量**定义。
+        """全仓只允许**一处**出现该清单的字面量定义。
 
-        `secure_config.py` 里的 `_SENSITIVE_FIELDS = SENSITIVE_CONFIG_FIELDS`
-        是**别名**（指向同一个对象），不算第二处定义 —— 所以这里只拦字面量。
+        2026-11-25 起该处从 `config.py` 迁到 `config_defaults.py`
+        （为打断 config ↔ secure_config 的循环依赖）：`config.py` 现在只是
+        re-export，同样不该再有字面量 —— 所以这里改成"放行 config_defaults，
+        其余文件（含 config.py）一律拦"。
         """
         for path in (_REPO_ROOT / "app").rglob("*.py"):
-            if path.name == "config.py":
+            if path.name == "config_defaults.py":
                 continue
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 if isinstance(node, ast.Assign) and isinstance(node.value, (ast.Tuple, ast.List)):

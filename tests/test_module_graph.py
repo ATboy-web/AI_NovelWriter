@@ -62,10 +62,12 @@ mg = _load_module_graph()
 #: 目的是让"结构变化"永远需要一次人工确认，而不是被静默接受。
 KNOWN_LATENT_CYCLES: set[frozenset[str]] = {
     frozenset({"app.panels.base", "app.panels.legacy", "app.panels.registry"}),
-    frozenset({"app.config", "app.secure_config"}),
+    # 2026-11-25 已消除：config ↔ secure_config。成因是 secure_config 只需 4 个
+    # 纯常量却在模块级 import 整个 config；常量迁到 config_defaults 后依赖变单向。
+    # （守卫的双向检查会强制删掉这一行——"消失的环也要从登记表删掉"。）
     # v3.4 主题系统：design_tokens 在模块级 import ui_style 做派生（既有），
     # ui_style.set_palette 在**方法内**延迟 import design_tokens.refresh()
-    # 刷新派生快照 —— 与 config↔secure_config 同型的"脆弱但安全"latent 环。
+    # 刷新派生快照 —— 同型的"脆弱但安全"latent 环。
     # 把延迟导入提到模块级会立刻变红（TestNoHardCycles）。
     frozenset({"app.design_tokens", "app.ui_style"}),
 }

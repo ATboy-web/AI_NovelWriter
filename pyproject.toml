@@ -115,12 +115,18 @@ omit = [
     # 已纳入门禁（实测 ≥84%）：__init__.py(100%) / layout.py(99%) /
     # registry.py(98%) / legacy.py(95%) / host.py(84%，面板宿主框架) ——
     # 这 5 个文件共 787 语句进入口径，host 作为全部 20 面板的宿主最值得看住。
-    # 仍排除的是构建/交互主体（探针实测 <75%）：ui_kit 71%、base 70%、
+    # 仍排除的是构建/交互主体（探针实测 <75%，base 已于同日纳入见下）：ui_kit、
     # skill_library_panel 60%、plugin 54%、mcp 53%、lineage 47%、
     # illustration 43%、timeline 42%、rework 40%、biography 38%、
     # style 26%、descriptions/dialogue 17%、memory_viz 16%、
     # adapt/story_flow 15%、bridges 14%、elements 12%、websearch 11%、
     # batch_ops 10%、summary_mgmt 8%、chapter_analysis 6%。
+    # ui_kit 仍排除：2026-11-25 把 polish_legacy 的 isinstance 链重构成
+    # 「winfo_class → handler」表分发后，**润色分发部分已可假控件测试**
+    # （tests/test_ui_kit_polish_dispatch.py 42 条，覆盖 22 个分支）。
+    # 但 card/button/search_entry/toast/pretty_tree 等仍要真 Tk 才能执行，
+    # 无显示环境实测仅 41.5% ⇒ 纳入会把 CI 拉到门禁以下。等这些工厂函数
+    # 也拆出可测的纯逻辑后，再重新评估纳入。
     "app/panels/ui_kit.py",
     # base.py 已于 2026-11-23 纳入：33 条契约测试钉住代理语义
     # （tests/test_panel_base_contract.py，无显示依赖）。

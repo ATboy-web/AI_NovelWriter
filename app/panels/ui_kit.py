@@ -681,6 +681,274 @@ def _uses_system_color(widget: tk.Misc, option: str) -> bool:
         return False
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# 迁移面板润色：按 Tk 类名分发（原为 18 路 isinstance 链）
+# ═══════════════════════════════════════════════════════════════════════
+#
+# ## 原来那条 isinstance 链承担了什么
+#
+# 它把「一个已经建好的控件树」按控件**类型**分流到 18 个外观处理分支：
+#
+#   类目            处理内容
+#   ──────────────  ────────────────────────────────────────────────
+#   ttk.Combobox    套 Dark.TCombobox 样式（v2 面板不指定 style，会退回 clam 浅色）
+#   ttk.Treeview    套 Panel.Treeview + odd/even/muted 三档斑马纹底色
+#   ttk.Entry/Spin  套 Panel.TEntry（两者共用一个分支）
+#   ttk.Button      仅当未显式指定 style 时套 Secondary.TButton
+#   ttk.Label       仅当未显式指定 style 时套 Dark.TLabel
+#   ttk.LabelFrame  仅当未显式指定 style 时套 Card.TLabelframe
+#   ttk.Scrollbar   按 orient 套 Dark.Vertical/Horizontal.TScrollbar
+#   ttk.Checkbutton 仅当未显式指定 style 时套 Dark.TCheckbutton
+#   ttk.Radiobutton 仅当未显式指定 style 时套 Dark.TRadiobutton
+#   ttk.Notebook    仅当未显式指定 style 时套 Dark.TNotebook
+#   ttk.Frame       仅当未显式指定 style 时套 Dark.TFrame
+#   tk.Button       手型光标/扁平/角色字体/保证点击高度 + 悬停高亮
+#   tk.Entry/Spinbox 字体、插入光标色、去浮雕、聚焦边框
+#   tk.Text         字体、底色、前景、插入光标、聚焦边框
+#   tk.LabelFrame   标题配色、角色字体、内边距、边框
+#   tk.Checkbutton  手型光标、selectcolor、字体
+#   tk.Listbox      底色/前景/选中色（否则暗色主题里是一块米色斑）
+#   tk.Scrollbar    槽色/滑块色（ScrolledText 自带的是经典 tk 控件）
+#   tk.Label        仅当 bg 与 fg **都**是系统默认色时改色（显式配色不动）
+#   tk.Frame        仅当 bg 是系统默认色时改色（大片米色横带的来源）
+#
+# ## 为什么改成表分发
+#
+# 1. **顺序不再是隐式契约**。原来靠「ttk 分支必须排在 tk 分支前面」规避继承截胡
+#    （`ttk.Entry` 继承 `tk.Entry`，顺序写反就会被 Entry 分支吃掉）。
+#    现在按 `winfo_class()` 精确匹配，`TEntry` 与 `Entry` 天然是两个键。
+# 2. **每个分支可单独测**。原写法把 18 个分支焊死在一个函数里，只能整树测。
+# 3. **可在无显示环境测试**。假控件只要提供 `winfo_class()` 就能命中任意分支 ——
+#    这正是本模块此前无法纳入覆盖率门禁的根因（`isinstance` 过不了鸭子类型）。
+#
+# 兼容性：`winfo_class()` 返回的是 **Tk 引擎**的类名，不是 Python 类型名，
+# 因此自定义子类（`class MyBtn(ttk.Button)`）依旧报 `TButton`，与 isinstance 同效；
+# 22 种控件实测两两不重（ttk 统一带 `T` 前缀，Treeview 为 ttk 独有）。
+# 选项、样式名、判断条件、返回的「触及控件数」语义均与改造前逐条一致。
+
+
+def _widget_class(widget: Any) -> str:
+    """取 Tk 类名；控件已销毁（`TclError`）或不是控件时返回空串，调用方按"不处理"对待。"""
+    try:
+        return str(widget.winfo_class())
+    except (tk.TclError, AttributeError):
+        return ""
+
+
+def _polish_combobox(widget: Any) -> int:
+    return _configure_supported(widget, style="Dark.TCombobox")
+
+
+def _polish_treeview(widget: Any) -> int:
+    """表格：统一行高/配色，并给迁移面板自建的表格补斑马纹（否则新旧面板视觉割裂）。"""
+    touched = _configure_supported(widget, style="Panel.Treeview")
+    for tag, color in (("odd", C["bg_card"]), ("even", C["bg_medium"]), ("muted", C["text_muted"])):
+        try:
+            widget.tag_configure(tag, background=color)
+        except tk.TclError:
+            break
+    return touched
+
+
+def _polish_ttk_entry(widget: Any) -> int:
+    """ttk 输入框/数字框共用（两者外观契约一致）。"""
+    return _configure_supported(widget, style="Panel.TEntry")
+
+
+def _polish_ttk_button(widget: Any) -> int:
+    if str(widget.cget("style")):
+        return 0
+    return _configure_supported(widget, style="Secondary.TButton")
+
+
+def _polish_ttk_label(widget: Any) -> int:
+    if str(widget.cget("style")):
+        return 0
+    return _configure_supported(widget, style="Dark.TLabel")
+
+
+def _polish_ttk_labelframe(widget: Any) -> int:
+    if str(widget.cget("style")):
+        return 0
+    return _configure_supported(widget, style="Card.TLabelframe")
+
+
+def _polish_ttk_scrollbar(widget: Any) -> int:
+    if str(widget.cget("style")):
+        return 0
+    orient = str(widget.cget("orient"))
+    name = "Dark.Vertical.TScrollbar" if orient == "vertical" else "Dark.Horizontal.TScrollbar"
+    return _configure_supported(widget, style=name)
+
+
+def _polish_ttk_checkbutton(widget: Any) -> int:
+    if str(widget.cget("style")):
+        return 0
+    return _configure_supported(widget, style="Dark.TCheckbutton")
+
+
+def _polish_ttk_radiobutton(widget: Any) -> int:
+    if str(widget.cget("style")):
+        return 0
+    return _configure_supported(widget, style="Dark.TRadiobutton")
+
+
+def _polish_ttk_notebook(widget: Any) -> int:
+    if str(widget.cget("style")):
+        return 0
+    return _configure_supported(widget, style="Dark.TNotebook")
+
+
+def _polish_ttk_frame(widget: Any) -> int:
+    if str(widget.cget("style")):
+        return 0
+    return _configure_supported(widget, style="Dark.TFrame")
+
+
+def _polish_button(widget: Any) -> int:
+    """经典按钮：手型光标 + 扁平 + 角色字体 + 保证点击高度 ≥ MIN_TARGET_HEIGHT + 悬停。"""
+    newly = _configure_supported(
+        widget,
+        cursor="hand2",
+        relief=tk.FLAT,
+        bd=0,
+        font=UIStyle.font("label"),
+        padx=max(_as_px(widget.cget("padx")), SPACE["md"]),
+        pady=max(_as_px(widget.cget("pady")), SPACE["sm"]),
+        activebackground=C["accent_hover"],
+        disabledforeground=C["text_muted"],
+        highlightthickness=0,
+    )
+    if newly:
+        add_hover(widget, str(widget.cget("bg")), C["hover"])
+    return newly
+
+
+def _polish_entry(widget: Any) -> int:
+    """经典输入框/数字框：字体、插入光标色、去浮雕、聚焦边框。"""
+    return _configure_supported(
+        widget,
+        font=UIStyle.font("label"),
+        insertbackground=C["text_primary"],
+        relief=tk.FLAT,
+        highlightthickness=1,
+        highlightbackground=C["border"],
+        highlightcolor=C["border_focus"],
+        bd=0,
+    )
+
+
+def _polish_text(widget: Any) -> int:
+    """经典文本域：字体、底色、前景、插入光标、聚焦边框。"""
+    return _configure_supported(
+        widget,
+        font=UIStyle.font("label"),
+        bg=C["bg_card"],
+        fg=C["text_primary"],
+        insertbackground=C["text_primary"],
+        relief=tk.FLAT,
+        highlightthickness=1,
+        highlightbackground=C["border"],
+        highlightcolor=C["border_focus"],
+        bd=0,
+    )
+
+
+def _polish_labelframe(widget: Any) -> int:
+    """经典分组框：标题配色、角色字体、内边距、边框。"""
+    return _configure_supported(
+        widget,
+        fg=C["text_secondary"],
+        font=UIStyle.font("label_bold"),
+        bd=0,
+        highlightthickness=1,
+        highlightbackground=C["border"],
+        padx=SPACE["md"],
+        pady=SPACE["sm"],
+    )
+
+
+def _polish_checkbutton(widget: Any) -> int:
+    """经典复选框：手型光标、选中底色、角色字体。"""
+    return _configure_supported(
+        widget,
+        cursor="hand2",
+        selectcolor=C["bg_medium"],
+        font=UIStyle.font("label"),
+    )
+
+
+def _polish_listbox(widget: Any) -> int:
+    """经典列表框：底色/前景/选中色（暗色主题里默认是扎眼的米色块）。"""
+    return _configure_supported(
+        widget,
+        font=UIStyle.font("label"),
+        bg=C["bg_card"],
+        fg=C["text_primary"],
+        selectbackground=C["accent"],
+        selectforeground="#ffffff",
+        relief=tk.FLAT,
+        highlightthickness=1,
+        highlightbackground=C["border"],
+        highlightcolor=C["border_focus"],
+        bd=0,
+    )
+
+
+def _polish_scrollbar(widget: Any) -> int:
+    """经典滚动条（ScrolledText 自带）：槽色/滑块色/激活色。"""
+    return _configure_supported(
+        widget,
+        bg=C["bg_medium"],
+        troughcolor=C["bg_dark"],
+        activebackground=C["hover"],
+        highlightthickness=0,
+        bd=0,
+        relief=tk.FLAT,
+    )
+
+
+def _polish_label(widget: Any) -> int:
+    """只换"完全没配过色"的 Label；显式配色的强调标签（成功绿/警告黄）一律不动。"""
+    if _uses_system_color(widget, "bg") and _uses_system_color(widget, "fg"):
+        return _configure_supported(widget, bg=C["bg_dark"], fg=C["text_primary"])
+    return 0
+
+
+def _polish_frame(widget: Any) -> int:
+    """默认色的容器 Frame 是大片米色横带/区块的来源；显式配色的不动。"""
+    if _uses_system_color(widget, "bg"):
+        return _configure_supported(widget, bg=C["bg_dark"])
+    return 0
+
+
+#: Tk 类名 → 润色处理函数。键取自 `winfo_class()`（实测 22 种控件两两不重）。
+_POLISH_BY_CLASS: dict[str, Callable[[Any], int]] = {
+    "TCombobox": _polish_combobox,
+    "Treeview": _polish_treeview,
+    "TEntry": _polish_ttk_entry,
+    "TSpinbox": _polish_ttk_entry,
+    "TButton": _polish_ttk_button,
+    "TLabel": _polish_ttk_label,
+    "TLabelframe": _polish_ttk_labelframe,
+    "TScrollbar": _polish_ttk_scrollbar,
+    "TCheckbutton": _polish_ttk_checkbutton,
+    "TRadiobutton": _polish_ttk_radiobutton,
+    "TNotebook": _polish_ttk_notebook,
+    "TFrame": _polish_ttk_frame,
+    "Button": _polish_button,
+    "Entry": _polish_entry,
+    "Spinbox": _polish_entry,
+    "Text": _polish_text,
+    "Labelframe": _polish_labelframe,
+    "Checkbutton": _polish_checkbutton,
+    "Listbox": _polish_listbox,
+    "Scrollbar": _polish_scrollbar,
+    "Label": _polish_label,
+    "Frame": _polish_frame,
+}
+
+
 def polish_legacy(container: tk.Misc, *, max_depth: int = 12) -> int:
     """给 **v2 迁移面板**已构建好的控件树做一次统一样式润色，返回触及的控件数。
 
@@ -693,6 +961,9 @@ def polish_legacy(container: tk.Misc, *, max_depth: int = 12) -> int:
     - 输入框/文本域：字体与插入光标颜色、去浮雕、聚焦边框；
     - `LabelFrame`：标题配色与内边距。
     **不动布局与几何**（位置参数不改），因此不会打乱既有排版。
+
+    遍历骨架（深度优先 + `max_depth` 截断 + 销毁控件容错）与原实现一致；
+    具体外观由 `_POLISH_BY_CLASS` 按 `winfo_class()` 分发，见该表上方的说明。
     """
     if container is None:
         return 0
@@ -709,146 +980,11 @@ def polish_legacy(container: tk.Misc, *, max_depth: int = 12) -> int:
             continue
         stack.extend((child, depth + 1) for child in children)
 
+        handler = _POLISH_BY_CLASS.get(_widget_class(widget))
+        if handler is None:
+            continue
         try:
-            # ⚠️ ttk 分支必须排在 tk 分支**前面**：`ttk.Entry` / `ttk.Spinbox` /
-            # `ttk.Combobox` 继承自 `tk.Entry` / `tk.Spinbox`（为了复用 validate 机制），
-            # 若 tk 分支在前，Combobox 会被"Entry 分支"截胡，永远轮不到换肤（实测踩到）。
-            if isinstance(widget, ttk.Combobox):
-                # `Dark.TCombobox` 由 `UIStyle.apply_theme` 定义；
-                # v2 面板建下拉框时不指定 style，于是退回 clam 默认浅色
-                touched += _configure_supported(widget, style="Dark.TCombobox")
-            elif isinstance(widget, ttk.Treeview):
-                touched += _configure_supported(widget, style="Panel.Treeview")
-                # 迁移面板自建的表格也套上斑马纹（否则只有原生面板好看，很割裂）
-                for tag, color in (("odd", C["bg_card"]), ("even", C["bg_medium"]), ("muted", C["text_muted"])):
-                    try:
-                        widget.tag_configure(tag, background=color)
-                    except tk.TclError:
-                        break
-            elif isinstance(widget, (ttk.Entry, ttk.Spinbox)):
-                touched += _configure_supported(widget, style="Panel.TEntry")
-            elif isinstance(widget, ttk.Button):
-                # v2 面板几乎都不指定 ttk style → 退回 clam 默认浅色（米色横带的来源）。
-                # 只在"没显式指定 style"时换成深色风格；显式指定的不动。
-                if not str(widget.cget("style")):
-                    touched += _configure_supported(widget, style="Secondary.TButton")
-            elif isinstance(widget, ttk.Label):
-                if not str(widget.cget("style")):
-                    touched += _configure_supported(widget, style="Dark.TLabel")
-            elif isinstance(widget, ttk.LabelFrame):
-                if not str(widget.cget("style")):
-                    touched += _configure_supported(widget, style="Card.TLabelframe")
-            elif isinstance(widget, ttk.Scrollbar):
-                if not str(widget.cget("style")):
-                    orient = str(widget.cget("orient"))
-                    name = "Dark.Vertical.TScrollbar" if orient == "vertical" else "Dark.Horizontal.TScrollbar"
-                    touched += _configure_supported(widget, style=name)
-            elif isinstance(widget, ttk.Checkbutton):
-                if not str(widget.cget("style")):
-                    touched += _configure_supported(widget, style="Dark.TCheckbutton")
-            elif isinstance(widget, ttk.Radiobutton):
-                if not str(widget.cget("style")):
-                    touched += _configure_supported(widget, style="Dark.TRadiobutton")
-            elif isinstance(widget, ttk.Notebook):
-                if not str(widget.cget("style")):
-                    touched += _configure_supported(widget, style="Dark.TNotebook")
-            elif isinstance(widget, ttk.Frame):
-                if not str(widget.cget("style")):
-                    touched += _configure_supported(widget, style="Dark.TFrame")
-            elif isinstance(widget, tk.Button):
-                newly = _configure_supported(
-                    widget,
-                    cursor="hand2",
-                    relief=tk.FLAT,
-                    bd=0,
-                    font=UIStyle.font("label"),
-                    padx=max(_as_px(widget.cget("padx")), SPACE["md"]),
-                    pady=max(_as_px(widget.cget("pady")), SPACE["sm"]),
-                    activebackground=C["accent_hover"],
-                    disabledforeground=C["text_muted"],
-                    highlightthickness=0,
-                )
-                if newly:
-                    add_hover(widget, str(widget.cget("bg")), C["hover"])
-                touched += newly
-            elif isinstance(widget, (tk.Entry, tk.Spinbox)):
-                touched += _configure_supported(
-                    widget,
-                    font=UIStyle.font("label"),
-                    insertbackground=C["text_primary"],
-                    relief=tk.FLAT,
-                    highlightthickness=1,
-                    highlightbackground=C["border"],
-                    highlightcolor=C["border_focus"],
-                    bd=0,
-                )
-            elif isinstance(widget, tk.Text):
-                touched += _configure_supported(
-                    widget,
-                    font=UIStyle.font("label"),
-                    bg=C["bg_card"],
-                    fg=C["text_primary"],
-                    insertbackground=C["text_primary"],
-                    relief=tk.FLAT,
-                    highlightthickness=1,
-                    highlightbackground=C["border"],
-                    highlightcolor=C["border_focus"],
-                    bd=0,
-                )
-            elif isinstance(widget, tk.LabelFrame):
-                touched += _configure_supported(
-                    widget,
-                    fg=C["text_secondary"],
-                    font=UIStyle.font("label_bold"),
-                    bd=0,
-                    highlightthickness=1,
-                    highlightbackground=C["border"],
-                    padx=SPACE["md"],
-                    pady=SPACE["sm"],
-                )
-            elif isinstance(widget, tk.Checkbutton):
-                touched += _configure_supported(
-                    widget,
-                    cursor="hand2",
-                    selectcolor=C["bg_medium"],
-                    font=UIStyle.font("label"),
-                )
-            elif isinstance(widget, tk.Listbox):
-                # v2 面板里的 Listbox 大多没设颜色（系统默认浅底），
-                # 在暗色主题里就是一块扎眼的"米色斑"（元素库/网搜/摘要管理都中招）
-                touched += _configure_supported(
-                    widget,
-                    font=UIStyle.font("label"),
-                    bg=C["bg_card"],
-                    fg=C["text_primary"],
-                    selectbackground=C["accent"],
-                    selectforeground="#ffffff",
-                    relief=tk.FLAT,
-                    highlightthickness=1,
-                    highlightbackground=C["border"],
-                    highlightcolor=C["border_focus"],
-                    bd=0,
-                )
-            elif isinstance(widget, tk.Scrollbar):
-                # ScrolledText 自带的滚动条是经典 tk 控件：默认 SystemButtonFace 米色
-                touched += _configure_supported(
-                    widget,
-                    bg=C["bg_medium"],
-                    troughcolor=C["bg_dark"],
-                    activebackground=C["hover"],
-                    highlightthickness=0,
-                    bd=0,
-                    relief=tk.FLAT,
-                )
-            elif isinstance(widget, tk.Label):
-                # 只换"完全没配过色"的 Label（bg 与 fg 都是系统默认）；
-                # 显式配色的强调标签（成功绿/警告黄等）一律不动
-                if _uses_system_color(widget, "bg") and _uses_system_color(widget, "fg"):
-                    touched += _configure_supported(widget, bg=C["bg_dark"], fg=C["text_primary"])
-            elif isinstance(widget, tk.Frame):
-                # 默认色的容器 Frame 是大片"米色横带/区块"的来源（按钮行/分区底色）
-                if _uses_system_color(widget, "bg"):
-                    touched += _configure_supported(widget, bg=C["bg_dark"])
+            touched += handler(widget)
         except (tk.TclError, ValueError, TypeError) as exc:
             logger.debug(f"[ui_kit] 润色跳过 {type(widget).__name__}: {exc}")
 

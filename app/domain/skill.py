@@ -144,8 +144,8 @@ class SkillRule:
                 continue
             if line.startswith("|"):
                 cells = [c.strip() for c in line.strip("|").split("|")]
-                if not cells:
-                    continue
+                # ⚠️ 不判 `if not cells`：`"x".split("|")` 永远至少返回一个元素，
+                # 那个分支不可达（曾经存在，覆盖率扫出来是死代码，已删）。
                 first = cells[0]
                 if not first or set(first) <= {"-", ":", " "}:
                     continue

@@ -8,8 +8,8 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 121 |
-| 依赖边数 | 361 |
+| 内部模块数 | 122 |
+| 依赖边数 | 363 |
 | 其中函数内延迟导入 | 72 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
@@ -55,7 +55,7 @@
 | 模块 | 被引用次数 |
 |---|---|
 | `app` | 36 |
-| `storage` | 33 |
+| `storage` | 34 |
 | `dialogs` | 30 |
 | `async_runner` | 27 |
 | `ui_style` | 20 |
@@ -87,6 +87,7 @@
 - `adapters.path_probe`
 - `application.generation_tree`
 - `application.list_branches`
+- `application.save_chapter`
 - `domain.branch`
 - `events.bus`
 - `fullscreen_writer`
@@ -112,10 +113,11 @@
 | `application` | — |
 | `application.generation_tree` | 🔴`domain.lineage`, 🔴`ports` |
 | `application.list_branches` | 🔴`domain`, 🔴`ports` |
+| `application.save_chapter` | 🔴`storage` |
 | `async_runner` | ⚪`app`, ⚪`dialogs` |
 | `biography` | 🔴`storage` |
 | `bulk_rewrite` | ⚪`app`, ⚪`ai_client`, 🔴`async_runner`, 🔴`parsing`, 🔴`rework`, 🔴`storage`, 🔴`text_stats`, ⚪`writing_presets` |
-| `chapter_ui` | 🔴`app`, 🔴`dialogs`, 🔴`events`, ⚪`format_converter` |
+| `chapter_ui` | 🔴`app`, 🔴`application`, 🔴`dialogs`, 🔴`events`, ⚪`format_converter` |
 | `character_enrichment` | — |
 | `character_system` | 🔴`parsing`, 🔴`storage` |
 | `character_ui` | 🔴`app`, 🔴`async_runner`, 🔴`biography`, 🔴`character_enrichment`, 🔴`character_system`, 🔴`dialogs`, 🔴`format_converter`, 🔴`memory_manager`, 🔴`parsing`, 🔴`storage`, 🔴`timeline_store` |

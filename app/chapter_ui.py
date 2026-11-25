@@ -9,6 +9,7 @@ from pathlib import Path
 from tkinter import filedialog
 
 from app import dialogs
+from app.application import SaveChapter
 from app.events import TOPIC_CHAPTER_SAVED
 
 
@@ -63,11 +64,12 @@ class ChapterUIMixin:
             dialogs.showwarning("提示", "没有可保存的内容")
             return
 
-        chapters_dir = self.current_novel_dir / "chapters"
-        chapters_dir.mkdir(exist_ok=True)
-        # 🛡️ 原子写入
-        chapter_file = chapters_dir / f"chapter_{self.current_chapter:04d}.txt"
-        self._atomic_write(chapter_file, content)
+        # 落盘规则（文件名、目录、原子写、空内容拒绝）在 `application.SaveChapter`
+        # —— 那里可以被端到端测试覆盖，面板只剩"取内容 + 调用例 + 弹窗"。
+        result = SaveChapter().execute(self.current_novel_dir, self.current_chapter, content)
+        if not result.ok:
+            dialogs.showwarning("提示", result.reason)
+            return
 
         self._announce_chapter_saved(self.current_chapter, content)
         self._log(f"第{self.current_chapter}章已保存")
@@ -116,11 +118,9 @@ class ChapterUIMixin:
         content = self.content_text.get("1.0", tk.END).strip()
         if not content:
             return
-        chapters_dir = self.current_novel_dir / "chapters"
-        chapters_dir.mkdir(exist_ok=True)
-        # 走 mixin 的 `_atomic_write`（它委托 `app.storage.atomic_write_text`），
-        # 与本文件 `:68` 的保存路径保持一致 —— 不留第二种写法。
-        self._atomic_write(chapters_dir / f"chapter_{self.current_chapter:04d}.txt", content)
+        # 与 `_save_chapter` 共用**同一条落盘路径**（`application.SaveChapter`）——
+        # 自动保存与手动保存写法不同，是历史上"两个写入方"事故的根源。
+        SaveChapter().execute(self.current_novel_dir, self.current_chapter, content)
         self._announce_chapter_saved(self.current_chapter, content)
         self._log(f"第{self.current_chapter}章已自动保存")
 

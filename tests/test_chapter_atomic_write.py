@@ -62,6 +62,68 @@ def _chapter_write_sites() -> list[tuple[str, int, str]]:
     return hits
 
 
+def _calls_live_in(path: Path, owner: str, callee: str) -> bool:
+    """`owner` 这个函数/方法体内，是否存在对 `callee` 的调用，且不在恒假分支下。
+
+    为什么要排除恒假分支：`if False: x = Func()` 里字符串还在文件里，
+    但永不执行 —— 纯字符串匹配的守卫会被这种写法骗过（实测踩过）。
+    """
+    import ast
+
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    parents: dict[int, ast.AST] = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parents[id(child)] = node
+
+    def _in_dead_branch(node: ast.AST) -> bool:
+        cur = parents.get(id(node))
+        while cur is not None:
+            if isinstance(cur, ast.If | ast.While):
+                test = cur.test
+                if isinstance(test, ast.Constant) and not test.value:
+                    return True
+                if isinstance(test, ast.Name) and test.id in {"False", "__debug__"}:
+                    # `if __debug__:` 在 -O 下为假；保守起见也算可疑
+                    continue
+            cur = parents.get(id(cur))
+        return False
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name != owner:
+            continue
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.Call):
+                continue
+            fn = sub.func
+            name = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", None)
+            if name == callee and not _in_dead_branch(sub):
+                return True
+    return False
+
+
+def _writes_directly(path: Path) -> bool:
+    """面板里是否还有直接的原子写调用。
+
+    为什么不再检查"有没有拼 `chapter_xxxx.txt`"：**读**章节也必须拼这个文件名
+    （`_load_chapter_by_number` 要读、要 glob），那是合法用法。
+    真正该禁的是**写**：写入必须经 `application.SaveChapter`，否则"两个写入方"
+    的老问题会重现（同一章出现两份不同内容）。
+    """
+    import ast
+
+    write_funcs = {"atomic_write_text", "atomic_write_json", "_atomic_write"}
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
+        name = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", None)
+        if name in write_funcs:
+            return True
+    return False
+
+
 class TestChapterWritesAreAtomic:
     def test_no_bare_open_for_writing_chapters(self):
         """所有章节落盘必须走原子写。
@@ -74,9 +136,34 @@ class TestChapterWritesAreAtomic:
         assert not hits, "发现非原子的章节写盘：\n" + "\n".join(f"  {rel}:{ln}  {src}" for rel, ln, src in hits)
 
     def test_chapter_files_are_actually_written_somewhere(self):
-        """反向断言：不能靠"把写盘代码删光"来让上面那条通过。"""
-        code = _scan.code_only("app/generation_ui.py") + _scan.code_only("app/chapter_ui.py")
-        assert code.count("_atomic_write(") >= 2, "章节写盘点不见了（不是原子化，而是被删了）"
+        """反向断言：不能靠"把写盘代码删光"来让上面那条通过。
+
+        2026-11-25 分层迁移后，章节落盘统一到 `application.SaveChapter`
+        （`chapter_ui` 的手动保存与自动保存共用它）。所以这条要守住两处：
+
+        1. 用例里必须真的调 `atomic_write_text` —— 否则就是写盘点被删了；
+        2. 面板必须真的调 `SaveChapter` —— 否则面板绕过用例自己写，
+           又回到「两个写入方」的老问题（同一章出现两份内容）。
+
+        只查面板里的 `_atomic_write(` 计数不够：实现一搬走就误报，
+        而偷偷留一条裸写又发现不了。
+        """
+        use_case = _scan.code_only("app/application/save_chapter.py")
+        assert "atomic_write_text" in use_case, "章节落盘不再是原子写（或写盘点被删了）"
+
+        panel_path = REPO_ROOT / "app" / "chapter_ui.py"
+        # 两个保存入口**各自**都要走用例：只查"至少一处"会漏掉
+        # "改了一个忘了另一个"这种真实回归（手动保存静默失效）。
+        for func_name in ("_save_chapter", "_save_chapter_silent"):
+            assert _calls_live_in(panel_path, func_name, "SaveChapter"), (
+                f"{func_name} 没有真正执行 SaveChapter（被删/被注释/在 if False 下？）"
+            )
+        assert not _writes_directly(panel_path), "面板又在自己写盘了 —— 章节落盘只能走 SaveChapter"
+
+        # 生成侧仍直接写盘（有自己的产物）。注意它用的是模块级 atomic_write_text，
+        # 不是 PersistenceMixin 的 _atomic_write（见该文件顶部说明）
+        gen = _scan.code_only("app/generation_ui.py")
+        assert "atomic_write_text(" in gen, "生成侧的写盘点不见了"
 
     def test_atomic_write_delegates_to_shared_helper(self):
         """`_atomic_write` 必须委托统一实现，不能自己再写一份。

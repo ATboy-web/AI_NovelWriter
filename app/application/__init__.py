@@ -15,5 +15,12 @@ from __future__ import annotations
 
 from .generation_tree import BuildGenerationTree
 from .list_branches import BranchRow, ListBranches
+from .save_chapter import SaveChapter, SaveChapterResult
 
-__all__ = ["BranchRow", "BuildGenerationTree", "ListBranches"]
+__all__ = [
+    "BranchRow",
+    "BuildGenerationTree",
+    "ListBranches",
+    "SaveChapter",
+    "SaveChapterResult",
+]

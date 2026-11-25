@@ -37,6 +37,10 @@ from typing import Any, Callable, Iterable, Mapping
 
 from loguru import logger
 
+# 分层样板（2026-11-25）：discover_branches 委托给这三层。
+# 见 `app/domain/branch.py` 顶部说明为什么值得拆。
+from app.adapters import FileBranchMetaReader
+from app.application import ListBranches
 from app.storage import atomic_write_text, read_json_with_backup
 
 #: 从文件名/字符串里提取全部数字段（`chapter_0001` → ["0001"]）
@@ -255,26 +259,45 @@ def discover_branches(parent_dir: Any) -> list[dict]:
 
     ⚠️ 背景：这些目录原本是**只写不读**的（`timeline_ui` 建出来就再没人碰）。
     本函数与 `generation_tree(include_branches=True)` 一起把它们接进代际树。
+
+    ## 分层说明（2026-11-25，架构样板）
+
+    本函数现在只是**兼容转发**，实现拆到三层：
+
+    - `adapters.FileBranchMetaReader` —— 遍历 `timelines/branch_*` 并读 meta
+    - `application.ListBranches` —— 用例编排
+    - `domain.describe_branch` —— 「能不能打开」的判定规则（纯函数）
+
+    **返回值与字段逐字未变**：`dir` / `branch_id` / `title` / `origin_chapter` /
+    `status` / `chapter_count` / `openable` / `reason` / `kind` / `generation` /
+    `parent_novel` 全部保持原样，排序（按目录名升序）也一致。
+
+    ## 一处刻意的行为改进
+
+    旧实现在 `origin_chapter` / `chapter_count` 上直接 `int(...)`：
+    meta 里若是 `"第5章"` 这类非数字串，会抛 `ValueError` 让**整个列表**失败。
+    现在由 `domain._as_int` 容错为 0 —— 异常数据只影响那一条，
+    正常数据下取值完全相同。
     """
     base = branches_dir(parent_dir)
     if base is None or not base.is_dir():
         return []
 
+    use_case = ListBranches(reader=FileBranchMetaReader())
     out: list[dict] = []
-    for path in sorted(p for p in base.iterdir() if p.is_dir() and p.name.startswith(BRANCH_PREFIX)):
-        meta = read_meta(path)
-        record = LineageRecord.from_meta(meta)
-        openable = bool(meta)
+    for row in use_case.execute(parent_dir):
+        info = row.info
+        record = LineageRecord.from_meta(row.meta)
         out.append(
             {
-                "dir": str(path),
-                "branch_id": path.name[len(BRANCH_PREFIX) :],
-                "title": str(meta.get("title") or meta.get("name") or path.name),
-                "origin_chapter": int(meta.get("origin_chapter", 0) or 0),
-                "status": str(meta.get("status") or ""),
-                "chapter_count": int(meta.get("chapter_count", 0) or 0),
-                "openable": openable,
-                "reason": "" if openable else "缺少可解析的 meta.json",
+                "dir": str(base / row.dir_name),
+                "branch_id": info.branch_id,
+                "title": info.title,
+                "origin_chapter": info.origin_chapter,
+                "status": info.status,
+                "chapter_count": info.chapter_count,
+                "openable": info.openable,
+                "reason": info.reason,
                 "kind": KIND_BRANCH,
                 "generation": record.generation if record else 1,
                 "parent_novel": str(parent_dir),

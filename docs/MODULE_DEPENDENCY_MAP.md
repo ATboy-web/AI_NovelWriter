@@ -8,8 +8,8 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 106 |
-| 依赖边数 | 347 |
+| 内部模块数 | 113 |
+| 依赖边数 | 352 |
 | 其中函数内延迟导入 | 72 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
@@ -55,7 +55,7 @@
 | 模块 | 被引用次数 |
 |---|---|
 | `app` | 36 |
-| `storage` | 31 |
+| `storage` | 32 |
 | `dialogs` | 30 |
 | `async_runner` | 27 |
 | `ui_style` | 20 |
@@ -82,6 +82,9 @@
 > ❗ 本仓最高频失效模式「注册即遗忘」的第一道筛查。
 > 但要人工确认：**面板、入口脚本、按字符串加载的模块会正常出现在这里**。
 
+- `adapters.file_lineage`
+- `application.list_branches`
+- `domain.branch`
 - `events.bus`
 - `fullscreen_writer`
 - `live_data`
@@ -96,9 +99,13 @@
 | 模块 | 依赖（🔴=模块级 / ⚪=延迟） |
 |---|---|
 | `app` | — |
+| `adapters` | — |
+| `adapters.file_lineage` | 🔴`storage` |
 | `agent_orchestrator` | 🔴`ai_client`, 🔴`token_estimator` |
 | `ai_client` | 🔴`config`, ⚪`diagnostic_logger`, ⚪`performance_monitor`, 🔴`providers`, 🔴`token_estimator`, 🔴`usage_tracker` |
 | `ai_settings_ui` | 🔴`app`, ⚪`ai_client`, ⚪`async_runner`, 🔴`config`, 🔴`dialogs`, 🔴`providers` |
+| `application` | — |
+| `application.list_branches` | 🔴`domain`, 🔴`ports` |
 | `async_runner` | ⚪`app`, ⚪`dialogs` |
 | `biography` | 🔴`storage` |
 | `bulk_rewrite` | ⚪`app`, ⚪`ai_client`, 🔴`async_runner`, 🔴`parsing`, 🔴`rework`, 🔴`storage`, 🔴`text_stats`, ⚪`writing_presets` |
@@ -114,6 +121,8 @@
 | `design_tokens` | 🔴`ui_style` |
 | `diagnostic_logger` | — |
 | `dialogs` | 🔴`ui_style` |
+| `domain` | — |
+| `domain.branch` | — |
 | `editor_ui` | 🔴`app`, 🔴`dialogs` |
 | `events` | — |
 | `events.bus` | 🔴`async_runner` |
@@ -124,7 +133,7 @@
 | `genres_data` | — |
 | `image_generator` | 🔴`config` |
 | `lifecycle_ui` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`events`, 🔴`genres`, 🔴`storage`, ⚪`theme_switch`, ⚪`theme_system` |
-| `lineage` | 🔴`storage` |
+| `lineage` | 🔴`adapters`, 🔴`application`, 🔴`storage` |
 | `live_data` | — |
 | `mcp_system` | — |
 | `memory_manager` | 🔴`events`, 🔴`storage` |
@@ -166,6 +175,7 @@
 | `performance_monitor` | — |
 | `persistence_ui` | 🔴`novel_store`, 🔴`storage` |
 | `plugin_system` | — |
+| `ports` | — |
 | `providers` | — |
 | `providers.anthropic` | 🔴`providers.base` |
 | `providers.balance` | — |

@@ -24,14 +24,13 @@ import os
 import sys
 import threading
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from cryptography.fernet import Fernet
 
 from .config_defaults import AI_KEYS_FIELD, DEFAULT_CONFIG, DEFAULT_PROFILE_NAME, SENSITIVE_CONFIG_FIELDS
-from .storage import atomic_write_json, read_json_object
+from .storage import archive_corrupt_file, atomic_write_json, read_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -300,23 +299,16 @@ class SecureConfig:
         return config
 
     def _archive_corrupt_config(self) -> Optional[Path]:
-        """把无法解析的配置文件留档，供人工恢复；返回留档路径。"""
-        try:
-            if not self.config_file.exists():
-                return None
-            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            base = f"{self.config_file.stem}.corrupt-{stamp}"
-            dst = self.config_file.with_name(f"{base}.json")
-            seq = 1
-            while dst.exists():
-                dst = self.config_file.with_name(f"{base}_{seq}.json")
-                seq += 1
-            dst.write_bytes(self.config_file.read_bytes())
-            logger.warning(f"已留档损坏的配置文件: {dst.name}")
-            return dst
-        except OSError as e:
-            logger.error(f"留档损坏配置文件失败: {e}")
-            return None
+        """把无法解析的配置文件留档，供人工恢复；返回留档路径。
+
+        实现统一在 `storage.archive_corrupt_file`（复制而非改名：后续步骤还要
+        读原文件保留无法解密的密文）。与 `config._load` 的容错共用同一实现，
+        留档命名一致，用户只需在一个地方找。
+        """
+        archived = archive_corrupt_file(self.config_file)
+        if archived:
+            logger.warning(f"已留档损坏的配置文件: {archived.name}")
+        return archived
 
     def _default_config(self) -> dict:
         """默认配置。

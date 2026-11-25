@@ -55,7 +55,7 @@ from .config_defaults import (  # noqa: F401 - 对外接口的一部分，不是
     DEFAULT_PROFILE_NAME,
     SENSITIVE_CONFIG_FIELDS,
 )
-from .storage import atomic_write_json, read_json_object
+from .storage import archive_corrupt_file, atomic_write_json, read_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -233,10 +233,31 @@ class AppConfig:
     # ------------------------------------------------------------ 加载 / 迁移
 
     def _load(self) -> dict:
+        """从磁盘读配置；**任何读取失败都回落默认值**，绝不抛给调用方。
+
+        ⚠️ 这里曾直接 `json.load()`：配置文件被写坏（断电、并发写、手工编辑出错）后
+        `AppConfig()` 构造即抛 `JSONDecodeError`，而它在 Tk 建窗之前执行 ——
+        用户看到的是「程序闪退、没有任何提示」。现已改为：留档坏文件 → 用默认值继续启动。
+
+        注意与 `secure_config` 的分工：那边负责「密文字段解不开怎么办」（留档 + 保原值），
+        这里负责「文件根本读不出来怎么办」（留档 + 回落默认）。两处都调
+        `storage.archive_corrupt_file`，留档命名一致。
+        """
         file_existed = self.config_file.exists()
+        config: dict
         if file_existed:
-            with open(self.config_file, "r", encoding="utf-8") as f:
-                config = json.load(f)
+            try:
+                with open(self.config_file, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if not isinstance(loaded, dict):
+                    raise ValueError(f"配置根节点应为对象，实际是 {type(loaded).__name__}")
+                config = loaded
+            except (OSError, ValueError) as exc:
+                logger.error(f"配置文件不可读（{exc}），已改用默认配置；原文件留档备查")
+                archived = archive_corrupt_file(self.config_file)
+                if archived:
+                    logger.warning(f"损坏配置已留档: {archived.name}")
+                config = DEFAULT_CONFIG.copy()
         else:
             config = DEFAULT_CONFIG.copy()
 

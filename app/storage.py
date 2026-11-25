@@ -28,6 +28,7 @@ import re
 import shutil
 import threading
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Tuple
 
@@ -38,6 +39,7 @@ __all__ = [
     "atomic_write_json",
     "backup_file",
     "read_json",
+    "archive_corrupt_file",
     "read_json_object",
     "read_json_with_backup",
     "safe_filename",
@@ -225,6 +227,32 @@ def read_json_object(path) -> Optional[dict]:
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def archive_corrupt_file(path) -> Optional[Path]:
+    """把无法解析的文件**复制**留档为 `<stem>.corrupt-<时间戳>.json`，返回留档路径。
+
+    为什么是复制而不是改名：调用方通常还要继续处理原路径（例如
+    `secure_config` 会把无法解密的密文原样保留），改名会让它的后续步骤落空。
+
+    同一秒内多次留档会自动加序号（`_1`、`_2`…），不覆盖既有留档。
+    任何失败都返回 None —— 留档是尽力而为，**不能反过来阻断启动**。
+    """
+    try:
+        src = Path(path)
+        if not src.exists():
+            return None
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = f"{src.stem}.corrupt-{stamp}"
+        dst = src.with_name(f"{base}.json")
+        seq = 1
+        while dst.exists():
+            dst = src.with_name(f"{base}_{seq}.json")
+            seq += 1
+        dst.write_bytes(src.read_bytes())
+        return dst
+    except OSError:
+        return None
 
 
 def read_json_with_backup(path, default: Any = None) -> Tuple[Any, str]:

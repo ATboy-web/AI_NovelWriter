@@ -159,19 +159,29 @@ class TestAppConfig:
 class TestAppConfigEdgeCases:
     """边界条件测试"""
 
-    def test_invalid_json_file(self, tmp_path, monkeypatch):
-        """测试无效的JSON文件"""
+    def test_invalid_json_file_falls_back_to_defaults(self, tmp_path, monkeypatch):
+        """配置损坏时必须**回落默认值**，而不是让应用启动失败。
+
+        ⚠️ 旧断言是 `pytest.raises(json.JSONDecodeError)` —— 那等于把
+        「配置一坏就闪退」当成规格固化下来。而 `AppConfig()` 在 Tk 建窗之前构造，
+        抛异常意味着用户只看到无任何提示的闪退、且拿不到任何线索。
+
+        现行为（2026-11-25 重启恢复测试发现并修复）：留档坏文件 →
+        用 `DEFAULT_CONFIG` 继续启动 → 用户至少能进界面、能从留档里找回原配置。
+        """
         config_dir = tmp_path / ".ai_novel_writer"
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
 
-        # 创建无效的JSON文件
         config_dir.mkdir(parents=True, exist_ok=True)
         config_file = config_dir / "config.json"
         config_file.write_text("这不是有效的JSON{", encoding="utf-8")
 
-        # 应该抛出异常
-        with pytest.raises(json.JSONDecodeError):
-            AppConfig()
+        config = AppConfig()  # 不抛
+        assert config.get("api_provider") == DEFAULT_CONFIG["api_provider"]
+        # 坏文件被留档，内容原样保留供人工恢复
+        archives = list(config_dir.glob("config.corrupt-*.json"))
+        assert archives, "损坏的配置没有被留档，用户无从恢复"
+        assert "这不是有效的JSON" in archives[0].read_text(encoding="utf-8")
 
     def test_read_only_config_file(self, tmp_path, monkeypatch):
         """测试只读配置文件"""

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-__all__ = ["BranchMetaReader", "LineageMetaReader", "PathProbe"]
+__all__ = ["BranchMetaReader", "ChildWriter", "LineageMetaReader", "PathProbe"]
 
 
 @runtime_checkable
@@ -66,4 +66,26 @@ class LineageMetaReader(Protocol):
         `"ok"`（读到）/ `"missing"`（文件不存在）/ `"corrupt"`（内容损坏）。
         meta 不是对象时按空字典处理；**任何情况下都不抛异常**。
         """
+        ...
+
+
+@runtime_checkable
+class ChildWriter(Protocol):
+    """把父代数据写进子代。**每个方法内部都必须过护栏**（`guard_child_path`）。
+
+    为什么把"复制"和"写文本"合成一个端口：两者都是"往子代落盘"，
+    分开会让调用方有机会只对其中一种过护栏。实现侧统一用
+    `domain.resolve_child_target` 解析目标，越界即抛 `ValueError`。
+    """
+
+    def copy(self, parent_dir: str, child_dir: str, relative: str) -> bool:
+        """把 `<parent_dir>/<relative>` 复制到 `<child_dir>/<relative>`。
+
+        - 源不存在 ⇒ 返回 `False`（缺某类历史数据是正常的，不是错误）
+        - 目标越界 ⇒ 抛 `ValueError`（护栏），**调用方不得重试绕过**
+        """
+        ...
+
+    def write_text(self, child_dir: str, relative: str, content: str) -> bool:
+        """把文本写到 `<child_dir>/<relative>`；越界抛 `ValueError`。"""
         ...

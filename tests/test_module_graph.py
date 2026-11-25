@@ -301,3 +301,44 @@ class TestCheckDocMode:
         before = target.read_text(encoding="utf-8")
         self._run(capsys)
         assert target.read_text(encoding="utf-8") == before
+
+
+class TestCheckDocCli:
+    """真跑一次 CLI（子进程）。
+
+    为什么单元测试不够：`TestCheckDocMode` 直接调 `main(["--check-doc"])`，
+    绕过了 argparse 解析与 `__main__` 入口。如果入口写错（例如忘了
+    `raise SystemExit`、或把 `--check-doc` 注册成了 `--check_doc`），
+    单元测试仍然全绿，而 `scripts/preflight.py` 与 git hook 会**静默失效**
+    —— 它们都靠这个退出码判断。
+    """
+
+    def _run(self, *args: str):
+        import subprocess
+        import sys
+
+        repo = Path(__file__).resolve().parent.parent
+        return subprocess.run(
+            [sys.executable, str(repo / "scripts" / "module_graph.py"), *args],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+    def test_cli_says_synced(self):
+        proc = self._run("--check-doc")
+        assert proc.returncode == 0, f"CLI 判定文档过期：{(proc.stdout or '') + (proc.stderr or '')[-800:]}"
+        assert "一致" in (proc.stdout or "")
+
+    def test_cli_has_check_doc_flag(self):
+        """`--help` 里必须列出 `--check-doc` —— 防止被改名后 hook 静默失效。"""
+        proc = self._run("--help")
+        assert "--check-doc" in (proc.stdout or "")
+
+    def test_cli_check_mode_still_reports_cycles(self):
+        """原有的 `--check`（hard 环）语义不能被新参数破坏。"""
+        proc = self._run("--check")
+        assert proc.returncode == 0, (proc.stdout or "")[-800:]
+        assert "循环依赖环数" in (proc.stdout or "")

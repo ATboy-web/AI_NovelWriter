@@ -45,8 +45,10 @@ __all__ = [
     "unresolved_plot_keywords",
     "describe_plan_items",
     "make_character_transform",
+    "build_inheritance",
     "dedupe_preserve_order",
     "describe_generation_row",
+    "render_plot_report",
     "is_within",
 ]
 
@@ -484,6 +486,86 @@ def describe_generation_row(
         "missing": (not exists) or status == "corrupt",
         "kind": record.kind if record else KIND_NOVEL,
         "branches": list(branches) if branches else [],
+    }
+
+
+class _ChildWriter(Protocol):
+    """与 `app.ports.ChildWriter` 同契约（内联定义以保持领域层零 app 依赖）。"""
+
+    def copy(self, parent_dir: str, child_dir: str, relative: str) -> bool: ...
+
+    def write_text(self, child_dir: str, relative: str, content: str) -> bool: ...
+
+
+def render_plot_report(items: Iterable[str]) -> str:
+    """把「父代未回收伏笔」渲染成 Markdown 待办 —— 纯函数。"""
+    lines = list(items)
+    if not lines:
+        return ""
+    out = ["# 前代未回收伏笔（自父代全局摘要抽取，供续集处理）", ""]
+    out.extend(f"- [ ] {item}" for item in lines)
+    return "\n".join(out) + "\n"
+
+
+def build_inheritance(
+    plan: InheritancePlan,
+    writer: _ChildWriter,
+    *,
+    parent_dir: str,
+    child_dir: str,
+    plots_content: str = "",
+    plots_filename: str = "inherited_plots.md",
+) -> dict:
+    """按继承计划把父代数据搬进子代 —— 编排**不碰磁盘**，落盘由 `writer` 完成。
+
+    与旧 `lineage.inherit_into_child` 的分工：
+
+    | 旧实现（一个函数） | 现在 |
+    |---|---|
+    | 算计划 | `build_inheritance_plan`（上一轮已拆） |
+    | 遍历维度 + 记录成败 | **本函数**（纯编排） |
+    | 复制文件 / 写文本 | `ports.ChildWriter` → `FileChildWriter` |
+    | 读父代摘要 + 渲染伏笔 | 读留在兼容层；渲染是 `render_plot_report` |
+
+    关键行为（与原实现逐条对齐）：
+    - 某维度在计划里标了 `missing` ⇒ 直接记 missing，**不去尝试复制**
+    - 复制抛异常（护栏拒绝 / 磁盘错误）⇒ 记 missing 并继续，**绝不绕过护栏重试**
+    - `copied` / `missing` 去重保序（`memory` 与 `plots` 都含 `memory/global_summary.txt`）
+
+    Returns:
+        `{"copied": [...], "missing": [...], "plots_file": str | None}`
+    """
+    copied: list[str] = []
+    missing: list[str] = []
+
+    for dim in INHERIT_DIMENSIONS:
+        entry = plan.items.get(dim) or {}
+        if entry.get("skipped"):
+            continue
+        for rel in DIMENSION_SOURCES[dim]:
+            if rel not in (entry.get("copy") or []):
+                missing.append(rel)
+                continue
+            try:
+                ok = writer.copy(parent_dir, child_dir, rel)
+            except (OSError, ValueError):
+                # 护栏拒绝或磁盘错误：如实记录，绝不"绕过护栏再试一次"
+                missing.append(rel)
+                continue
+            (copied if ok else missing).append(rel)
+
+    plots_file: str | None = None
+    if plan.inherited.get("plots") and plots_content:
+        try:
+            if writer.write_text(child_dir, plots_filename, plots_content):
+                plots_file = plots_filename
+        except (OSError, ValueError):
+            plots_file = None
+
+    return {
+        "copied": dedupe_preserve_order(copied),
+        "missing": dedupe_preserve_order(missing),
+        "plots_file": plots_file,
     }
 
 

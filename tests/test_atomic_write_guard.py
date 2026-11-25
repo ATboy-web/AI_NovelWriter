@@ -96,6 +96,11 @@ def scan() -> list[tuple[str, int, str]]:
             if "atomic_write" in line:
                 continue
             if ".write_text(" in line or re.search(r"open\([^)]*['\"]w", line):
+                # `writer.write_text(...)` 是**端口委托**：真正写盘发生在适配器里
+                # （`FileChildWriter.write_text` 内部走 atomic_write_text）。
+                # 这里只放行接收者名字以 writer 结尾的调用，`path.write_text` 仍然算裸写。
+                if re.search(r"\w*writer\.write_text\(", line):
+                    continue
                 rows.append((path.relative_to(ROOT).as_posix(), number, line.strip()))
     return rows
 

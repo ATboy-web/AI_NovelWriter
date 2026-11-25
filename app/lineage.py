@@ -37,7 +37,13 @@ from loguru import logger
 
 # 分层样板（2026-11-25）：discover_branches 委托给这三层。
 # 见 `app/domain/branch.py` 顶部说明为什么值得拆。
-from app.adapters import FileBranchMetaReader, FileLineageMetaReader, FilesystemProbe, NeverExistsProbe
+from app.adapters import (
+    FileBranchMetaReader,
+    FileChildWriter,
+    FileLineageMetaReader,
+    FilesystemProbe,
+    NeverExistsProbe,
+)
 from app.application import BuildGenerationTree, ListBranches
 
 # 纯领域部分已搬到 `app/domain/lineage.py`（2026-11-25 分层迁移第二步）。
@@ -58,6 +64,7 @@ from app.domain.lineage import (  # noqa: F401 - 对外接口的一部分
     _as_int,
     apply_age_progression,
     apply_death_status,
+    build_inheritance,  # 继承编排（纯逻辑，落盘走 ChildWriter）
     build_inheritance_plan,  # 继承计划：纯规则在 domain
     dedupe_preserve_order,
     describe_plan_items,
@@ -68,7 +75,7 @@ from app.domain.lineage import (  # noqa: F401 - 对外接口的一部分
     resolve_child_target,
     unresolved_plot_keywords,
 )
-from app.storage import atomic_write_text, read_json_with_backup
+from app.storage import read_json_with_backup
 
 #: 从文件名/字符串里提取全部数字段（`chapter_0001` → ["0001"]）
 _DIGITS_RE = re.compile(r"\d+")
@@ -389,10 +396,16 @@ def inherit_into_child(
     inherited: Mapping[str, bool] | None = None,
     plots_filename: str = "inherited_plots.md",
 ) -> dict:
-    """按继承计划把父代数据搬进子代。**每一次写入都过 `guard_child_path`**。
+    """按继承计划把父代数据搬进子代。**每一次写入都过护栏**。
 
     角色年龄/状态**不在这里改**：那必须走 `MemoryManager.mutate_characters`
     （见 `make_character_transform`）。本函数只做文件复制与伏笔清单落盘。
+
+    ## 分层说明（2026-11-25）
+
+    编排在 `domain.build_inheritance`（遍历维度、记录成败、去重，纯逻辑）；
+    落盘在 `adapters.FileChildWriter`（每次写入都经 `resolve_child_target` 过护栏）；
+    伏笔渲染是 `domain.render_plot_report`。本函数只负责：算计划、读父代摘要、装配。
 
     Returns:
         `{copied: [...], missing: [...], plots_file: str|None, plan: InheritancePlan}`
@@ -401,44 +414,15 @@ def inherit_into_child(
         return {"copied": [], "missing": [], "plots_file": None, "plan": None}
 
     plan = plan_inheritance(parent_dir, inherited)
-    parent_p = Path(parent_dir)
-    copied: list[str] = []
-    missing: list[str] = []
+    plots_content = inherited_plot_report(parent_dir) if plan.inherited.get("plots") else ""
 
-    for dim in INHERIT_DIMENSIONS:
-        entry = plan.items.get(dim) or {}
-        if entry.get("skipped"):
-            continue
-        for rel in DIMENSION_SOURCES[dim]:
-            if rel not in (entry.get("copy") or []):
-                missing.append(rel)
-                continue
-            try:
-                dst = copy_into_child(child_dir, parent_p / rel, rel)
-            except (OSError, ValueError) as e:
-                # 护栏拒绝或磁盘错误：如实记录，绝不"绕过护栏再试一次"
-                logger.error(f"[lineage] 继承 {rel} 失败: {type(e).__name__}: {e}")
-                missing.append(rel)
-                continue
-            if dst is not None:
-                copied.append(rel)
-
-    plots_file: str | None = None
-    if plan.inherited.get("plots"):
-        report = inherited_plot_report(parent_dir)
-        if report:
-            target = Path(child_dir) / plots_filename
-            try:
-                guard_child_path(child_dir, target)
-                atomic_write_text(target, report)
-                plots_file = plots_filename
-            except (OSError, ValueError) as e:
-                logger.error(f"[lineage] 写入伏笔清单失败: {type(e).__name__}: {e}")
-
-    # 去重但保序（`memory` 与 `plots` 都会带上 `memory/global_summary.txt`）
-    return {
-        "copied": dedupe_preserve_order(copied),
-        "missing": dedupe_preserve_order(missing),
-        "plots_file": plots_file,
-        "plan": plan,
-    }
+    result = build_inheritance(
+        plan,
+        FileChildWriter(),
+        parent_dir=str(parent_dir),
+        child_dir=str(child_dir),
+        plots_content=plots_content,
+        plots_filename=plots_filename,
+    )
+    result["plan"] = plan  # 旧返回值里有它，面板在用
+    return result

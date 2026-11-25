@@ -8,8 +8,8 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 116 |
-| 依赖边数 | 355 |
+| 内部模块数 | 117 |
+| 依赖边数 | 357 |
 | 其中函数内延迟导入 | 72 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
@@ -55,7 +55,7 @@
 | 模块 | 被引用次数 |
 |---|---|
 | `app` | 36 |
-| `storage` | 32 |
+| `storage` | 33 |
 | `dialogs` | 30 |
 | `async_runner` | 27 |
 | `ui_style` | 20 |
@@ -82,6 +82,7 @@
 > ❗ 本仓最高频失效模式「注册即遗忘」的第一道筛查。
 > 但要人工确认：**面板、入口脚本、按字符串加载的模块会正常出现在这里**。
 
+- `adapters.child_writer`
 - `adapters.file_lineage`
 - `adapters.path_probe`
 - `application.generation_tree`
@@ -102,6 +103,7 @@
 |---|---|
 | `app` | — |
 | `adapters` | — |
+| `adapters.child_writer` | 🔴`domain.lineage`, 🔴`storage` |
 | `adapters.file_lineage` | 🔴`storage` |
 | `adapters.path_probe` | — |
 | `agent_orchestrator` | 🔴`ai_client`, 🔴`token_estimator` |

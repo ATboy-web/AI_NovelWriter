@@ -58,7 +58,25 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 
-from .domain.rework import judge_low_score, judge_static, title_is_placeholder
+from .domain.rework import (
+    MAX_ATTEMPTS as DOMAIN_MAX_ATTEMPTS,
+)
+from .domain.rework import (
+    REWORK_STATUSES as DOMAIN_REWORK_STATUSES,
+)
+from .domain.rework import (
+    STATUS_LABELS as DOMAIN_STATUS_LABELS,
+)
+from .domain.rework import (
+    TRANSITIONS as DOMAIN_TRANSITIONS,
+)
+from .domain.rework import (
+    check_enqueue,
+    judge_low_score,
+    judge_static,
+    title_is_placeholder,
+    validate_transition,
+)
 from .storage import atomic_write_json, atomic_write_text
 from .text_stats import count_hanzi
 
@@ -84,35 +102,12 @@ QUEUE_FILE = "queue.json"
 ARCHIVE_DIR = "archive"
 
 #: 同一章最多回炉几次。超过后必须人工强制（`force=True`），防止无限打转。
-MAX_ATTEMPTS = 3
-
-#: 状态 → 中文名。顺序即工作流顺序（面板按它排序）。
-STATUS_LABELS: Dict[str, str] = {
-    "draft": "正常",
-    "pending_rework": "待重写",
-    "reworking": "重写中",
-    "pending_review": "待审核",
-    "approved": "已通过",
-    "published": "已定稿",
-    "discarded": "已废弃",
-}
-
-#: 全部合法状态。
-REWORK_STATUSES: Tuple[str, ...] = tuple(STATUS_LABELS)
-
-#: 状态流转表。**唯一来源** —— 新增状态必须在这里登记允许的来路/去路。
-#:
-#: 刻意不允许 `draft → published`：那等于跳过重写与审核。
-#: 也刻意不允许 `discarded → *`：废弃是终点，要恢复就重新入炉（留痕）。
-TRANSITIONS: Dict[str, Tuple[str, ...]] = {
-    "draft": ("pending_rework",),
-    "pending_rework": ("reworking", "discarded", "draft"),
-    "reworking": ("pending_review", "pending_rework", "discarded"),
-    "pending_review": ("approved", "reworking", "discarded"),
-    "approved": ("published", "draft"),
-    "published": ("draft",),
-    "discarded": (),
-}
+# 状态机常量与流转表已搬到 `domain/rework.py`（2026-11-25）——
+# 那里是**唯一来源**；这里 re-export 供既有调用方继续使用。
+MAX_ATTEMPTS = DOMAIN_MAX_ATTEMPTS
+STATUS_LABELS = DOMAIN_STATUS_LABELS
+REWORK_STATUSES = DOMAIN_REWORK_STATUSES
+TRANSITIONS = DOMAIN_TRANSITIONS
 
 #: 触发原因 → 展示名。`SCANNABLE` 三档由 `scan()` 自动发现，`manual` 只能人工指定。
 REASON_LABELS: Dict[str, str] = {
@@ -439,21 +434,17 @@ class ReworkStore:
     def can_enqueue(self, chapter: int, force: bool = False) -> Tuple[bool, str]:
         """是否允许入炉。返回 `(是否允许, 原因说明)`。"""
         self._ensure_loaded()
-        if self.novel_dir is None:
-            return False, "没有打开的作品"
-        text = _read_chapter(self.novel_dir, chapter)
-        if not text.strip():
-            return False, f"第 {chapter} 章没有正文（空章无从重写）"
-
+        text = _read_chapter(self.novel_dir, chapter) if self.novel_dir is not None else ""
         record = self._records.get(chapter)
-        if record is not None:
-            if record.status in ("reworking", "pending_review"):
-                return False, f"该章正在{record.status_label}，不能重复入炉"
-            if record.status == "published" and not force:
-                return False, "已定稿的章节需先设为正常（或强制）才能回炉"
-            if record.attempts >= MAX_ATTEMPTS and not force:
-                return False, f"已回炉 {record.attempts} 次（上限 {MAX_ATTEMPTS}），需人工确认后强制"
-        return True, ""
+        # 判定规则在 domain（纯函数），这里只负责把"读到的东西"传进去
+        return check_enqueue(
+            chapter,
+            has_novel=self.novel_dir is not None,
+            has_text=bool(text.strip()),
+            status=record.status if record is not None else None,
+            attempts=record.attempts if record is not None else 0,
+            force=force,
+        )
 
     # ------------------------------------------------------------------ 入炉
 
@@ -505,15 +496,9 @@ class ReworkStore:
         record = self._records.get(chapter)
         if record is None:
             raise ReworkError(f"第 {chapter} 章不在回炉队列中")
-        if target not in REWORK_STATUSES:
-            raise ReworkError(f"未知状态：{target}")
-
-        allowed = TRANSITIONS.get(record.status, ())
-        if target not in allowed:
-            raise ReworkError(
-                f"不能从「{record.status_label}」直接变为「{STATUS_LABELS[target]}」；"
-                f"允许的去向：{('、'.join(STATUS_LABELS[s] for s in allowed) if allowed else '无（终点状态）')}"
-            )
+        problem = validate_transition(record.status, target)
+        if problem:
+            raise ReworkError(problem)
 
         record.status = target
         record.updated_at = _now()

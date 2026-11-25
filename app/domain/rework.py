@@ -32,7 +32,14 @@ __all__ = [
     "REASON_LOW_SCORE",
     "REASON_QC_BLOCKER",
     "TITLE_PLACEHOLDER_PATTERNS",
+    "MAX_ATTEMPTS",
+    "REWORK_STATUSES",
+    "STATUS_LABELS",
+    "TRANSITIONS",
+    "check_enqueue",
     "judge_low_score",
+    "status_label",
+    "validate_transition",
     "judge_static",
     "title_is_placeholder",
 ]
@@ -121,3 +128,108 @@ def judge_low_score(
         "reason_text": f"评审 {overall:g} 分，低于阈值 {threshold:g}",
         "evidence": {"overall": overall, "issues": list(issues)[:5]},
     }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 回炉队列的状态机（纯规则）
+# ═══════════════════════════════════════════════════════════════════
+#
+# 这段原本在 `ReworkStore` 里，与"读写队列文件"混在一起。抽出来之后，
+# 「什么状态能去什么状态」「什么情况下不能入炉」可以穷举验证，不必造 store。
+
+#: 同一章最多回炉几次（超过需强制）
+MAX_ATTEMPTS = 3
+
+#: 状态 → 中文名。**顺序即工作流顺序**（面板按它排序）。
+STATUS_LABELS: dict[str, str] = {
+    "draft": "正常",
+    "pending_rework": "待重写",
+    "reworking": "重写中",
+    "pending_review": "待审核",
+    "approved": "已通过",
+    "published": "已定稿",
+    "discarded": "已废弃",
+}
+
+#: 全部合法状态
+REWORK_STATUSES: tuple[str, ...] = tuple(STATUS_LABELS)
+
+#: 状态流转表 —— **唯一来源**。新增状态必须在这里登记允许的去路。
+#:
+#: 两条刻意的禁区：
+#: - 不允许 `draft → published`：那等于跳过重写与审核
+#: - 不允许 `discarded → *`：废弃是终点，要恢复就重新入炉（留痕）
+TRANSITIONS: dict[str, tuple[str, ...]] = {
+    "draft": ("pending_rework",),
+    "pending_rework": ("reworking", "discarded", "draft"),
+    "reworking": ("pending_review", "pending_rework", "discarded"),
+    "pending_review": ("approved", "reworking", "discarded"),
+    "approved": ("published", "draft"),
+    "published": ("draft",),
+    "discarded": (),
+}
+
+#: 处于这些状态时不能重复入炉（正在进行中）
+BUSY_STATUSES: tuple[str, ...] = ("reworking", "pending_review")
+
+
+def status_label(status: str) -> str:
+    """状态的中文名；未知状态原样返回（不让展示层因为新状态崩掉）。"""
+    return STATUS_LABELS.get(status, status)
+
+
+def check_enqueue(
+    chapter: int,
+    *,
+    has_novel: bool = True,
+    has_text: bool = True,
+    status: str | None = None,
+    attempts: int = 0,
+    force: bool = False,
+    max_attempts: int = MAX_ATTEMPTS,
+) -> tuple[bool, str]:
+    """能否入炉。返回 `(是否允许, 原因说明)`；允许时原因为空串。
+
+    纯判定：正文与队列记录由调用方读好后传入。这样"什么情况下不能入炉"
+    可以逐条穷举 —— 而不必先造一部作品、写一章、再建一个 store。
+
+    四条拒绝理由（顺序即报错优先级，先报最能说明问题的）：
+    1. 没有打开的作品
+    2. 空章（无从重写）
+    3. 正在流转中（`reworking` / `pending_review`）—— 防重复入炉
+    4. 已定稿 / 超次数 —— `force` 可越过
+    """
+    if not has_novel:
+        return False, "没有打开的作品"
+    if not has_text:
+        return False, f"第 {chapter} 章没有正文（空章无从重写）"
+
+    if status is None:
+        return True, ""
+    if status in BUSY_STATUSES:
+        return False, f"该章正在{status_label(status)}，不能重复入炉"
+    if status == "published" and not force:
+        return False, "已定稿的章节需先设为正常（或强制）才能回炉"
+    if attempts >= max_attempts and not force:
+        return False, f"已回炉 {attempts} 次（上限 {max_attempts}），需人工确认后强制"
+    return True, ""
+
+
+def validate_transition(current: str, target: str) -> str | None:
+    """校验状态流转；合法返回 `None`，非法返回**可直接展示**的说明。
+
+    用"返回错误说明"而不是抛异常：调用方（`ReworkStore.transition`）要把它
+    包成 `ReworkError`，而领域层不该依赖那个异常类型。
+    """
+    if target not in REWORK_STATUSES:
+        return f"未知状态：{target}"
+
+    allowed = TRANSITIONS.get(current, ())
+    if target in allowed:
+        return None
+
+    if allowed:
+        options = "、".join(STATUS_LABELS[s] for s in allowed)
+    else:
+        options = "无（终点状态）"
+    return f"不能从「{status_label(current)}」直接变为「{STATUS_LABELS[target]}」；允许的去向：{options}"

@@ -149,3 +149,115 @@ class TestDeriveDisplayName:
 
     def test_custom_fallback(self):
         assert derive_display_name("", fallback="未命名") == "未命名"
+
+
+class TestStatusMachine:
+    """回炉队列状态机（原在 ReworkStore 里，与读写混在一起）。"""
+
+    def test_labels_cover_all_statuses(self):
+        from app.domain.rework import REWORK_STATUSES, STATUS_LABELS
+
+        assert set(STATUS_LABELS) == set(REWORK_STATUSES)
+        assert len(REWORK_STATUSES) == len(set(REWORK_STATUSES))
+
+    def test_transition_table_covers_every_status(self):
+        """每个状态都必须在流转表里有一行；漏一行 ⇒ 该状态永远出不去。"""
+        from app.domain.rework import REWORK_STATUSES, TRANSITIONS
+
+        assert set(TRANSITIONS) == set(REWORK_STATUSES)
+
+    def test_transition_targets_are_known_statuses(self):
+        """流转表里的目标不能是拼错的状态名 —— 那会让用户卡在一个不存在的状态。"""
+        from app.domain.rework import REWORK_STATUSES, TRANSITIONS
+
+        for src, targets in TRANSITIONS.items():
+            for dst in targets:
+                assert dst in REWORK_STATUSES, f"{src} → {dst}：目标状态不存在"
+
+    def test_no_self_transition(self):
+        from app.domain.rework import TRANSITIONS
+
+        for src, targets in TRANSITIONS.items():
+            assert src not in targets, f"{src} 允许流转到自身（无意义且会刷 history）"
+
+    def test_discarded_is_terminal(self):
+        from app.domain.rework import TRANSITIONS
+
+        assert TRANSITIONS["discarded"] == (), "废弃应是终点：要恢复就重新入炉（留痕）"
+
+    def test_draft_cannot_jump_to_published(self):
+        """刻意禁止：跳过大纲外的重写与审核。"""
+        from app.domain.rework import validate_transition
+
+        assert validate_transition("draft", "published") is not None
+
+    def test_status_label_known_and_unknown(self):
+        from app.domain.rework import status_label
+
+        assert status_label("reworking") == "重写中"
+        assert status_label("未来新状态") == "未来新状态", "未知状态应原样返回，不能让展示层崩"
+
+    @pytest.mark.parametrize("target", ["pending_rework", "reworking", "approved", "published"])
+    def test_valid_and_invalid_transitions_are_consistent(self, target):
+        """凡在表里的目标都必须通过校验；表外的必须被拒。"""
+        from app.domain.rework import TRANSITIONS, validate_transition
+
+        for src, allowed in TRANSITIONS.items():
+            if target in allowed:
+                assert validate_transition(src, target) is None
+            else:
+                assert validate_transition(src, target) is not None
+
+    def test_unknown_target_rejected(self):
+        from app.domain.rework import validate_transition
+
+        msg = validate_transition("draft", "不存在的状态")
+        assert msg and "未知状态" in msg
+
+
+class TestCheckEnqueue:
+    def test_no_novel(self):
+        from app.domain.rework import check_enqueue
+
+        ok, why = check_enqueue(3, has_novel=False)
+        assert ok is False and "没有打开的作品" in why
+
+    def test_empty_chapter(self):
+        from app.domain.rework import check_enqueue
+
+        ok, why = check_enqueue(3, has_text=False)
+        assert ok is False and "没有正文" in why
+
+    def test_clean_chapter_allowed(self):
+        from app.domain.rework import check_enqueue
+
+        assert check_enqueue(3) == (True, "")
+
+    @pytest.mark.parametrize("status", ["reworking", "pending_review"])
+    def test_busy_statuses_rejected(self, status):
+        from app.domain.rework import check_enqueue
+
+        ok, why = check_enqueue(3, status=status)
+        assert ok is False and "不能重复入炉" in why
+
+    def test_published_requires_force(self):
+        from app.domain.rework import check_enqueue
+
+        assert check_enqueue(3, status="published")[0] is False
+        assert check_enqueue(3, status="published", force=True)[0] is True
+
+    def test_attempts_limit_requires_force(self):
+        from app.domain.rework import MAX_ATTEMPTS, check_enqueue
+
+        assert check_enqueue(3, status="pending_rework", attempts=MAX_ATTEMPTS)[0] is False
+        assert check_enqueue(3, status="pending_rework", attempts=MAX_ATTEMPTS, force=True)[0] is True
+
+    def test_below_limit_allowed(self):
+        from app.domain.rework import MAX_ATTEMPTS, check_enqueue
+
+        assert check_enqueue(3, status="pending_rework", attempts=MAX_ATTEMPTS - 1)[0] is True
+
+    def test_no_record_means_allowed(self):
+        from app.domain.rework import check_enqueue
+
+        assert check_enqueue(3, status=None) == (True, "")

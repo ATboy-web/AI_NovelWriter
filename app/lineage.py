@@ -64,6 +64,7 @@ from app.domain.lineage import (  # noqa: F401 - 对外接口的一部分
     _as_int,
     apply_age_progression,
     apply_death_status,
+    branches_dir,  # 纯路径拼接（不判存在）
     build_inheritance,  # 继承编排（纯逻辑，落盘走 ChildWriter）
     build_inheritance_plan,  # 继承计划：纯规则在 domain
     dedupe_preserve_order,
@@ -119,31 +120,28 @@ __all__ = [
 
 
 def read_lineage(novel_dir: Any) -> LineageRecord | None:
-    """读某本小说的代际记录；无 `lineage` 或文件损坏时返回 `None`。"""
+    """读某本小说的代际记录；无 `lineage` 或文件损坏时返回 `None`。
+
+    实现走 `adapters.FileLineageMetaReader`（与 `generation_tree` 同一个读入口），
+    不再自己拼 `read_json_with_backup` —— 两处各写一遍会让"损坏怎么办"逐渐分叉。
+    """
     if not novel_dir:
         return None
-    meta, status = read_json_with_backup(Path(novel_dir) / "meta.json", default=None)
-    if status == "corrupt":
-        logger.warning(f"[lineage] meta.json 损坏，按无代际信息处理: {novel_dir}")
-        return None
+    meta, _status, _exists = FileLineageMetaReader().read(str(novel_dir))
     return LineageRecord.from_meta(meta)
 
 
 def read_meta(novel_dir: Any) -> dict:
-    """读一个作品/分支目录的 `meta.json`（缺失或损坏返回空字典）。"""
+    """读一个作品/分支目录的 `meta.json`（缺失或损坏返回空字典）。
+
+    同 `read_lineage`：统一走 `FileLineageMetaReader`，保证"损坏=空字典"的判定只有一处。
+    """
     if not novel_dir:
         return {}
-    data, status = read_json_with_backup(Path(novel_dir) / "meta.json", default=None)
-    if status == "corrupt" or not isinstance(data, Mapping):
+    meta, status, _exists = FileLineageMetaReader().read(str(novel_dir))
+    if status == "corrupt":
         return {}
-    return dict(data)
-
-
-def branches_dir(parent_dir: Any) -> Path | None:
-    """分支子项目的所在目录：`<父代>/timelines/`。"""
-    if not parent_dir:
-        return None
-    return Path(parent_dir) / BRANCH_PARENT_REL
+    return dict(meta)
 
 
 def discover_branches(parent_dir: Any) -> list[dict]:
@@ -208,14 +206,23 @@ def build_lineage_record(
     era_gap_years: int = 0,
     inherited: Mapping[str, bool] | None = None,
 ) -> LineageRecord:
-    """按父代目录构造一条代际记录（`generation` 不传则自动 = 父代 + 1）。"""
+    """按父代目录构造一条代际记录（`generation` 不传则自动 = 父代 + 1）。
+
+    ## 分层说明（2026-11-25）
+
+    旧实现把 `meta.json` **读了两次**：一次走 `read_lineage`（取 `lineage` 记录），
+    一次单独 `read_json_with_backup`（只为了取标题）。两次之间若文件被改，
+    标题与代际信息会来自不同版本。现在统一走 `FileLineageMetaReader` 读一次，
+    标题与记录来自同一份 meta —— 顺带省掉一次磁盘读与一次 `.bak` 回退判断。
+    """
     parent_path = Path(parent_dir) if parent_dir else None
-    parent_record = read_lineage(parent_path) if parent_path else None
+    parent_record: LineageRecord | None = None
     parent_title = ""
-    if parent_path:
-        meta, _status = read_json_with_backup(parent_path / "meta.json", default=None)
-        if isinstance(meta, Mapping):
-            parent_title = str(meta.get("title") or meta.get("original_title") or "")
+
+    if parent_path is not None:
+        meta, _status, _exists = FileLineageMetaReader().read(str(parent_path))
+        parent_record = LineageRecord.from_meta(meta)
+        parent_title = str(meta.get("title") or meta.get("original_title") or "")
 
     if generation is None:
         generation = (parent_record.generation + 1) if parent_record else 2
@@ -268,8 +275,14 @@ def branch_lineage_record(parent_dir: Any, branch_id: str, origin_chapter: int =
     同时保留 `child_scope=readonly_parent`：分支也不能改父代的数据。
     """
     parent_path = Path(parent_dir) if parent_dir else None
-    parent_record = read_lineage(parent_path) if parent_path else None
-    parent_meta = read_meta(parent_path) if parent_path else {}
+    parent_record: LineageRecord | None = None
+    parent_meta: dict = {}
+    if parent_path is not None:
+        # 旧实现读了两遍（read_lineage 一次、read_meta 一次），标题与代际信息
+        # 可能来自不同版本的文件；这里只读一次。
+        item, _status, _exists = FileLineageMetaReader().read(str(parent_path))
+        parent_meta = dict(item)
+        parent_record = LineageRecord.from_meta(item)
     return LineageRecord(
         generation=(parent_record.generation if parent_record else 1),
         parent_novel=str(parent_path) if parent_path else "",

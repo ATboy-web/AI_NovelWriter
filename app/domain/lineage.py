@@ -45,6 +45,7 @@ __all__ = [
     "unresolved_plot_keywords",
     "describe_plan_items",
     "make_character_transform",
+    "branches_dir",
     "build_inheritance",
     "dedupe_preserve_order",
     "describe_generation_row",
@@ -567,6 +568,17 @@ def build_inheritance(
         "missing": dedupe_preserve_order(missing),
         "plots_file": plots_file,
     }
+
+
+def branches_dir(parent_dir: Any) -> Path | None:
+    """分支子项目的所在目录：`<父代>/timelines/`。
+
+    纯路径拼接（不判存在），因此留在领域层：调用方要"判存在"应自己用
+    `PathProbe`，而不是让本函数偷偷碰磁盘。
+    """
+    if not parent_dir:
+        return None
+    return Path(parent_dir) / BRANCH_PARENT_REL
 
 
 def guard_child_path(child_dir: Any, target: Any) -> Path:

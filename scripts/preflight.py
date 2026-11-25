@@ -14,6 +14,7 @@
     python scripts/preflight.py           # 检查 + 自动重算依赖图
     python scripts/preflight.py --no-fix  # 只检查，不改文件（CI 用）
     python scripts/preflight.py --tests   # 额外跑一遍快速测试子集
+    python scripts/preflight.py --exe AI_NovelWriter.exe   # 额外跑 EXE 冒烟（30s+）
 
 ## 步骤（任一步失败即非 0 退出）
 
@@ -71,6 +72,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="开发预检（格式 / 依赖图 / 快速测试）")
     parser.add_argument("--no-fix", action="store_true", help="只检查，不自动重算依赖图")
     parser.add_argument("--tests", action="store_true", help="额外跑快速测试子集")
+    parser.add_argument(
+        "--exe",
+        metavar="PATH",
+        default=None,
+        help="额外跑 EXE 启动冒烟（默认关：一次 30s+ 且需要桌面环境）",
+    )
     args = parser.parse_args(argv)
 
     py = sys.executable
@@ -100,6 +107,12 @@ def main(argv: list[str] | None = None) -> int:
         ok &= _step(
             "快速测试",
             *_run([py, "-m", "pytest", *FAST_TESTS, "-q", "-p", "no:cacheprovider"]),
+        )
+
+    if args.exe:
+        ok &= _step(
+            "EXE 启动冒烟",
+            *_run([py, str(SCRIPTS / "smoke_exe.py"), "--exe", str(args.exe)]),
         )
 
     print()

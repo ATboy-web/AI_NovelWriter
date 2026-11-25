@@ -68,6 +68,11 @@ include = ["app*"]
 testpaths = ["tests", "backend/tests"]
 python_files = "test_*.py"
 asyncio_mode = "strict"
+markers = [
+    # 需要真实打包产物的用例（一次 30s+、依赖桌面环境），不进默认全量：
+    #   pytest -m exe
+    "exe: 需要 AI_NovelWriter.exe 的冒烟用例",
+]
 
 [tool.ruff]
 line-length = 120

@@ -164,7 +164,7 @@ ai-novel-writer/
 │   ├── usage_tracker.py      #   ├─ 用量与成本统计
 │   ├── *_ui.py               #   └─ 12 个功能域界面 Mixin
 │   └── ...
-├── backend/                  # FastAPI 后端集群
+├── backend/                  # ⛔ FastAPI 后端集群（已冻结，仅缺陷与安全补丁）
 │   ├── ai-service/           #   AI 模型服务（:8001）
 │   ├── novel-service/        #   小说生成服务（:8002）
 │   └── shared/               #   共享中间件

@@ -72,17 +72,43 @@ python scripts/check_bundle.py "%TEMP%\anw_work_x\novel_app\Analysis-00.toc"
   （目标被占用时可能留下半截文件而不报错）。
 - 分发后**核对源与目标的 sha256**，不能只看"文件存在"。
 
-### EXE 冒烟
+### EXE 冒烟（已自动化）
 
-onefile 应见**双进程**（引导 + 应用），窗口标题非空（`AI小说创作工坊 vX.Y.Z`）。
-启动后查诊断日志的 `SYSTEM/panel_registry` 事件：
+```bash
+python scripts/smoke_exe.py --exe AI_NovelWriter.exe      # 9 条判据 + 2 条观察项
+python scripts/smoke_exe.py --keep-logs                   # 保留隔离的诊断目录
+python scripts/preflight.py --exe AI_NovelWriter.exe      # 与格式/依赖图一起跑
+```
 
-- **应为 20 面板 / 5 分组**
-- **`load_failures` 必须为 `[]`**
+判据（任一不过即失败）：
 
-探针脚本模板 `%TEMP%\smoke_exe.py`（`Popen` + Win32 `EnumWindows` 读标题）。
-⚠️ `Start-Process` 拉起 GUI 被本沙箱约束；`WM_CLOSE` 可能不生效
-⇒ 退出路径（性能报告落盘）难以自动验证，需人工双击确认。
+| # | 判据 | 说明 |
+|---|---|---|
+| 1 | 进程已启动 | |
+| 2 | 窗口标题 | 必须含 `AI小说创作工坊` **且带版本号** |
+| 3 | onefile 双进程 | 引导 + 应用（实测 2 个） |
+| 4-6 | 面板 20 / 5 分组 / `load_failures=[]` | 从 `panel_registry` 事件读 |
+| 7 | 关闭请求已送达 | |
+| 8 | 退出确认框 | 程序有防误关确认框，脚本自动点「是」 |
+| 9 | 进程已退出 | 退出码应为 0 |
+
+观察项（记录但不算失败）：性能报告、`.jsonl` 日志数量。
+
+#### 三个只有真机能发现的坑（脚本已处理，别再踩）
+
+1. **onefile 下窗口不在 `Popen.pid` 上** —— 那是引导进程，Tk 窗口属于解包后的子进程。
+   只查 `proc.pid` 会对**正常产物**报窗口没出现（而面板日志全对）。
+2. **`WM_CLOSE` 不会直接退出** —— `shell_ui._on_close` 会弹
+   `askyesno(确认, 确定要退出吗？)`（防误关，正确设计）。
+   脚本用 `EnumChildWindows` 找子按钮发 `BM_CLICK` 点掉它。
+3. **没有 AI 请求时不会写 `performance-*.json`** ——
+   `_flush_performance_report` 有 `if not total_requests: return`。
+   把它当判据会对每个正常产物报错，因此列为观察项。
+
+#### 判据来源不要写死
+
+面板总数/分组数由脚本**从 `app/panels/registry.py` 现算**（`expected_from_source`）。
+文档里写死的数字会和代码漂移（本项目已经因此错过一次：记忆里 19/5、实际 20/5）。
 
 ### 🔴 判定"那次运行的是哪个构建"
 

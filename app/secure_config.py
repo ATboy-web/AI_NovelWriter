@@ -31,7 +31,7 @@ from typing import Dict, List, Optional
 from cryptography.fernet import Fernet
 
 from .config import AI_KEYS_FIELD, DEFAULT_CONFIG, DEFAULT_PROFILE_NAME, SENSITIVE_CONFIG_FIELDS
-from .storage import atomic_write_json
+from .storage import atomic_write_json, read_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -401,15 +401,11 @@ class SecureConfig:
         return result
 
     def _read_raw(self) -> Optional[dict]:
-        """读磁盘原始内容（不解密）。失败返回 None，绝不抛异常。"""
-        try:
-            if not self.config_file.exists():
-                return None
-            with open(self.config_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data if isinstance(data, dict) else None
-        except (OSError, ValueError):
-            return None
+        """读磁盘原始内容（不解密）。失败返回 None，绝不抛异常。
+
+        实现统一在 （与  共用）。
+        """
+        return read_json_object(self.config_file)
 
     def get(self, key: str, default=None):
         """获取配置值"""

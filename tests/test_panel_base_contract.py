@@ -305,6 +305,63 @@ class TestStatusAndFocus:
 
         assert _LocalPanel(_WithRoot())._host_widget() == "ROOT"
 
+    def test_confirm_and_apply_skips_action_when_declined(self, monkeypatch):
+        """用户取消 ⇒ 绝不执行动作（不可逆操作的第一道保险）。"""
+        from app import dialogs
+
+        monkeypatch.setattr(dialogs, "confirm", lambda *a, **k: False)
+        executed = []
+        panel = _LocalPanel(_Host())
+        ok = panel.confirm_and_apply(prompt="p", title="t", action=lambda: executed.append(1))
+        assert ok is False
+        assert executed == []
+
+    def test_confirm_and_apply_runs_and_reports_success(self, monkeypatch):
+        from app import dialogs
+
+        monkeypatch.setattr(dialogs, "confirm", lambda *a, **k: True)
+        seen = []
+
+        class _P(_LocalPanel):
+            def _set_effect(self, text, kind="info"):
+                seen.append((text, kind))
+
+        class _Result:
+            ok = True
+            message = "已删除"
+
+        assert _P(_Host()).confirm_and_apply(prompt="p", title="t", action=lambda: _Result()) is True
+        assert seen == [("已删除", "success")]
+
+    def test_confirm_and_apply_reports_failure_kind(self, monkeypatch):
+        from app import dialogs
+
+        monkeypatch.setattr(dialogs, "confirm", lambda *a, **k: True)
+        seen = []
+
+        class _P(_LocalPanel):
+            def _set_effect(self, text, kind="info"):
+                seen.append(kind)
+
+        class _Result:
+            ok = False
+            message = "删不掉"
+
+        _P(_Host()).confirm_and_apply(prompt="p", title="t", action=lambda: _Result())
+        assert seen == ["error"]
+
+    def test_confirm_and_apply_without_set_effect_does_not_raise(self, monkeypatch):
+        """面板没实现 _set_effect 时跳过状态栏更新，但不因此中断操作。"""
+        from app import dialogs
+
+        monkeypatch.setattr(dialogs, "confirm", lambda *a, **k: True)
+
+        class _Result:
+            ok = True
+            message = "ok"
+
+        assert _LocalPanel(_Host()).confirm_and_apply(prompt="p", title="t", action=lambda: _Result()) is True
+
     def test_host_widget_falls_back_to_frame(self):
         class _WithFrame(_Host):
             tool_content_frame = "FRAME"

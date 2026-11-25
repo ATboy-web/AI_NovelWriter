@@ -9,8 +9,8 @@
 | 指标 | 值 |
 |---|---|
 | 内部模块数 | 104 |
-| 依赖边数 | 340 |
-| 其中函数内延迟导入 | 68 |
+| 依赖边数 | 342 |
+| 其中函数内延迟导入 | 70 |
 | 循环依赖环数 | 3（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
@@ -64,9 +64,9 @@
 
 | 模块 | 被引用次数 |
 |---|---|
-| `app` | 34 |
+| `app` | 35 |
+| `dialogs` | 30 |
 | `storage` | 30 |
-| `dialogs` | 29 |
 | `async_runner` | 27 |
 | `ui_style` | 20 |
 | `panels` | 14 |
@@ -145,7 +145,7 @@
 | `outline_ui` | 🔴`app`, 🔴`dialogs`, 🔴`token_estimator` |
 | `panels` | — |
 | `panels.adapt_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`novel_toolkit` |
-| `panels.base` | ⚪`events`, ⚪`panels`, ⚪`panels.registry`, ⚪`panels.ui_kit` |
+| `panels.base` | ⚪`app`, ⚪`dialogs`, ⚪`events`, ⚪`panels`, ⚪`panels.registry`, ⚪`panels.ui_kit` |
 | `panels.batch_ops_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`ui_style` |
 | `panels.biography_panel` | 🔴`async_runner`, 🔴`biography`, 🔴`events`, 🔴`panels`, 🔴`panels.base`, 🔴`panels.ui_kit`, 🔴`storage`, 🔴`timeline_store`, 🔴`ui_style` |
 | `panels.bridges_panel` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs` |

@@ -45,7 +45,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .storage import atomic_write_json
+from .storage import atomic_write_json, read_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -397,15 +397,12 @@ class AppConfig:
             self._migration_backup_pending = False
 
     def _read_raw(self) -> Optional[dict]:
-        """读取磁盘上的原始 JSON（不解密）。失败返回 None，绝不抛异常。"""
-        try:
-            if not self.config_file.exists():
-                return None
-            with open(self.config_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data if isinstance(data, dict) else None
-        except (OSError, ValueError):
-            return None
+        """读取磁盘上的原始 JSON（不解密）。失败返回 None，绝不抛异常。
+
+        实现统一在  —— 与
+        此前是两份逐字副本，收敛后只保留一处判断逻辑。
+        """
+        return read_json_object(self.config_file)
 
     def _write_migration_backup(self) -> None:
         """迁移前留档（可回滚）。已存在同名文件时**不覆盖**，一次迁移一份。"""

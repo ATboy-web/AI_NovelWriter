@@ -38,6 +38,7 @@ __all__ = [
     "atomic_write_json",
     "backup_file",
     "read_json",
+    "read_json_object",
     "read_json_with_backup",
     "safe_filename",
 ]
@@ -208,6 +209,22 @@ def read_json(path) -> Any:
     """读取 JSON，失败时原样抛出（供需要感知错误的上层使用）。"""
     with open(Path(path), "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def read_json_object(path) -> Optional[dict]:
+    """读取 JSON 对象；文件缺失、内容损坏或根节点不是对象时返回 None，**绝不抛异常**。
+
+    这是 `config._read_raw` 与 `secure_config._read_raw` 的唯一实现 ——
+    那两处此前是逐字相同的两份副本（读盘 → 解析 → 只认 dict），
+    改一处忘一处就会让"配置文件坏了怎么办"在两个入口表现不一致。
+    """
+    try:
+        if not Path(path).exists():
+            return None
+        data = read_json(path)
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def read_json_with_backup(path, default: Any = None) -> Tuple[Any, str]:

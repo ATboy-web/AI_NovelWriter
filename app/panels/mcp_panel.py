@@ -557,13 +557,10 @@ class MCPPanel(BasePanel):
         name = self._selected_name()
         if mgr is None or not name:
             return
-        if not dialogs.confirm(
-            f"确定要删除 MCP 服务器「{name}」的配置吗？（不影响对方服务）",
+        self.confirm_and_apply(
+            prompt=f"确定要删除 MCP 服务器「{name}」的配置吗？（不影响对方服务）",
             title="删除服务器配置",
-            parent=self._host_widget(),
-        ):
-            return
-        result = mgr.remove_server(name)
-        self._set_effect(result.message, "success" if result.ok else "error")
+            action=lambda: mgr.remove_server(name),
+        )
         self._on_reload()
         self._set_detail("已删除。")

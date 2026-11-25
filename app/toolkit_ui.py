@@ -7,6 +7,7 @@ import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
+from typing import Callable
 
 from loguru import logger
 
@@ -111,6 +112,39 @@ class ToolkitUIMixin:
             )
         except Exception as e:  # noqa: BLE001 - 诊断记录失败绝不能影响启动
             logger.debug(f"[toolkit_ui] 面板注册结果落日志失败（忽略）: {e}")
+
+    def _run_cloud_transfer(
+        self,
+        *,
+        started: str,
+        done_log: str,
+        fail_log: str,
+        ok_text: str,
+        fail_text: str,
+        action: Callable[[], bool],
+    ) -> None:
+        """在后台线程执行一次云端上传/下载，把过程与结果回报到日志和弹窗。
+
+        上传与下载此前是两段逐字相同的闭包 —— 线程启动、成功分支、失败分支、
+        异常兜底四条路径完全一致，只有 4 处文案与"调哪个云端方法"不同。
+        收敛到一处后，改这四条路径只需改这里（此前要改两遍，漏一处就两边行为不一致）。
+        """
+
+        # 异常变量必须用默认参数绑定：`except ... as exc` 的 exc 在块结束即被删除，
+        # 而 safe_after 是**延迟**执行，直接闭包捕获会拿不到值。
+        def run() -> None:
+            try:
+                self._log(started)
+                if action():
+                    self._log(done_log)
+                    safe_after(self.root, lambda: dialogs.showinfo("成功", ok_text))
+                else:
+                    self._log(fail_log)
+                    safe_after(self.root, lambda: dialogs.showerror("失败", fail_text))
+            except Exception as exc:  # noqa: BLE001 - 后台线程必须兜住，否则失败无声
+                safe_after(self.root, lambda _exc=exc: dialogs.showerror("错误", str(_exc)))
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _refresh_toolkit(self):
         """重建当前工具面板。
@@ -602,45 +636,29 @@ h1{{font-size:24px;margin:20px 0;color:{accent};}}p{{font-size:12px;opacity:0.7;
                 provider_name = provider_var.get()
                 provider_id = next((p["id"] for p in configured if p["name"] == provider_name), None)
                 if provider_id:
-
-                    def run():
-                        try:
-                            self._log(f"开始上传到 {provider_name}...")
-                            success = self.cloud_storage.upload_novel(self.current_novel_dir, provider_id)
-                            if success:
-                                self._log("上传成功！")
-                                safe_after(self.root, lambda: dialogs.showinfo("成功", f"小说已上传到 {provider_name}"))
-                            else:
-                                self._log("上传失败")
-                                safe_after(self.root, lambda: dialogs.showerror("失败", "上传失败，请检查网络和配置"))
-                        except Exception as e:
-                            safe_after(self.root, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
-
-                    threading.Thread(target=run, daemon=True).start()
+                    self._run_cloud_transfer(
+                        started=f"开始上传到 {provider_name}...",
+                        done_log="上传成功！",
+                        fail_log="上传失败",
+                        ok_text=f"小说已上传到 {provider_name}",
+                        fail_text="上传失败，请检查网络和配置",
+                        action=lambda: self.cloud_storage.upload_novel(self.current_novel_dir, provider_id),
+                    )
 
             def do_download():
                 provider_name = provider_var.get()
                 provider_id = next((p["id"] for p in configured if p["name"] == provider_name), None)
                 if provider_id:
-
-                    def run():
-                        try:
-                            self._log(f"开始从 {provider_name} 下载...")
-                            success = self.cloud_storage.download_novel(
-                                "/AI_NovelWriter", self.current_novel_dir, provider_id
-                            )
-                            if success:
-                                self._log("下载成功！")
-                                safe_after(
-                                    self.root, lambda: dialogs.showinfo("成功", f"小说已从 {provider_name} 下载")
-                                )
-                            else:
-                                self._log("下载失败")
-                                safe_after(self.root, lambda: dialogs.showerror("失败", "下载失败"))
-                        except Exception as e:
-                            safe_after(self.root, lambda _exc=e: dialogs.showerror("错误", str(_exc)))
-
-                    threading.Thread(target=run, daemon=True).start()
+                    self._run_cloud_transfer(
+                        started=f"开始从 {provider_name} 下载...",
+                        done_log="下载成功！",
+                        fail_log="下载失败",
+                        ok_text=f"小说已从 {provider_name} 下载",
+                        fail_text="下载失败",
+                        action=lambda: self.cloud_storage.download_novel(
+                            "/AI_NovelWriter", self.current_novel_dir, provider_id
+                        ),
+                    )
 
             btn_frame = tk.Frame(dialog, bg=C["bg_dark"])
             btn_frame.pack(fill=tk.X, padx=30, pady=15)

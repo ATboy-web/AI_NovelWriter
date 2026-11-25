@@ -163,6 +163,26 @@ class BasePanel:
         if bar is not None:
             bar.set(text, kind)
 
+    def confirm_and_apply(self, *, prompt: str, title: str, action: Callable[[], Any]) -> bool:
+        """确认后执行动作，并把结果写到状态栏；返回是否真的执行了。
+
+        这是「删除 / 卸载 / 不可逆操作」的统一形态。此前 `mcp_panel._on_remove`
+        与 `plugin_panel._on_uninstall` 是逐字相同的两份副本（取选中项 → 确认 →
+        调管理器 → 按 `ok` 报结果），差别只有确认文案与调用的方法名。
+
+        `action` 必须返回本仓管理器统一的结果对象（带 `.ok` 与 `.message`）。
+        子类未实现 `_set_effect` 时静默跳过状态栏更新（不因此中断操作）。
+        """
+        from app import dialogs  # 注意：dialogs 在 app 包下，不是 app.panels
+
+        if not dialogs.confirm(prompt, title=title, parent=self._host_widget()):
+            return False
+        result = action()
+        setter = getattr(self, "_set_effect", None)
+        if callable(setter):
+            setter(result.message, "success" if result.ok else "error")
+        return True
+
     def notify(self, text: str, kind: str = "info") -> None:
         """轻提示（浮窗，自动消失）。适合"成功/失败"这类一次性反馈。"""
         from . import ui_kit

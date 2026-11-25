@@ -8,8 +8,8 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 113 |
-| 依赖边数 | 352 |
+| 内部模块数 | 114 |
+| 依赖边数 | 353 |
 | 其中函数内延迟导入 | 72 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
@@ -123,6 +123,7 @@
 | `dialogs` | 🔴`ui_style` |
 | `domain` | — |
 | `domain.branch` | — |
+| `domain.lineage` | — |
 | `editor_ui` | 🔴`app`, 🔴`dialogs` |
 | `events` | — |
 | `events.bus` | 🔴`async_runner` |
@@ -133,7 +134,7 @@
 | `genres_data` | — |
 | `image_generator` | 🔴`config` |
 | `lifecycle_ui` | 🔴`app`, 🔴`async_runner`, 🔴`dialogs`, 🔴`events`, 🔴`genres`, 🔴`storage`, ⚪`theme_switch`, ⚪`theme_system` |
-| `lineage` | 🔴`adapters`, 🔴`application`, 🔴`storage` |
+| `lineage` | 🔴`adapters`, 🔴`application`, 🔴`domain.lineage`, 🔴`storage` |
 | `live_data` | — |
 | `mcp_system` | — |
 | `memory_manager` | 🔴`events`, 🔴`storage` |

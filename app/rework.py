@@ -71,9 +71,14 @@ from .domain.rework import (
     TRANSITIONS as DOMAIN_TRANSITIONS,
 )
 from .domain.rework import (
+    archive_folder_name,
+    archive_version_filename,
+    build_version_row,
     check_enqueue,
     judge_low_score,
     judge_static,
+    next_archive_version,
+    parse_archive_version,
     title_is_placeholder,
     validate_transition,
 )
@@ -364,12 +369,12 @@ class ReworkStore:
         if not text.strip():
             return None
 
-        folder = self.base_dir / ARCHIVE_DIR / f"ch{chapter:04d}"
+        folder = self.base_dir / ARCHIVE_DIR / archive_folder_name(chapter)
         try:
             folder.mkdir(parents=True, exist_ok=True)
-            existing = [int(p.stem[1:]) for p in folder.glob("v*.txt") if p.stem[1:].isdigit()]
-            version = (max(existing) + 1) if existing else 1
-            target = folder / f"v{version}.txt"
+            existing = [v for v in (parse_archive_version(p.name) for p in folder.glob("v*.txt")) if v]
+            version = next_archive_version(existing)
+            target = folder / archive_version_filename(version)
             # 原子写：归档是**原文的唯一副本**。这里写出半截，等于把"可回滚"
             # 这件事变成假的 —— 回滚后拿到的是断章。
             atomic_write_text(target, text)
@@ -393,13 +398,13 @@ class ReworkStore:
         """列出该章的归档版本（按版本号升序）。"""
         if self.base_dir is None:
             return []
-        folder = self.base_dir / ARCHIVE_DIR / f"ch{chapter:04d}"
+        folder = self.base_dir / ARCHIVE_DIR / archive_folder_name(chapter)
         if not folder.is_dir():
             return []
         rows: List[Dict[str, Any]] = []
         for path in sorted(folder.glob("v*.txt")):
-            stem = path.stem[1:]
-            if not stem.isdigit():
+            version = parse_archive_version(path.name)
+            if version is None:
                 continue
             meta_path = folder / f"{path.stem}.meta.json"
             meta: Dict[str, Any] = {}
@@ -409,13 +414,11 @@ class ReworkStore:
                 except (OSError, ValueError):
                     meta = {}
             rows.append(
-                {
-                    "version": int(stem),
-                    "path": str(path.relative_to(Path(self.novel_dir))) if self.novel_dir else str(path),
-                    "chars": meta.get("chars", 0),
-                    "at": meta.get("at", ""),
-                    "note": meta.get("note", ""),
-                }
+                build_version_row(
+                    version,
+                    str(path.relative_to(Path(self.novel_dir))) if self.novel_dir else str(path),
+                    meta,
+                )
             )
         return rows
 

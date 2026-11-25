@@ -8,8 +8,8 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 120 |
-| 依赖边数 | 360 |
+| 内部模块数 | 121 |
+| 依赖边数 | 361 |
 | 其中函数内延迟导入 | 72 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
@@ -133,6 +133,7 @@
 | `domain.rework` | — |
 | `domain.skill` | — |
 | `domain.style` | — |
+| `domain.timeline` | — |
 | `editor_ui` | 🔴`app`, 🔴`dialogs` |
 | `events` | — |
 | `events.bus` | 🔴`async_runner` |
@@ -209,7 +210,7 @@
 | `text_stats` | — |
 | `theme_switch` | 🔴`app`, ⚪`panels`, ⚪`panels.ui_kit`, 🔴`theme_system`, 🔴`ui_style` |
 | `theme_system` | — |
-| `timeline_store` | ⚪`events`, ⚪`lineage`, ⚪`memory_manager`, 🔴`storage` |
+| `timeline_store` | 🔴`domain.timeline`, ⚪`events`, ⚪`lineage`, ⚪`memory_manager`, 🔴`storage` |
 | `timeline_ui` | 🔴`app`, 🔴`async_runner`, ⚪`character_system`, 🔴`dialogs`, 🔴`lineage`, ⚪`memory_manager`, 🔴`storage` |
 | `token_estimator` | — |
 | `toolkit_ui` | 🔴`app`, 🔴`async_runner`, ⚪`diagnostic_logger`, 🔴`dialogs`, 🔴`format_converter`, 🔴`panels`, 🔴`panels.layout`, 🔴`panels.registry` |

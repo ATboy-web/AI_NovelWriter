@@ -17,7 +17,14 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-__all__ = ["BranchMetaReader", "ChildWriter", "LineageMetaReader", "PathProbe"]
+__all__ = [
+    "BranchMetaReader",
+    "ChildWriter",
+    "LineageMetaReader",
+    "PathProbe",
+    "TimelineReader",
+    "TimelineWriter",
+]
 
 
 @runtime_checkable
@@ -88,4 +95,50 @@ class ChildWriter(Protocol):
 
     def write_text(self, child_dir: str, relative: str, content: str) -> bool:
         """把文本写到 `<child_dir>/<relative>`；越界抛 `ValueError`。"""
+        ...
+
+
+@runtime_checkable
+class TimelineReader(Protocol):
+    """读世界线 / 时间线。
+
+    只列**稳定**的读方法。`stats` / `branch_tree` / `lineage_chronicle` 这类派生
+    视图会随面板需求变化，不纳入端口 —— 否则每个实现都要跟着改签名。
+    """
+
+    def read_memory_events(self, from_chapter: int = 0, to_chapter: int = 0) -> list[Any]:
+        """读 `memory/timeline/` 里的事件（按章号过滤；传 0 表示不限）。"""
+        ...
+
+    def read_world_lines(self) -> list[dict]:
+        """列出全部世界线（每条含名称、章节数等摘要）。"""
+        ...
+
+    def chapter_axis(self, from_chapter: int = 0, to_chapter: int = 0) -> list[dict]:
+        """按章号聚合的事件轴（面板画时间线用）。"""
+        ...
+
+    def snapshot(self) -> Any:
+        """当前状态快照（供缓存失效判断与回滚）。"""
+        ...
+
+
+@runtime_checkable
+class TimelineWriter(Protocol):
+    """写世界线。
+
+    这两个方法都**不直接碰 memory/timeline/**：事件源归 `MemoryManager` 所有，
+    世界线只做筛选与标注（`tests/test_p4b_panels` 里有守卫钉住这一点）。
+    """
+
+    def sync(self, world_line: Any = None) -> Any:
+        """按当前事件源重建世界线；返回同步结果（新增/移除/总数）。"""
+        ...
+
+    def annotate(self, chapter: int, event: Any) -> bool:
+        """给某一章打世界线标注；返回是否成功。"""
+        ...
+
+    def invalidate(self) -> None:
+        """丢弃缓存，下次读取重新从磁盘加载。"""
         ...

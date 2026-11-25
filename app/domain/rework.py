@@ -25,7 +25,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 __all__ = [
     "REASON_BAD_TITLE",
@@ -36,7 +36,13 @@ __all__ = [
     "REWORK_STATUSES",
     "STATUS_LABELS",
     "TRANSITIONS",
+    "ARCHIVE_DIR_NAME",
+    "archive_folder_name",
+    "archive_version_filename",
+    "build_version_row",
     "check_enqueue",
+    "next_archive_version",
+    "parse_archive_version",
     "judge_low_score",
     "status_label",
     "validate_transition",
@@ -233,3 +239,76 @@ def validate_transition(current: str, target: str) -> str | None:
     else:
         options = "无（终点状态）"
     return f"不能从「{status_label(current)}」直接变为「{STATUS_LABELS[target]}」；允许的去向：{options}"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 归档版本（纯规则）
+# ═══════════════════════════════════════════════════════════════════
+#
+# 原本混在 `ReworkStore.archive_chapter` / `list_versions` 里。
+# 抽出来后，「版本号怎么递增」「哪些文件名算版本」「meta 缺字段用什么默认值」
+# 都能直接验，不必造归档目录。
+
+#: 归档根目录名（相对作品目录）
+ARCHIVE_DIR_NAME = "archive"
+
+#: 章节归档子目录名，如 `ch0071`
+ARCHIVE_CHAPTER_FMT = "ch{:04d}"
+
+#: 版本文件名，如 `v3.txt`
+ARCHIVE_VERSION_FMT = "v{}.txt"
+
+
+def archive_folder_name(chapter: int) -> str:
+    """某章的归档子目录名：`ch0071`（四位数，保证字符串排序等于数字排序）。"""
+    return ARCHIVE_CHAPTER_FMT.format(int(chapter))
+
+
+def archive_version_filename(version: int) -> str:
+    """版本文件名：`v3.txt`。"""
+    return ARCHIVE_VERSION_FMT.format(int(version))
+
+
+def next_archive_version(existing: Iterable[int]) -> int:
+    """下一个版本号 = 已有最大值 + 1；没有任何历史则为 1。
+
+    **绝不复用**被删掉的号：`existing` 里出现过 3 就永不回到 3。
+    复用会让"回滚到 v3"变成歧义 —— 到底是哪一版 v3。
+    """
+    numbers = [v for v in existing if isinstance(v, int) and v >= 1]
+    return (max(numbers) + 1) if numbers else 1
+
+
+def parse_archive_version(filename: str) -> int | None:
+    """从归档文件名解析版本号：`v3.txt` → 3；`notes.txt` / `vX.txt` → None。
+
+    只认 `v` + 纯数字 + `.txt` —— 归档目录里可能有用户手工放的文件，
+    不该把 `v2-old.txt` 之类当成版本。
+    """
+    name = (filename or "").strip()
+    if not name.lower().endswith(".txt"):
+        return None
+    stem = name[:-4]
+    if not stem.startswith("v") or len(stem) < 2:
+        return None
+    digits = stem[1:]
+    if not digits.isdigit():
+        return None
+    value = int(digits)
+    return value if value >= 1 else None
+
+
+def build_version_row(version: int, path: str, meta: Mapping[str, Any] | None = None) -> dict:
+    """构造 `list_versions` 的一行。
+
+    `meta` 缺失或损坏时用默认值补齐（`chars=0` / `at=""` / `note=""`）——
+    面板依赖这几个键存在，缺一个就会在渲染时抛 `KeyError`。
+    """
+    data: Mapping[str, Any] = meta if isinstance(meta, Mapping) else {}
+    return {
+        "version": int(version),
+        "path": str(path),
+        "chars": data.get("chars", 0),
+        "at": data.get("at", ""),
+        "note": data.get("note", ""),
+    }

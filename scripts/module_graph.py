@@ -409,11 +409,28 @@ def render_markdown(graph: dict, cycles: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
+def _display(path) -> str:
+    """路径的展示形态：能在仓库内就显示相对路径，否则显示绝对路径。
+
+     对仓库外的路径（测试用的临时目录）会抛 ValueError，
+    而展示路径不该成为失败原因。
+    """
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def main(argv: list[str] | None = None) -> int:
     make_stdout_utf8_safe()  # 只有真当脚本跑时才需要（见文件上方说明）
     parser = argparse.ArgumentParser(description="模块依赖关系梳理")
     parser.add_argument("--check", action="store_true", help="只校验：存在 hard 循环则退出码 1")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--check-doc",
+        action="store_true",
+        help="只校验：文档是否与源码一致（过期退出码 1，不写文件）",
+    )
+    args = parser.parse_args(argv)
 
     graph = build_graph()
     edges = graph["edges"]
@@ -432,9 +449,21 @@ def main() -> int:
     if args.check:
         return 1 if hard else 0
 
+    if args.check_doc:
+        rendered = render_markdown(graph, cycles)
+        if not DOC_PATH.exists():
+            print(f"❗ 依赖图文档缺失：{DOC_PATH}")
+            return 1
+        if DOC_PATH.read_text(encoding="utf-8") != rendered:
+            print(f"❗ {_display(DOC_PATH)} 已过期 —— 源码结构变了但文档没重算")
+            print("   修法：python scripts/module_graph.py")
+            return 1
+        print(f"✅ 依赖图文档与源码一致：{_display(DOC_PATH)}")
+        return 0
+
     DOC_PATH.parent.mkdir(parents=True, exist_ok=True)
     DOC_PATH.write_text(render_markdown(graph, cycles), encoding="utf-8")
-    print(f"已写入 {DOC_PATH.relative_to(REPO_ROOT)}")
+    print(f"已写入 {_display(DOC_PATH)}")
     return 0
 
 

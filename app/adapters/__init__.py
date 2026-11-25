@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from .file_lineage import FileBranchMetaReader
+from .file_lineage import FileBranchMetaReader, FileLineageMetaReader
 from .path_probe import FilesystemProbe, NeverExistsProbe
 
-__all__ = ["FileBranchMetaReader", "FilesystemProbe", "NeverExistsProbe"]
+__all__ = ["FileBranchMetaReader", "FileLineageMetaReader", "FilesystemProbe", "NeverExistsProbe"]

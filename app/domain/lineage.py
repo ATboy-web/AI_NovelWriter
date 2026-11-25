@@ -46,6 +46,7 @@ __all__ = [
     "describe_plan_items",
     "make_character_transform",
     "dedupe_preserve_order",
+    "describe_generation_row",
     "is_within",
 ]
 
@@ -451,6 +452,78 @@ def make_character_transform(
         return final
 
     return transform
+
+
+def describe_generation_row(
+    novel_dir: str,
+    meta: Mapping[str, Any] | None,
+    *,
+    depth: int,
+    exists: bool,
+    status: str,
+    branches: list[dict] | None = None,
+) -> dict:
+    """由**已读到的 meta** 构造代际链的一行 —— 纯函数，不碰磁盘。
+
+    面板需要的 8 个字段全在这里定型：
+    `generation / novel_dir / title / is_current / readonly / missing / kind / branches`。
+
+    两条语义值得记住：
+    - `readonly = depth > 0`：除自身外，所有祖先都恒为只读（子代只读父代）。
+    - `missing = (not exists) or status == "corrupt"`：父代被移动/删除、或 meta 坏了，
+      都标成 missing 让面板灰显，而不是抛异常。
+    """
+    data: Mapping[str, Any] = meta if isinstance(meta, Mapping) else {}
+    record = LineageRecord.from_meta(data)
+    return {
+        "generation": record.generation if record else 1,
+        "novel_dir": novel_dir,
+        "title": str(data.get("title") or Path(novel_dir).name),
+        "is_current": depth == 0,
+        "readonly": depth > 0,
+        "missing": (not exists) or status == "corrupt",
+        "kind": record.kind if record else KIND_NOVEL,
+        "branches": list(branches) if branches else [],
+    }
+
+
+def guard_child_path(child_dir: Any, target: Any) -> Path:
+    """🚨 **子代写操作的唯一强制点**：目标必须落在子代目录之内，否则拒绝。
+
+    这是「子代不得污染父代」护栏的判定核心。任何要往子代拷文件/写 JSON 的代码
+    都必须先过这一关 —— 而不是各自拼接路径（拼接错了没有第二次机会，
+    父代可能已经发布）。
+
+    本函数是**纯判定**（只做 `Path.resolve()` + 前缀比较，不读写文件），
+    因此可以被穷举测试：`..` 逃逸、绝对路径、前缀相似目录（`/a/bc` vs `/a/b`）
+    全部能直接验证，无需造真实目录。
+
+    Raises:
+        ValueError: `child_dir` 为空、或 `target` 不在 `child_dir` 之内。
+    """
+    if not child_dir:
+        raise ValueError("子代目录为空，拒绝写入")
+    child_p = Path(child_dir).resolve()
+    if not is_within(child_p, target):
+        raise ValueError(f"护栏拒绝：目标 {target!r} 不在子代目录 {child_p} 之内（子代只读父代，禁止越界写入）")
+    return Path(target)
+
+
+def resolve_child_target(child_dir: Any, relative: str) -> Path:
+    """把**相对路径**解析到子代目录内，越界直接拒绝；返回可用于写入的目标路径。
+
+    为什么单独有这个函数：`copy_into_child` 之类的地方如果各自写
+    `Path(child_dir) / rel` 再交给护栏，容易漏用护栏。把"拼装 + 校验"合成一步，
+    调用方就没有"忘了过护栏"的机会。
+
+    拦截三类逃逸：
+    - `relative` 含 `..`（`../父代/chapters`）
+    - `relative` 是绝对路径（`C:/Windows/x`、`/etc/x`）—— `Path` 的 `/` 运算会**丢弃**左边的根
+    - `child_dir` 本身为空
+    """
+    if not relative or not str(relative).strip():
+        raise ValueError("相对路径为空，拒绝写入")
+    return guard_child_path(child_dir, Path(child_dir) / relative)
 
 
 def dedupe_preserve_order(items: Iterable[str]) -> list[str]:

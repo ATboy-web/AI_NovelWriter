@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+from .generation_tree import BuildGenerationTree
 from .list_branches import BranchRow, ListBranches
 
-__all__ = ["BranchRow", "ListBranches"]
+__all__ = ["BranchRow", "BuildGenerationTree", "ListBranches"]

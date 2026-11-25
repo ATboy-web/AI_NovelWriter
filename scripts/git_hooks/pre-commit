@@ -1,0 +1,37 @@
+#!/bin/sh
+# 提交前：把模块依赖图文档与源码对齐（秒级）。
+#
+# 背景：docs/MODULE_DEPENDENCY_MAP.md 由 scripts/module_graph.py 现算生成，
+# 新增/删除 app/ 下的模块后必须重算，否则 tests/test_module_graph.py 会红
+# —— 而它只在跑全量（8 分钟）时才会被发现。
+#
+# 这里做的是"自动修复 + 带上提交"，不是"阻断提交"：
+# 重算成功就把新文档加入暂存区，本次提交自然包含它。
+
+cd "$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+
+# 只在涉及 Python 源码的提交里检查，避免改文档/图片时也被拖慢
+if ! git diff --cached --name-only | grep -qE '^(app|backend|scripts)/.*\.py$'; then
+  exit 0
+fi
+
+PY=""
+for candidate in python python3 py; do
+  if command -v "$candidate" >/dev/null 2>&1; then PY="$candidate"; break; fi
+done
+[ -z "$PY" ] && exit 0   # 找不到解释器就静默放行，不阻断提交
+
+"$PY" scripts/module_graph.py --check-doc >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+  exit 0
+fi
+
+echo "[pre-commit] 模块依赖图文档已过期，正在重算…"
+if "$PY" scripts/module_graph.py >/dev/null 2>&1; then
+  git add docs/MODULE_DEPENDENCY_MAP.md
+  echo "[pre-commit] 已重算并加入本次提交。"
+  exit 0
+fi
+
+echo "[pre-commit] 重算失败 —— 请手动运行：python scripts/module_graph.py" >&2
+exit 1

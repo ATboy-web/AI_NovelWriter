@@ -213,3 +213,78 @@ class TestDescribePlanItems:
         )
         rendered = list(describe_plan_items(plan))
         assert isinstance(rendered, list)
+
+
+class TestGuardChildPath:
+    """「子代只读父代」护栏的判定边界（纯路径计算，无需造真实目录）。"""
+
+    def test_accepts_path_inside(self, tmp_path):
+        from app.domain.lineage import guard_child_path
+
+        child = tmp_path / "child"
+        assert guard_child_path(child, child / "chapters" / "1.txt") == child / "chapters" / "1.txt"
+
+    def test_rejects_parent_escape(self, tmp_path):
+        from app.domain.lineage import guard_child_path
+
+        with pytest.raises(ValueError, match="护栏拒绝"):
+            guard_child_path(tmp_path / "child", tmp_path / "parent" / "x.txt")
+
+    def test_rejects_dotdot(self, tmp_path):
+        from app.domain.lineage import resolve_child_target
+
+        child = tmp_path / "child"
+        child.mkdir()
+        with pytest.raises(ValueError):
+            resolve_child_target(child, "../sibling.txt")
+
+    def test_rejects_absolute_relative_path(self, tmp_path):
+        """`Path('/a') / '/etc/x'` 会**丢弃**左边 —— 必须拦住。"""
+        from app.domain.lineage import resolve_child_target
+
+        child = tmp_path / "child"
+        child.mkdir()
+        with pytest.raises(ValueError):
+            resolve_child_target(child, str(tmp_path / "outside" / "x.txt"))
+
+    def test_prefix_lookalike_directory_is_rejected(self, tmp_path):
+        """`/a/bc` 与 `/a/b` 前缀相同但不是子目录 —— 经典的 startswith 漏洞。"""
+        from app.domain.lineage import guard_child_path
+
+        base = tmp_path / "b"
+        lookalike = tmp_path / "bc"
+        lookalike.mkdir()
+        base.mkdir()
+        with pytest.raises(ValueError):
+            guard_child_path(base, lookalike / "x.txt")
+
+    def test_empty_child_dir_rejected(self):
+        from app.domain.lineage import guard_child_path
+
+        with pytest.raises(ValueError, match="子代目录为空"):
+            guard_child_path("", "/tmp/x")
+
+    def test_empty_relative_rejected(self, tmp_path):
+        from app.domain.lineage import resolve_child_target
+
+        with pytest.raises(ValueError, match="相对路径为空"):
+            resolve_child_target(tmp_path, "   ")
+
+    def test_normal_relative_resolves_inside(self, tmp_path):
+        from app.domain.lineage import resolve_child_target
+
+        target = resolve_child_target(tmp_path, "memory/settings.json")
+        assert target == tmp_path / "memory" / "settings.json"
+
+    def test_symlink_inside_is_allowed_but_outside_link_target_rejected(self, tmp_path):
+        """护栏判的是**解析后**的路径：目录内软链本身没问题。"""
+        from app.domain.lineage import resolve_child_target
+
+        child = tmp_path / "child"
+        child.mkdir()
+        (child / "real").mkdir()
+        try:
+            (child / "link").symlink_to(child / "real", target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pytest.skip("当前环境不支持创建符号链接")
+        assert resolve_child_target(child, "link/1.txt") == child / "link" / "1.txt"

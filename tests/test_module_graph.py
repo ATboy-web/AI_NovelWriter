@@ -247,3 +247,57 @@ class TestAnalyzerHasTeeth:
         monkeypatch.setattr(mg, "APP_DIR", tmp_path / "app")
         graph = mg.build_graph()
         assert graph["edges"]["app.a"]["app.b"] == "module"
+
+
+class TestCheckDocMode:
+    """`--check-doc`：文档与源码是否一致（不写文件）。
+
+    这是把"依赖图同步"接进常规流程的开关：
+    `scripts/preflight.py` 与 `.git/hooks/pre-commit` 都靠它的退出码判断。
+    """
+
+    def _run(self, capsys):
+        import module_graph
+
+        code = module_graph.main(["--check-doc"])
+        return code, capsys.readouterr().out
+
+    def test_returns_zero_when_in_sync(self, capsys):
+        import module_graph
+
+        # 先确保文档是最新的（否则跑测试前就红了）
+        module_graph.main([])
+        code, out = self._run(capsys)
+        assert code == 0, out
+        assert "一致" in out
+
+    def test_returns_one_when_stale(self, capsys, monkeypatch):
+        import module_graph
+
+        monkeypatch.setattr(module_graph, "DOC_PATH", module_graph.DOC_PATH.with_name("__stale_test__.md"))
+        module_graph.DOC_PATH.write_text("过期的旧内容\n", encoding="utf-8")
+        try:
+            code, out = self._run(capsys)
+            assert code == 1
+            assert "已过期" in out
+        finally:
+            module_graph.DOC_PATH.unlink(missing_ok=True)
+
+    def test_returns_one_when_doc_missing(self, capsys, monkeypatch, tmp_path):
+        import module_graph
+
+        monkeypatch.setattr(module_graph, "DOC_PATH", tmp_path / "nope.md")
+        code, out = self._run(capsys)
+        assert code == 1
+        assert "缺失" in out
+
+    def test_does_not_write_file(self, capsys, monkeypatch, tmp_path):
+        """只校验模式**绝不改文件** —— 否则 hook 里会出现"检查即修复"的隐式副作用。"""
+        import module_graph
+
+        target = tmp_path / "doc.md"
+        target.write_text("x\n", encoding="utf-8")
+        monkeypatch.setattr(module_graph, "DOC_PATH", target)
+        before = target.read_text(encoding="utf-8")
+        self._run(capsys)
+        assert target.read_text(encoding="utf-8") == before

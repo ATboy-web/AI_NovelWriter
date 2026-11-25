@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-__all__ = ["BranchMetaReader", "PathProbe"]
+__all__ = ["BranchMetaReader", "LineageMetaReader", "PathProbe"]
 
 
 @runtime_checkable
@@ -46,4 +46,24 @@ class PathProbe(Protocol):
 
     def exists(self, relative_path: str) -> bool:
         """`relative_path` 是相对父代根目录的路径（如 `memory/settings.json`）。"""
+        ...
+
+
+@runtime_checkable
+class LineageMetaReader(Protocol):
+    """读取一个作品目录的 `meta.json`，并报告该目录是否存在。
+
+    代际链（`generation_tree`）需要三样东西：这一代在哪、它的 `lineage` 记录、
+    以及父代目录还在不在。把它们打包成一个返回值，是为了让应用层的遍历循环
+    只依赖一次调用 —— 否则每层都要分别问"存在吗"和"meta 是什么"，
+    两次询问之间目录可能已被移动（竞态）。
+    """
+
+    def read(self, novel_dir: str) -> tuple[dict, str, bool]:
+        """返回 `(meta 字典, 状态, 目录是否存在)`。
+
+        状态取值与 `storage.read_json_with_backup` 对齐：
+        `"ok"`（读到）/ `"missing"`（文件不存在）/ `"corrupt"`（内容损坏）。
+        meta 不是对象时按空字典处理；**任何情况下都不抛异常**。
+        """
         ...

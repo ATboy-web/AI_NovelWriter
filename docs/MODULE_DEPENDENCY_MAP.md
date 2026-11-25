@@ -8,8 +8,8 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 115 |
-| 依赖边数 | 353 |
+| 内部模块数 | 116 |
+| 依赖边数 | 355 |
 | 其中函数内延迟导入 | 72 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
@@ -84,6 +84,7 @@
 
 - `adapters.file_lineage`
 - `adapters.path_probe`
+- `application.generation_tree`
 - `application.list_branches`
 - `domain.branch`
 - `events.bus`
@@ -107,6 +108,7 @@
 | `ai_client` | 🔴`config`, ⚪`diagnostic_logger`, ⚪`performance_monitor`, 🔴`providers`, 🔴`token_estimator`, 🔴`usage_tracker` |
 | `ai_settings_ui` | 🔴`app`, ⚪`ai_client`, ⚪`async_runner`, 🔴`config`, 🔴`dialogs`, 🔴`providers` |
 | `application` | — |
+| `application.generation_tree` | 🔴`domain.lineage`, 🔴`ports` |
 | `application.list_branches` | 🔴`domain`, 🔴`ports` |
 | `async_runner` | ⚪`app`, ⚪`dialogs` |
 | `biography` | 🔴`storage` |

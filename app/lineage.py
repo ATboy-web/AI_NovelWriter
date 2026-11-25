@@ -37,8 +37,8 @@ from loguru import logger
 
 # 分层样板（2026-11-25）：discover_branches 委托给这三层。
 # 见 `app/domain/branch.py` 顶部说明为什么值得拆。
-from app.adapters import FileBranchMetaReader, FilesystemProbe, NeverExistsProbe
-from app.application import ListBranches
+from app.adapters import FileBranchMetaReader, FileLineageMetaReader, FilesystemProbe, NeverExistsProbe
+from app.application import BuildGenerationTree, ListBranches
 
 # 纯领域部分已搬到 `app/domain/lineage.py`（2026-11-25 分层迁移第二步）。
 # 这里**原样 re-export**：`from app.lineage import LineageRecord / is_within / ...`
@@ -62,8 +62,10 @@ from app.domain.lineage import (  # noqa: F401 - 对外接口的一部分
     dedupe_preserve_order,
     describe_plan_items,
     extract_unresolved_plots,
+    guard_child_path,
     is_within,
     make_character_transform,
+    resolve_child_target,
     unresolved_plot_keywords,
 )
 from app.storage import atomic_write_text, read_json_with_backup
@@ -237,53 +239,19 @@ def generation_tree(novel_dir: Any, max_depth: int = 8, include_branches: bool =
     `include_branches=True` 时，每个节点会带上自己的分支子项目（`row["branches"]`）——
     分支是**同一代的另一条世界线**，不是"下一代"，所以它挂在所属作品的下面，
     而不是作为代际链上的一环。
+
+    ## 分层说明（2026-11-25）
+
+    遍历与防环在 `application.BuildGenerationTree`；每行的字段定型在
+    `domain.describe_generation_row`（纯函数）；读 meta 与判存在由
+    `adapters.FileLineageMetaReader`（`ports.LineageMetaReader`）提供。
+    本函数只做依赖装配，**返回值逐字未变**。
     """
-    rows: list[dict] = []
-    current = Path(novel_dir) if novel_dir else None
-    if current is None:
-        return rows
-
-    seen: set[str] = set()
-    node: Path | None = current
-    for depth in range(max_depth):
-        if node is None:
-            break
-        key = str(node)
-        if key in seen:  # 环状 lineage 保护（手改 meta 可能造成）
-            logger.warning(f"[lineage] 代际链出现环，已截断: {key}")
-            break
-        seen.add(key)
-
-        exists = node.exists()
-        meta, status = read_json_with_backup(node / "meta.json", default=None)
-        meta = meta if isinstance(meta, Mapping) else {}
-        record = LineageRecord.from_meta(meta)
-        rows.append(
-            {
-                "generation": record.generation if record else 1,
-                "novel_dir": key,
-                "title": str(meta.get("title") or node.name),
-                "is_current": depth == 0,
-                "readonly": depth > 0,
-                "missing": not exists or status == "corrupt",
-                # 当前节点本身可能就是一个分支（从分支里打开时）
-                "kind": record.kind if record else KIND_NOVEL,
-                "branches": discover_branches(node) if include_branches else [],
-            }
-        )
-        node = Path(record.parent_novel) if (record and record.parent_novel) else None
-
-    if include_branches and rows:
-        # 标记"这一行就是当前打开的作品"：从分支里打开时，该分支会同时出现在
-        # 自己的第 0 行与父代节点的 branches 里，标出来才不至于让人以为是两个东西。
-        current = str(Path(novel_dir).resolve())
-        for row in rows:
-            for branch in row.get("branches") or []:
-                try:
-                    branch["is_current"] = str(Path(branch["dir"]).resolve()) == current
-                except OSError:
-                    branch["is_current"] = False
-    return rows
+    use_case = BuildGenerationTree(
+        reader=FileLineageMetaReader(),
+        branch_loader=discover_branches,
+    )
+    return use_case.execute(novel_dir, max_depth=max_depth, include_branches=include_branches)
 
 
 def branch_lineage_record(parent_dir: Any, branch_id: str, origin_chapter: int = 0, title: str = "") -> LineageRecord:
@@ -311,24 +279,6 @@ def branch_lineage_record(parent_dir: Any, branch_id: str, origin_chapter: int =
 # ====================================================================== 护栏
 
 
-def guard_child_path(child_dir: Any, target: Any) -> Path:
-    """🚨 **子代写操作的唯一入口**：目标必须落在子代目录之内，否则拒绝。
-
-    这是「子代不得污染父代」护栏的强制点。任何要往子代拷文件/写 JSON 的代码
-    都必须先过这一关 —— 而不是各自拼接路径（拼接错了没有第二次机会，
-    父代可能已经发布）。
-
-    Raises:
-        ValueError: `child_dir` 为空、或 `target` 不在 `child_dir` 之内。
-    """
-    if not child_dir:
-        raise ValueError("子代目录为空，拒绝写入")
-    child_p = Path(child_dir).resolve()
-    if not is_within(child_p, target):
-        raise ValueError(f"护栏拒绝：目标 {target!r} 不在子代目录 {child_p} 之内（子代只读父代，禁止越界写入）")
-    return Path(target)
-
-
 def copy_into_child(child_dir: Any, source: Any, relative: str | None = None) -> Path | None:
     """把父代的文件/目录复制进子代。**每一步都过护栏**。
 
@@ -343,7 +293,9 @@ def copy_into_child(child_dir: Any, source: Any, relative: str | None = None) ->
         return None
 
     rel = relative if relative is not None else src.name
-    dst = guard_child_path(child_dir, Path(child_dir) / rel)
+    # 拼装与校验合一：`resolve_child_target` 内部会走 guard_child_path，
+    # `..` 与绝对路径在这里就被拒，不会等到 copytree 才发现写错地方。
+    dst = resolve_child_target(child_dir, rel)
 
     if src.is_dir():
         # dirs_exist_ok：子代可能已经有 characters/（续集流程先建过），

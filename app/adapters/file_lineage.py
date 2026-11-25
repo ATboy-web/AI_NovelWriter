@@ -22,7 +22,7 @@ from loguru import logger
 
 from app.storage import read_json_with_backup
 
-__all__ = ["FileBranchMetaReader"]
+__all__ = ["FileBranchMetaReader", "FileLineageMetaReader"]
 
 #: 分支子目录名的前缀；与旧 `lineage.BRANCH_PREFIX` 同值
 BRANCH_PREFIX = "branch_"
@@ -55,3 +55,26 @@ class FileBranchMetaReader:
                 continue
             out.append((path.name, dict(meta) if isinstance(meta, Mapping) else {}))
         return out
+
+
+class FileLineageMetaReader:
+    """`ports.LineageMetaReader` 的文件实现。
+
+    行为与旧 `lineage.read_json_with_backup(node / "meta.json")` 对齐：
+    主文件不可用时回退 `.bak`，损坏时状态为 `"corrupt"`（调用方据此标记 `missing`）。
+    """
+
+    def read(self, novel_dir: str) -> tuple[dict, str, bool]:
+        try:
+            base = Path(novel_dir)
+            exists = base.exists()
+        except OSError:
+            return {}, "missing", False
+
+        meta, status = read_json_with_backup(base / "meta.json", default=None)
+        if status == "corrupt":
+            logger.warning(f"[lineage] meta.json 损坏，按无代际信息处理: {novel_dir}")
+            return {}, "corrupt", exists
+        if not isinstance(meta, Mapping):
+            return {}, status, exists
+        return dict(meta), status, exists

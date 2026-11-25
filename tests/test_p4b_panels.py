@@ -601,10 +601,22 @@ class TestPanelGuards:
         assert "make_character_transform" in code
 
     def test_lineage_module_guards_every_copy(self):
-        """`lineage.py` 里所有落盘/复制都必须经过护栏函数。"""
+        """复制路径必须过护栏 —— 且护栏的**判定实现**要在 domain 层。
+
+        2026-11-25 分层迁移后：
+        - 判定逻辑搬进 `app/domain/lineage.py::guard_child_path`（纯判定，可穷举测）
+        - `copy_into_child` 改走更强的 `resolve_child_target`（拼装 + 校验合一，
+          调用方没有"忘了过护栏"的机会）
+
+        两处都要守住：只查其中一处时，把判定挪走或把调用换掉都能悄悄绕过。
+        """
         code = _scan.code_only("app/lineage.py")
-        assert "guard_child_path(child_dir, target)" in code
-        assert "dst = guard_child_path(child_dir, Path(child_dir) / rel)" in code
+        assert "resolve_child_target(child_dir, rel)" in code, "复制路径必须经护栏解析"
+
+        domain = _scan.code_only("app/domain/lineage.py")
+        assert "def guard_child_path(" in domain, "护栏判定必须存在"
+        assert "def resolve_child_target(" in domain, "拼装+校验的入口必须存在"
+        assert "is_within(child_p, target)" in domain, "护栏必须用路径前缀判定，不能用 startswith"
 
     def test_timeline_store_does_not_write_memory_timeline(self):
         """事件源是 `MemoryManager` 的地盘，store 只读它。"""

@@ -43,6 +43,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from loguru import logger
 
+from .domain.style import derive_display_name
 from .storage import atomic_write_json
 
 __all__ = [
@@ -643,10 +644,8 @@ def learn_from_novel(
 
     if not texts:
         return None
-    # 作品目录名形如 `书名_1781862528`（下单时间戳），去掉它更像书名；过长再截
-    raw_name = re.sub(r"_\d{6,}$", "", Path(novel_dir).name) or "本书"
-    if len(raw_name) > 24:
-        raw_name = raw_name[:24] + "…"
+    # 命名规则（去时间戳 / 截断 / 回落）在 domain，可单独穷举测试
+    raw_name = derive_display_name(Path(novel_dir).name)
     dna = learn_from_texts(texts, name=f"{raw_name} 的指纹（自动学习）")
     # 补一条可追溯性说明：让人知道这份草稿是从哪些文件来的
     return StyleDNA(

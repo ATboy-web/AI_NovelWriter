@@ -58,6 +58,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 
+from .domain.rework import judge_low_score, judge_static, title_is_placeholder
 from .storage import atomic_write_json, atomic_write_text
 from .text_stats import count_hanzi
 
@@ -131,13 +132,6 @@ DEFAULT_SCORE_THRESHOLD = 60.0
 #:
 #: 这些是真实存量的形态：`第71章`（无标题）、`第171章：章节标题(10字)`。
 #: 用词表而不是单一正则，是因为"占位"的形态会随模板演变。
-_TITLE_PLACEHOLDER_PATTERNS: Tuple[re.Pattern[str], ...] = (
-    re.compile(r"章节标题"),
-    re.compile(r"标题\s*[(（]?\d+\s*字"),
-    re.compile(r"^\s*第\s*\d+\s*章\s*[:：]?\s*$"),
-    re.compile(r"^\s*Untitled\s*$", re.IGNORECASE),
-    re.compile(r"第\s*\d+\s*章\s*[:：]\s*$"),
-)
 
 
 class ReworkError(RuntimeError):
@@ -226,11 +220,12 @@ class ReworkRecord:
 
 
 def title_placeholder(title: str) -> bool:
-    """该标题是否为"缺失 / 占位符"。"""
-    body = (title or "").strip()
-    if not body:
-        return True
-    return any(pattern.search(body) for pattern in _TITLE_PLACEHOLDER_PATTERNS)
+    """该标题是否为「缺失 / 占位符」。
+
+    实现与正则表已搬到 domain.rework.title_is_placeholder（2026-11-25）——
+    这里只保留旧名字，避免面板与既有测试改动。
+    """
+    return title_is_placeholder(title)
 
 
 def _now() -> str:
@@ -588,43 +583,22 @@ def scan(
         if count_hanzi(text) < min_hanzi:
             continue
 
-        title, _body = split_title(text)
-
-        # 1) 标题硬伤（最便宜，先判）
-        if title_placeholder(title):
-            found.append(
-                {
-                    "chapter": chapter,
-                    "reason_code": "bad_title",
-                    "reason_text": "标题缺失或为占位符",
-                    "evidence": {"title": title[:40]},
-                }
-            )
-        else:
-            # 2) 质检阻断（只对标题正常的章跑，避免同一章报两条）
-            blocker_info = _blocker_evidence(text)
-            if blocker_info:
-                found.append(
-                    {
-                        "chapter": chapter,
-                        "reason_code": "qc_blocker",
-                        "reason_text": blocker_info["summary"],
-                        "evidence": blocker_info,
-                    }
+        # 前两档（标题硬伤 / 质检阻断）是纯规则，在 domain 里判定；
+        # 第三档要读评审记录（IO），所以拿不到命中时才去读。
+        hit = judge_static(chapter, text, split_title=split_title, blocker_evidence=_blocker_evidence)
+        if hit is None:
+            review = load_review(base, chapter)
+            if review is not None:
+                hit = judge_low_score(
+                    chapter,
+                    ok=review.ok,
+                    overall=review.overall,
+                    threshold=store.score_threshold,
+                    issues=review.issues,
                 )
-            else:
-                # 3) 评审低分（没有评审记录 ⇒ 不判低分，避免把"未评"当"差"）
-                review = load_review(base, chapter)
-                if review is not None and review.ok and review.overall is not None:
-                    if review.overall < store.score_threshold:
-                        found.append(
-                            {
-                                "chapter": chapter,
-                                "reason_code": "low_score",
-                                "reason_text": f"评审 {review.overall:g} 分，低于阈值 {store.score_threshold:g}",
-                                "evidence": {"overall": review.overall, "issues": review.issues[:5]},
-                            }
-                        )
+        if hit:
+            found.append(hit)
+
         if limit and len(found) >= limit:
             break
     return found

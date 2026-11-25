@@ -53,6 +53,7 @@ from typing import Any, Iterable, Optional
 
 from loguru import logger
 
+from .domain.skill import ENTRY_NAMES, first_entry_name
 from .storage import atomic_write_json, read_json
 from .token_estimator import estimate_tokens
 
@@ -116,7 +117,7 @@ MAX_ENTRY_BYTES = 2 * 1024 * 1024
 MAX_SKILL_FILES = 500
 
 #: 入口文件候选名（大小写敏感的文件系统上都要能找到）。
-_ENTRY_NAMES = ("SKILL.md", "skill.md", "Skill.md", "SKILL.MD")
+_ENTRY_NAMES = ENTRY_NAMES  # 顺序定义在 domain.skill，三处调用共用同一份
 
 #: 需要跳过的目录（不属于技能内容，且体量可能极大）。
 _SKIP_DIRS = {".git", "__pycache__", ".venv", "venv", "node_modules", ".idea", ".vscode"}
@@ -872,12 +873,8 @@ def parse_skill(root: Path, warnings: Optional[list[str]] = None) -> Skill:
     collected: list[str] = list(warnings or [])
     result = Skill(key="", name=root.name, root=root)
 
-    entry: Optional[Path] = None
-    for name in _ENTRY_NAMES:
-        candidate = root / name
-        if candidate.is_file():
-            entry = candidate
-            break
+    picked = first_entry_name(_ENTRY_NAMES, lambda n: (root / n).is_file())
+    entry: Optional[Path] = (root / picked) if picked else None
     if entry is None:
         result.warnings = collected + ["未找到 SKILL.md"]
         return result

@@ -8,8 +8,8 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 117 |
-| 依赖边数 | 357 |
+| 内部模块数 | 120 |
+| 依赖边数 | 360 |
 | 其中函数内延迟导入 | 72 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
@@ -130,6 +130,9 @@
 | `domain` | — |
 | `domain.branch` | — |
 | `domain.lineage` | — |
+| `domain.rework` | — |
+| `domain.skill` | — |
+| `domain.style` | — |
 | `editor_ui` | 🔴`app`, 🔴`dialogs` |
 | `events` | — |
 | `events.bus` | 🔴`async_runner` |
@@ -195,14 +198,14 @@
 | `reader_ui` | 🔴`app`, 🔴`dialogs` |
 | `reading_manager` | 🔴`config` |
 | `review_store` | 🔴`storage`, ⚪`writing_presets` |
-| `rework` | ⚪`parsing`, ⚪`review_store`, 🔴`storage`, 🔴`text_stats`, ⚪`writing_presets` |
+| `rework` | 🔴`domain.rework`, ⚪`parsing`, ⚪`review_store`, 🔴`storage`, 🔴`text_stats`, ⚪`writing_presets` |
 | `scene_detector` | — |
 | `secure_config` | 🔴`config_defaults`, 🔴`storage` |
 | `semantic_candidates` | ⚪`parsing`, ⚪`text_stats` |
 | `shell_ui` | 🔴`app`, ⚪`ai_client`, 🔴`async_runner`, ⚪`diagnostic_logger`, 🔴`dialogs`, ⚪`performance_monitor`, 🔴`theme_system`, 🔴`ui_scroll` |
-| `skill_library` | ⚪`plugin_system`, 🔴`storage`, 🔴`token_estimator` |
+| `skill_library` | 🔴`domain.skill`, ⚪`plugin_system`, 🔴`storage`, 🔴`token_estimator` |
 | `storage` | — |
-| `style_dna` | 🔴`storage`, ⚪`text_stats` |
+| `style_dna` | 🔴`domain.style`, 🔴`storage`, ⚪`text_stats` |
 | `text_stats` | — |
 | `theme_switch` | 🔴`app`, ⚪`panels`, ⚪`panels.ui_kit`, 🔴`theme_system`, 🔴`ui_style` |
 | `theme_system` | — |

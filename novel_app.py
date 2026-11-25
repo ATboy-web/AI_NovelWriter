@@ -24,58 +24,85 @@ AI自动写小说系统 - 桌面应用程序
     重构保证: 各 Mixin 内的方法体与原 NovelWriterApp 逐字节一致，行为不变。
 """
 
+# ═══════════════════════════════════════════════════════════════════════
+# 在任何其它 import 之前：保证 windowed 模式下标准流可用
+# ═══════════════════════════════════════════════════════════════════════
+#
+# `console=False` 打包出的 EXE 里，`sys.stdout` / `sys.stderr` 是 `None`。
+# loguru（本项目日志底座）、warnings 与部分第三方库会直接写它们，
+# 拿到 `None` 时会抛 `AttributeError`。这不会让应用起不来（实测窗口正常），
+# 但会在启动早期留下一批无意义的异常噪声，也可能让"日志去哪了"变得不可查。
+#
+# 所以这里提前把标准流接到有效句柄。⚠️ 这**不是**"EXE 点不开"的修复 ——
+# 2026-11-25 真机验证时曾误判为根因，实际原因是测试脚本看错了进程
+# （onefile 会先起一个 8MB 的解压父进程，真正的应用是它的子进程，约 80MB）。
+import os as _os
+import sys as _sys
+
+if _sys.stdout is None or _sys.stderr is None:
+    # 用文件而非 devnull：万一仍需排查，能留下痕迹；写入失败也不能反过来阻断启动
+    try:
+        _log_dir = _os.path.join(_os.path.expanduser("~"), ".ai_novel_writer")
+        _os.makedirs(_log_dir, exist_ok=True)
+        _null = open(_os.path.join(_log_dir, "stdout-fallback.log"), "a", encoding="utf-8")
+    except OSError:
+        _null = open(_os.devnull, "w", encoding="utf-8")
+    if _sys.stdout is None:
+        _sys.stdout = _null
+    if _sys.stderr is None:
+        _sys.stderr = _null
+    del _null
+
 # 标准库
 import threading
-from pathlib import Path
 
 # GUI
 import tkinter as tk
+from pathlib import Path
 
 # 结构化日志
 from loguru import logger
 
+# 从 app 包导入核心类
+from app import AIClient, AppConfig, ImageGenerator, NoteManager, ReadingManager, UIStyle, __version__
+from app.ai_settings_ui import AISettingsMixin
+from app.chapter_ui import ChapterUIMixin
+from app.character_ui import CharacterUIMixin
+from app.cloud_storage import CloudStorageManager
+from app.editor_ui import EditorUIMixin
+
 # 小说工具集
 from app.events import EventBus
-from app.novel_toolkit import ElementLibrary, BridgeLibrary, DescriptionLibrary
-from app.cloud_storage import CloudStorageManager
+from app.generation_ui import GenerationMixin
+from app.lifecycle_ui import NovelLifecycleMixin
 from app.navigation import NavigationManager
-from app.usage_tracker import usage_tracker
-
-# 从 app 包导入核心类
-from app import AppConfig, AIClient, ImageGenerator, NoteManager, ReadingManager, UIStyle, __version__
-
+from app.note_ui import NoteUIMixin
+from app.novel_toolkit import BridgeLibrary, DescriptionLibrary, ElementLibrary
+from app.outline_ui import OutlineUIMixin
 from app.panels import (
-    ElementsPanelMixin,
+    AdaptPanelMixin,
+    BatchOpsPanelMixin,
     BridgesPanelMixin,
+    ChapterAnalysisPanelMixin,
     DescriptionsPanelMixin,
     DialoguePanelMixin,
+    ElementsPanelMixin,
+    MemoryVizPanelMixin,
     StoryFlowPanelMixin,
     StylePanelMixin,
-    AdaptPanelMixin,
-    WebSearchPanelMixin,
-    MemoryVizPanelMixin,
     SummaryMgmtPanelMixin,
-    BatchOpsPanelMixin,
-    ChapterAnalysisPanelMixin,
+    WebSearchPanelMixin,
 )
-
-from app.writing_skills_panel import WritingSkillsPanelMixin
+from app.persistence_ui import PersistenceMixin
+from app.reader_ui import ReaderUIMixin
 
 # ==================== P2-1 拆分出的功能域 Mixin ====================
 from app.shell_ui import ShellMixin
-from app.lifecycle_ui import NovelLifecycleMixin
-from app.ai_settings_ui import AISettingsMixin
-from app.generation_ui import GenerationMixin
-from app.character_ui import CharacterUIMixin
-from app.outline_ui import OutlineUIMixin
-from app.chapter_ui import ChapterUIMixin
-from app.editor_ui import EditorUIMixin
-from app.reader_ui import ReaderUIMixin
 from app.timeline_ui import TimelineMixin
 from app.toolkit_ui import ToolkitUIMixin
-from app.persistence_ui import PersistenceMixin
-from app.note_ui import NoteUIMixin
+from app.usage_tracker import usage_tracker
 from app.usage_ui import UsagePanelMixin
+from app.writing_skills_panel import WritingSkillsPanelMixin
 
 
 class _UnavailableCloudStorage:

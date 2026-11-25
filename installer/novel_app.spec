@@ -149,7 +149,11 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # 显式关闭 UPX：本项目**从未验证过** UPX 压缩后的产物能否启动
+    # （桌面长期没有 EXE，打包产物可运行性在 2026-11-25 才第一次真机验证）。
+    # 当前环境未安装 UPX，upx=True 实为 no-op（两种设置产物均为 29MB），
+    # 因此这里选择显式 False —— 避免将来环境里装了 UPX 后引入未经验证的变量。
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,  # 改为False隐藏控制台窗口

@@ -24,6 +24,7 @@ from __future__ import annotations
 import ast
 import pathlib
 import re
+from pathlib import Path
 
 import pytest
 
@@ -120,26 +121,46 @@ class TestProseCallsAreHardened:
     | `generate_settings` / `generate_characters` / `_plan_story_arcs` 等 | 结构化数据 | 否（思考有价值，下游有解析兜底） |
     """
 
+    #: 正文类调用的「限定名」：类里的方法用 `类名.方法名`，模块函数用函数名。
+    #: 四个写作阶段搬进 application 后入口都叫 `execute`，只有限定名能区分它们。
     PROSE_FUNCTIONS = {
-        "_writer_generate",
-        "_generate_long_chapter",
-        "_writer_revise",
-        "generate_chapter",
-        "generate_with_style",
-        "blend_styles",
-        "_reviewer_evaluate",
+        # 仍在 novel_agent.py（都是 NovelAgent 的方法，故带类名前缀）
+        "NovelAgent._generate_long_chapter",
+        "NovelAgent.generate_chapter",
+        "NovelAgent.generate_with_style",
+        "NovelAgent.blend_styles",
+        # 已搬到 application/writing_stages.py
+        "GenerateDraft.execute",
+        "ReviseDraft.execute",
+        "EvaluateReview.execute",
     }
 
+    #: 正文类函数所在的文件。实现搬走过一次（2026-11-26 四个阶段进 application），
+    #: 所以扫描范围必须跟着实现走 —— 只扫一个文件会让守卫在搬家后失效。
+    SOURCE_FILES = (
+        REPO / "app" / "novel_agent.py",
+        REPO / "app" / "application" / "writing_stages.py",
+    )
+
     @classmethod
-    def _calls(cls):
-        """产出 `(行号, 所属函数名, 关键字参数集合)`。"""
-        source = (REPO / "app" / "novel_agent.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        funcs = [
-            (node.lineno, node.end_lineno, node.name)
-            for node in ast.walk(tree)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        ]
+    def _scan_file(cls, path: Path) -> tuple[list[tuple[int, str, set]], set[str]]:
+        """扫一个文件：返回 `(调用行, 文件里出现过的函数名)`。"""
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+
+        def qualified() -> list[tuple[int, int, str]]:
+            """`(起始行, 结束行, 限定名)`；类内方法记作 `类名.方法名`。"""
+            found: list[tuple[int, int, str]] = []
+            for cls in [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]:
+                for item in cls.body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        found.append((item.lineno, item.end_lineno, f"{cls.name}.{item.name}"))
+            # 模块级函数
+            for item in tree.body:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    found.append((item.lineno, item.end_lineno, item.name))
+            return found
+
+        funcs = qualified()
         rows = []
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
@@ -148,7 +169,26 @@ class TestProseCallsAreHardened:
                 continue
             owner = next((f for f in funcs if f[0] <= node.lineno <= f[1]), None)
             rows.append((node.lineno, owner[2] if owner else "?", {kw.arg for kw in node.keywords}))
+        return rows, {f[2] for f in funcs}
+
+    @classmethod
+    def _calls(cls):
+        """产出 `(行号, 所属函数名, 关键字参数集合)`；跨文件合并。"""
+        rows = []
+        for path in cls.SOURCE_FILES:
+            file_rows, _names = cls._scan_file(path)
+            rows.extend(file_rows)
         return rows
+
+    def test_source_files_are_actually_scanned(self):
+        """反向断言：两个文件都必须真的被读到并解析出函数。
+
+        防的是"路径写错 → 扫了个空文件 → 没有违规 → 绿"。本项目踩过这类空转。
+        """
+        for path in self.SOURCE_FILES:
+            assert path.exists(), f"扫描目标不存在：{path}"
+            _rows, names = self._scan_file(path)
+            assert len(names) > 3, f"{path.name} 只解析出 {len(names)} 个限定名，扫描可能失效"
 
     def test_prose_calls_disable_thinking_and_fallback(self):
         offenders = []

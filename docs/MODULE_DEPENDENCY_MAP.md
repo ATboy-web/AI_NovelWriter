@@ -8,9 +8,9 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 122 |
-| 依赖边数 | 363 |
-| 其中函数内延迟导入 | 72 |
+| 内部模块数 | 124 |
+| 依赖边数 | 368 |
+| 其中函数内延迟导入 | 73 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
@@ -64,16 +64,16 @@
 | `panels.base` | 11 |
 | `panels.ui_kit` | 11 |
 | `config` | 8 |
+| `parsing` | 8 |
 | `ai_client` | 7 |
-| `parsing` | 7 |
 | `diagnostic_logger` | 6 |
 | `novel_toolkit` | 6 |
 | `token_estimator` | 6 |
+| `writing_presets` | 6 |
 | `memory_manager` | 5 |
 | `providers.base` | 5 |
 | `text_stats` | 5 |
 | `theme_system` | 5 |
-| `writing_presets` | 5 |
 
 > 这些模块被最多人依赖 ⇒ 改它们的破坏面最大，应当优先保证测试覆盖。
 
@@ -114,6 +114,7 @@
 | `application.generation_tree` | 🔴`domain.lineage`, 🔴`ports` |
 | `application.list_branches` | 🔴`domain`, 🔴`ports` |
 | `application.save_chapter` | 🔴`storage` |
+| `application.writing_stages` | 🔴`domain.plot`, 🔴`parsing`, ⚪`review_store`, ⚪`writing_presets` |
 | `async_runner` | ⚪`app`, ⚪`dialogs` |
 | `biography` | 🔴`storage` |
 | `bulk_rewrite` | ⚪`app`, ⚪`ai_client`, 🔴`async_runner`, 🔴`parsing`, 🔴`rework`, 🔴`storage`, 🔴`text_stats`, ⚪`writing_presets` |
@@ -132,6 +133,7 @@
 | `domain` | — |
 | `domain.branch` | — |
 | `domain.lineage` | — |
+| `domain.plot` | — |
 | `domain.rework` | — |
 | `domain.skill` | — |
 | `domain.style` | — |
@@ -153,7 +155,7 @@
 | `navigation` | — |
 | `note_manager` | 🔴`config` |
 | `note_ui` | 🔴`app`, 🔴`dialogs` |
-| `novel_agent` | 🔴`agent_orchestrator`, 🔴`ai_client`, 🔴`config`, ⚪`diagnostic_logger`, ⚪`mcp_system`, 🔴`memory_manager`, 🔴`parsing`, ⚪`review_store`, ⚪`skill_library`, 🔴`storage`, 🔴`token_estimator`, 🔴`usage_tracker`, ⚪`writing_presets`, ⚪`writing_skills` |
+| `novel_agent` | 🔴`agent_orchestrator`, 🔴`ai_client`, 🔴`application.writing_stages`, 🔴`config`, ⚪`diagnostic_logger`, 🔴`domain.plot`, ⚪`mcp_system`, 🔴`memory_manager`, 🔴`parsing`, ⚪`skill_library`, 🔴`storage`, 🔴`token_estimator`, 🔴`usage_tracker`, ⚪`writing_presets`, ⚪`writing_skills` |
 | `novel_store` | 🔴`storage` |
 | `novel_toolkit` | 🔴`storage` |
 | `outline_ui` | 🔴`app`, 🔴`dialogs`, 🔴`token_estimator` |

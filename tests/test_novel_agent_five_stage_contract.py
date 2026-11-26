@@ -748,3 +748,205 @@ class TestContractSourcesDoNotDrift:
         original = {"type": {"bad": 1}}
         normalize_plot_analysis(original)
         assert original == {"type": {"bad": 1}}
+
+
+# ══════════════════════════════════════════════════════════ 十一、编排本身（五阶段）
+
+
+class TestOrchestrationFiveStages:
+    """`generate_with_collaboration` 作为**编排者**的契约。
+
+    上一组验的是「每个阶段的产出对不对」，这一组验「编排有没有把它们串对」：
+    阶段顺序、耗时归因、事件载荷、上下文回灌、工具调用、修订记忆。
+    """
+
+    def _run(
+        self,
+        agent,
+        *,
+        chapter_num=1,
+        title="第1章",
+        outline="一段足够长的大纲内容用于触发AI。",
+        word_count=800,
+        prev_context="",
+    ):
+        return agent.generate_with_collaboration(chapter_num, title, outline, word_count, prev_context=prev_context)
+
+    # ---- 阶段顺序与耗时归因 ----
+
+    def test_phase_names_cover_all_five_stages(self, make_agent):
+        """五阶段的耗时都应该被**分段记录**。
+
+        漏记某个 phase 不会报错，只是那段时间变成 `unaccounted_ms` ——
+        而「这一章为什么慢」就永远归因不到具体 Agent。
+        """
+        from app.novel_agent import PHASE_CONTEXT, PHASE_PLOT, PHASE_REVIEW, PHASE_WORLD, PHASE_WRITE
+
+        expected = {PHASE_PLOT, PHASE_CONTEXT, PHASE_WORLD, PHASE_WRITE, PHASE_REVIEW}
+        captured: dict = {}
+        agent = make_agent(ai=ScriptedAI(reviewer=_review_json(95)))
+        agent._emit_chapter_timing = lambda _c, timer, _r, _ct: captured.update(timer.summary())
+        self._run(agent)
+
+        missing = expected - set(captured["phases_ms"])
+        assert not missing, f"耗时归因缺阶段：{missing}"
+
+    def test_revise_phase_absent_when_first_round_passes(self, make_agent):
+        from app.novel_agent import PHASE_REVISE
+
+        captured: dict = {}
+        agent = make_agent(ai=ScriptedAI(reviewer=_review_json(95)))
+        agent._emit_chapter_timing = lambda _c, timer, _r, _ct: captured.update(timer.summary())
+        self._run(agent)
+
+        assert PHASE_REVISE not in captured["phases_ms"], "首轮通过却记了修订耗时"
+
+    def test_network_round_trips_counted(self, make_agent):
+        """网络往返次数是「这一章到底发了几个请求」的唯一可信来源。"""
+        captured: dict = {}
+        agent = make_agent(ai=ScriptedAI(reviewer=lambda i: _review_json(30) if i == 0 else _review_json(95)))
+        agent._emit_chapter_timing = lambda _c, timer, _r, _ct: captured.update(timer.summary())
+        self._run(agent)
+
+        # plot + write + review + revise + review
+        assert captured["round_trips"] == 5, captured["phases_ms"]
+
+    # ---- 事件载荷 ----
+
+    def test_timing_event_payload_shape(self, make_agent, monkeypatch):
+        """`chapter_event` 的载荷是面板与 jq 统计的共同输入，键不能丢。"""
+        got: dict = {}
+
+        class Diag:
+            def chapter_event(self, chapter, event, payload, duration_ms=None):
+                got.update({"chapter": chapter, "event": event, "payload": payload, "duration_ms": duration_ms})
+
+        import app.novel_agent as mod
+
+        monkeypatch.setattr(mod, "_diag_logger", lambda: Diag())
+        agent = make_agent(ai=ScriptedAI(reviewer=_review_json(88)))
+        self._run(agent)
+
+        assert got["event"] == "complete"
+        assert got["chapter"] == 1
+        payload = got["payload"]
+        assert payload["chars"] > 0
+        assert payload["quality"] == 88
+        assert payload["threshold"] == agent.QUALITY_THRESHOLD
+        assert payload["revision_rounds"] == 0
+        assert "phases_ms" in payload and "round_trips" in payload
+        assert got["duration_ms"] is not None
+
+    # ---- 上下文回灌 ----
+
+    def test_prev_chapter_ending_is_extracted_and_injected(self, make_agent):
+        """`prev_context` 里的「前一章结尾」必须进 Writer 的提示词。
+
+        上下文整体会被压缩，而结尾那 1200 字是**刻意保留**的 ——
+        章节之间接不接得上全靠它。
+
+        ⚠️ 这里验的是**行为**：两条路径都能满足 —— 编排主动提取后传入，
+        或阶段内部从 context 回退提取。下一条件才专门钉住「编排这一层不许退化」。
+        """
+        agent = make_agent(ai=ScriptedAI(reviewer=_review_json(95)))
+        prev = "【前一章·第1章结尾（已压缩）】\n他推开门，看见满屋的血。\n---\n【其他上下文】"
+
+        self._run(agent, chapter_num=2, prev_context=prev)
+
+        blob = "".join(c["system"] + c["user"] for c in agent.ai.of("write"))
+        assert "他推开门，看见满屋的血。" in blob
+
+    def test_orchestrator_passes_prev_ending_explicitly(self, make_agent):
+        """钉住**编排这一层**：结尾必须作为 `prev_ending` 参数传给 Writer。
+
+        为什么单独一条：阶段内部还有一层回退提取（`GenerateDraft` 里那段 regex），
+        所以只删编排那层，上面那条行为用例**仍然通过**（反向验证实测过）。
+        两层都要有，但退化要能各自被发现 —— 编排层没了意味着
+        「上下文一压缩，结尾就丢」。
+        """
+        agent = make_agent(ai=ScriptedAI(reviewer=_review_json(95)))
+        seen: dict = {}
+        real = agent._writer_generate
+
+        def spy(chapter_num, chapter_title, chapter_outline, word_count, context=None, prev_ending=""):
+            seen["prev_ending"] = prev_ending
+            return real(chapter_num, chapter_title, chapter_outline, word_count, context, prev_ending)
+
+        agent._writer_generate = spy
+        prev = "【前一章·第1章结尾（已压缩）】\n他推开门，看见满屋的血。\n---\n【其他上下文】"
+        self._run(agent, chapter_num=2, prev_context=prev)
+
+        assert "他推开门，看见满屋的血。" in seen.get("prev_ending", ""), (
+            f"编排没有把结尾传给 Writer，实际：{seen.get('prev_ending')!r}"
+        )
+
+    def test_empty_world_context_does_not_inject_empty_section(self, make_agent):
+        """WorldBuilder 返回空串时，不能往上下文里塞一个空的「场景描写」段。"""
+        agent = make_agent(ai=ScriptedAI(reviewer=_review_json(95)))  # settings 为空
+        self._run(agent)
+
+        blob = "".join(c["system"] + c["user"] for c in agent.ai.of("write"))
+        assert "WorldBuilder输出" not in blob, "注入了空的场景段（会污染提示词）"
+
+    # ---- 工具与记忆 ----
+
+    def test_consistency_tool_called_every_round(self, make_agent):
+        """每轮审校后都跑一次一致性检查 —— 它是「改完有没有改坏」的唯一自动判据。"""
+        agent = make_agent(ai=ScriptedAI(reviewer=lambda i: _review_json(30) if i == 0 else _review_json(95)))
+        from unittest.mock import MagicMock
+
+        real_call = agent.tools.call
+        agent.tools.call = MagicMock(side_effect=lambda name, **kw: real_call(name, **kw))
+        self._run(agent)
+
+        called = [c.args[0] if c.args else None for c in agent.tools.call.call_args_list]
+        assert called.count("check_consistency") == 2, f"实际调用：{called}"
+
+    def test_revision_memory_records_each_failed_round(self, make_agent):
+        """修订记忆是「这一章为什么改了三次」的唯一记录，面板要用它。"""
+        agent = make_agent(
+            ai=ScriptedAI(
+                reviewer=lambda i: (
+                    _review_json(40, issues=["节奏拖沓"], suggestions=["压缩"]) if i == 0 else _review_json(95)
+                )
+            )
+        )
+        self._run(agent)
+
+        assert len(agent._revision_memory) == 1
+        entry = agent._revision_memory[0]
+        assert entry["chapter"] == 1
+        assert entry["round"] == 1
+        assert entry["issues"] == ["节奏拖沓"]
+        assert entry["suggestions"] == ["压缩"]
+
+    def test_passing_first_round_leaves_no_revision_memory(self, make_agent):
+        agent = make_agent(ai=ScriptedAI(reviewer=_review_json(95)))
+        self._run(agent)
+
+        assert agent._revision_memory == []
+
+    # ---- 对话日志 ----
+
+    def test_conversation_log_follows_stage_order(self, make_agent):
+        """面板上的「协作过程」按这个顺序展示，顺序错会让过程看起来不合逻辑。"""
+        agent = make_agent(ai=ScriptedAI(reviewer=_review_json(95)))
+        self._run(agent)
+
+        first_seen: list[str] = []
+        for msg in agent._conversation_log:
+            role = getattr(msg.role, "name", str(msg.role))
+            if role not in first_seen:
+                first_seen.append(role)
+        assert first_seen == ["PLOT", "WORLD", "WRITER", "REVIEWER", "EDITOR"], first_seen
+
+    def test_log_callback_receives_stage_markers(self, make_agent):
+        """日志里必须能看到每个阶段，否则「卡在哪一步」只能靠猜。"""
+        lines: list[str] = []
+        agent = make_agent(ai=ScriptedAI(reviewer=_review_json(95)))
+        agent.log = lines.append
+        self._run(agent)
+
+        joined = "\n".join(lines)
+        for marker in ("PlotDesigner", "WorldBuilder", "Writer", "Reviewer", "Editor", "5Agent协作完成"):
+            assert marker in joined, f"日志缺少阶段标记：{marker}"

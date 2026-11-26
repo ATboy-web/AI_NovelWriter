@@ -154,3 +154,40 @@ class TestAgentLayerSourceList:
 
         for path in scan.AGENT_LAYER_FILES:
             assert path.startswith("app/"), f"{path} 不在 app/ 下"
+
+
+class TestRelativeImportsResolve:
+    """子包内的相对导入必须指向**真实存在**的同级模块。
+
+    只查一层 `from .x import`：多级（`from ..x`）另有分层守卫管，
+    而这类事故的实际形态就是"单级相对导入跟着函数体搬错了包"。
+    """
+
+    @pytest.mark.parametrize("package", ["application", "domain", "adapters", "ports"])
+    def test_single_dot_imports_point_to_existing_modules(self, package: str):
+        pkg_dir = _APP / package
+        missing: list[str] = []
+
+        for path in sorted(pkg_dir.glob("*.py")):
+            if path.name == "__init__.py":
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ImportFrom) or node.level != 1 or not node.module:
+                    continue
+                target = pkg_dir / f"{node.module.split('.')[0]}.py"
+                target_pkg = pkg_dir / node.module.split(".")[0]
+                if not target.is_file() and not target_pkg.is_dir():
+                    missing.append(f"{path.name}:{node.lineno} → .{node.module}")
+
+        assert not missing, (
+            "这些相对导入在 " + package + "/ 下解析不到（会静默 ImportError）：\n  " + "\n  ".join(missing)
+        )
+
+    def test_scanner_sees_imports_at_all(self):
+        """反向断言：扫描器要真读到相对导入，否则上面那条永远绿。"""
+        found = 0
+        for path in sorted((_APP / "application").glob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            found += sum(1 for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.level == 1 and n.module)
+        assert found >= 3, f"application/ 下只扫到 {found} 条相对导入，扫描器可能失效"

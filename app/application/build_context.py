@@ -138,7 +138,7 @@ class BuildContext:
 
         # 写作技能上下文（知识图谱、写作技巧）
         try:
-            from .writing_skills import writing_skill_manager
+            from app.writing_skills import writing_skill_manager
 
             # P-04b：传入 `chapter_num`，让学习到的经验按"距今章节数"检索。
             # 旧实现不传 ⇒ `get_writing_context` 的 `chapter` 形参恒为默认 0
@@ -161,7 +161,7 @@ class BuildContext:
         # 因为 `tests/test_plugin_system.py::TestWiringGuard` 要求存在显式生产调用点，
         # 否则插件系统会重蹈"定义完整但零引用 ⇒ 被当死代码删除"的覆辙。
         try:
-            from .writing_skills import writing_skill_manager
+            from app.writing_skills import writing_skill_manager
 
             plugin_ctx = writing_skill_manager.plugin_skill_context()
             if plugin_ctx:
@@ -180,7 +180,7 @@ class BuildContext:
         # 生成阶段传 `stage="generate"` ⇒ 自动选「生成期防 AI 腔」，而不是成稿清理。
         preset_ctx = ""
         try:
-            from .writing_presets import get_preset_manager
+            from app.writing_presets import get_preset_manager
 
             manager = get_preset_manager()
             if manager is not None:
@@ -205,7 +205,7 @@ class BuildContext:
         # 【写作参考】里会被 `_compress_text` 压成一句废话，所以独立占预算。
         if not preset_ctx:
             try:
-                from .skill_library import get_skill_library
+                from app.skill_library import get_skill_library
 
                 library = get_skill_library()
                 skill_budget = max(0, min(900, max_chars - used))

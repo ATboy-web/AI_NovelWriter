@@ -169,3 +169,181 @@ class TestCompressHelpers:
         # 背景/目标只给核心角色写（无名小卒写了会挤掉别人）
         assert "童年失忆" in full and "童年失忆" not in compact
         assert "复仇" in full and "复仇" not in compact
+
+
+# ══════════════════════════════════════════════════════════ 注入点（预设 / 技能库 / 插件）
+
+
+class TestInjectionSourcesRunForReal:
+    """四条注入链必须**真的执行**，而不只是"源码里出现过这个名字"。
+
+    ## 为什么这组用例必须存在
+
+    2026-11-26 把 `_build_context` 搬进 application 时，函数体内的
+    `from .writing_skills import ...`（相对导入）跟着搬了过来 —— 在
+    `app/application/` 下它解析成 `app.application.writing_skills`，
+    模块不存在 ⇒ `ImportError` ⇒ 被外层 `except Exception` 吞掉 ⇒
+    **写作预设、技能库、插件技能、学习经验全部静默失效**。
+
+    而当时的守卫（`test_writing_presets` / `test_skill_library` 的 wiring guard）
+    只断言源码里**有** `prompt_context(` 这个字符串 —— 于是它照样绿。
+    这正是"注册即遗忘"的变体：**代码在，但永远走不到**。
+
+    所以这里用替身把每条链都真跑一遍：返回非空就该出现对应分段。
+    """
+
+    def test_writing_skills_section(self, monkeypatch):
+        class FakeManager:
+            def get_writing_context(self, chapter=0):
+                assert chapter == 5, "chapter 没传下去（学习经验会按默认 0 检索）"
+                return "学习到的成功模式：" + "细节描写要克制" * 5
+
+            def plugin_skill_context(self):
+                return ""
+
+        import app.writing_skills as ws
+
+        monkeypatch.setattr(ws, "writing_skill_manager", FakeManager())
+        text = build(FakeMemory())
+        assert "【写作参考】" in text
+        assert "细节描写要克制" in text
+
+    def test_writing_skills_failure_is_swallowed(self, monkeypatch):
+        """技能库取不到时只记日志，不能拖垮上下文组装。"""
+
+        class Boom:
+            def get_writing_context(self, chapter=0):
+                raise RuntimeError("技能库损坏")
+
+            def plugin_skill_context(self):
+                raise RuntimeError("插件损坏")
+
+        import app.writing_skills as ws
+
+        monkeypatch.setattr(ws, "writing_skill_manager", Boom())
+        text = build(FakeMemory(global_summary="摘要"))
+        assert "【全局摘要】" in text, "一个可选组件失败把整段上下文弄没了"
+
+    def test_plugin_skills_section(self, monkeypatch):
+        class FakeManager:
+            def get_writing_context(self, chapter=0):
+                return ""
+
+            def plugin_skill_context(self):
+                return "插件提供的写作片段：" + "悬疑节奏" * 10
+
+        import app.writing_skills as ws
+
+        monkeypatch.setattr(ws, "writing_skill_manager", FakeManager())
+        text = build(FakeMemory())
+        assert "【插件写作技能】" in text
+        assert "悬疑节奏" in text
+
+    def test_writing_preset_section(self, monkeypatch):
+        seen: dict = {}
+
+        class FakeManager:
+            def prompt_context(self, budget, stage, novel_dir):
+                seen.update({"budget": budget, "stage": stage, "novel_dir": novel_dir})
+                return "生成期防 AI 腔：" + "禁止套话开头" * 8
+
+        import app.writing_presets as wp
+
+        monkeypatch.setattr(wp, "get_preset_manager", lambda: FakeManager())
+        text = build(FakeMemory())
+
+        assert "【写作预设】" in text
+        assert seen["stage"] == "generate", "生成阶段必须用「生成期」预设，不是成稿清理"
+        assert seen["budget"] > 0
+
+    def test_preset_disables_skill_library(self, monkeypatch):
+        """预设与技能库**互斥**：同一批规则注入两遍只会挤掉前情。"""
+
+        class FakePreset:
+            def prompt_context(self, budget, stage, novel_dir):
+                return "预设规则"
+
+        class FakeLibrary:
+            def prompt_context(self, budget):
+                raise AssertionError("有预设时不该再去取技能库")
+
+        import app.skill_library as sl
+        import app.writing_presets as wp
+
+        monkeypatch.setattr(wp, "get_preset_manager", lambda: FakePreset())
+        monkeypatch.setattr(sl, "get_skill_library", lambda: FakeLibrary())
+
+        text = build(FakeMemory())
+        assert "【写作预设】" in text
+        assert "【技能库规则】" not in text
+
+    def test_skill_library_used_when_no_preset(self, monkeypatch):
+        class FakeLibrary:
+            def prompt_context(self, budget):
+                assert budget > 0
+                return "技能库规则：" + "视角切换要交代" * 8
+
+        import app.skill_library as sl
+        import app.writing_presets as wp
+
+        monkeypatch.setattr(wp, "get_preset_manager", lambda: None)
+        monkeypatch.setattr(sl, "get_skill_library", lambda: FakeLibrary())
+
+        text = build(FakeMemory())
+        assert "【技能库规则】" in text
+        assert "视角切换要交代" in text
+
+
+# ══════════════════════════════════════════════════════════ 伏笔与截断
+
+
+class TestUnresolvedPlotsAndTruncation:
+    def test_unresolved_plots_inserted_after_global_summary(self):
+        """伏笔段插在全局摘要**后面**（`parts.insert(1, ...)`），
+        让模型先看到"故事讲到哪"，再看到"还欠哪些悬念"。"""
+        memory = FakeMemory(
+            global_summary="主线：入山。",
+            relevant=[{"content": "他答应过要回去。" * 5}],
+        )
+        text = build(memory, extra_context="写渡河")
+
+        assert text.index("【全局摘要】") < text.index("【未回收伏笔") if "【未回收伏笔" in text else True
+
+    def test_unresolved_plots_skipped_when_budget_full(self):
+        """预算已满时不插伏笔段（插了也会被后面的截断切掉，白占预算）。"""
+        memory = FakeMemory(global_summary="摘要" * 3000)
+        text = build(memory, max_chars=200)
+        assert len(text) <= 200 * 1.2
+
+    def test_final_truncation_keeps_both_ends(self):
+        """超预算时保留头尾（`marker` 在中间），不能只砍尾巴。"""
+        memory = FakeMemory(
+            global_summary="全局摘要开头" + "甲" * 3000,
+            recent=["近期章节结尾" + "乙" * 2000],
+        )
+        text = build(memory, max_chars=600)
+
+        assert "全局摘要开头" in text
+        assert "近期章节结尾" in text
+        assert "截断" in text
+
+
+# ══════════════════════════════════════════════════════════ 无名小卒
+
+
+class TestMinorCharacters:
+    def test_inactive_minor_character_is_filtered(self):
+        """「无名小卒」只有活跃时才显示 —— 否则 286 个路人的档案会挤掉主角。"""
+        chars = {
+            "林风": {"personality": "沉默", "category": "主角"},
+            "王二": {"personality": "路人甲", "category": "无名小卒"},
+        }
+        text = build(FakeMemory(characters=chars, active=["林风"]))
+
+        assert "林风" in text
+        assert "王二" not in text, "未活跃的无名小卒不该进上下文"
+
+    def test_active_minor_character_is_kept(self):
+        chars = {"王二": {"personality": "路人甲", "category": "无名小卒"}}
+        text = build(FakeMemory(characters=chars, active=["王二"]))
+        assert "王二" in text

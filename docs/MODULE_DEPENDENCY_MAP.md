@@ -9,8 +9,8 @@
 | 指标 | 值 |
 |---|---|
 | 内部模块数 | 131 |
-| 依赖边数 | 381 |
-| 其中函数内延迟导入 | 73 |
+| 依赖边数 | 384 |
+| 其中函数内延迟导入 | 76 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
@@ -70,10 +70,10 @@
 | `memory_manager` | 6 |
 | `novel_toolkit` | 6 |
 | `token_estimator` | 6 |
+| `writing_presets` | 6 |
 | `providers.base` | 5 |
 | `text_stats` | 5 |
 | `theme_system` | 5 |
-| `writing_presets` | 5 |
 
 > 这些模块被最多人依赖 ⇒ 改它们的破坏面最大，应当优先保证测试覆盖。
 
@@ -111,7 +111,7 @@
 | `ai_client` | 🔴`config`, ⚪`diagnostic_logger`, ⚪`performance_monitor`, 🔴`providers`, 🔴`token_estimator`, 🔴`usage_tracker` |
 | `ai_settings_ui` | 🔴`app`, ⚪`ai_client`, ⚪`async_runner`, 🔴`config`, 🔴`dialogs`, 🔴`providers` |
 | `application` | — |
-| `application.build_context` | 🔴`domain.plot`, 🔴`token_estimator` |
+| `application.build_context` | 🔴`domain.plot`, ⚪`skill_library`, 🔴`token_estimator`, ⚪`writing_presets`, ⚪`writing_skills` |
 | `application.character_progression` | ⚪`diagnostic_logger`, 🔴`parsing` |
 | `application.collaboration` | 🔴`application.phase_timer`, ⚪`diagnostic_logger` |
 | `application.generate_characters` | 🔴`memory_manager`, 🔴`parsing`, 🔴`storage` |

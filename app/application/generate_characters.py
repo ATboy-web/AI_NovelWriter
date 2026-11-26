@@ -32,6 +32,18 @@ from app.storage import atomic_write_json, safe_filename
 __all__ = ["GenerateCharacters"]
 
 
+def _looks_like_character_map(value: Any) -> bool:
+    """判断解析结果是否**像**角色表（至少有一个值是 dict）。
+
+    只看"是不是 dict"是不够的：模型带前言时 `parse_json_response` 会抓
+    到内层的单个对象（如 `{"personality": "沉默"}`），形状合法但根本不是
+    角色表。若据此认为"解析成功"，后面的逐字段回退就全被跳过了。
+    """
+    if not isinstance(value, dict):
+        return False
+    return any(isinstance(item, dict) for item in value.values())
+
+
 class GenerateCharacters:
     """生成角色并落盘。
 
@@ -134,12 +146,10 @@ class GenerateCharacters:
             self.log(f"[角色] 初步解析仅获得 {parsed_count}/{count} 个角色，尝试从原始响应补充...")
 
         # 多层回退：如果标准解析失败（或数量不足），尝试从原始响应中提取
-        need_extract = (
-            chars is None
-            or not isinstance(chars, dict)
-            or len(chars) == 0
-            or (isinstance(chars, dict) and len(chars) < count)
-        )
+        # 🔴 判据是"像不像角色表"而不是"是不是 dict"：
+        # 模型带前言时第 1 层会抓到内层单个对象，形状合法但内容不是角色表，
+        # 若据此判"成功"，第 2/3 层就永远不跑（实测会一个角色都拿不到）。
+        need_extract = not _looks_like_character_map(chars) or (isinstance(chars, dict) and len(chars) < count)
         if need_extract:
             self.log(f"[角色] 解析遇到问题 (当前{len(chars) if chars else 0}/{count})，尝试从原始响应恢复...")
             if response:
@@ -161,6 +171,11 @@ class GenerateCharacters:
             self.log("[角色] 尝试最终回退策略: 从响应中提取角色名...")
             if response:
                 import re as _char_re
+
+                # 前两层都失败时 `chars` 可能是 None —— 不先兜住，
+                # 下面的赋值会抛 TypeError，把"最后手段"变成"最后崩溃"。
+                if not isinstance(chars, dict):
+                    chars = {}
 
                 name_patterns = _char_re.findall(r'"([^"]{1,6})"\s*:\s*\{', response)
                 if name_patterns:
@@ -208,6 +223,9 @@ class GenerateCharacters:
 
                 name_patterns = _char_re2.findall(r'"([^"]{1,6})"\s*:\s*\{', response)
                 existing = set(chars.keys())
+                # 🔴 先算死"还差几个"：写进循环条件里会变成移动靶 ——
+                # 每补一个 `len(chars)` 就 +1，条件随之收紧 ⇒ 永远只补 1 个。
+                missing = max(0, count - len(chars))
                 field_names = {
                     "gender",
                     "age",
@@ -234,7 +252,7 @@ class GenerateCharacters:
                 t = title
                 added = 0
                 for name in name_patterns:
-                    if name not in existing and name not in field_names and added < count - len(chars):
+                    if name not in existing and name not in field_names and added < missing:
                         chars[name] = {
                             "gender": "未知",
                             "age": 25,

@@ -34,6 +34,7 @@ from app.parsing import parse_json_response
 
 __all__ = [
     "AnalyzePlot",
+    "BuildWorldScene",
     "EvaluateReview",
     "GenerateDraft",
     "ReviseDraft",
@@ -57,6 +58,29 @@ class StageDeps:
     long_chapter: Callable[..., str] | None = None
     #: 写进评审记录，用于"这条分数是哪个模型给的"
     model_name: str = ""
+
+
+class BuildWorldScene:
+    def __init__(self, deps: StageDeps) -> None:
+        self.deps = deps
+
+    def execute(self, chapter_num: int, plot_analysis: Dict) -> str:
+        """WorldBuilder：从作品设置里取出已知区域，拼成场景提示。"""
+        settings = self.deps.memory.get_settings()
+        if settings and isinstance(settings, dict):
+            world = settings.get("world", {})
+            if isinstance(world, dict):
+                known = world.get("已知区域", [])
+                # settings.json 是用户可编辑的，形状不可信：
+                # - 写成字符串 ⇒ 当单个区域（否则 `join` 会把字逐字拆开）
+                # - 写成 dict/数字 ⇒ 直接视为无（切片会抛 TypeError）
+                if isinstance(known, str):
+                    known = [known]
+                if isinstance(known, (list, tuple)):
+                    cleaned = [str(item).strip() for item in known[:3] if str(item).strip()]
+                    if cleaned:
+                        return f"世界观场景: {', '.join(cleaned)}"
+        return ""
 
 
 class AnalyzePlot:

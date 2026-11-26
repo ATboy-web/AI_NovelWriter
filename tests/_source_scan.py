@@ -83,6 +83,9 @@ def _strip_comments(src: str) -> str:
 AGENT_LAYER_FILES = (
     "app/novel_agent.py",
     "app/application/build_context.py",
+    "app/application/character_progression.py",
+    "app/application/collaboration.py",
+    "app/application/generate_characters.py",
     "app/application/long_chapter.py",
     "app/application/writing_stages.py",
 )

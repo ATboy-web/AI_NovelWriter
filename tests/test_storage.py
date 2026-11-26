@@ -199,7 +199,20 @@ class TestNoDuplicateImplementations:
         assert "_atomic_json_write" not in src
 
     def test_memory_manager_and_character_system_use_storage(self):
+        """凡是**自己落盘**的模块，文件名清洗与原子写都必须来自 app.storage。
+
+        2026-11-26：角色落盘从 novel_agent.py 搬到了
+        application/generate_characters.py，判据跟着实际写盘点走 ——
+        写死 novel_agent.py 的话，搬完之后这条守卫会盯一个已经不再落盘的文件，
+        而真正在写盘的新模块无人看守。
+        """
         root = Path(__file__).parent.parent / "app"
-        for name in ("memory_manager.py", "character_system.py", "novel_agent.py"):
+        persisting = (
+            "memory_manager.py",
+            "character_system.py",
+            "application/generate_characters.py",
+            "application/save_chapter.py",
+        )
+        for name in persisting:
             src = (root / name).read_text(encoding="utf-8")
             assert "from app.storage import" in src or "from .storage import" in src, name

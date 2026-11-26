@@ -16,7 +16,6 @@ except ImportError:
     logger = logging.getLogger(__name__)
 
 import json
-import re
 import threading
 import time
 from datetime import datetime
@@ -26,12 +25,31 @@ from typing import Any, Callable, Dict, List
 from .agent_orchestrator import AgentOrchestrator
 from .ai_client import AIClient
 from .application.build_context import BuildContext
+from .application.character_progression import UpdateCharacterProgression
 
 # ⚠️ 这几个是**重导出**（既有调用方与测试从 `app.novel_agent` 取它们）：
 # `PLOT_TYPES` / `normalize_plot_analysis` 本模块内部可能用不到，但删掉会破坏接口。
+from .application.collaboration import CollaborationDeps, GenerateWithCollaboration, emit_chapter_timing
+from .application.generate_characters import GenerateCharacters
 from .application.long_chapter import GenerateLongChapter
+
+# 段级耗时归因已下沉到 `application.phase_timer`（2026-11-26）。
+# re-export：`tests/test_chapter_timing.py` 与 `generation_ui` 都从本模块取这些名字。
+from .application.phase_timer import (  # noqa: E402,F401
+    _NETWORK_PHASES,
+    NETWORK_PHASES,
+    PHASE_CONTEXT,
+    PHASE_PLOT,
+    PHASE_REVIEW,
+    PHASE_REVISE,
+    PHASE_WORLD,
+    PHASE_WRITE,
+    PhaseTimer,
+    _PhaseTimer,
+)
 from .application.writing_stages import (  # noqa: F401
     AnalyzePlot,
+    BuildWorldScene,
     EvaluateReview,
     GenerateDraft,
     ReviseDraft,
@@ -40,9 +58,8 @@ from .application.writing_stages import (  # noqa: F401
 from .config import AppConfig
 from .domain.plot import CONTEXT_RATIOS, PLOT_TYPES, normalize_plot_analysis  # noqa: F401
 from .domain.prose import looks_truncated
-from .memory_manager import CharacterDataGuardError, MemoryManager
+from .memory_manager import MemoryManager
 from .parsing import parse_characters_payload, parse_json_response
-from .storage import atomic_write_json, safe_filename
 from .usage_tracker import task_tracker
 
 # 诊断日志
@@ -70,74 +87,9 @@ def _diag_logger():
         return _diag
 
 
-class _PhaseTimer:
-    """单章生成的段级耗时归因。
-
-    为什么需要它：单章生成要发 **3–9 次网络往返**（`_plot_designer_analyze` 1 次、
-    `_writer_generate` 1 次、`_reviewer_evaluate` 每轮 1 次、`_writer_revise` 不达标才发），
-    而本地计算量与这些往返相比可以忽略。于是"这一章慢"**必定**能拆成"哪个 Agent 慢"，
-    但没有分段数据就只能猜 —— 这也是先做观测、后做优化的原因。
-
-    用累加而不是记录每次调用，是因为"第 2 轮审校"单独看没有意义，
-    有用的是"审校总共占了这一章的多少毫秒"。逐轮明细另外记在 `calls` 里备查。
-
-    ⚠️ 刻意不做的事：不 import `ai_client` / 不读全局状态 / 不抛异常。
-    它只做算术，唯一的输出是给 `chapter_event` 的一组数字。
-    """
-
-    __slots__ = ("_t0", "total_ms", "phases", "calls")
-
-    def __init__(self):
-        self._t0 = time.perf_counter()
-        self.total_ms = 0.0
-        self.phases: Dict[str, float] = {}
-        self.calls: List[Dict[str, Any]] = []
-
-    def phase(self, name: str, started_at: float) -> float:
-        """记录一段耗时（毫秒）并累加进同名阶段。
-
-        用 `perf_counter` 而非 `time.time`：后者会被系统时钟调整影响，
-        而我们要的是"这一段实际过了多久"。
-        """
-        elapsed = (time.perf_counter() - started_at) * 1000
-        self.phases[name] = self.phases.get(name, 0.0) + elapsed
-        self.calls.append({"phase": name, "ms": round(elapsed, 2)})
-        return elapsed
-
-    def breakdown(self) -> Dict[str, float]:
-        """各阶段耗时（毫秒，四舍五入到 0.01）。"""
-        return {k: round(v, 2) for k, v in self.phases.items()}
-
-    def summary(self) -> Dict[str, Any]:
-        """可日志化的汇总：总时长 + 各段 + 网络往返次数 + 未归因余量。"""
-        self.total_ms = (time.perf_counter() - self._t0) * 1000
-        accounted = sum(self.phases.values())
-        return {
-            "total_ms": round(self.total_ms, 2),
-            "phases_ms": self.breakdown(),
-            "round_trips": sum(1 for c in self.calls if c["phase"] in _NETWORK_PHASES),
-            "unaccounted_ms": round(self.total_ms - accounted, 2),
-            "calls": self.calls,
-        }
-
-
 #: 交付给下游消费者的关键阶段名（顺序即执行顺序，也是"最慢在哪"的阅读顺序）。
 #: 之所以单独列出来，是因为 `novel_agent` 与 `generation_ui` 要对同一组名字达成一致 ——
 #: 名字写两处必然漂移，所以由这里导出。
-PHASE_PLOT = "plot_design"
-PHASE_CONTEXT = "context"
-PHASE_WORLD = "world_build"
-PHASE_WRITE = "write"
-PHASE_REVIEW = "review"
-PHASE_REVISE = "revise"
-
-#: 真正**会发网络请求**的阶段。数错这个数会直接误导"该优化哪里"。
-#: 实测依据（AST 静态统计 `ai.chat()` 调用点）：
-#:   plot_design / write / review / revise 各 1 次；`world_build` **0 次**
-#:   （`_world_builder_build` 只读本地 settings 就返回，连 `ai` 都不碰）；
-#:   `context` 也是纯本地组装。
-#: 这正是"5 个 Agent"听起来像 5 次往返、实际不是的原因 —— 别按 Agent 数量推断。
-_NETWORK_PHASES = frozenset({PHASE_PLOT, PHASE_WRITE, PHASE_REVIEW, PHASE_REVISE})
 
 
 # ===== 定稿辅助调用的输出校验 =====
@@ -573,6 +525,11 @@ class NovelAgent:
             self.log(f"[知识图谱] 获取上下文失败: {e}")
             return ""
 
+    def _reset_conversation(self) -> None:
+        """清空对话日志（每章协作开始时调用）。"""
+        with self._log_lock:
+            self._conversation_log = []
+
     def _record_conversation(self, agent: str, action: str, content: str):
         """记录智能体对话 - 使用标准AgentMessage协议"""
         # BUG-2修复: 角色名到枚举的正确映射
@@ -675,203 +632,44 @@ class NovelAgent:
     def generate_with_collaboration(
         self, chapter_num: int, chapter_title: str, chapter_outline: str, word_count: int = 3000, prev_context: str = ""
     ) -> str:
-        """多智能体协作生成章节 v3.0 - 5Agent协作
+        """5Agent 协作生成章节 —— 编排实现见 `application.GenerateWithCollaboration`。
 
-        Hello-Agents参考流程: PlotDesigner→WorldBuilder→Writer→Reviewer→Editor
+        这里只负责把**当前实例的协作者**打包进去、并收回本轮评分
+        （`last_chapter_quality` 供 `finalize_chapter` 当学习信号）。
         """
-        with self._log_lock:
-            self._conversation_log = []
-        self.log(f"[编排器] 5Agent协作启动: 第{chapter_num}章「{chapter_title}」")
-
-        # 📊 段级耗时归因：全程只建一个计时器，每个 Phase 结束记一笔。
-        # 收尾时统一发一条 `CHAPTER/.../complete`，含总时长与各段明细。
-        timer = _PhaseTimer()
-
-        # 🔑 提取前一章结尾（在压缩前保存，确保不丢失）
-        prev_ending = ""
-        if prev_context and "【前一章" in str(prev_context):
-            import re as _re
-
-            m = _re.search(r"【前一章·第\d+章结尾.*?】\n(.+?)(?:\n---|\n【|\Z)", str(prev_context), _re.DOTALL)
-            if m:
-                prev_ending = m.group(1).strip()[-1200:]
-
-        # Phase 1: PlotDesigner - 分析大纲，管理伏笔
-        self.log("[PlotDesigner] 分析大纲与伏笔...")
-        self._record_conversation("PlotDesigner", "analyze", f"分析第{chapter_num}章大纲")
-        _t = time.perf_counter()
-        plot_analysis = self._plot_designer_analyze(chapter_num, chapter_title, chapter_outline)
-        timer.phase(PHASE_PLOT, _t)
-
-        # 注入前几章内容上下文
-        plot_type = plot_analysis.get("type", "writing")
-        _t = time.perf_counter()
-        context = self._build_context(chapter_num, prev_context, writing_phase=plot_type)
-        timer.phase(PHASE_CONTEXT, _t)
-        self.log(f"[PlotDesigner] 情节类型: {plot_type}, 上下文已注入(全局摘要+卷摘要+角色+近期章节+创作指引)")
-
-        # Phase 2: WorldBuilder - 场景与世界一致性
-        self.log("[WorldBuilder] 构建场景描写...")
-        self._record_conversation("WorldBuilder", "build", f"构建第{chapter_num}章场景")
-        _t = time.perf_counter()
-        world_context = self._world_builder_build(chapter_num, plot_analysis)
-        timer.phase(PHASE_WORLD, _t)
-
-        # 🔧 BUG-1修复: 将WorldBuilder输出注入Writer上下文
-        if world_context:
-            context = f"【场景描写 - WorldBuilder输出】\n{world_context}\n\n{context}"
-
-        # Phase 3: Writer - 创作内容
-        self.log(f"[Writer] 正在创作第{chapter_num}章初稿...")
-        self._record_conversation("Writer", "generate", f"开始创作第{chapter_num}章")
-        _t = time.perf_counter()
-        content = self._writer_generate(
-            chapter_num, chapter_title, chapter_outline, word_count, context=context, prev_ending=prev_ending
-        )
-        timer.phase(PHASE_WRITE, _t)
-
-        # Phase 4-5: Reviewer → Editor 迭代修订
-        prev_feedback = ""
-        review: Dict = {}  # P-04：显式初始化，供结尾记录评分（循环至少跑一轮）
-        for round_num in range(1, self.MAX_REVISION_ROUNDS + 1):
-            self.log(f"[Reviewer] 审校第{chapter_num}章（第{round_num}轮）...")
-            self._record_conversation("Reviewer", "review", f"第{round_num}轮审校")
-            _t = time.perf_counter()
-            # 🔴 评审失败**不得让整章作废**（2026-11-19 修正的回归）。
-            #
-            # 上一版给正文/评审都加了 `allow_reasoning_fallback=False`（对的方向：
-            # 不拿工作笔记当成品），但评审这条调用**没有异常兜底**，于是
-            # `_finalize_text` 在思考耗尽预算时抛出的异常直接穿透到
-            # `generate_chapter` —— 一次"审校没跑成"把**已经写好的整章**丢掉了。
-            # 日志实录：第 3 章 `Exception: DeepSeek思考模式耗尽 token`，
-            # 正文其实已生成，却因为评审抛错而整章失败。
-            #
-            # 评审是**质量门**，不是正文的前置条件：拿不到分数时正确行为是
-            # "记 warning → 按无评分处理 → 交给人工确认"（下面的 `score is None`
-            # 分支本来就是这么设计的），而不是让本章失败。
-            try:
-                review = self._reviewer_evaluate(chapter_num, content, previous_feedback=prev_feedback)
-            except Exception as review_error:  # noqa: BLE001 - 评审故障必须降级，不能拖垮出稿
-                self.log(f"[Reviewer] ⚠️ 审校调用失败（{review_error}），本章按「无评分」继续，正文保留")
-                self._record_conversation("Reviewer", "error", f"审校调用失败: {review_error}")
-                review = {"overall_score": None, "issues": [], "suggestions": []}
-            finally:
-                timer.phase(PHASE_REVIEW, _t)
-            # R21 修复：这里紧接着就用 `review.setdefault(...)` / `review.get(...)`，
-            # 而 `_reviewer_evaluate` 的解析结果**可能是 list**
-            # （`parse_json_response` 在期望 dict 但 AI 返回顶层数组时会返回 list）。
-            # 旧代码的守卫在第 748 行 —— **在所有使用之后**，等于没有；
-            # 一旦命中，崩的是 `list.setdefault`（`AttributeError`），
-            # 而且是在生成主流程里，整章生成失败。归一化必须在使用之前。
-            if not isinstance(review, dict):
-                self.log("[Editor] ⚠️ 审校返回的不是 JSON 对象，本轮按「评审失败」处理")
-                review = {"overall_score": None, "issues": [], "suggestions": []}
-
-            # 工具调用: 一致性检查
-            self.tools.call("check_consistency", content=content[:500])
-
-            # 调用写作技能: 去AI味检查
-            slop_issues = self._call_anti_slop_check(content)
-            if slop_issues:
-                review.setdefault("issues", []).extend(slop_issues)
-                current = review.get("overall_score")
-                # 评审失败（None）时不要用扣分把 None 变成数字 —— 那又是"伪装"
-                if current is not None:
-                    review["overall_score"] = max(0, current - len(slop_issues) * 2)
-                self.log(f"[写作技能] 发现{len(slop_issues)}个可扣分的AI写作痕迹")
-
-            self.log(f"[Editor] 质量裁定：{review.get('overall_score', 0)}分")
-            self._record_conversation(
-                "Editor", "judge", f"评分{review.get('overall_score', 0)}，阈值{self.QUALITY_THRESHOLD}"
-            )
-
-            score = review.get("overall_score")
-            if score is None:
-                # 评审没给出可用分数 ≠ 合格。不自动通过，也不无脑修订 —— 交给人工。
-                self.log("[Editor] ⚠️ 本章评审未完成，无法裁定质量，跳过自动判定（请人工确认）")
-                self._record_conversation("Editor", "manual", "评审未完成，需人工确认")
-                break
-
-            if score >= self.QUALITY_THRESHOLD:
-                self.log("[Editor] ✅ 通过！质量达标。")
-                self._record_conversation("Editor", "approve", "质量达标，通过")
-                break
-
-            suggestions = review.get("suggestions", [])
-            issues = review.get("issues", [])
-            prev_feedback = f"上轮问题: {'; '.join(issues[:5])}" if issues else ""
-            self.log(
-                f"[Editor] ⚠️ 质量不达标（{review.get('overall_score', 0)}/{self.QUALITY_THRESHOLD}），"
-                f"触发第{round_num}轮修订..."
-            )
-
-            with self._log_lock:
-                self._revision_memory.append(
-                    {
-                        "chapter": chapter_num,
-                        "round": round_num,
-                        "issues": issues,
-                        "suggestions": suggestions,
-                    }
-                )
-
-            self.log("[Writer] 正在根据审校意见修订...")
-            self._record_conversation("Writer", "revise", f"第{round_num}轮修订")
-            _t = time.perf_counter()
-            content = self._writer_revise(
-                chapter_num, content, review, chapter_outline, context=context, prev_ending=prev_ending
-            )
-            timer.phase(PHASE_REVISE, _t)
-
-        self.log(f"[编排器] 第{chapter_num}章5Agent协作完成 ({len(content)}字)")
-
-        # 📊 段级耗时归因落盘。放在这里而不是 `finally` 里：
-        # 生成中途抛异常时**不该**报一个"看起来正常"的总时长 —— 失败的耗时
-        # 由调用方的异常处理各自记录，两处混在一起会互相掩盖。
-        self._emit_chapter_timing(chapter_num, timer, review, content)
-
-        # P-04：把本轮真实评分记在实例上，供 `finalize_chapter` 作为学习信号。
-        # 此前这个分数在生成流程里算出来、写进对话日志、然后**被丢掉**：
-        # 定稿学习时只能硬编码 `success=True`，无论这一章是 92 分还是 41 分。
-        # 这里不直接把分数传给 finalize_chapter，是因为定稿有 4 个调用点
-        # （生成流程 / 编辑器 / 全屏写作），只有本流程拿得到评分；
-        # 记在实例上让"有评分时用评分、没有时按未知处理"成为统一行为。
-        self.last_chapter_quality = review.get("overall_score") if isinstance(review, dict) else None
+        runner = GenerateWithCollaboration(self._collaboration_deps())
+        content = runner.execute(chapter_num, chapter_title, chapter_outline, word_count, prev_context)
+        self.last_chapter_quality = runner.last_quality
         return content
 
-    def _emit_chapter_timing(self, chapter_num: int, timer: "_PhaseTimer", review: Any, content: str) -> None:
-        """把一章的段级耗时写进诊断日志。
+    def _emit_chapter_timing(self, chapter_num: int, timer: "PhaseTimer", review: Any, content: str) -> None:
+        """段级耗时落盘 —— 实现见 `application.collaboration.emit_chapter_timing`。"""
+        emit_chapter_timing(chapter_num, timer, review, content, self.QUALITY_THRESHOLD)
 
-        为什么值得单独一个方法：这段逻辑要"绝不因为日志失败而影响生成"，
-        而 `generate_with_collaboration` 已经在收尾阶段、任何异常都会让**整章**白写。
-        所以异常在这里就地吞掉并降级为 debug 日志。
+    def _collaboration_deps(self) -> CollaborationDeps:
+        """把当前实例的协作者打包给编排用例。
 
-        记录内容刻意做成可机读的形状（`phases_ms` 是 `{阶段: 毫秒}`），
-        这样"近 30 天哪个阶段最慢"可以纯靠 jq/脚本统计，不需要人来读日志。
+        ❗ **每次调用时现取**（与 `_stage_deps` 同理）：测试会替换
+        `agent.ai` / `agent.memory` / 各阶段方法，缓存会让替换静默失效。
         """
-        diag = _diag_logger()
-        if diag is None:
-            return
-        try:
-            summary = timer.summary()
-            score = review.get("overall_score") if isinstance(review, dict) else None
-            diag.chapter_event(
-                chapter_num,
-                "complete",
-                {
-                    "chars": len(content),
-                    "quality": score,
-                    "threshold": self.QUALITY_THRESHOLD,
-                    "revision_rounds": sum(1 for c in summary["calls"] if c["phase"] == PHASE_REVISE),
-                    **summary,
-                },
-                duration_ms=summary["total_ms"],
-            )
-        except Exception as e:  # noqa: BLE001 - 计时/落盘失败绝不能影响生成结果
-            # ⚠️ 这里必须用模块级的 loguru `logger`，不能写成上面那个 `diag`
-            # （`DiagnosticLogger` 没有 `.debug`，一写就在异常处理里再抛一次，
-            # 反而把"日志失败"升级成"整章生成失败"）。测试已钉住这条。
-            logger.debug(f"[novel_agent] 章节耗时归因落盘失败（忽略）: {e}")
+        return CollaborationDeps(
+            log=self.log,
+            record_conversation=self._record_conversation,
+            reset_conversation=self._reset_conversation,
+            analyze_plot=self._plot_designer_analyze,
+            build_context=self._build_context,
+            world_builder=self._world_builder_build,
+            writer_generate=self._writer_generate,
+            writer_revise=self._writer_revise,
+            reviewer_evaluate=self._reviewer_evaluate,
+            call_anti_slop_check=self._call_anti_slop_check,
+            call_tool=self.tools.call,
+            emit_timing=self._emit_chapter_timing,
+            revision_memory=self._revision_memory,
+            log_lock=self._log_lock,
+            quality_threshold=self.QUALITY_THRESHOLD,
+            max_rounds=self.MAX_REVISION_ROUNDS,
+        )
 
     def _stage_deps(self) -> StageDeps:
         """把当前实例的依赖打包给阶段用例。
@@ -898,22 +696,8 @@ class NovelAgent:
         return AnalyzePlot(self._stage_deps()).execute(chapter_num, title, outline)
 
     def _world_builder_build(self, chapter_num: int, plot_analysis: Dict) -> str:
-        """WorldBuilder: 构建场景和世界观上下文"""
-        settings = self.memory.get_settings()
-        if settings and isinstance(settings, dict):
-            world = settings.get("world", {})
-            if isinstance(world, dict):
-                known = world.get("已知区域", [])
-                # settings.json 是用户可编辑的，形状不可信：
-                # - 写成字符串 ⇒ 当单个区域（否则 `join` 会把字逐字拆开）
-                # - 写成 dict/数字 ⇒ 直接视为无（切片会抛 TypeError）
-                if isinstance(known, str):
-                    known = [known]
-                if isinstance(known, (list, tuple)):
-                    cleaned = [str(item).strip() for item in known[:3] if str(item).strip()]
-                    if cleaned:
-                        return f"世界观场景: {', '.join(cleaned)}"
-        return ""
+        """WorldBuilder: 构建场景和世界观上下文 —— 实现见 `application.BuildWorldScene`。"""
+        return BuildWorldScene(self._stage_deps()).execute(chapter_num, plot_analysis)
 
     def _writer_generate(
         self,
@@ -1138,282 +922,8 @@ class NovelAgent:
 
     @task_tracker("characters")
     def generate_characters(self, genre: str, title: str, count: int = None) -> dict:
-        """生成角色 - 根据小说规模智能确定角色数量"""
-        if count is None:
-            chapter_count = self.memory.get_meta("chapter_count", 20)
-            if chapter_count <= 20:
-                count = 3
-            elif chapter_count <= 50:
-                count = 5
-            else:
-                count = 8
-
-        # 🔒 读取已锁定的主角名，确保每次生成都用同一个名字
-        protagonist = self.memory.get_meta("protagonist", "")
-
-        self.log(f"[智能体] 正在生成{count}个角色...")
-        settings = self.memory.get_settings()
-
-        system = f"""你是专业角色设计师。世界观：{json.dumps(settings, ensure_ascii=False)[:500]}
-请为小说《{title}》创建{count}个角色。必须输出JSON格式：
-
-{{
-  "角色名": {{
-    "gender": "男/女/未知",
-    "age": 25,
-    "category": "主角/关键人物/配角/无名小卒",
-    "faction": "中立/主角阵营/敌对阵营/第三方势力",
-    "personality": "性格描述（50字以上，具体、有特点、有弱点）",
-    "background": "背景故事（100字以上，包括出身、经历、动机）",
-    "appearance": "外貌描述",
-    "weapon": {{"name": "武器名", "quality": "普通/精良/稀有/史诗/传说", "desc": "描述"}},
-    "skill_suggestions": ["技能1", "技能2"],
-    "attributes": {{
-      "力量": 随机值,
-      "敏捷": 随机值,
-      "体质": 随机值,
-      "智力": 随机值,
-      "精神": 随机值,
-      "魅力": 随机值,
-      "幸运": 随机值
-    }},
-    "relationship_to_main": "与主角的关系",
-    "goal": "单一字符串，表示角色核心目标（如：成为最强武者），禁止使用数组！"
-  }}
-}}
-
-严格要求：
-- 每个角色必须有独特的人格和背景
-- goal 必须是普通字符串，绝对不能是 [] 数组！
-- 所有键名必须用英文双引号，冒号用英文半角 ":"
-- 属性值合理分布（不是所有角色同属性）
-- 确保 JSON 语法完全正确，可被 json.loads 解析"""
-
-        # 🔒 主角名锁定：如果已有主角名，强制AI使用该名字
-        if protagonist:
-            system += f"\n\n【重要】主角名已锁定为「{protagonist}」，必须使用此名字，不可更改！"
-
-        prompt = f"小说类型：{genre}\n标题：{title}\n创建{count}个角色，每个角色有完整的性格、背景、武器、技能"
-        if protagonist:
-            prompt = f"主角名：{protagonist}\n" + prompt
-
-        # 重试3次，处理AI返回空响应的情况（但不重试认证错误）
-        response = None
-        for attempt in range(3):
-            try:
-                response = self.ai.chat(
-                    [{"role": "user", "content": prompt}], system=system, max_tokens=12000, thinking_enabled=False
-                )
-            except Exception as e:
-                if "401" in str(e) or "Authorization" in str(e) or "API Key" in str(e):
-                    raise  # 认证错误不重试
-                if attempt < 2:
-                    self.log(f"[角色] 调用失败({attempt + 1}/3): {e}，重试...")
-                    time.sleep(3)
-                    continue
-                raise
-
-            if response and len(response) > 50:
-                break
-            if attempt < 2:
-                self.log(f"[角色] AI响应较慢，正在重试({attempt + 1}/3)，请稍候...")
-                time.sleep(3)
-
-        chars = self._parse_json_response(response, None)
-
-        # 🔧 关键修复：即使解析成功，如果角色数量不足也需要回退
-        parsed_count = len(chars) if isinstance(chars, dict) else 0
-        if parsed_count > 0 and parsed_count < count:
-            self.log(f"[角色] 初步解析仅获得 {parsed_count}/{count} 个角色，尝试从原始响应补充...")
-
-        # 多层回退：如果标准解析失败（或数量不足），尝试从原始响应中提取
-        need_extract = (
-            chars is None
-            or not isinstance(chars, dict)
-            or len(chars) == 0
-            or (isinstance(chars, dict) and len(chars) < count)
-        )
-        if need_extract:
-            self.log(f"[角色] 解析遇到问题 (当前{len(chars) if chars else 0}/{count})，尝试从原始响应恢复...")
-            if response:
-                self.log(f"[调试] 响应长度: {len(response)} 字符")
-                self.log(f"[调试] 响应前200字: {response[:200]}")
-            extracted = self._extract_characters_from_raw(response)
-            if extracted:
-                # 合并而非替换: 保留已解析的，补充新提取的
-                if chars and isinstance(chars, dict):
-                    for k, v in extracted.items():
-                        if k not in chars:
-                            chars[k] = v
-                else:
-                    chars = extracted
-                self.log(f"[角色] 从原始响应补充了 {len(extracted)} 个角色 (总计 {len(chars)})")
-
-        # Strategy 5: 如果还是失败，尝试逐行提取角色名并创建基础角色
-        if not chars or len(chars) == 0:
-            self.log("[角色] 尝试最终回退策略: 从响应中提取角色名...")
-            if response:
-                import re as _char_re
-
-                name_patterns = _char_re.findall(r'"([^"]{1,6})"\s*:\s*\{', response)
-                if name_patterns:
-                    t = title
-                    for name in name_patterns[:count]:
-                        if name not in [
-                            "gender",
-                            "age",
-                            "category",
-                            "faction",
-                            "personality",
-                            "background",
-                            "appearance",
-                            "weapon",
-                            "attributes",
-                            "skill_suggestions",
-                            "goal",
-                            "relationship_to_main",
-                            "title",
-                            "summary",
-                            "key_events",
-                        ]:
-                            if name not in (chars or {}):
-                                chars[name] = {
-                                    "gender": "未知",
-                                    "age": 25,
-                                    "category": "关键人物",
-                                    "faction": "中立",
-                                    "personality": "待展开",
-                                    "background": f"《{t}》中的重要角色",
-                                    "appearance": "待展开",
-                                    "weapon": {"name": "未设定", "quality": "普通", "desc": "待展开"},
-                                    "skill_suggestions": [],
-                                    "attributes": {"力量": 50, "敏捷": 50, "智力": 50, "体力": 50, "魅力": 50},
-                                    "relationship_to_main": "待展开",
-                                    "goal": "待展开",
-                                }
-                    if chars:
-                        self.log(f"[角色] 最终回退创建了 {len(chars)} 个基础角色")
-        elif isinstance(chars, dict) and len(chars) < count:
-            # 补充: 已解析到部分角色但不足count，也从响应中提取角色名做基础角色
-            self.log(f"[角色] 角色不足 (当前{len(chars)}/{count})，从响应补充基础角色...")
-            if response:
-                import re as _char_re2
-
-                name_patterns = _char_re2.findall(r'"([^"]{1,6})"\s*:\s*\{', response)
-                existing = set(chars.keys())
-                field_names = {
-                    "gender",
-                    "age",
-                    "category",
-                    "faction",
-                    "personality",
-                    "background",
-                    "appearance",
-                    "weapon",
-                    "attributes",
-                    "skill_suggestions",
-                    "goal",
-                    "relationship_to_main",
-                    "title",
-                    "summary",
-                    "key_events",
-                    "name",
-                    "level",
-                    "hp",
-                    "mp",
-                    "exp",
-                    "stats",
-                }
-                t = title
-                added = 0
-                for name in name_patterns:
-                    if name not in existing and name not in field_names and added < count - len(chars):
-                        chars[name] = {
-                            "gender": "未知",
-                            "age": 25,
-                            "category": "配角",
-                            "faction": "中立",
-                            "personality": "待AI展开",
-                            "background": f"《{t}》中的{name}",
-                            "appearance": "待AI展开",
-                            "weapon": {"name": "未设定", "quality": "普通", "desc": "待展开"},
-                            "skill_suggestions": [],
-                            "attributes": {"力量": 50, "敏捷": 50, "智力": 50, "体力": 50, "魅力": 50},
-                            "relationship_to_main": "与主角的关系待展开",
-                            "goal": "待AI展开",
-                        }
-                        existing.add(name)
-                        added += 1
-                if added > 0:
-                    self.log(f"[角色] 补充了 {added} 个基础角色 (总计 {len(chars)}/{count})")
-
-        if not chars or not isinstance(chars, dict):
-            self.log("[角色] AI未能生成有效角色数据，将使用已有角色")
-            return {}
-
-        # 过滤掉 raw 键（_parse_json_response 的回退值）
-        chars = {k: v for k, v in chars.items() if k != "raw" and isinstance(v, dict)}
-        if not chars:
-            self.log("[角色] 未能提取到有效角色，将使用已有角色")
-            return {}
-
-        # 保存角色文件
-        saved_count = 0
-        chars_dir = self.memory.novel_dir / "characters" if hasattr(self.memory, "novel_dir") else None
-        if chars_dir is None:
-            chars_dir = self.memory.memory_dir.parent / "characters"
-        chars_dir.mkdir(exist_ok=True)
-
-        for name, info in chars.items():
-            if isinstance(info, dict):
-                char_data = {"name": name, **info}
-                # API-3修复: 文件名安全处理（统一委托 app.storage.safe_filename）
-                safe_name = safe_filename(name)
-                atomic_write_json(chars_dir / f"{safe_name}.json", char_data)
-                saved_count += 1
-
-        if saved_count > 0:
-            self.log(f"[角色] 已保存 {saved_count} 个角色到 {chars_dir}")
-        else:
-            self.log("[角色] 警告：未能保存任何角色文件！")
-
-        # 写回 memory/characters.json。
-        # 关键：必须与既有角色取并集，不能整体覆盖 —— `chars` 只包含本次 AI
-        # 生成的一批，直接覆盖会把小说里已有的角色（当前实测 286 个）全部清掉。
-        # 同名角色的字段按"新数据优先"合并，未出现在本批次中的角色原样保留。
-        def _merge(existing: dict):
-            merged = dict(existing)
-            for name, info in chars.items():
-                old = merged.get(name)
-                if isinstance(old, dict) and isinstance(info, dict):
-                    combined = dict(old)
-                    combined.update(info)
-                    merged[name] = combined
-                else:
-                    merged[name] = info
-            return merged
-
-        # V4: 先确认底座可信。若磁盘上的角色档案已损坏且无可用备份，
-        # `get_characters()` 会降级返回 {}，于是下面的"并集"退化成"整体覆盖"
-        # ——上一轮修好的 R1 在损坏场景下完全不生效，且因为结果是非空，
-        # 用户看不到任何告警。这里在读到降级结果后立即失败，交出可操作的提示。
-        #
-        # 用 `is True` 而非真值判断：`self.memory` 允许是鸭子类型的协作者
-        # （单测里就是 MagicMock），`getattr(mock, "_characters_corrupt")` 会返回
-        # 一个真值的子 Mock，真值判断会把**一切**调用都误判成"底座损坏"。
-        before = len(self.memory.get_characters())
-        if getattr(self.memory, "_characters_corrupt", False) is True:
-            raise CharacterDataGuardError(
-                "角色档案损坏且无可用备份，已拒绝本次角色写入以避免清空既有角色；"
-                "请先修复 memory/characters.json（或其 .bak）后重试"
-            )
-
-        merged_chars = self.memory.mutate_characters(_merge)
-        added = len(merged_chars) - before
-        if added > 0:
-            self.log(f"[角色] 新增 {added} 个角色（既有 {before} 个已保留）")
-
-        return chars
+        """生成角色 —— 实现见 `application.GenerateCharacters`（含三层回退与并集写回）。"""
+        return GenerateCharacters(self.ai, self.memory, self.log).execute(genre, title, count)
 
     @task_tracker("outline")
     def generate_outline(
@@ -1694,220 +1204,8 @@ class NovelAgent:
         self.log(f"[智能体] 第{chapter_num}章定稿完成")
 
     def _update_character_progression(self, chapter_num: int, content: str, summary: str):
-        """检测角色成长变化并更新属性"""
-        try:
-            chars = self.memory.get_characters()
-            if not chars:
-                return
-
-            # 构建角色列表（含更多上下文）
-            char_list = []
-            for name, info in list(chars.items())[:20]:
-                if isinstance(info, dict):
-                    role = info.get("category", info.get("role", "未知"))
-                    faction = info.get("faction", "未知")
-                    char_list.append(f"{name}({role}/{faction})")
-                else:
-                    char_list.append(name)
-            existing_names = ", ".join(char_list)
-
-            system = f"""分析第{chapter_num}章中所有角色的变化（主角、配角、反派、路人等都算）。
-当前角色: {existing_names}
-
-【重要】检测本章中所有角色（不只主角）的：
-- 战斗成长（属性提升）
-- 关系变化（盟友/敌人）  
-- 物品得失（宝物/武器/装备）
-- 技能领悟
-- 角色死亡或重伤
-
-输出JSON:
-{{
-  "updates": [
-    {{"name": "角色名", "change": "+力量+3 或 +智力+2", "reason": "战斗中突破极限"}}
-  ],
-  "relationship_changes": [
-    {{"name1": "角色A", "name2": "角色B", "old": "朋友", "new": "敌人", "reason": "背叛"}}
-  ],
-  "items_gained": [
-    {{"name": "角色名", "item": "物品名", "quality": "普通/精良/稀有/史诗/传说", "from": "来源"}}
-  ],
-  "items_lost": [
-    {{"name": "角色名", "item": "物品名", "reason": "战斗中毁坏"}}
-  ],
-  "skills_learned": [
-    {{"name": "角色名", "skill": "技能名", "type": "攻击/防御/辅助", "how": "如何学会"}}
-  ],
-  "deaths": ["死亡角色名"],
-  "new_allies": ["新盟友名"],
-  "new_enemies": ["新敌人名"]
-}}
-
-变化包括正面和负面的。没有变化就输出{{"updates":[]}}。
-**必须检测所有出现的角色，不止主角。只输出JSON，不要其他文字！**"""
-
-            # 采样策略：开头2000 + 中间1000 + 结尾1000，覆盖全文
-            if len(content) > 4000:
-                mid = len(content) // 2
-                sample = (
-                    content[:2000]
-                    + "\n...(中间省略)...\n"
-                    + content[mid - 500 : mid + 500]
-                    + "\n...(省略)...\n"
-                    + content[-1000:]
-                )
-            else:
-                sample = content
-
-            response = self.ai.chat(
-                [
-                    {
-                        "role": "user",
-                        "content": f"章节摘要: {summary}\n内容片段: {sample}\n\n请直接输出JSON，不要分析过程。",
-                    }
-                ],
-                system=system,
-                max_tokens=3000,
-                thinking_enabled=False,
-            )
-            if not response:
-                return
-
-            # P2-7 收敛：此前这里有 **Strategy 1–3 三段共 60 余行手写解析**
-            # （括号深度追踪 → 正则 + 再追踪一次 → 去 markdown 重试），
-            # 全部是 `parse_json_response` Strategy 1/2/3 的真子集。
-            # 行为只可能**变好**：本处的失败路径是直接 `[角色成长] JSON解析失败，跳过本章`
-            # 丢数据，而统一解析器额外覆盖单引号、弯引号、截断补全（Strategy 4）。
-            data = self._parse_json_response(response, None)
-
-            # Strategy 4（**保留**）：逐字段提取。
-            # 这一策略统一解析器覆盖不到 —— 它针对的是"AI 返回大段思考文本 +
-            # 其中夹着一个**本身就不合法**的 updates 数组"的极端情况：
-            # 只能靠正则把每个 `{..."name":..."}` 单独捞出来重建。
-            if not isinstance(data, dict):
-                try:
-                    # 提取 "updates" 数组内容
-                    updates_match = re.search(r'"updates"\s*:\s*\[([\s\S]*?)\]', response)
-                    if updates_match:
-                        updates_str = updates_match.group(1)
-                        # 提取每个 {name:..., change:..., reason:...} 对象
-                        update_items = re.finditer(r'\{[^{}]*"name"\s*:\s*"([^"]*)"[^{}]*\}', updates_str)
-                        updates = []
-                        for m in update_items:
-                            obj_str = m.group(0)
-                            name = re.search(r'"name"\s*:\s*"([^"]*)"', obj_str)
-                            change = re.search(r'"change"\s*:\s*"([^"]*)"', obj_str)
-                            reason = re.search(r'"reason"\s*:\s*"([^"]*)"', obj_str)
-                            if name:
-                                updates.append(
-                                    {
-                                        "name": name.group(1),
-                                        "change": change.group(1) if change else "",
-                                        "reason": reason.group(1) if reason else "",
-                                    }
-                                )
-                        if updates:
-                            data = {"updates": updates}
-                except Exception as _silent_e:
-                    logger.debug(f"[novel_agent] 捕获异常: {_silent_e}")
-
-            if not data:
-                self.log("[角色成长] JSON解析失败，跳过本章")
-                if _diag:
-                    _diag.log(
-                        "WARN",
-                        "character_growth_parse_failed",
-                        {
-                            "chapter": chapter_num,
-                            "response_preview": response[:200] if response else "null",
-                            "response_len": len(response) if response else 0,
-                        },
-                    )
-                return
-
-            # 保存到记忆
-            changes = 0
-            if data.get("updates"):
-                for u in data["updates"]:
-                    if isinstance(u, dict) and u.get("name"):
-                        self.memory.add_event(
-                            chapter_num,
-                            f"角色变化: {u['name']} {u.get('change', '')} ({u.get('reason', '')})",
-                            "character_growth",
-                        )
-                        changes += 1
-
-            if data.get("skills_learned"):
-                for s in data["skills_learned"]:
-                    if isinstance(s, dict) and s.get("name"):
-                        self.memory.add_event(
-                            chapter_num, f"技能领悟: {s['name']} 学会 {s.get('skill', '')}", "skill_learn"
-                        )
-                        changes += 1
-
-            if data.get("relationship_changes"):
-                for r in data["relationship_changes"]:
-                    if isinstance(r, dict) and r.get("name1"):
-                        self.memory.add_event(
-                            chapter_num,
-                            f"关系变化: {r['name1']}与{r.get('name2', '')} {r.get('old', '')}→{r.get('new', '')}",
-                            "relationship_change",
-                        )
-                        changes += 1
-
-            if data.get("items_gained"):
-                for item in data["items_gained"]:
-                    if isinstance(item, dict) and item.get("name"):
-                        self.memory.add_event(
-                            chapter_num, f"获得物品: {item['name']} 获得 {item.get('item', '')}", "item_gain"
-                        )
-
-            if data.get("items_lost"):
-                for item in data["items_lost"]:
-                    if isinstance(item, dict) and item.get("name"):
-                        self.memory.add_event(
-                            chapter_num, f"失去物品: {item['name']} 失去 {item.get('item', '')}", "item_loss"
-                        )
-
-            if data.get("new_allies"):
-                for name in data["new_allies"]:
-                    if isinstance(name, str) and name:
-                        self.memory.add_event(chapter_num, f"新盟友: {name}", "new_ally")
-
-            if data.get("new_enemies"):
-                for name in data["new_enemies"]:
-                    if isinstance(name, str) and name:
-                        self.memory.add_event(chapter_num, f"新敌人: {name}", "new_enemy")
-
-            if data.get("deaths"):
-                for name in data["deaths"]:
-                    if isinstance(name, str) and name:
-                        self.memory.add_event(chapter_num, f"角色死亡: {name}", "character_death")
-                        self.memory.update_character(name, {"status": "死亡", "death_chapter": chapter_num})
-
-            # 统计日志
-            summary_parts = []
-            if changes:
-                summary_parts.append(f"{changes}个成长")
-            if data.get("items_gained"):
-                summary_parts.append(f"{len(data['items_gained'])}个获得")
-            if data.get("items_lost"):
-                summary_parts.append(f"{len(data['items_lost'])}个失去")
-            if data.get("skills_learned"):
-                summary_parts.append(f"{len(data['skills_learned'])}个技能")
-            if data.get("relationship_changes"):
-                summary_parts.append(f"{len(data['relationship_changes'])}个关系")
-            if data.get("deaths"):
-                summary_parts.append(f"{len(data['deaths'])}个死亡")
-            if data.get("new_allies"):
-                summary_parts.append(f"{len(data['new_allies'])}个新盟友")
-            if data.get("new_enemies"):
-                summary_parts.append(f"{len(data['new_enemies'])}个新敌人")
-
-            if summary_parts:
-                self.log(f"[角色成长] 第{chapter_num}章: {', '.join(summary_parts)}")
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
-            self.log(f"[角色成长] 检测跳过: {e}")
+        """检测角色成长并写回 —— 实现见 `application.UpdateCharacterProgression`。"""
+        return UpdateCharacterProgression(self.ai, self.memory, self.log).execute(chapter_num, content, summary)
 
     # ===== 风格模仿 =====
 

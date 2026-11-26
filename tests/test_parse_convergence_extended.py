@@ -29,6 +29,7 @@ import pytest
 from app import character_system as character_system_module
 from app import generation_ui as generation_ui_module
 from app import novel_agent as novel_agent_module
+from app.application import character_progression as progression_module
 from app.parsing import parse_json_response
 
 
@@ -153,9 +154,14 @@ class TestHandRolledParsersStayDeleted:
         # 旧的两处尾逗号正则修复（现已由 parsing 统一承担）
         assert r're.sub(r",\s*}", "}", json_str)' not in src
 
-    def test_novel_agent_still_keeps_field_extraction_salvage(self):
-        """逐字段抽取（原 Strategy 4）是 parsing 覆盖不到的，必须保留。"""
-        src = _code_only(novel_agent_module)
+    def test_character_growth_keeps_field_extraction_salvage(self):
+        """逐字段抽取（原 Strategy 4）是 parsing 覆盖不到的，必须保留。
+
+        2026-11-26：角色成长检测从 novel_agent 搬到
+        application/character_progression.py，判据跟着实现走 ——
+        只扫 novel_agent 的话，搬家后这条守卫会盯一个已经不含该实现的文件。
+        """
+        src = _code_only(progression_module)
         assert r'"updates"\s*:\s*\[([\s\S]*?)\]' in src
 
     def test_generation_ui_depth_tracking_gone(self):

@@ -55,7 +55,11 @@ def _unparse_without_docstring(source: str) -> str:
 class TestDictExpectingCallSitesAreGuarded:
     def test_world_builder_rejects_non_dict(self):
         """`_world_builder` 必须在调 `save_settings` 前确认拿到的是 dict。"""
-        src = _unparse_without_docstring(inspect.getsource(novel_agent.NovelAgent._world_builder_build))
+        # 2026-11-26：WorldBuilder 已搬到 application.BuildWorldScene，
+        # 判据必须盯实现 —— 盯委托的话它只有一行 return，什么也验不到。
+        from app.application.writing_stages import BuildWorldScene
+
+        src = _unparse_without_docstring(inspect.getsource(BuildWorldScene.execute))
         assert "isinstance(settings, dict)" in src, (
             "_world_builder 缺少 dict 守卫 —— AI 返回顶层数组时会崩在 _format_settings_md 的 settings.items()"
         )
@@ -219,7 +223,10 @@ class TestReviewerUsageIsGuardedBeforeUse:
     def test_review_normalized_before_first_use(self):
         # 必须剔除注释：修复说明里会出现 `review.setdefault(...)` 这个字面量，
         # 若直接扫原文，注释里的它会被当成"使用点"排到守卫之前（假阳性）。
-        src = _code_only(inspect.getsource(novel_agent.NovelAgent.generate_with_collaboration))
+        # 2026-11-26：编排已搬到 application.GenerateWithCollaboration
+        from app.application.collaboration import GenerateWithCollaboration
+
+        src = _code_only(inspect.getsource(GenerateWithCollaboration.execute))
         lines = src.splitlines()
 
         guard_line = next(

@@ -821,9 +821,11 @@ class TestOrchestrationFiveStages:
             def chapter_event(self, chapter, event, payload, duration_ms=None):
                 got.update({"chapter": chapter, "event": event, "payload": payload, "duration_ms": duration_ms})
 
-        import app.novel_agent as mod
+        # 耗时落盘已搬到 application.collaboration（2026-11-26），
+        # 所以要替它自己的诊断器取用点，而不是 novel_agent 的。
+        import app.application.collaboration as mod
 
-        monkeypatch.setattr(mod, "_diag_logger", lambda: Diag())
+        monkeypatch.setattr(mod, "get_diagnostic_logger", lambda: Diag())
         agent = make_agent(ai=ScriptedAI(reviewer=_review_json(88)))
         self._run(agent)
 

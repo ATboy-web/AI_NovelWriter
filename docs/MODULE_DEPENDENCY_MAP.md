@@ -8,9 +8,9 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 127 |
-| 依赖边数 | 371 |
-| 其中函数内延迟导入 | 71 |
+| 内部模块数 | 131 |
+| 依赖边数 | 381 |
+| 其中函数内延迟导入 | 73 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
@@ -63,13 +63,13 @@
 | `events` | 12 |
 | `panels.base` | 11 |
 | `panels.ui_kit` | 11 |
+| `parsing` | 10 |
 | `config` | 8 |
-| `parsing` | 8 |
+| `diagnostic_logger` | 8 |
 | `ai_client` | 7 |
-| `diagnostic_logger` | 6 |
+| `memory_manager` | 6 |
 | `novel_toolkit` | 6 |
 | `token_estimator` | 6 |
-| `memory_manager` | 5 |
 | `providers.base` | 5 |
 | `text_stats` | 5 |
 | `theme_system` | 5 |
@@ -112,9 +112,13 @@
 | `ai_settings_ui` | 🔴`app`, ⚪`ai_client`, ⚪`async_runner`, 🔴`config`, 🔴`dialogs`, 🔴`providers` |
 | `application` | — |
 | `application.build_context` | 🔴`domain.plot`, 🔴`token_estimator` |
+| `application.character_progression` | ⚪`diagnostic_logger`, 🔴`parsing` |
+| `application.collaboration` | 🔴`application.phase_timer`, ⚪`diagnostic_logger` |
+| `application.generate_characters` | 🔴`memory_manager`, 🔴`parsing`, 🔴`storage` |
 | `application.generation_tree` | 🔴`domain.lineage`, 🔴`ports` |
 | `application.list_branches` | 🔴`domain`, 🔴`ports` |
 | `application.long_chapter` | 🔴`domain.prose` |
+| `application.phase_timer` | — |
 | `application.save_chapter` | 🔴`storage` |
 | `application.writing_stages` | 🔴`domain.plot`, 🔴`parsing`, ⚪`review_store`, ⚪`writing_presets` |
 | `async_runner` | ⚪`app`, ⚪`dialogs` |
@@ -158,7 +162,7 @@
 | `navigation` | — |
 | `note_manager` | 🔴`config` |
 | `note_ui` | 🔴`app`, 🔴`dialogs` |
-| `novel_agent` | 🔴`agent_orchestrator`, 🔴`ai_client`, 🔴`application.build_context`, 🔴`application.long_chapter`, 🔴`application.writing_stages`, 🔴`config`, ⚪`diagnostic_logger`, 🔴`domain.plot`, 🔴`domain.prose`, ⚪`mcp_system`, 🔴`memory_manager`, 🔴`parsing`, 🔴`storage`, 🔴`usage_tracker`, ⚪`writing_skills` |
+| `novel_agent` | 🔴`agent_orchestrator`, 🔴`ai_client`, 🔴`application.build_context`, 🔴`application.character_progression`, 🔴`application.collaboration`, 🔴`application.generate_characters`, 🔴`application.long_chapter`, 🔴`application.phase_timer`, 🔴`application.writing_stages`, 🔴`config`, ⚪`diagnostic_logger`, 🔴`domain.plot`, 🔴`domain.prose`, ⚪`mcp_system`, 🔴`memory_manager`, 🔴`parsing`, 🔴`usage_tracker`, ⚪`writing_skills` |
 | `novel_store` | 🔴`storage` |
 | `novel_toolkit` | 🔴`storage` |
 | `outline_ui` | 🔴`app`, 🔴`dialogs`, 🔴`token_estimator` |

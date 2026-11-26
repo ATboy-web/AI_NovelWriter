@@ -14,6 +14,9 @@
 from __future__ import annotations
 
 from .build_context import BuildContext
+from .character_progression import UpdateCharacterProgression
+from .collaboration import CollaborationDeps, GenerateWithCollaboration
+from .generate_characters import GenerateCharacters
 from .generation_tree import BuildGenerationTree
 from .list_branches import BranchRow, ListBranches
 from .long_chapter import GenerateLongChapter
@@ -24,6 +27,9 @@ __all__ = [
     "AnalyzePlot",
     "BranchRow",
     "BuildContext",
+    "CollaborationDeps",
+    "GenerateCharacters",
+    "GenerateWithCollaboration",
     "BuildGenerationTree",
     "EvaluateReview",
     "GenerateDraft",
@@ -33,4 +39,5 @@ __all__ = [
     "SaveChapter",
     "SaveChapterResult",
     "StageDeps",
+    "UpdateCharacterProgression",
 ]

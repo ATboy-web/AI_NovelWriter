@@ -57,6 +57,43 @@ def _diag_logger():
         return _diag
 
 
+#: 上下文预算分配表：`情节类型 → 各部分占比`。
+#:
+#: 提到模块级不只是为了复用：`PLOT_TYPES` 必须与它的**键**一致
+#: （`type` 会被当作这张表的键来查），两处各写一遍必然漂移 ——
+#: 所以这里只留一处，`PLOT_TYPES` 由它派生。
+CONTEXT_RATIOS: Dict[str, Dict[str, float]] = {
+    "opening": {"global": 0.10, "volume": 0.05, "chars": 0.15, "recent": 0.10, "rag": 0.10, "extra": 0.50},
+    "writing": {"global": 0.08, "volume": 0.07, "chars": 0.10, "recent": 0.10, "rag": 0.10, "extra": 0.55},
+    "action": {"global": 0.05, "volume": 0.05, "chars": 0.05, "recent": 0.10, "rag": 0.10, "extra": 0.65},
+    "dialogue": {"global": 0.05, "volume": 0.05, "chars": 0.25, "recent": 0.10, "rag": 0.10, "extra": 0.45},
+    "ending": {"global": 0.10, "volume": 0.05, "chars": 0.05, "recent": 0.10, "rag": 0.10, "extra": 0.60},
+}
+
+#: PlotDesigner 允许的情节类型 —— **从预算表派生**，不单独维护。
+PLOT_TYPES: tuple[str, ...] = tuple(CONTEXT_RATIOS)
+
+
+def normalize_plot_analysis(raw: Dict) -> Dict:
+    """把 PlotDesigner 的模型输出归一成下游**可安全使用**的形状。
+
+    契约只有一条：`type` 必须是 `PLOT_TYPES` 里的字符串。
+
+    为什么必须归一：`_build_context` 用 `type` 做字典键
+    （`ratios.get(writing_phase, ...)`）。模型吐出 `{"type": {...}}` 时，
+    dict 不可哈希 ⇒ `TypeError: unhashable type` ⇒ **整章生成崩溃**（实测过）。
+    枚举外的值（如 `"climax"`）原本也是回落到 `writing` 预算，这里提前归一，
+    让"输出形状"可以被断言。
+
+    `pace` / `foreshadowing` 目前无下游消费者，保持原样不猜。
+    """
+    result = dict(raw)
+    plot_type = result.get("type")
+    if not isinstance(plot_type, str) or plot_type not in PLOT_TYPES:
+        result["type"] = "writing"
+    return result
+
+
 class _PhaseTimer:
     """单章生成的段级耗时归因。
 
@@ -646,15 +683,10 @@ class NovelAgent:
             window = self.config.get("context_window", 32000) if self.config else 30000
             max_chars = chars_for_context_window(window)
 
-        # 动态比例分配 — extra_context(前文内容)是连贯性关键，必须占大比例
-        ratios = {
-            "opening": {"global": 0.10, "volume": 0.05, "chars": 0.15, "recent": 0.10, "rag": 0.10, "extra": 0.50},
-            "writing": {"global": 0.08, "volume": 0.07, "chars": 0.10, "recent": 0.10, "rag": 0.10, "extra": 0.55},
-            "action": {"global": 0.05, "volume": 0.05, "chars": 0.05, "recent": 0.10, "rag": 0.10, "extra": 0.65},
-            "dialogue": {"global": 0.05, "volume": 0.05, "chars": 0.25, "recent": 0.10, "rag": 0.10, "extra": 0.45},
-            "ending": {"global": 0.10, "volume": 0.05, "chars": 0.05, "recent": 0.10, "rag": 0.10, "extra": 0.60},
-        }
-        ratio = ratios.get(writing_phase, ratios["writing"])
+        # 动态比例分配 — extra_context(前文内容)是连贯性关键，必须占大比例。
+        # 表在模块级（`CONTEXT_RATIOS`）：`PLOT_TYPES` 由它的键派生，
+        # 不必在两处同步维护"有哪些情节类型"。
+        ratio = CONTEXT_RATIOS.get(writing_phase, CONTEXT_RATIOS["writing"])
 
         parts = []
         used = 0
@@ -1244,7 +1276,7 @@ class NovelAgent:
             # `text.find("{")` + `text.rfind("}")` 取同一区间。
             parsed = self._parse_json_response(response, None)
             if isinstance(parsed, dict):
-                return parsed
+                return normalize_plot_analysis(parsed)
         except Exception as e:
             self.log(f"[PlotDesigner] 分析失败: {e}")
         return {"type": "writing", "pace": "medium", "foreshadowing": []}
@@ -1255,9 +1287,16 @@ class NovelAgent:
         if settings and isinstance(settings, dict):
             world = settings.get("world", {})
             if isinstance(world, dict):
-                known = world.get("已知区域", [])[:3]
-                if known:
-                    return f"世界观场景: {', '.join(known)}"
+                known = world.get("已知区域", [])
+                # settings.json 是用户可编辑的，形状不可信：
+                # - 写成字符串 ⇒ 当单个区域（否则 `join` 会把字逐字拆开）
+                # - 写成 dict/数字 ⇒ 直接视为无（切片会抛 TypeError）
+                if isinstance(known, str):
+                    known = [known]
+                if isinstance(known, (list, tuple)):
+                    cleaned = [str(item).strip() for item in known[:3] if str(item).strip()]
+                    if cleaned:
+                        return f"世界观场景: {', '.join(cleaned)}"
         return ""
 
     def _writer_generate(

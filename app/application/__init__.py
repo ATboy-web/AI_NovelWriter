@@ -13,17 +13,21 @@
 
 from __future__ import annotations
 
+from .build_context import BuildContext
 from .generation_tree import BuildGenerationTree
 from .list_branches import BranchRow, ListBranches
+from .long_chapter import GenerateLongChapter
 from .save_chapter import SaveChapter, SaveChapterResult
 from .writing_stages import AnalyzePlot, EvaluateReview, GenerateDraft, ReviseDraft, StageDeps
 
 __all__ = [
     "AnalyzePlot",
     "BranchRow",
+    "BuildContext",
     "BuildGenerationTree",
     "EvaluateReview",
     "GenerateDraft",
+    "GenerateLongChapter",
     "ListBranches",
     "ReviseDraft",
     "SaveChapter",

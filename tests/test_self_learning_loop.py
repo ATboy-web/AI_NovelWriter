@@ -173,6 +173,12 @@ class TestChapterIsUsedInRetrieval:
 
 class TestRetrievalWiring:
     def test_agent_passes_chapter_to_get_writing_context(self):
-        """`_build_context` 必须把 chapter_num 传下去。"""
-        src = inspect.getsource(NovelAgent._build_context)
+        """`_build_context` 必须把 chapter_num 传下去。
+
+        2026-11-26 实现搬进 `application.BuildContext.execute`，
+        判据跟着实现走 —— 不跟的话会去检查一个三行委托，什么也验不到。
+        """
+        from app.application.build_context import BuildContext
+
+        src = inspect.getsource(BuildContext.execute)
         assert "get_writing_context(chapter=chapter_num)" in src, "chapter 又没传"

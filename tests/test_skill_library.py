@@ -656,7 +656,9 @@ class TestWiringGuard:
             for p in _production_sources()
             if "prompt_context(" in p.read_text(encoding="utf-8", errors="replace")
         ]
-        assert "app/novel_agent.py" in callers, "novel_agent 没有消费技能库 —— 启用后不会生效"
+        # 消费点在 agent 层（可能随重构在 novel_agent / application 之间移动）
+        agent_layer = {p for p in callers if p.startswith("app/application/") or p == "app/novel_agent.py"}
+        assert agent_layer, f"agent 层没有消费技能库 —— 启用后不会生效；实际调用点：{callers}"
 
     def test_get_skill_library_is_imported_in_production(self):
         sources = [p for p in _production_sources() if p.name != "skill_library.py"]
@@ -665,7 +667,7 @@ class TestWiringGuard:
             for p in sources
             if "get_skill_library" in p.read_text(encoding="utf-8", errors="replace")
         ]
-        assert "app/novel_agent.py" in importers
+        assert any(p.startswith("app/application/") or p == "app/novel_agent.py" for p in importers), importers
 
     def test_panel_is_registered(self):
         """面板必须出现在三处：注册表 / 面板模块 / 打包清单。"""

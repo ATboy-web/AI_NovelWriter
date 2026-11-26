@@ -8,9 +8,9 @@
 
 | 指标 | 值 |
 |---|---|
-| 内部模块数 | 124 |
-| 依赖边数 | 368 |
-| 其中函数内延迟导入 | 73 |
+| 内部模块数 | 127 |
+| 依赖边数 | 371 |
+| 其中函数内延迟导入 | 71 |
 | 循环依赖环数 | 2（**会真炸的：0**） |
 | 语法错误文件 | 0 |
 
@@ -69,11 +69,11 @@
 | `diagnostic_logger` | 6 |
 | `novel_toolkit` | 6 |
 | `token_estimator` | 6 |
-| `writing_presets` | 6 |
 | `memory_manager` | 5 |
 | `providers.base` | 5 |
 | `text_stats` | 5 |
 | `theme_system` | 5 |
+| `writing_presets` | 5 |
 
 > 这些模块被最多人依赖 ⇒ 改它们的破坏面最大，应当优先保证测试覆盖。
 
@@ -111,8 +111,10 @@
 | `ai_client` | 🔴`config`, ⚪`diagnostic_logger`, ⚪`performance_monitor`, 🔴`providers`, 🔴`token_estimator`, 🔴`usage_tracker` |
 | `ai_settings_ui` | 🔴`app`, ⚪`ai_client`, ⚪`async_runner`, 🔴`config`, 🔴`dialogs`, 🔴`providers` |
 | `application` | — |
+| `application.build_context` | 🔴`domain.plot`, 🔴`token_estimator` |
 | `application.generation_tree` | 🔴`domain.lineage`, 🔴`ports` |
 | `application.list_branches` | 🔴`domain`, 🔴`ports` |
+| `application.long_chapter` | 🔴`domain.prose` |
 | `application.save_chapter` | 🔴`storage` |
 | `application.writing_stages` | 🔴`domain.plot`, 🔴`parsing`, ⚪`review_store`, ⚪`writing_presets` |
 | `async_runner` | ⚪`app`, ⚪`dialogs` |
@@ -134,6 +136,7 @@
 | `domain.branch` | — |
 | `domain.lineage` | — |
 | `domain.plot` | — |
+| `domain.prose` | — |
 | `domain.rework` | — |
 | `domain.skill` | — |
 | `domain.style` | — |
@@ -155,7 +158,7 @@
 | `navigation` | — |
 | `note_manager` | 🔴`config` |
 | `note_ui` | 🔴`app`, 🔴`dialogs` |
-| `novel_agent` | 🔴`agent_orchestrator`, 🔴`ai_client`, 🔴`application.writing_stages`, 🔴`config`, ⚪`diagnostic_logger`, 🔴`domain.plot`, ⚪`mcp_system`, 🔴`memory_manager`, 🔴`parsing`, ⚪`skill_library`, 🔴`storage`, 🔴`token_estimator`, 🔴`usage_tracker`, ⚪`writing_presets`, ⚪`writing_skills` |
+| `novel_agent` | 🔴`agent_orchestrator`, 🔴`ai_client`, 🔴`application.build_context`, 🔴`application.long_chapter`, 🔴`application.writing_stages`, 🔴`config`, ⚪`diagnostic_logger`, 🔴`domain.plot`, 🔴`domain.prose`, ⚪`mcp_system`, 🔴`memory_manager`, 🔴`parsing`, 🔴`storage`, 🔴`usage_tracker`, ⚪`writing_skills` |
 | `novel_store` | 🔴`storage` |
 | `novel_toolkit` | 🔴`storage` |
 | `outline_ui` | 🔴`app`, 🔴`dialogs`, 🔴`token_estimator` |

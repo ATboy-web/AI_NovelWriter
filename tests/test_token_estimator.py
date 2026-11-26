@@ -150,9 +150,19 @@ class TestSingleSourceOfTruth:
         assert "truncate_to_tokens" in code
 
     def test_novel_agent_delegates_window_conversion(self):
-        code = _scan.code_only("app/novel_agent.py")
-        assert "chars_for_context_window" in code
-        assert '"context_window", 32000) // 3' not in code
+        """上下文窗口换算必须走本模块，且不得再有手写除数。
+
+        ⚠️ 2026-11-26 `_build_context` 搬到了 `application/build_context.py`，
+        判据跟着实现走 —— 只扫 `novel_agent.py` 会在搬家后**静默失效**
+        （找不到 `chars_for_context_window` 就报红，但那时它已经是个三行委托，
+        再也不会自己换算，红得没有意义）。
+        """
+        impl = _scan.code_only("app/application/build_context.py")
+        assert "chars_for_context_window" in impl, "上下文窗口换算没走 token_estimator"
+
+        for path in ("app/novel_agent.py", "app/application/build_context.py"):
+            code = _scan.code_only(path)
+            assert '"context_window", 32000) // 3' not in code, f"{path} 又出现手写除数"
 
     def test_no_third_implementation_creates_a_divisor(self):
         """除了 token_estimator，其它模块不得再自行换算 token。"""

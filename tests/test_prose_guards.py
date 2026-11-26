@@ -124,8 +124,9 @@ class TestProseCallsAreHardened:
     #: 正文类调用的「限定名」：类里的方法用 `类名.方法名`，模块函数用函数名。
     #: 四个写作阶段搬进 application 后入口都叫 `execute`，只有限定名能区分它们。
     PROSE_FUNCTIONS = {
+        # 已搬到 application/long_chapter.py
+        "GenerateLongChapter.execute",
         # 仍在 novel_agent.py（都是 NovelAgent 的方法，故带类名前缀）
-        "NovelAgent._generate_long_chapter",
         "NovelAgent.generate_chapter",
         "NovelAgent.generate_with_style",
         "NovelAgent.blend_styles",
@@ -140,6 +141,7 @@ class TestProseCallsAreHardened:
     SOURCE_FILES = (
         REPO / "app" / "novel_agent.py",
         REPO / "app" / "application" / "writing_stages.py",
+        REPO / "app" / "application" / "long_chapter.py",
     )
 
     @classmethod
@@ -188,7 +190,7 @@ class TestProseCallsAreHardened:
         for path in self.SOURCE_FILES:
             assert path.exists(), f"扫描目标不存在：{path}"
             _rows, names = self._scan_file(path)
-            assert len(names) > 3, f"{path.name} 只解析出 {len(names)} 个限定名，扫描可能失效"
+            assert len(names) >= 2, f"{path.name} 只解析出 {len(names)} 个限定名，扫描可能失效"
 
     def test_prose_calls_disable_thinking_and_fallback(self):
         offenders = []

@@ -304,13 +304,17 @@ class TestPromptAssembly:
 
 class TestInjectionIsExclusive:
     def test_agent_injects_preset_or_skill_not_both(self):
-        source = _code_only(REPO_ROOT / "app" / "novel_agent.py")
+        source = _code_only(REPO_ROOT / "app" / "novel_agent.py") + _code_only(
+            REPO_ROOT / "app" / "application" / "build_context.py"
+        )
         assert "writing_presets" in source
         assert "if not preset_ctx" in source, "预设与技能库必须互斥，否则同一批规则注入两遍"
 
     def test_single_injection_point(self):
         """`prompt_context` 只允许在 novel_agent 出现一次（防止二次注入）。"""
-        source = _code_only(REPO_ROOT / "app" / "novel_agent.py")
+        source = _code_only(REPO_ROOT / "app" / "novel_agent.py") + _code_only(
+            REPO_ROOT / "app" / "application" / "build_context.py"
+        )
         assert source.count("prompt_context(") == 2, "应为预设 + 技能各一处，且互斥"
 
     def test_preset_module_is_not_orphan(self):
@@ -319,7 +323,8 @@ class TestInjectionIsExclusive:
             for p in (REPO_ROOT / "app").rglob("*.py")
             if p.name != "writing_presets.py" and "writing_presets" in p.read_text(encoding="utf-8")
         ]
-        assert "novel_agent.py" in callers
+        # 注入点已迁到 application/build_context.py（2026-11-26）
+        assert "build_context.py" in callers
         assert "skill_library_panel.py" in callers
 
 
@@ -605,7 +610,9 @@ class TestStyleDnaWiring:
         assert "作者风格 DNA" not in ctx
 
     def test_agent_passes_novel_dir(self):
-        source = _code_only(REPO_ROOT / "app" / "novel_agent.py")
+        source = _code_only(REPO_ROOT / "app" / "novel_agent.py") + _code_only(
+            REPO_ROOT / "app" / "application" / "build_context.py"
+        )
         # `ast.unparse` 会把双引号统一成单引号，所以只匹配结构片段
         assert "self.memory" in source and "novel_dir" in source, "生成链没有把作品目录传给预设"
         assert "prompt_context(" in source

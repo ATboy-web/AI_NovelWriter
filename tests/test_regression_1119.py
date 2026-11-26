@@ -38,23 +38,31 @@ class TestThinkingAlwaysExplicit:
     思考预算与正文共用同一个 `max_tokens`，**预算小的结构化调用反而先被吃光**。
     """
 
-    @staticmethod
-    def _calls() -> list[tuple[int, str, set[str]]]:
-        source = (REPO / "app" / "novel_agent.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        funcs = [
-            (n.lineno, n.end_lineno, n.name)
-            for n in ast.walk(tree)
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-        ]
+    #: agent 层的全部实现文件。chat 调用会随重构在它们之间移动，
+    #: 只扫一个文件的话，新文件里的调用就**不在扫描范围内**（静默漏守）。
+    SOURCE_FILES = (
+        REPO / "app" / "novel_agent.py",
+        REPO / "app" / "application" / "writing_stages.py",
+        REPO / "app" / "application" / "long_chapter.py",
+    )
+
+    @classmethod
+    def _calls(cls) -> list[tuple[int, str, set[str]]]:
         rows = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            if not (isinstance(node.func, ast.Attribute) and node.func.attr == "chat"):
-                continue
-            owner = next((f for f in funcs if f[0] <= node.lineno <= f[1]), None)
-            rows.append((node.lineno, owner[2] if owner else "?", {kw.arg for kw in node.keywords}))
+        for path in cls.SOURCE_FILES:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            funcs = [
+                (n.lineno, n.end_lineno, n.name)
+                for n in ast.walk(tree)
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            ]
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                if not (isinstance(node.func, ast.Attribute) and node.func.attr == "chat"):
+                    continue
+                owner = next((f for f in funcs if f[0] <= node.lineno <= f[1]), None)
+                rows.append((node.lineno, owner[2] if owner else "?", {kw.arg for kw in node.keywords}))
         return rows
 
     def test_no_chat_call_relies_on_server_default(self):
@@ -66,6 +74,17 @@ class TestThinkingAlwaysExplicit:
     def test_call_count_is_sane(self):
         """反断言：扫描本身要有效，不能因为函数改名而扫到 0 个。"""
         assert len(self._calls()) >= 15, "扫描到的 chat 调用过少，守卫可能已失效"
+
+    def test_all_source_files_are_scanned(self):
+        """反向断言：三个文件都必须真的被解析出函数。
+
+        防的是"路径写错 → 空文件 → 0 个调用没违规 → 绿"。
+        """
+        for path in self.SOURCE_FILES:
+            assert path.exists(), f"扫描目标不存在：{path}"
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            names = [n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+            assert len(names) >= 2, f"{path.name} 只解析出 {len(names)} 个函数"
 
 
 class TestProviderDisableIsExplicit:

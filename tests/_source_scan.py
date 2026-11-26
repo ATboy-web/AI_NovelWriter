@@ -77,6 +77,26 @@ def _strip_comments(src: str) -> str:
         return "\n".join(line.split("#", 1)[0] for line in src.splitlines())
 
 
+#: 「agent 层」的实现文件：提示词组装、上下文工程、长章分段会随重构在这些文件间移动。
+#: 守卫要盯的是**这一层有没有这段实现**，不是某个具体文件名 ——
+#: 写死单文件的话，每次搬迁都会让一批守卫集体报红（2026-11-26 就发生了）。
+AGENT_LAYER_FILES = (
+    "app/novel_agent.py",
+    "app/application/build_context.py",
+    "app/application/long_chapter.py",
+    "app/application/writing_stages.py",
+)
+
+
+def agent_layer_code() -> str:
+    """agent 层全部实现文件的**去注释**源码拼接。
+
+    用拼接而不是"逐个断言"：守卫的判据是"这段实现还在不在"，
+    在哪一个文件里并不重要。
+    """
+    return "\n".join(code_only(path) for path in AGENT_LAYER_FILES)
+
+
 def strip_noise(src: str) -> str:
     """**先去注释**（`tokenize`，保留字符串）**再抹文档字符串**（正则）。
 

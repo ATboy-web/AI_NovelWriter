@@ -128,3 +128,29 @@ class TestCompatibility:
             assert legacy[bid]["chapter_count"] == info.chapter_count
             assert legacy[bid]["openable"] == info.openable
             assert legacy[bid]["reason"] == info.reason
+
+
+class TestAgentLayerSourceList:
+    """`_source_scan.AGENT_LAYER_FILES` 的正确性由 4 个守卫共同依赖。
+
+    清单里只要有一个路径写错（或文件被删），`agent_layer_code()` 就会少一段内容，
+    那些守卫随之静默放宽 —— 而它们本身是"某段实现还在不在"的唯一防线。
+    """
+
+    def test_every_listed_file_exists(self):
+        import _source_scan as scan
+
+        missing = [p for p in scan.AGENT_LAYER_FILES if not (Path(__file__).parent.parent / p).is_file()]
+        assert not missing, f"agent 层清单里的文件不存在：{missing}"
+
+    def test_agent_layer_code_is_substantial(self):
+        import _source_scan as scan
+
+        code = scan.agent_layer_code()
+        assert len(code) > 50_000, f"agent 层源码只有 {len(code)} 字符，拼接可能失效"
+
+    def test_layer_files_live_in_expected_places(self):
+        import _source_scan as scan
+
+        for path in scan.AGENT_LAYER_FILES:
+            assert path.startswith("app/"), f"{path} 不在 app/ 下"

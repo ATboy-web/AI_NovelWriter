@@ -25,9 +25,11 @@ from typing import Any, Callable, Dict, List
 
 from .agent_orchestrator import AgentOrchestrator
 from .ai_client import AIClient
+from .application.build_context import BuildContext
 
 # ⚠️ 这几个是**重导出**（既有调用方与测试从 `app.novel_agent` 取它们）：
 # `PLOT_TYPES` / `normalize_plot_analysis` 本模块内部可能用不到，但删掉会破坏接口。
+from .application.long_chapter import GenerateLongChapter
 from .application.writing_stages import (  # noqa: F401
     AnalyzePlot,
     EvaluateReview,
@@ -37,10 +39,10 @@ from .application.writing_stages import (  # noqa: F401
 )
 from .config import AppConfig
 from .domain.plot import CONTEXT_RATIOS, PLOT_TYPES, normalize_plot_analysis  # noqa: F401
+from .domain.prose import looks_truncated
 from .memory_manager import CharacterDataGuardError, MemoryManager
 from .parsing import parse_characters_payload, parse_json_response
 from .storage import atomic_write_json, safe_filename
-from .token_estimator import chars_for_context_window
 from .usage_tracker import task_tracker
 
 # 诊断日志
@@ -167,60 +169,9 @@ _SUMMARY_MAX_CHARS = 600
 #: 所以分两级：
 #:   - `_PLANNING_STRONG`：正常叙事**不可能**出现的（"用户希望我""字数控制"…），命中即判
 #:   - `_PLANNING_WEAK`：单独出现合法，**同时命中 ≥2 个**才判
-_PLANNING_STRONG = (
-    "用户希望我",
-    "用户要求续写",
-    "用户要求我",
-    "字数控制",
-    "正文开始",
-    "让我起草",
-    "这个感觉方向",
-    "我倾向于：",
-    "具体设计：",
-    "字数控制在",
-)
-_PLANNING_WEAK = (
-    "让我想想",
-    "让我再想",
-    "让我回顾",
-    "让我理一下",
-    "让我构思",
-    "或者更好",
-    "或者更直接",
-    "那我尽量",
-    "这就悬了",
-    "嗯，这",
-    "好，我这样写",
-    "我需要写约",
-    "让我写一个更自然",
-)
-
-
-def _looks_like_planning(text: str) -> bool:
-    """判断文本是否是模型的**创作规划/内心独白**，而不是小说正文。
-
-    为什么不能只看长度或只看一个词：
-    - 正文里可以有 `"让我想想。"`（角色对白）——单命中会误杀；
-    - 规划文字的特征是**成片出现**的元话语（"用户希望我…""或者更好…""字数控制…"）。
-
-    因此判据：
-    1. 任一强特征词出现 ⇒ 是规划；
-    2. 弱特征词命中 ≥2 个 ⇒ 是规划；
-    3. ≥3 行以全角括号包裹（`（他先回杂役房…）` 这类舞台说明）⇒ 是规划。
-    """
-    body = text or ""
-    if not body.strip():
-        return False
-    if any(marker in body for marker in _PLANNING_STRONG):
-        return True
-    weak_hits = sum(1 for marker in _PLANNING_WEAK if marker in body)
-    if weak_hits >= 2:
-        return True
-    bracket_lines = sum(
-        1 for line in body.splitlines() if line.strip().startswith("（") and line.strip().endswith("）")
-    )
-    return bracket_lines >= 3
-
+# 规划检测已下沉到 `domain.prose`（2026-11-26）：`application.long_chapter` 也要用它，
+# 留在本模块会让两者成环。这里 re-export，既有导入（含 tests）无需改动。
+from .domain.prose import looks_like_planning as _looks_like_planning  # noqa: E402
 
 _COT_MARKERS = (
     "我们需要回答",
@@ -641,296 +592,24 @@ class NovelAgent:
     def _build_context(
         self, chapter_num: int, extra_context: str = "", max_chars: int = None, writing_phase: str = "writing"
     ) -> str:
-        """动态上下文工程 - 根据写作阶段智能分配比例 (Hello-Agents参考)
+        """动态上下文工程 —— 实现见 `application.BuildContext`。
 
-        写作阶段:
-        - opening: 开头阶段，需要更多世界/角色描述
-        - writing: 常规写作，平衡分配
-        - action: 动作场景，需要近章上下文
-        - dialogue: 对话场景，需要角色信息
-        - ending: 结尾阶段，需要全局摘要
+        上下文窗口取 `config.context_window`（默认 32000）；配置缺失时按 30000 算
+        （保守值：窗口里还要装提示词与输出预算）。
         """
-        if max_chars is None:
-            # v3 §3.5(3)：换算口径收敛到 token_estimator，与 v2 的
-            # `context_window // 3` **等效**（32000 → 10666，无配置 → 10000）。
-            # 有意保留这个保守除数：窗口里还要装提示词模板、指令与输出预算。
-            window = self.config.get("context_window", 32000) if self.config else 30000
-            max_chars = chars_for_context_window(window)
+        window = self.config.get("context_window", 32000) if self.config else 30000
+        return BuildContext(self.memory, log=self.log, context_window=window).execute(
+            chapter_num, extra_context, max_chars, writing_phase
+        )
 
-        # 动态比例分配 — extra_context(前文内容)是连贯性关键，必须占大比例。
-        # 表在模块级（`CONTEXT_RATIOS`）：`PLOT_TYPES` 由它的键派生，
-        # 不必在两处同步维护"有哪些情节类型"。
-        ratio = CONTEXT_RATIOS.get(writing_phase, CONTEXT_RATIOS["writing"])
-
-        parts = []
-        used = 0
-
-        gs = self.memory.get_global_summary()
-        if gs:
-            text = self._compress_text(gs, int(max_chars * ratio["global"]), keep_tail=True)
-            section = f"【全局摘要】\n{text}"
-            parts.append(section)
-            used += len(section)
-
-        vol = self.memory.get_current_volume_summary(chapter_num)
-        if vol:
-            text = self._compress_text(vol, int(max_chars * ratio["volume"]), keep_tail=True)
-            section = f"【当前卷】\n{text}"
-            parts.append(section)
-            used += len(section)
-
-        chars = self.memory.get_characters()
-        if chars:
-            active_names = self.memory.get_active_characters(chapter_num, window=50)
-            # 过滤：只保留最近活跃的角色，排除"无名小卒"中已不活跃的
-            important_chars = {}
-            for name in active_names:
-                if name in chars:
-                    info = chars[name]
-                    if isinstance(info, dict):
-                        category = info.get("category", "")
-                        # "无名小卒"只有活跃时才显示，不活跃则跳过
-                        if category == "无名小卒" and name not in active_names:
-                            continue
-                    important_chars[name] = info
-            # 合并：活跃角色 + 主角/关键人物
-            for name, info in chars.items():
-                if name not in important_chars and isinstance(info, dict):
-                    if info.get("category") in ("主角", "女主角", "男主角", "关键人物"):
-                        important_chars[name] = info
-
-            text = self._compress_active_characters(important_chars, active_names, int(max_chars * ratio["chars"]))
-            if text:
-                section = f"【当前剧情线角色】（共{len(important_chars)}人，请勿无故引入新角色）\n{text}"
-                parts.append(section)
-                used += len(section)
-
-        recent_count = 5 if chapter_num > 1000 else 3
-        recent = self.memory.get_recent_summaries(recent_count)
-        if recent:
-            text = self._compress_text(recent, int(max_chars * ratio["recent"]), keep_tail=True)
-            section = f"【近期章节】\n{text}"
-            parts.append(section)
-            used += len(section)
-
-        if extra_context:
-            # 直接注入外部上下文（世界观、大纲等关键信息）
-            ec_budget = int(max_chars * ratio["extra"])
-            # keep_tail=True: 保留结尾（前一章结尾是连贯性关键）
-            ec_text = self._compress_text(extra_context, ec_budget, keep_tail=True)
-            ec_section = f"【创作指引】\n{ec_text}"
-            parts.append(ec_section)
-            used += len(ec_section)  # P2-7: 计入段标题，避免预算失真
-
-            # 同时做RAG检索补充
-            relevant = self.memory.retrieve_relevant(extra_context, top_k=3)
-            if relevant:
-                rag_text = "\n".join([f"- {r.get('content', '')[:100]}" for r in relevant])
-                # P2-7: 预算下限钳位到 0，防止 max_chars-used 为负
-                rag_budget = max(0, min(int(max_chars * ratio["rag"]), max_chars - used))
-                text = self._compress_text(rag_text, rag_budget, keep_tail=False)
-                if text and len(text) > 20:
-                    rag_section = f"【相关记忆】\n{text}"
-                    parts.append(rag_section)
-                    used += len(rag_section)
-
-        # 写作技能上下文（知识图谱、写作技巧）
-        try:
-            from .writing_skills import writing_skill_manager
-
-            # P-04b：传入 `chapter_num`，让学习到的经验按"距今章节数"检索。
-            # 旧实现不传 ⇒ `get_writing_context` 的 `chapter` 形参恒为默认 0
-            # ⇒ 第 87 章写下的成功模式在第 120 章读不到。
-            skills_context = writing_skill_manager.get_writing_context(chapter=chapter_num)
-            if skills_context and len(skills_context) > 20:
-                skill_budget = max(0, min(500, max_chars - used))
-                text = self._compress_text(skills_context, skill_budget, keep_tail=False)
-                if text:
-                    skill_section = f"【写作参考】\n{text}"
-                    parts.append(skill_section)
-                    used += len(skill_section)
-        except Exception as e:
-            self.log(f"[写作技能] 获取上下文失败: {e}")
-
-        # 插件写作技能包（v3.2）：插件贡献的提示词片段**单独占一段预算**。
-        # 为什么不并进上面的【写作参考】：那段只有 500 字且会被 `_compress_text` 压缩，
-        # 插件技能包（可能有多条、每条都较长）塞进去会被压没 —— 等于装上了但不起作用。
-        # ⚠️ 这里必须**直接**调用（而不是只依赖 `get_writing_context` 内部已包含），
-        # 因为 `tests/test_plugin_system.py::TestWiringGuard` 要求存在显式生产调用点，
-        # 否则插件系统会重蹈"定义完整但零引用 ⇒ 被当死代码删除"的覆辙。
-        try:
-            from .writing_skills import writing_skill_manager
-
-            plugin_ctx = writing_skill_manager.plugin_skill_context()
-            if plugin_ctx:
-                plugin_budget = max(0, min(800, max_chars - used))
-                text = self._compress_text(plugin_ctx, plugin_budget, keep_tail=False)
-                if text:
-                    section = f"【插件写作技能】\n{text}"
-                    parts.append(section)
-                    used += len(section)
-        except Exception as e:
-            self.log(f"[插件技能] 获取上下文失败: {e}")
-
-        # 写作预设（v3.3）：把技能库规则按「阶段 / 体裁 / 长度」装配成的可复用能力单元。
-        # ⚠️ 与下面的技能库注入**互斥**：预设本身已包含规则子集，两者同时注入
-        # 会把同一批规则说两遍（既浪费预算，又让模型以为这是两组不同要求）。
-        # 生成阶段传 `stage="generate"` ⇒ 自动选「生成期防 AI 腔」，而不是成稿清理。
-        preset_ctx = ""
-        try:
-            from .writing_presets import get_preset_manager
-
-            manager = get_preset_manager()
-            if manager is not None:
-                # 1200 是实测得出的下界：900 只能装下 5 条规则（规范与边界要占 600），
-                # 会漏掉翻译腔/语义层四条；1200 可装 9–11 条且不足上下文的 12%。
-                preset_budget = max(0, min(1200, max_chars - used))
-                # 传作品目录：预设会把该作品的「风格DNA.json」一并注入，
-                # 让"冲突以风格文档为准"在生成期就生效，而不是等成稿后才发现跑偏
-                preset_ctx = manager.prompt_context(
-                    budget=preset_budget,
-                    stage="generate",
-                    novel_dir=getattr(self.memory, "novel_dir", None),
-                )
-                if preset_ctx:
-                    section = f"【写作预设】\n{preset_ctx}"
-                    parts.append(section)
-                    used += len(section)
-        except Exception as e:
-            self.log(f"[写作预设] 获取约束失败: {e}")
-
-        # 技能库（v3.3）：**仅在没有预设时兜底**。规则文本较长，塞进 500 字的
-        # 【写作参考】里会被 `_compress_text` 压成一句废话，所以独立占预算。
-        if not preset_ctx:
-            try:
-                from .skill_library import get_skill_library
-
-                library = get_skill_library()
-                skill_budget = max(0, min(900, max_chars - used))
-                skill_ctx = library.prompt_context(budget=skill_budget) if library is not None else ""
-                if skill_ctx:
-                    section = f"【技能库规则】\n{skill_ctx}"
-                    parts.append(section)
-                    used += len(section)
-            except Exception as e:
-                self.log(f"[技能库] 获取规则失败: {e}")
-
-        # === 伏笔追踪 ===
-        unresolved = self._get_unresolved_plots()
-        if unresolved and used + len(unresolved) < max_chars:
-            parts.insert(1, unresolved)  # 插入到全局摘要后面，确保AI看到
-            used += len(unresolved)
-
-        # 🔧 修复: ContextOptimizer.optimize 接口不匹配导致上下文被静默丢弃
-        # 原代码: ContextOptimizer.optimize({"内容": ...}) 只接受 "内容" 键
-        # 但 optimize 迭代 COMPRESSION_RATIOS 键 (global_summary, volume_summary, ...)
-        # 导致全部内容被跳过 → 返回空字符串 → Writer/Reviewer 无上下文
-        # 修复: 直接拼接 parts 并用简单截断
-        result = "\n\n".join(parts)
-        if len(result) > max_chars:
-            marker = "\n...(截断)...\n"
-            head = int(max_chars * 0.3)
-            tail = max_chars - head - len(marker)
-            result = result[:head] + marker + result[-tail:]
-        return result
-
-    def _compress_active_characters(self, chars: dict, active_names: List[str], budget: int) -> str:
-        """压缩活跃角色信息 - 按等级优先显示"""
-        result = []
-        used = 0
-
-        # 角色等级优先级
-        PRIORITY_RANKS = {"主角": 0, "女主角": 0, "男主角": 0, "关键人物": 1, "配角": 2, "无名小卒": 3}
-
-        # 按优先级排序
-        def char_priority(name):
-            if name not in chars:
-                return 99
-            info = chars.get(name, {})
-            if isinstance(info, dict):
-                return PRIORITY_RANKS.get(info.get("category", "无名小卒"), 3)
-            return 3
-
-        # 优先显示活跃角色（按等级排序）
-        sorted_active = sorted(active_names, key=char_priority)
-        for name in sorted_active:
-            if used >= budget:
-                break
-            if name in chars:
-                info = chars[name]
-                if isinstance(info, dict):
-                    category = info.get("category", "未知")
-                    line = self._format_character_line(name, info, category, compact=False)
-                    # 超预算就退回精简格式，**绝不因此丢掉这个角色**：
-                    # 角色从上下文消失比"信息少"危害大得多（模型会当他没出现过）。
-                    if used + len(line) > budget:
-                        line = self._format_character_line(name, info, category, compact=True)
-                else:
-                    line = f"- {name}: {str(info)[:50]}"
-                if used + len(line) <= budget:
-                    result.append(line)
-                    used += len(line)
-
-        # 如果空间够，添加主角/关键人物（即使不活跃）
-        if used < budget:
-            for name, info in chars.items():
-                if used >= budget or name in active_names:
-                    continue
-                if isinstance(info, dict):
-                    category = info.get("category", "")
-                    if category in ("主角", "女主角", "男主角", "关键人物"):
-                        line = self._format_character_line(name, info, category, compact=False)
-                        if used + len(line) > budget:
-                            line = self._format_character_line(name, info, category, compact=True)
-                        if used + len(line) <= budget:
-                            result.append(line)
-                            used += len(line)
-
-        return "\n".join(result) if result else ""
+    @staticmethod
+    def _compress_active_characters(chars: dict, active_names: list, budget: int) -> str:
+        """角色摘要压缩 —— 实现见 `application.BuildContext`。"""
+        return BuildContext._compress_active_characters(chars, active_names, budget)
 
     def _get_unresolved_plots(self) -> str:
-        """获取未回收的伏笔/剧情线索"""
-        try:
-            gs = self.memory.get_global_summary()
-            if not gs:
-                return ""
-
-            # 从全局摘要中提取伏笔关键词
-            foreshadow_keywords = [
-                "伏笔",
-                "悬念",
-                "暗示",
-                "预示",
-                "未解之谜",
-                "神秘",
-                "秘密",
-                "阴谋",
-                "真相",
-                "预言",
-                "轮回",
-                "宿命",
-                "传承",
-                "使命",
-            ]
-
-            unresolved = []
-            for keyword in foreshadow_keywords:
-                if keyword in gs:
-                    # 找到包含关键词的句子
-                    sentences = gs.replace("。", "。\n").replace("！", "！\n").replace("？", "？\n").split("\n")
-                    for s in sentences:
-                        if keyword in s and len(s) > 10:
-                            unresolved.append(s.strip())
-                            if len(unresolved) >= 8:
-                                break
-                if len(unresolved) >= 8:
-                    break
-
-            if unresolved:
-                return "【未回收伏笔/悬念】\n" + "\n".join(unresolved[:8])
-            return ""
-        except Exception:
-            return ""
+        """未回收伏笔 —— 实现见 `application.BuildContext._get_unresolved_plots`。"""
+        return BuildContext(self.memory, log=self.log)._get_unresolved_plots()
 
     # ===== 压缩方法 =====
 
@@ -947,30 +626,8 @@ class NovelAgent:
 
     @staticmethod
     def _format_character_line(name: str, info: dict, category: str, *, compact: bool) -> str:
-        """渲染一行角色摘要。
-
-        `compact=True` 是**超预算时的降级格式**（只保留性格），
-        保证"角色不因字多而被整条丢弃"。
-        """
-        personality = info.get("personality", "")[: 20 if compact else 30]
-        faction = info.get("faction", "")
-        line = f"- [{category}] {name}: {personality}"
-        if faction:
-            line += f" (阵营:{faction})"
-        if compact:
-            return line
-        # 只有核心角色才值得占篇幅写背景/目标；无名小卒写了也挤掉别人
-        if category in ("主角", "女主角", "男主角", "关键人物"):
-            backstory = str(info.get("backstory") or info.get("background") or "").strip()[:60]
-            goal = str(info.get("goal") or "").strip()[:20]
-            relationship = str(info.get("relationship_to_main") or "").strip()[:25]
-            if backstory:
-                line += f"｜背景:{backstory}"
-            if goal:
-                line += f"｜目标:{goal}"
-            if relationship:
-                line += f"｜与主角:{relationship}"
-        return line
+        """渲染一行角色摘要 —— 实现见 `application.BuildContext`。"""
+        return BuildContext._format_character_line(name, info, category, compact=compact)
 
     def _compress_characters(self, chars: dict, budget: int) -> str:
         core = ["name", "personality", "motivation"]
@@ -988,17 +645,10 @@ class NovelAgent:
             used += len(line) + 1
         return "\n".join(result)
 
-    def _compress_text(self, text: str, budget: int, keep_tail: bool = True) -> str:
-        if len(text) <= budget:
-            return text
-        if budget < 50:
-            return text[:budget] + "..."
-        if keep_tail:
-            head = int(budget * 0.3)
-            return text[:head] + "...\n\n" + text[-(budget - head - 5) :]
-        else:
-            head = int(budget * 0.7)
-            return text[:head] + "...\n\n" + text[-(budget - head - 5) :]
+    @staticmethod
+    def _compress_text(text: str, budget: int, keep_tail: bool = True) -> str:
+        """压缩到预算内 —— 实现见 `application.BuildContext._compress_text`。"""
+        return BuildContext._compress_text(text, budget, keep_tail)
 
     def _compress_recent_chapters(self, recent_text: str, budget: int, chapter_num: int) -> str:
         chapters = recent_text.split("\n\n")
@@ -2392,184 +2042,12 @@ class NovelAgent:
     def _generate_long_chapter(
         self, chapter_num, chapter_title, chapter_outline, word_count, context, prev_ending=""
     ) -> str:
-        """分段生成长章节 - 确保每章结尾完整自然"""
-        seg_size = 2000
-        part_count = max((word_count + seg_size - 1) // seg_size, 1)
-        part_count = min(part_count, 8)
-
-        # 标题处理
-        clean_title = chapter_title or ""
-        if clean_title.startswith("第") and "章" in clean_title[:6]:
-            clean_title = f"第{chapter_num}章"
-        else:
-            clean_title = f"第{chapter_num}章：{clean_title}"
-        title_line = f"# {clean_title}\n\n"
-
-        parts = []
-        for i in range(part_count):
-            is_last = i == part_count - 1
-            self.log(f"[Writer] 第{chapter_num}章 第{i + 1}/{part_count}段...")
-
-            prev_text = "".join(parts)
-            if i == 0:
-                # 第一段：使用传入的前一章结尾（未被压缩）
-                if not prev_ending and context and "【前一章" in str(context):
-                    import re as _re
-
-                    m = _re.search(r"【前一章·第\d+章结尾.*?】\n(.+?)(?:\n【|\Z)", str(context), _re.DOTALL)
-                    if m:
-                        prev_ending = m.group(1).strip()[-800:]
-                if prev_ending:
-                    part_prompt = f"【前一章结尾 — 必须紧接以下内容】\n{prev_ending}\n\n---\n\n创作第{chapter_num}章：{chapter_title}\n大纲：{chapter_outline}\n请创作约{seg_size}字的小说正文（必须紧接前文）："
-                else:
-                    part_prompt = f"创作第{chapter_num}章：{chapter_title}\n大纲：{chapter_outline}\n请创作约{seg_size}字的小说正文："
-            elif is_last:
-                last_200 = prev_text[-200:] if len(prev_text) > 200 else prev_text
-                # ❗ D15 修复：原提示词只说"给出自然完整的**段落**结尾"。
-                # 这会把末段写成"场景收尾"而不是"章节落点" —— 分段生成的章节
-                # 于是呈现"每段各自了结、整章没有推进"的观感，也就是读者说的**烂尾**。
-                # 末段是本章唯一的定调位置，必须明确要求：本章要有**事件推进**与
-                # **情绪落点**，且不得复述前文。
-                part_prompt = (
-                    f"紧接上文继续写。上文结尾：{last_200}\n"
-                    f"这是本章的最后一段（约{seg_size}字）。要求：\n"
-                    f"1. 必须**推进实质剧情**（发生一件前面没有的事），不得只是回顾或抒情收束；\n"
-                    f"2. 结尾要落在**本章的核心冲突/转折**上，形成章节落点，而不是平淡的场景收尾；\n"
-                    f"3. 不要总结全章、不要复述已有情节、不要写「本章完」之类的话；\n"
-                    f"4. 直接接续上文文字，不要重复上文任何句子。"
-                )
-            else:
-                last_200 = prev_text[-200:] if len(prev_text) > 200 else prev_text
-                part_prompt = f"紧接上文继续写。上文结尾：{last_200}\n要求：继续推进剧情约{seg_size}字，严禁重复。"
-
-            for attempt in range(3):
-                try:
-                    # 🔒 读取锁定的主角名
-                    protagonist = self.memory.get_meta("protagonist", "")
-                    protagonist_hint = f"\n【重要】主角名为「{protagonist}」，禁止更换！" if protagonist else ""
-
-                    # 🔴 正文生成**必须关闭思考**：
-                    # 开启时 4096 的预算会被 reasoning 吃光，content 为空后
-                    # 客户端会退回 reasoning —— 那一整段就会变成"用户希望我…让我想想…"
-                    # 的工作笔记写进章节（本次事故的确切成因）。
-                    # `allow_reasoning_fallback=False` 是第二道闸：宁可报错重试，
-                    # 也不把半成品当成品。
-                    response = self.ai.chat(
-                        [{"role": "user", "content": part_prompt}],
-                        system=f"严密续写，绝不重复。每段给出自然结尾。禁止Markdown格式。{protagonist_hint}\n{context[:1500] if context else ''}",
-                        max_tokens=4096,
-                        thinking_enabled=False,
-                        allow_reasoning_fallback=False,
-                    )
-                    if response and len(response) > 100:
-                        # 第三道闸：即使 provider 忽略了 thinking_enabled，
-                        # 规划文字也不能落盘。抛异常走重试，重试仍坏则保留已有段落。
-                        if _looks_like_planning(response):
-                            raise ValueError("返回内容疑似创作规划（内心独白/提纲），不是小说正文")
-                        # 去除AI生成的标题
-                        lines = response.split("\n", 2)
-                        clean = []
-                        for line in lines:
-                            stripped = line.strip()
-                            if (
-                                stripped.startswith("#") or (stripped.startswith("第") and "章" in stripped[:10])
-                            ) and not clean:
-                                continue
-                            clean.append(line)
-                        response = "\n".join(clean)
-                        parts.append(response)
-                        break
-                except Exception as e:
-                    # 认证错误不重试
-                    if "401" in str(e) or "Authorization" in str(e) or "API Key" in str(e):
-                        raise
-                    self.log(f"[Writer] 第{chapter_num}章第{i + 1}段 重试{attempt + 1}: {e}")
-                    if attempt == 2:
-                        return title_line + ("\n\n".join(parts) if parts else "（生成失败）")
-
-        result = title_line + ("\n\n".join(parts) if parts else "（生成失败）")
-
-        # 末段完整性检查：如果结尾没有句号/感叹号/问号等，AI补全
-        #
-        # ❗ D18 修复：原实现有三个问题，合起来**主动弄坏了本来完整的结尾**：
-        #   1. 判据是"最后一个字符不是终止符"。但 `…` / `—` / `"` 都在白名单里，
-        #      于是大量**正常**结尾（以引号或省略号收束的对话）被误判为"不完整"；
-        #   2. 判据只看**单字符**，不看语义：`"他走了。"` 以 `"` 收尾会被判不完整，
-        #      实际上它比任何补全都完整；
-        #   3. 补全文字是**直接 `+=` 追加**的 —— 即使在正确判定的情况下，
-        #      追加也必然把"已经说完的话"接上"另一段话"，读起来就是**断裂**，
-        #      这正是烂尾观感的一部分。
-        #
-        # 现在的策略是**保守**：只在"末尾明显断在半句/半词"时才补，
-        # 并优先用**句读补全**（几乎不可见），拿不准就**不动** ——
-        # "少做"比"把好结尾改坏"安全得多。
-        if parts and len(result) > 500:
-            last_meaningful = result.rstrip("\n\r \t'\"》）」】…—")
-            if last_meaningful:
-                last_char = last_meaningful[-1]
-                # 只有这些字符能确认"句子说完了"。注意**不含**引号与破折号：
-                # 它们既可能收尾也可能收在句中，不足以判断完整性。
-                sentence_end = {"。", "！", "？", ".", "!", "?", "；", ";"}
-                # 直接以句末标点收尾 ⇒ 完整，**不碰它**
-                if last_char in sentence_end:
-                    pass
-                elif self._looks_truncated(last_meaningful):
-                    self.log(f"[Writer] 第{chapter_num}章末尾疑似断句，尝试补全…")
-                    try:
-                        last_paragraph = result[-500:]
-                        completion = self.ai.chat(
-                            [
-                                {
-                                    "role": "user",
-                                    "content": (
-                                        "以下小说段落在结尾处断了。请只补一个**短语**（10-30字）"
-                                        f"把它接成完整句子，不要开启新的情节：\n{last_paragraph}"
-                                    ),
-                                }
-                            ],
-                            system="你是文字校对。只输出补全的短语本身，不要重复已有内容，不要换行。",
-                            max_tokens=1000,
-                            # 补全只有 10–30 字：1000 的预算若被思考吃掉，
-                            # 拿回来的是分析过程，会被"与原文重复/过长"判据丢弃，静默失效
-                            thinking_enabled=False,
-                            allow_reasoning_fallback=False,
-                        )
-                        completion = (completion or "").strip()
-                        # ❗ 与原文重叠的补全一律丢弃（`in` 判据比原来的
-                        # `completion[:10] in result[-50:]` 更严：后者只查开头 10 字）
-                        if completion and completion not in result and len(completion) <= 60:
-                            result += completion
-                        elif completion:
-                            self.log("[Writer] 补全内容与原文重复或过长，已放弃追加")
-                    except Exception as e:
-                        self.log(f"[长章节末段补全] 失败: {e}")
-                else:
-                    # 无法确定是否断句 ⇒ **宁可不动**。静默是最安全的选择。
-                    # 措辞要如实：这句原本写"判为完整"，但实际含义是"判不出来所以不动"，
-                    # 看日志的人会误以为系统确认了完整性。
-                    self.log(f"[Writer] 第{chapter_num}章末尾以「{last_char}」收尾，无法判定是否断句，保持原样不补全")
-
-        return result
+        """分段生成长章节 —— 实现见 `application.GenerateLongChapter`。"""
+        return GenerateLongChapter(self.ai, self.memory, self.log).execute(
+            chapter_num, chapter_title, chapter_outline, word_count, context, prev_ending
+        )
 
     @staticmethod
     def _looks_truncated(text: str) -> bool:
-        """判断文本末尾是否**明显断在半句**（而不是"只是没以句号结尾"）。
-
-        判据刻意保守 —— 只有同时满足"没有句末标点"且"末尾字符不可能收尾"
-        才返回 `True`。因为**误判的代价不对称**：
-        漏判一个真断句 ⇒ 结尾略突兀；误判一个完整结尾 ⇒ 追加一段无关文字、
-        把好结尾改坏（即烂尾）。后者严重得多。
-        """
-        tail = (text or "").rstrip()
-        if not tail:
-            return False
-        last = tail[-1]
-        # 能收尾的字符：句末标点 + 引号 + 省略号 + 破折号 + 英文句点
-        closers = set("。！？…—.!?~」』】》\"'")
-        if last in closers:
-            return False
-        # 中文逗号/顿号/分号/冒号结尾 ⇒ 明确还在句中
-        if last in set("，、；：,;:"):
-            return True
-        # 其余（多为汉字或字母）⇒ 无法确定，按"完整"处理（见上面的代价不对称）
-        return False
+        """文本是否明显断在半句 —— 实现见 `domain.prose.looks_truncated`（纯规则）。"""
+        return looks_truncated(text)

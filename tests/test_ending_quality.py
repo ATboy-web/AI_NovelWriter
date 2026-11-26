@@ -142,20 +142,20 @@ class TestTailPromptRequirements:
     """D15：末段提示词必须要求**剧情推进 + 章节落点**，而不是"段落结尾"。"""
 
     def test_tail_prompt_demands_plot_advance(self):
-        code = _scan.code_only("app/novel_agent.py")
+        code = _scan.agent_layer_code()
         assert "必须**推进实质剧情**" in code or "推进实质剧情" in code, "末段提示词没有要求剧情推进 —— D15 复发"
 
     def test_tail_prompt_demands_chapter_landing(self):
-        code = _scan.code_only("app/novel_agent.py")
+        code = _scan.agent_layer_code()
         assert "章节落点" in code, "末段提示词没有要求章节落点"
 
     def test_tail_prompt_forbids_summarising(self):
-        code = _scan.code_only("app/novel_agent.py")
+        code = _scan.agent_layer_code()
         assert "不要总结全章" in code
 
     def test_old_weak_wording_is_gone(self):
         """旧的"自然完整的段落结尾"措辞必须消失，否则 D15 没真修。"""
-        code = _scan.code_only("app/novel_agent.py")
+        code = _scan.agent_layer_code()
         assert "给出自然完整的段落结尾" not in code, "旧的弱提示词仍在"
 
 
@@ -170,22 +170,22 @@ class TestEndingPatchSafety:
         判不出时走"保持原样"分支。两者都在源码里，任一存在即说明
         "不是无条件追加"。
         """
-        code = _scan.code_only("app/novel_agent.py")
+        code = _scan.agent_layer_code()
         assert "sentence_end" in code, "找不到句末标点判据"
         assert ("保持原样不补全" in code) or ("跳过补全" in code), "没有「不补全」的分支"
 
     def test_patch_uses_strict_dedup(self):
         """补全与原文重复时必须**丢弃**，不能再靠 `[:10] in result[-50:]`。"""
-        code = _scan.code_only("app/novel_agent.py")
+        code = _scan.agent_layer_code()
         assert "completion not in result" in code
         assert "已放弃追加" in code or "放弃" in code
 
     def test_patch_length_is_bounded(self):
         """只补一个短语，不允许补出一整段（那会变成"第二结尾"）。"""
-        code = _scan.code_only("app/novel_agent.py")
+        code = _scan.agent_layer_code()
         assert "len(completion) <= 60" in code, "补全长度没有上限"
 
     def test_patch_threshold_is_a_sentence_end_set(self):
         """判据必须基于"句末标点集合"，且**不含引号**（引号不足以判断完整性）。"""
-        code = _scan.code_only("app/novel_agent.py")
+        code = _scan.agent_layer_code()
         assert "sentence_end" in code

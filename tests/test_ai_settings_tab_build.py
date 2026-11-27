@@ -439,3 +439,72 @@ def _click(row, text):
             w.invoke()
             return
     raise AssertionError(f"找不到按钮：{text}")
+
+
+# ------------------------------------------------------------------ 密钥可见性与本地服务
+
+
+def _find_child(widget, predicate):
+    for child in widget.winfo_children():
+        if predicate(child):
+            return child
+        found = _find_child(child, predicate)
+        if found is not None:
+            return found
+    return None
+
+
+def test_key_visibility_toggle(built):
+    """「显示」勾选框要真的切换密钥输入框的掩码。
+
+    这是**安全可见性**开关：勾上应看到明文（用户要核对粘贴对不对），
+    取消应立刻回到 `*`。它失效的后果是用户看不到自己填的密钥，
+    或者以为已经隐藏其实一直是明文。
+    """
+    from tkinter import ttk
+
+    _, _, _, f = built
+    assert f.key_entry.cget("show") == "*", "密钥默认必须以掩码显示"
+
+    toggle = _find_child(f.key_entry.master, lambda w: isinstance(w, ttk.Checkbutton))
+    assert toggle is not None, "没有找到「显示」勾选框"
+
+    toggle.invoke()  # 勾上 → 明文
+    assert f.key_entry.cget("show") == "", "勾选后仍然看不到明文"
+
+    toggle.invoke()  # 取消 → 恢复掩码
+    assert f.key_entry.cget("show") == "*", "取消勾选后没有恢复掩码"
+
+
+def test_local_service_check_failure_is_shown(built):
+    """本地检测失败要把**原因**显示出来，而不是只写个"失败"。"""
+    host, _, _, f = built
+    host.ai_client.check_local_service = lambda: {"reason": "未检测到 Ollama 进程"}
+
+    button = _find_child(f.local_row, lambda w: getattr(w, "cget", None) and w.cget("text") == "检测本地服务")
+    assert button is not None, "没有找到「检测本地服务」按钮"
+
+    button.invoke()
+
+    assert "检测失败" in f.local_var.get()
+    assert "Ollama" in f.local_var.get()
+
+
+def test_local_service_check_success_is_shown(built):
+    host, _, _, f = built
+
+    button = _find_child(f.local_row, lambda w: getattr(w, "cget", None) and w.cget("text") == "检测本地服务")
+    button.invoke()
+
+    assert "✅" in f.local_var.get()
+
+
+def test_refresh_local_models_without_any(built):
+    """本地服务在但一个模型都没有 ⇒ 要说清楚，不能给个空下拉让人以为坏了。"""
+    host, _, _, f = built
+    host.ai_client.models = []
+
+    button = _find_child(f.local_row, lambda w: getattr(w, "cget", None) and w.cget("text") == "刷新本地模型")
+    button.invoke()
+
+    assert "未读到模型" in f.local_var.get()

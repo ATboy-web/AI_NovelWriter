@@ -248,4 +248,14 @@ precision = 1
 #     - Windows 89.39 富余 3.39 —— 超过旧棘轮余量 2.0，故同步把
 #       `scripts/check_coverage.py` 的 RATCHET_MARGIN 调到 4.0（见该处注释：
 #       两平台实测差 2.49 个百分点，旧余量下两边不可能同时通过）。
-fail_under = 86.0
+#   2026-11-26/27 结构与分支补测（novel_agent 拆分 2866→1351 行，新增 6 个模块 /
+#     约 630 条用例）：**91.67%（Windows 全量）/ 90.82%（-k "not Tk"，≈ Linux CI）**——
+#     `application/` 全部模块 ≥ 90%（writing_stages 96.3 / build_context 90.7 /
+#     long_chapter 100 / character_progression 100 / collaboration 96.1 /
+#     generate_characters 96.4 / phase_timer 100），storage 83.5→100、
+#     usage_ui 79.6→100、dialogs 81.4→95（列表编辑逻辑抽成 `_ItemListModel` 后可无 Tk 测试）。
+#   阈值上调到 **89.9**：
+#     - 按**最低平台**定：CI 口径实测 90.82，留 0.92 个百分点缓冲；
+#     - Windows 91.67 富余 1.77，上界 93.9 ⇒ 不触发 ratchet；
+#     - `RATCHET_MARGIN` 维持 4.0（两平台实测差 0.85，比此前 2.49 更小）。
+fail_under = 89.9

@@ -94,6 +94,68 @@ def _prepare(parent, title: str) -> Optional[tk.Toplevel]:
     return win
 
 
+class _ItemListModel:
+    """`edit_items` 的增删改移逻辑（**与控件无关**，可无 Tk 测试）。
+
+    ## 为什么要从回调里抽出来
+
+    这四步的边界条件是真实逻辑：空选择、越界移动、删除后选中项怎么变。
+    埋在内嵌回调里就只能靠点界面来验 —— 等于没有回归，
+    而这里出错的表现是"用户点了上移，条目却没动"或"删错了行"。
+
+    ## 与 `list` 的差异（刻意的）
+
+    - `move` 越界返回 `None`（不抛、不动），调用方据此决定要不要刷新选中；
+    - `edit`/`remove` 对越界下标返回 `False` 而不是抛 `IndexError` ——
+      界面上的"选中项"可能因为异步刷新而过期。
+    """
+
+    def __init__(self, items: Optional[List[str]] = None) -> None:
+        self._items = list(items or [])
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def is_empty(self) -> bool:
+        return not self._items
+
+    def as_list(self) -> List[str]:
+        """当前内容的**副本** —— 调用方拿到的列表不应反过来改到模型。"""
+        return list(self._items)
+
+    def get(self, index: Optional[int]) -> Optional[str]:
+        if index is None or not 0 <= index < len(self._items):
+            return None
+        return self._items[index]
+
+    def add(self, value: str) -> int:
+        """追加一项，返回它的下标（调用方用它决定选中哪一行）。"""
+        self._items.append(value)
+        return len(self._items) - 1
+
+    def edit(self, index: Optional[int], value: str) -> bool:
+        if index is None or not 0 <= index < len(self._items):
+            return False
+        self._items[index] = value
+        return True
+
+    def remove(self, index: Optional[int]) -> bool:
+        if index is None or not 0 <= index < len(self._items):
+            return False
+        del self._items[index]
+        return True
+
+    def move(self, index: Optional[int], delta: int) -> Optional[int]:
+        """上移（-1）/ 下移（+1）；越界或不合法返回 `None`。"""
+        if index is None or not 0 <= index < len(self._items):
+            return None
+        target = index + delta
+        if not 0 <= target < len(self._items):
+            return None
+        self._items[index], self._items[target] = self._items[target], self._items[index]
+        return target
+
+
 def ask_text(
     parent,
     title: str,
@@ -239,7 +301,9 @@ def edit_items(
         return None
     win.geometry("460x440")
     result: dict = {"value": None}
-    working = list(items or [])
+    # 增删改移的**逻辑**在 `_ItemListModel` 里（可无 Tk 测试），
+    # 这里只负责把它的结果画到 Listbox 上。
+    model = _ItemListModel(items)
 
     if hint:
         tk.Label(
@@ -273,10 +337,10 @@ def edit_items(
 
     def refresh(select: Optional[int] = None) -> None:
         listbox.delete(0, tk.END)
-        for item in working:
+        for item in model.as_list():
             listbox.insert(tk.END, item)
-        if working:
-            index = 0 if select is None else max(0, min(select, len(working) - 1))
+        if len(model):
+            index = 0 if select is None else max(0, min(select, len(model) - 1))
             listbox.selection_clear(0, tk.END)
             listbox.selection_set(index)
             listbox.see(index)
@@ -288,34 +352,30 @@ def edit_items(
     def add_item() -> None:
         value = ask_text(win, "新增条目", "内容：", validate=_non_empty)
         if value:
-            working.append(value)
-            refresh(len(working) - 1)
+            refresh(model.add(value))
 
     def edit_selected() -> None:
         index = selected_index()
         if index is None:
             return
-        value = ask_text(win, "编辑条目", "内容：", initial=working[index], validate=_non_empty)
-        if value is not None:
-            working[index] = value
+        value = ask_text(win, "编辑条目", "内容：", initial=model.get(index), validate=_non_empty)
+        if value is not None and model.edit(index, value):
             refresh(index)
 
     def remove_selected() -> None:
         index = selected_index()
         if index is None:
             return
-        del working[index]
-        refresh(index)
+        if model.remove(index):
+            refresh(index)
 
     def move(delta: int) -> None:
         index = selected_index()
         if index is None:
             return
-        target = index + delta
-        if not 0 <= target < len(working):
-            return
-        working[index], working[target] = working[target], working[index]
-        refresh(target)
+        target = model.move(index, delta)
+        if target is not None:
+            refresh(target)
 
     operations = tk.Frame(win, bg=_C["bg_dark"])
     operations.pack(fill=tk.X, padx=16, pady=4)
@@ -349,10 +409,10 @@ def edit_items(
     error_label.pack(padx=16, anchor=tk.W)
 
     def submit() -> None:
-        if not allow_empty and not working:
+        if not allow_empty and model.is_empty():
             error_label.configure(text="列表不能为空")
             return
-        result["value"] = list(working)
+        result["value"] = model.as_list()
         win.destroy()
 
     buttons = tk.Frame(win, bg=_C["bg_dark"])

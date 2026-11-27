@@ -230,17 +230,20 @@ class UpdateCharacterProgression:
 
             if data.get("new_allies"):
                 for name in data["new_allies"]:
-                    if isinstance(name, str) and name:
+                    # 纯空格也算脏数据：写进时间线只会得到一个空白条目
+                    if isinstance(name, str) and name.strip():
                         self.memory.add_event(chapter_num, f"新盟友: {name}", "new_ally")
 
             if data.get("new_enemies"):
                 for name in data["new_enemies"]:
-                    if isinstance(name, str) and name:
+                    # 纯空格也算脏数据：写进时间线只会得到一个空白条目
+                    if isinstance(name, str) and name.strip():
                         self.memory.add_event(chapter_num, f"新敌人: {name}", "new_enemy")
 
             if data.get("deaths"):
                 for name in data["deaths"]:
-                    if isinstance(name, str) and name:
+                    # 纯空格也算脏数据：写进时间线只会得到一个空白条目
+                    if isinstance(name, str) and name.strip():
                         self.memory.add_event(chapter_num, f"角色死亡: {name}", "character_death")
                         self.memory.update_character(name, {"status": "死亡", "death_chapter": chapter_num})
 

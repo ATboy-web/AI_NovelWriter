@@ -24,7 +24,16 @@ v3 的 `config.json` 结构::
 1. **扁平键必须继续可用。** v2 里有 50+ 处 `config.get("model")` /
    `config.get("api_provider")` 调用点。多 Profile 不能要求它们全部改造，
    否则一旦漏改就会出现「界面显示 A、实际请求 B」。所以活跃 Profile 的字段
-   会被**镜像**到顶层同名扁平键，`get()` 先看 Profile、再回落到扁平键。
+   会被**镜像**到顶层同名扁平键；`get()` 读的是 Profile，扁平键负责"**给旧代码读**"
+   与"**迁移时作为初值**"（`_normalize_profiles` 会把顶层扁平键灌进 default Profile）。
+
+   ⚠️ 曾经这里还写着一句"先看 Profile、再回落到扁平键"，并配了
+   `if key in self.config: return self.config[key]`。**那段是死代码**：
+   `_active_profile_dict()` 会对 14 个字段一律 `setdefault`，而
+   `_AI_PROFILE_FIELD_SET` 与 `AI_PROFILE_DEFAULTS` 同源派生，
+   所以 `key in prof` 恒为真，回落分支永远走不到（2026-11-28 逐状态验证后删除）。
+   而且它即使走到也是**错的**：迁移已经生成 Profile 副本，
+   回落到陈旧的扁平值会把用户的修改盖回去。
 
 2. **API Key 永不进入 Profile。** Profile 里只有连接参数；密钥交给
    `SecureConfig` 加密保管：默认 Profile 复用旧的顶层 `api_key` 字段
@@ -611,11 +620,11 @@ class AppConfig:
 
             if key in _AI_PROFILE_FIELD_SET:
                 prof = self._active_profile_dict()
-                if key in prof:
-                    return prof[key]
-                if key in self.config:
-                    return self.config[key]
-                return AI_PROFILE_DEFAULTS.get(key, default)
+                # `_active_profile_dict()` 对全部 14 个字段一律 `setdefault`，
+                # 且本集合与 `AI_PROFILE_DEFAULTS` 同源派生 ⇒ `key` 结构上必然存在。
+                # 这里仍用 `.get`：只在"有人改坏了 setdefault 循环"时兜底，
+                # 避免把一个本该降级的读取变成 KeyError。
+                return prof.get(key, AI_PROFILE_DEFAULTS.get(key, default))
 
             if self._secure_config and key in self.SENSITIVE_FIELDS:
                 value = self._secure_config.get(key)

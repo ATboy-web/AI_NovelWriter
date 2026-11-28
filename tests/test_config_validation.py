@@ -21,8 +21,11 @@ import json
 import pytest
 
 from app.config import (
+    _AI_PROFILE_FIELD_SET,
     AI_PROFILE_DEFAULTS,
+    AI_PROFILE_FIELDS,
     PROFILE_FIELD_RANGES,
+    PROFILES_SECTION,
     AppConfig,
     _coerce_profile_field,
 )
@@ -349,3 +352,53 @@ class TestCreateProfileEdges:
 
         cfg.switch_profile("工作副本")
         assert cfg.get("temperature") == 0.3
+
+
+class TestProfileFieldInvariant:
+    """删除"回落到扁平键"之后必须成立的前提。
+
+    2026-11-28 删掉了 `get()` 里两行不可达代码（详见 `config.py` 模块文档）：
+    `if key in prof` 恒为真，所以后面的"回落到顶层扁平键"永远走不到。
+
+    **删除的安全前提是**：任何 Profile 字典都含全部 14 个字段。
+    一旦有人改坏 `_active_profile_dict()` 的 setdefault 循环，
+    `get()` 会静默返回默认值而不是用户设的值 —— 那种 bug 极难查。
+    这组用例就是把这个前提钉住。
+    """
+
+    def test_field_sets_are_derived_from_the_same_tuple(self):
+        """两个集合同源派生 ⇒ 结构上不可能出现"在字段集里但无默认值"的键。"""
+        assert set(_AI_PROFILE_FIELD_SET) == set(AI_PROFILE_FIELDS)
+        assert set(AI_PROFILE_DEFAULTS) == set(AI_PROFILE_FIELDS)
+
+    @pytest.mark.parametrize(
+        ("label", "raw"),
+        [
+            ("全新", {}),
+            ("v2 扁平键", {"temperature": 0.42, "model": "m"}),
+            ("段非 dict", {PROFILES_SECTION: "字符串"}),
+            ("profiles 为空", {PROFILES_SECTION: {"profiles": {}}}),
+            ("default 被删", {PROFILES_SECTION: {"profiles": {"work": {"model": "x"}}}}),
+            ("default 非 dict", {PROFILES_SECTION: {"profiles": {"default": "字符串"}}}),
+            ("字段缺失", {PROFILES_SECTION: {"profiles": {"default": {"model": "x"}}}}),
+            (
+                "active 指向不存在",
+                {PROFILES_SECTION: {"profiles": {"default": {"model": "x"}}, "active_profile": "幽灵"}},
+            ),
+        ],
+    )
+    def test_every_profile_carries_all_fields(self, cfg, label, raw):
+        """8 种畸形结构下都必须补齐全部字段 —— 否则 `get()` 的简化不再安全。"""
+        cfg.config = raw
+
+        prof = cfg._active_profile_dict()
+
+        missing = set(AI_PROFILE_DEFAULTS) - set(prof)
+        assert not missing, f"{label} 下缺字段：{sorted(missing)}"
+
+    def test_stale_flat_key_never_leaks_through(self, cfg):
+        """扁平键里的陈旧值不能盖住 Profile 里的新值（删除前也不会，删除后更不能）。"""
+        cfg.set("temperature", 0.42)
+        cfg.config["temperature"] = 0.99
+
+        assert cfg.get("temperature") == 0.42

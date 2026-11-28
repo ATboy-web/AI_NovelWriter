@@ -479,6 +479,14 @@ class SecureConfig:
                 self.set_ai_key(new, self.get_ai_key(DEFAULT_PROFILE_NAME))
                 self.set_ai_key(DEFAULT_PROFILE_NAME, "")
                 return
+            # 🔴 改名为**默认档案**时必须走 `set_ai_key`：
+            # `get_ai_key(DEFAULT)` 读的是顶层 `api_key`，而不是 `ai_keys` 容器。
+            # 早先这里统一写进容器 ⇒ 改名为 default 后两边都读不到，
+            # 密钥**静默丢失**（2026-11-28 用例发现）。
+            if new == DEFAULT_PROFILE_NAME:
+                self.set_ai_key(DEFAULT_PROFILE_NAME, self.get_ai_key(old))
+                self.delete_ai_key(old)
+                return
             keys = self.config.get(AI_KEYS_FIELD)
             keys = dict(keys) if isinstance(keys, dict) else {}
             if old not in keys:

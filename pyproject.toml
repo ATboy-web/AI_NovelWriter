@@ -258,4 +258,13 @@ precision = 1
 #     - 按**最低平台**定：CI 口径实测 90.82，留 0.92 个百分点缓冲；
 #     - Windows 91.67 富余 1.77，上界 93.9 ⇒ 不触发 ratchet；
 #     - `RATCHET_MARGIN` 维持 4.0（两平台实测差 0.85，比此前 2.49 更小）。
-fail_under = 89.9
+#   2026-11-28 按故障档位连续补测（config / rework / secure_config / plugin_system /
+#     memory_manager / ai_client / skill_library / diagnostic_logger 等 17 个模块）：
+#     **93.29%（-k "not Tk"，≈ Linux CI）**，Windows 全量约 94.1。
+#     89.9 的上界是 93.9 —— 实测 93.29 只剩 0.61 余量，再补一个模块就会触发棘轮，
+#     因此按"最低平台 + 缓冲"重新定值。
+#   阈值上调到 **92.8**：
+#     - 按**最低平台**定：CI 口径实测 93.29，留 0.49 个百分点缓冲；
+#     - Windows 约 94.1 富余 1.3，上界 96.8 ⇒ 不触发 ratchet，且给后续模块留出空间；
+#     - `RATCHET_MARGIN` 维持 4.0（两平台实测差约 0.85，仍小于余量）。
+fail_under = 92.8
